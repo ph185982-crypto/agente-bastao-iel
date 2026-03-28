@@ -12,27 +12,29 @@ app = Flask(__name__)
 # ---------------------------------------------------------------------------
 
 CNPJ_IEL = "01.647.296/0001-08"
-DOMINIOS_IGNORADOS = {"fieg.com.br", "ielgoias.com.br", "clicksign.com", "iel.org.br"}
+
+DOMINIOS_BLOQUEADOS = {
+    "fieg.com.br", "ielgoias.com.br", "clicksign.com", "iel.org.br", "linhaetica.com.br",
+}
+USUARIOS_BLOQUEADOS = {
+    "linhaetica", "contratos.iel", "leandra.iel", "humberto.iel",
+    "pedrohms.iel", "victorleite.iel", "comunicacao.iel",
+}
+
 MESES_PT = {
-    "janeiro": "01", "fevereiro": "02", "março": "03", "marco": "03",
-    "abril": "04", "maio": "05", "junho": "06", "julho": "07",
-    "agosto": "08", "setembro": "09", "outubro": "10",
-    "novembro": "11", "dezembro": "12",
+    "janeiro":"01","fevereiro":"02","março":"03","marco":"03",
+    "abril":"04","maio":"05","junho":"06","julho":"07",
+    "agosto":"08","setembro":"09","outubro":"10","novembro":"11","dezembro":"12",
 }
 MESES_ABREV = {
-    "jan": "01", "fev": "02", "mar": "03", "abr": "04",
-    "mai": "05", "jun": "06", "jul": "07", "ago": "08",
-    "set": "09", "out": "10", "nov": "11", "dez": "12",
+    "jan":"01","fev":"02","mar":"03","abr":"04","mai":"05","jun":"06",
+    "jul":"07","ago":"08","set":"09","out":"10","nov":"11","dez":"12",
 }
-ERRO_EXTRACAO = "[ERRO NA EXTRAÇÃO - VERIFICAR]"
 
-# ---------------------------------------------------------------------------
-# Templates
-# ---------------------------------------------------------------------------
+ERRO = "[ERRO - VERIFICAR]"
+NAO_ENCONTRADO = "[A CONFIRMAR]"
 
-ASSUNTO_TEMPLATE = (
-    "Faturamento – Logística Reversa | {razao_social} | {data_assinatura}"
-)
+ASSUNTO_TEMPLATE = "Faturamento – Logística Reversa | {razao_social} | {data_assinatura}"
 
 CORPO_TEMPLATE = """\
 Boa tarde, Isadora e Frederico,
@@ -65,33 +67,53 @@ Atenciosamente,"""
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _primeiro_match(padrao, texto, flags=re.IGNORECASE):
+def normalizar(texto):
+    if not texto:
+        return ""
+    texto = re.sub(r"[ \t]+", " ", texto)
+    texto = re.sub(r" \n", "\n", texto)
+    texto = re.sub(r"\n{3,}", "\n\n", texto)
+    return texto.strip()
+
+
+def _m(padrao, texto, flags=re.IGNORECASE):
     m = re.search(padrao, texto, flags)
     return m.group(1).strip() if m else ""
 
 
-def _email_valido(email):
-    dominio = email.split("@")[-1].lower()
-    return not any(dominio == d or dominio.endswith("." + d) for d in DOMINIOS_IGNORADOS)
+def _email_permitido(email):
+    email = email.lower()
+    usuario, dominio = email.rsplit("@", 1) if "@" in email else (email, "")
+    if any(dominio == d or dominio.endswith("." + d) for d in DOMINIOS_BLOQUEADOS):
+        return False
+    if any(usuario == u or usuario.endswith("." + u) for u in USUARIOS_BLOQUEADOS):
+        return False
+    return True
 
 
-def _data_extenso(texto_data):
-    m = re.search(r"(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})", texto_data, re.IGNORECASE)
+def _normalizar_cnpj(raw):
+    d = re.sub(r"\D", "", raw)
+    if len(d) == 14:
+        return f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:14]}"
+    return raw
+
+
+def _data_extenso(texto):
+    m = re.search(r"(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})", texto, re.IGNORECASE)
     if not m:
-        return texto_data
+        return ""
     dia, mes_str, ano = m.group(1), m.group(2).lower(), m.group(3)
     mes = MESES_PT.get(mes_str)
-    return f"{int(dia):02d}/{mes}/{ano}" if mes else texto_data
+    return f"{int(dia):02d}/{mes}/{ano}" if mes else ""
 
 
 def _data_abrev(texto):
-    m = re.search(r"(\d{1,2})\s+([a-z]{3})\s+(\d{4})", texto, re.IGNORECASE)
-    if m:
-        dia, abrev, ano = m.group(1), m.group(2).lower(), m.group(3)
-        mes = MESES_ABREV.get(abrev)
-        if mes:
-            return f"{int(dia):02d}/{mes}/{ano}"
-    return ""
+    m = re.search(r"(\d{1,2})\s+([a-z]{3})\w*\s+(\d{4})", texto, re.IGNORECASE)
+    if not m:
+        return ""
+    dia, abrev, ano = m.group(1), m.group(2).lower(), m.group(3)
+    mes = MESES_ABREV.get(abrev)
+    return f"{int(dia):02d}/{mes}/{ano}" if mes else ""
 
 # ---------------------------------------------------------------------------
 # Extração de texto
@@ -101,106 +123,121 @@ def extrair_texto(path):
     paginas = []
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages:
-            paginas.append(page.extract_text() or "")
+            paginas.append(normalizar(page.extract_text() or ""))
     texto = "\n".join(paginas)
-    idx = texto.lower().find("clicksign")
-    log = texto[idx:] if idx >= 0 else texto[-3000:]
-    return texto, log
+
+    idx = re.search(r"\bCONTRATADO\b", texto)
+    sec_contratante = texto[:idx.start()] if idx else texto
+
+    idx_click = texto.lower().find("clicksign")
+    log = texto[idx_click:] if idx_click >= 0 else texto[-3000:]
+
+    return texto, sec_contratante, log
 
 # ---------------------------------------------------------------------------
-# Extração — campo por campo
+# Extração por campo
 # ---------------------------------------------------------------------------
 
-def extrair_razao_social(texto):
-    v = _primeiro_match(
-        r"Raz[aã]o\s+Social:\s*(.+?)(?:\n|CNPJ|CPF)", texto, re.IGNORECASE | re.DOTALL
-    )
+def extrair_razao_social(sec):
+    v = _m(r"Raz[aã]o\s+Social:\s*([^\n]+)", sec)
     if v:
-        v = re.split(r"\n|CNPJ|CPF", v)[0].strip().rstrip(".,;:")
-        if v and "INSTITUTO EUVALDO LODI" not in v.upper():
+        v = v.rstrip(".,;:")
+        if "INSTITUTO EUVALDO LODI" not in v.upper():
             return v
-
-    bloco = _primeiro_match(
-        r"CONTRATANTE\b(.{0,800}?)(?:CONTRATADO\b|Cl[aá]usula\s+Primeira)",
-        texto, re.IGNORECASE | re.DOTALL
-    )
-    if bloco:
-        for linha in bloco.splitlines():
-            linha = linha.strip()
-            if re.search(r"(?:LTDA|S\.A\.|EIRELI|ME|EPP|SA\b)", linha, re.IGNORECASE):
-                if "INSTITUTO EUVALDO LODI" not in linha.upper():
-                    return linha.rstrip(".,;:")
     return ""
 
 
-def extrair_cnpj(texto):
-    for cnpj in re.findall(r"\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}", texto):
-        d = re.sub(r"\D", "", cnpj)
-        if len(d) == 14:
-            fmt = f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:14]}"
-            if fmt != CNPJ_IEL:
-                return fmt
+def extrair_cnpj(sec):
+    v = _m(r"CNPJ:\s*(\d{2}[\.\s]?\d{3}[\.\s]?\d{3}[/\s]?\d{4}[-\s]?\d{2})", sec)
+    if v:
+        fmt = _normalizar_cnpj(v)
+        if fmt != CNPJ_IEL:
+            return fmt
+    for raw in re.findall(r"\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}", sec):
+        fmt = _normalizar_cnpj(raw)
+        if fmt != CNPJ_IEL:
+            return fmt
     return ""
 
 
-def extrair_endereco(texto):
-    v = _primeiro_match(
-        r"Endere[çc]o:\s*(.+?)(?:\n(?:Representante|Cargo|CNPJ|CPF|E-?mail)|$)",
-        texto, re.IGNORECASE | re.DOTALL
+def extrair_endereco(sec):
+    v = _m(
+        r"Endere[çc]o:\s*(.+?)(?=\n(?:Representante|Cargo|E-?mail|CNPJ|CPF)|$)",
+        sec, re.IGNORECASE | re.DOTALL
     )
     return " ".join(v.split()) if v else ""
 
 
-def extrair_representante(texto):
-    v = _primeiro_match(
-        r"Representante:\s*(.+?)(?:\n|Cargo|CPF|$)", texto, re.IGNORECASE | re.DOTALL
-    )
-    return v.split("\n")[0].strip() if v else ""
+def extrair_representante(sec):
+    v = _m(r"Representante:\s*([^\n]+)", sec)
+    return v.rstrip(".,;:") if v else ""
 
 
-def extrair_email_financeiro(texto, log):
-    m = re.search(
-        r"assinou\.\s*Pontos\s+de\s+autentica[çc][aã]o:.*?Token\s+via\s+E-?mail\s+(\S+@\S+\.\S+)",
-        log, re.IGNORECASE | re.DOTALL
-    )
-    if m:
-        email = m.group(1).strip().rstrip(".,;)")
-        if _email_valido(email):
+def extrair_email(texto, log, representante):
+    padrao_token = r"Token\s+via\s+E-?mail\s+([\w.+\-]+@[\w.\-]+\.\w+)"
+    externos = [e.lower() for e in re.findall(padrao_token, log, re.IGNORECASE) if _email_permitido(e)]
+
+    if externos and representante:
+        primeiro_nome = representante.strip().split()[0].lower()
+        for trecho in re.split(r"\n{2,}", log):
+            if primeiro_nome in trecho.lower():
+                for email in re.findall(padrao_token, trecho, re.IGNORECASE):
+                    if _email_permitido(email):
+                        return email.lower()
+
+    if externos:
+        return externos[0]
+
+    for email in re.findall(r"[\w.+\-]+@[\w.\-]+\.\w+", log):
+        if _email_permitido(email):
             return email.lower()
 
-    for email in re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", log):
-        if _email_valido(email):
+    for email in re.findall(r"[\w.+\-]+@[\w.\-]+\.\w+", texto):
+        if _email_permitido(email):
             return email.lower()
 
-    for email in re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", texto):
-        if _email_valido(email):
-            return email.lower()
     return ""
 
 
-def extrair_valor_total(texto):
-    v = _primeiro_match(r"VALOR\s+R\$\s*([\d.,]+)", texto, re.IGNORECASE)
-    if v:
-        return f"R$ {v}"
-    valores = re.findall(r"R\$\s*\d{1,3}(?:\.\d{3})*,\d{2}", texto)
-    return valores[-1].strip() if valores else ""
+def extrair_valor(texto):
+    bloco = re.search(r"VALOR(.{1,80}?)MODALIDADE", texto, re.DOTALL | re.IGNORECASE)
+    if bloco:
+        val = re.search(r"R\$\s*([\d.,]+)", bloco.group(1))
+        if val:
+            return f"R$ {val.group(1).strip()}"
+    for p in [r"VALOR\s+R\$\s*([\d.,]+)", r"VALOR\s*\n\s*R\$\s*([\d.,]+)", r"VALOR\s+R\$([\d.,]+)"]:
+        v = _m(p, texto)
+        if v:
+            return f"R$ {v}"
+    m = re.search(r"VALOR[^\n]{0,30}(\d{1,3}(?:\.\d{3})*,\d{2})", texto)
+    if m:
+        return f"R$ {m.group(1)}"
+    return ""
 
 
-def extrair_forma_pagamento(texto):
-    v = _primeiro_match(r"MODALIDADE\s+(Boleto[^\n]*|Cart[aã]o[^\n]*)", texto, re.IGNORECASE)
-    if v:
-        return "Cartão de crédito" if "cart" in v.lower() else "Boleto bancário"
-    if re.search(r"cart[aã]o\s+de\s+cr[eé]dito", texto, re.IGNORECASE):
-        return "Cartão de crédito"
-    if re.search(r"boleto", texto, re.IGNORECASE):
+def extrair_modalidade(texto):
+    bloco = re.search(r"MODALIDADE(.{1,100}?)PARCELAMENTO", texto, re.DOTALL | re.IGNORECASE)
+    conteudo = " ".join(bloco.group(1).split()).lower() if bloco else ""
+    if "boleto" in conteudo:
         return "Boleto bancário"
+    if "cart" in conteudo:
+        return "Cartão de crédito"
+    if "pix" in conteudo:
+        return "PIX"
+    v = _m(r"MODALIDADE\s*\n?\s*([^\n]+)", texto)
+    if v:
+        vl = v.lower()
+        if "boleto" in vl: return "Boleto bancário"
+        if "cart" in vl:   return "Cartão de crédito"
+        if "pix" in vl:    return "PIX"
+        return v
     return ""
 
 
 def extrair_parcelamento(texto):
-    v = _primeiro_match(r"PARCELAMENTO\s+(\d+x|[Àà]\s*vista[^\n]*)", texto, re.IGNORECASE)
+    v = _m(r"PARCELAMENTO\s*\n?\s*(\d+\s*x|[àÀ]\s*vista[^\n]*)", texto)
     if v:
-        m = re.match(r"(\d+)x", v, re.IGNORECASE)
+        m = re.match(r"(\d+)\s*x", v, re.IGNORECASE)
         if m:
             n = int(m.group(1))
             return "À vista" if n <= 1 else f"Parcelado em {n}x"
@@ -214,68 +251,62 @@ def extrair_parcelamento(texto):
     return ""
 
 
+def extrair_vencimento(texto):
+    v = _m(
+        r"(?:primeiro\s+vencimento|vencimento\s+da\s+primeira\s+parcela)[:\s]+(\d{2}/\d{2}/\d{4})",
+        texto
+    )
+    return v if v else NAO_ENCONTRADO
+
+
 def extrair_data_assinatura(texto, log):
-    v = _primeiro_match(r"Goi[âa]nia,?\s+(\d{1,2}\s+de\s+\w+\s+de\s+\d{4})", texto, re.IGNORECASE)
+    v = _m(r"Goi[aâ]nia,?\s+(\d{1,2}\s+de\s+\w+\s+de\s+\d{4})", texto)
     if v:
         d = _data_extenso(v)
         if re.match(r"\d{2}/\d{2}/\d{4}", d):
             return d
-
-    datas_log = re.findall(
+    datas = re.findall(
         r"\d{1,2}\s+(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\w*\s+\d{4}",
         log, re.IGNORECASE
     )
-    if datas_log:
-        d = _data_abrev(datas_log[-1])
+    if datas:
+        d = _data_abrev(datas[-1])
         if d:
             return d
-
     datas = re.findall(r"\d{2}/\d{2}/\d{4}", texto)
     return datas[0] if datas else datetime.today().strftime("%d/%m/%Y")
 
 
-def extrair_primeiro_vencimento(texto):
-    v = _primeiro_match(
-        r"(?:primeiro\s+vencimento|vencimento\s+da\s+primeira\s+parcela|1[°º]\s+vencimento)[:\s]+(\d{2}/\d{2}/\d{4})",
-        texto, re.IGNORECASE
-    )
-    return v if v else "[A CONFIRMAR]"
-
-
-# ---------------------------------------------------------------------------
-# Validação
-# ---------------------------------------------------------------------------
-
 def validar(dados):
     if not dados["razao_social"] or "INSTITUTO EUVALDO LODI" in dados["razao_social"].upper():
-        dados["razao_social"] = ERRO_EXTRACAO
+        dados["razao_social"] = ERRO
     cnpj = dados["cnpj"]
     if not re.match(r"\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}$", cnpj) or cnpj == CNPJ_IEL:
-        dados["cnpj"] = ERRO_EXTRACAO
+        dados["cnpj"] = ERRO
     email = dados["email_financeiro"]
-    if email and not _email_valido(email):
-        dados["email_financeiro"] = ERRO_EXTRACAO
-    if not re.match(r"R\$\s*\d+.*,\d{2}$", dados["valor_total"]):
-        dados["valor_total"] = ERRO_EXTRACAO
+    if email and not _email_permitido(email):
+        dados["email_financeiro"] = ERRO
     return dados
 
 
-def extrair_dados(texto, log):
+def processar(path):
+    texto, sec_contratante, log = extrair_texto(path)
     dados = {
-        "razao_social":        extrair_razao_social(texto),
-        "cnpj":                extrair_cnpj(texto),
-        "endereco":            extrair_endereco(texto),
-        "representante":       extrair_representante(texto),
-        "email_financeiro":    extrair_email_financeiro(texto, log),
-        "valor_total":         extrair_valor_total(texto),
-        "forma_pagamento":     extrair_forma_pagamento(texto),
+        "razao_social":        extrair_razao_social(sec_contratante),
+        "cnpj":                extrair_cnpj(sec_contratante),
+        "endereco":            extrair_endereco(sec_contratante),
+        "representante":       extrair_representante(sec_contratante),
+        "email_financeiro":    "",
+        "valor_total":         extrair_valor(texto),
+        "forma_pagamento":     extrair_modalidade(texto),
         "parcelamento":        extrair_parcelamento(texto),
+        "primeiro_vencimento": extrair_vencimento(texto),
         "data_assinatura":     extrair_data_assinatura(texto, log),
-        "primeiro_vencimento": extrair_primeiro_vencimento(texto),
     }
+    dados["email_financeiro"] = extrair_email(texto, log, dados["representante"])
     for k, v in dados.items():
         if not v:
-            dados[k] = "[NÃO ENCONTRADO]"
+            dados[k] = NAO_ENCONTRADO
     return validar(dados)
 
 # ---------------------------------------------------------------------------
@@ -294,26 +325,22 @@ def gerar():
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False, dir="/tmp") as tmp:
         arquivo.save(tmp.name)
         try:
-            texto, log = extrair_texto(tmp.name)
+            dados = processar(tmp.name)
         except Exception as e:
-            return jsonify({"erro": f"Erro ao ler PDF: {e}"}), 500
+            return jsonify({"erro": f"Erro ao processar PDF: {e}"}), 500
         finally:
             os.unlink(tmp.name)
 
-    if not texto.strip():
-        return jsonify({"erro": "PDF sem texto extraível (pode ser escaneado/imagem)"}), 422
-
-    dados = extrair_dados(texto, log)
     assunto = ASSUNTO_TEMPLATE.format(**dados)
     corpo = CORPO_TEMPLATE.format(**dados)
 
-    erros = [k for k, v in dados.items() if ERRO_EXTRACAO in v]
+    erros    = [k for k, v in dados.items() if ERRO in v]
     pendentes = [k for k, v in dados.items() if "[" in v and k not in erros]
 
     return jsonify({
-        "assunto":  assunto,
-        "corpo":    corpo,
-        "dados":    dados,
-        "erros":    erros,
+        "assunto":   assunto,
+        "corpo":     corpo,
+        "dados":     dados,
+        "erros":     erros,
         "pendentes": pendentes,
     })
