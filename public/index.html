@@ -6,9 +6,10 @@
   <title>Agente Bastão – IEL/GO</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    .drag-over { border-color: #3b82f6 !important; background: #eff6ff !important; }
+    .drag-over  { border-color: #3b82f6 !important; background: #eff6ff !important; }
     .field-ok   { border-left: 3px solid #22c55e; }
     .field-warn { border-left: 3px solid #f59e0b; }
+    .field-err  { border-left: 3px solid #ef4444; }
     pre { white-space: pre-wrap; word-break: break-word; }
   </style>
 </head>
@@ -189,26 +190,34 @@
 
     const ROTULOS = {
       razao_social: 'Razão Social', cnpj: 'CNPJ', endereco: 'Endereço',
-      email_financeiro: 'E-mail do financeiro', valor_total: 'Valor total',
-      forma_pagamento: 'Forma de pagamento', parcelamento: 'Parcelamento',
-      data_assinatura: 'Data de assinatura', primeiro_vencimento: '1º vencimento'
+      representante: 'Representante', email_financeiro: 'E-mail do financeiro',
+      valor_total: 'Valor total', forma_pagamento: 'Forma de pagamento',
+      parcelamento: 'Parcelamento', data_assinatura: 'Data de assinatura',
+      primeiro_vencimento: '1º vencimento'
     }
 
     function mostrarResultado(data) {
       emailGerado = { assunto: data.assunto, corpo: data.corpo }
-      const incompletos = new Set(data.incompletos || [])
+      const erros    = new Set(data.erros    || [])
+      const pendentes = new Set(data.pendentes || [])
 
       // Tabela de dados
       const tabela = document.getElementById('tabelaDados')
       tabela.innerHTML = Object.entries(data.dados).map(([k, v]) => {
-        const ok = !incompletos.has(k)
-        const cls = ok ? 'field-ok bg-green-50' : 'field-warn bg-amber-50'
-        const icon = ok ? '✅' : '⚠️'
+        let cls, icon
+        if (erros.has(k)) {
+          cls = 'field-err bg-red-50'; icon = '🔴'
+        } else if (pendentes.has(k)) {
+          cls = 'field-warn bg-amber-50'; icon = '⚠️'
+        } else {
+          cls = 'field-ok bg-green-50'; icon = '✅'
+        }
+        const cor = erros.has(k) ? 'text-red-700' : 'text-gray-800'
         return `<div class="${cls} rounded-lg px-3 py-2 flex gap-3">
           <span class="text-base leading-5">${icon}</span>
           <div class="flex-1 min-w-0">
             <span class="text-xs text-gray-500">${ROTULOS[k] || k}</span>
-            <p class="text-sm text-gray-800 font-medium break-words">${v}</p>
+            <p class="text-sm ${cor} font-medium break-words">${v}</p>
           </div>
         </div>`
       }).join('')
