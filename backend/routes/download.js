@@ -40,13 +40,16 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET /api/download/proxy?videoUrl=... — proxy the video file for browser download
+// GET /api/download/proxy?videoUrl=...&filename=... — proxy any media file for browser download
 router.get('/proxy', async (req, res) => {
-  const { videoUrl } = req.query;
+  const { videoUrl, filename } = req.query;
 
   if (!videoUrl) {
     return res.status(400).json({ error: 'videoUrl é obrigatória' });
   }
+
+  // Sanitise filename to prevent header injection
+  const safeFilename = (filename || 'instagram_media').replace(/[^a-zA-Z0-9._\-]/g, '_');
 
   try {
     const response = await axios.get(videoUrl, {
@@ -55,12 +58,13 @@ router.get('/proxy', async (req, res) => {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Referer: 'https://www.instagram.com/',
       },
     });
 
-    const contentType = response.headers['content-type'] || 'video/mp4';
+    const contentType = response.headers['content-type'] || 'application/octet-stream';
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', 'attachment; filename="video_instagram.mp4"');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
 
     if (response.headers['content-length']) {
       res.setHeader('Content-Length', response.headers['content-length']);
@@ -69,7 +73,7 @@ router.get('/proxy', async (req, res) => {
     response.data.pipe(res);
   } catch (error) {
     console.error('Proxy download error:', error.message);
-    res.status(500).json({ error: 'Erro ao baixar o vídeo' });
+    res.status(500).json({ error: 'Erro ao baixar o arquivo' });
   }
 });
 
