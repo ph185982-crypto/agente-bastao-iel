@@ -1,32 +1,62 @@
 import { useState } from 'react'
 import { API_BASE } from '../utils/api'
 
+// Deep-search a plain object for any string value that looks like a video URL
+function findVideoUrl(obj, depth = 0) {
+  if (depth > 5 || !obj) return null
+  if (typeof obj === 'string') {
+    if (/^https?:\/\/.+\.(mp4|mov|webm|m4v)/i.test(obj)) return obj
+    if (/^https?:\/\/.+video.+/i.test(obj)) return obj
+    return null
+  }
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = findVideoUrl(item, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+  if (typeof obj === 'object') {
+    // Prioritised keys
+    const priority = ['video_no_watermark', 'video', 'video_url', 'url', 'result', 'download_url', 'link', 'src']
+    for (const key of priority) {
+      if (obj[key]) {
+        const found = findVideoUrl(obj[key], depth + 1)
+        if (found) return found
+      }
+    }
+    // Fallback: all other keys
+    for (const key of Object.keys(obj)) {
+      if (!priority.includes(key)) {
+        const found = findVideoUrl(obj[key], depth + 1)
+        if (found) return found
+      }
+    }
+  }
+  return null
+}
+
+function findThumbnail(data) {
+  const candidates = [
+    data?.thumbnail, data?.thumbnail_url, data?.cover,
+    data?.image, data?.poster, data?.data?.thumbnail,
+  ]
+  return candidates.find((v) => typeof v === 'string' && v.startsWith('http')) || null
+}
+
 export default function Step1Download() {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [videoData, setVideoData] = useState(null)
   const [error, setError] = useState('')
-
-  // Extract the best video URL from various possible API response shapes
-  function extractVideoUrl(data) {
-    if (typeof data === 'string' && data.startsWith('http')) return data
-    const candidates = [
-      data?.video,
-      data?.video_url,
-      data?.url,
-      data?.result,
-      data?.download_url,
-      data?.media?.[0]?.url,
-      data?.data?.video_url,
-    ]
-    return candidates.find(Boolean) || null
-  }
+  const [rawResponse, setRawResponse] = useState(null)
 
   async function handleFetch() {
     if (!url.trim()) return
     setLoading(true)
     setError('')
     setVideoData(null)
+    setRawResponse(null)
 
     try {
       const res = await fetch(`${API_BASE}/api/download`, {
@@ -35,12 +65,20 @@ export default function Step1Download() {
         body: JSON.stringify({ url: url.trim() }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Erro ao buscar vídeo')
 
-      const videoUrl = extractVideoUrl(data)
-      if (!videoUrl) throw new Error('Não foi possível encontrar a URL do vídeo na resposta')
+      if (!res.ok) {
+        throw new Error(data.error || `Erro ${res.status}`)
+      }
 
-      setVideoData({ videoUrl, thumbnail: data.thumbnail || data.thumbnail_url || null })
+      setRawResponse(data)
+      const videoUrl = findVideoUrl(data)
+      if (!videoUrl) {
+        throw new Error(
+          'Vídeo não encontrado na resposta da API. Verifique se a RAPIDAPI_KEY está configurada no Render.',
+        )
+      }
+
+      setVideoData({ videoUrl, thumbnail: findThumbnail(data) })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -60,7 +98,6 @@ export default function Step1Download() {
 
   return (
     <section className="bg-gray-900 rounded-2xl p-6 border border-gray-800">
-      {/* Step label */}
       <div className="flex items-center gap-3 mb-5">
         <span className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
           1
@@ -71,7 +108,6 @@ export default function Step1Download() {
         </div>
       </div>
 
-      {/* Input */}
       <div className="flex gap-2">
         <input
           type="url"
@@ -90,12 +126,22 @@ export default function Step1Download() {
         </button>
       </div>
 
-      {/* Error */}
       {error && (
-        <p className="mt-3 text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</p>
+        <div className="mt-3">
+          <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</p>
+          {rawResponse && (
+            <details className="mt-2">
+              <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-400">
+                Ver resposta da API (debug)
+              </summary>
+              <pre className="mt-1 text-xs text-gray-400 bg-gray-800 rounded-lg p-3 overflow-auto max-h-40 scrollbar-thin">
+                {JSON.stringify(rawResponse, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
       )}
 
-      {/* Result */}
       {videoData && (
         <div className="mt-4 p-4 bg-gray-800 rounded-xl border border-gray-700 flex items-center gap-4">
           {videoData.thumbnail && (

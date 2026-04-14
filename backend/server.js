@@ -32,6 +32,7 @@ app.use(express.json());
 app.use('/api/download', require('./routes/download'));
 app.use('/api/ocr', require('./routes/ocr'));
 app.use('/api/generate', require('./routes/generate'));
+app.use('/api/chat', require('./routes/chat'));
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
