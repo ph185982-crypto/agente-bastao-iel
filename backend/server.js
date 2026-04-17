@@ -38,6 +38,12 @@ app.get('/health', (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
+// Redirect root to the frontend so visiting the Render URL doesn't show a blank error
+app.get('/', (req, res) => {
+  const frontend = process.env.FRONTEND_URL || 'https://nexos-paginas.netlify.app';
+  res.redirect(302, frontend);
+});
+
 app.listen(PORT, () => {
   console.log(`Nexos Páginas backend running on port ${PORT}`);
 });
