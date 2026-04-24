@@ -47,6 +47,8 @@ DADOS DO CLIENTE E FATURAMENTO
   * Razão Social: {razao_social}
   * CNPJ: {cnpj}
   * Endereço: {endereco}
+  * Contato: {nome_contato}
+  * Telefone: {telefone}
   * E-mail do financeiro: {email_financeiro}
 
 Condições Comerciais
@@ -58,8 +60,8 @@ Condições Comerciais
 Solicito que, com base nessas informações, seja providenciado:
   * Emissão da Nota Fiscal;
   * Geração do link de pagamento (cartão de crédito) ou emissão do 1º boleto;
-  * Retorno por e-mail com os itens acima para que possamos dar continuidade
-    ao envio ao cliente.
+  * Envio do boleto para o cliente por e-mail com os itens acima;
+  * Contato com o cliente para orientações dos próximos passos.
 
 Atenciosamente,"""
 
@@ -171,6 +173,23 @@ def extrair_endereco(sec):
 def extrair_representante(sec):
     v = _m(r"Representante:\s*([^\n]+)", sec)
     return v.rstrip(".,;:") if v else ""
+
+
+def extrair_nome_contato(sec):
+    return extrair_representante(sec)
+
+
+def extrair_telefone(sec):
+    v = _m(
+        r"(?:Telefone|Tel|Celular|Fone)[:\s]+(\(?\d{2}\)?\s*[\d\s\-]{8,13})",
+        sec,
+    )
+    if v:
+        return re.sub(r"\s+", " ", v).strip()
+    m = re.search(r"\((\d{2})\)\s*(\d{4,5})[-\s]?(\d{4})", sec)
+    if m:
+        return f"({m.group(1)}) {m.group(2)}-{m.group(3)}"
+    return ""
 
 
 def extrair_email(texto, log, representante):
@@ -296,6 +315,8 @@ def processar(path):
         "cnpj":                extrair_cnpj(sec_contratante),
         "endereco":            extrair_endereco(sec_contratante),
         "representante":       extrair_representante(sec_contratante),
+        "nome_contato":        extrair_nome_contato(sec_contratante),
+        "telefone":            extrair_telefone(sec_contratante),
         "email_financeiro":    "",
         "valor_total":         extrair_valor(texto),
         "forma_pagamento":     extrair_modalidade(texto),
