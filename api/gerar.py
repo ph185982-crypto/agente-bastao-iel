@@ -193,20 +193,33 @@ def extrair_telefone(sec):
 
 
 def extrair_email(texto, log, representante):
-    padrao_token = r"Token\s+via\s+E-?mail\s+([\w.+\-]+@[\w.\-]+\.\w+)"
-    externos = [e.lower() for e in re.findall(padrao_token, log, re.IGNORECASE) if _email_permitido(e)]
+    # Prioridade 1: signatário principal — "assinou." sem "como" ou "para"
+    signatarios = re.findall(
+        r"\bassinou\.\s+Pontos\s+de\s+autentica[çc][aã]o.*?Token\s+via\s+E-?mail\s+([\w.+\-]+@[\w.\-]+\.\w+)",
+        log, re.IGNORECASE
+    )
+    externos = [e.lower() for e in signatarios if _email_permitido(e)]
 
     if externos and representante:
         primeiro_nome = representante.strip().split()[0].lower()
         for trecho in re.split(r"\n{2,}", log):
             if primeiro_nome in trecho.lower():
-                for email in re.findall(padrao_token, trecho, re.IGNORECASE):
+                for email in re.findall(
+                    r"\bassinou\.\s+Pontos.*?Token\s+via\s+E-?mail\s+([\w.+\-]+@[\w.\-]+\.\w+)",
+                    trecho, re.IGNORECASE
+                ):
                     if _email_permitido(email):
                         return email.lower()
 
     if externos:
         return externos[0]
 
+    # Prioridade 2: qualquer Token via E-mail no log
+    for email in re.findall(r"Token\s+via\s+E-?mail\s+([\w.+\-]+@[\w.\-]+\.\w+)", log, re.IGNORECASE):
+        if _email_permitido(email):
+            return email.lower()
+
+    # Prioridade 3: qualquer e-mail externo no log
     for email in re.findall(r"[\w.+\-]+@[\w.\-]+\.\w+", log):
         if _email_permitido(email):
             return email.lower()
@@ -254,14 +267,15 @@ def extrair_modalidade(texto):
 
 
 def extrair_parcelamento(texto):
-    v = _m(r"PARCELAMENTO\s*\n?\s*(\d+\s*x|[àÀ]\s*vista[^\n]*)", texto)
+    # Aceita '12x', '12 vezes' e 'À vista' — modelos 1 e 2
+    v = _m(r"PARCELAMENTO\s*\n?\s*(\d+\s*(?:x|vez(?:es)?)|[àÀ]\s*vista[^\n]*)", texto, re.IGNORECASE)
     if v:
-        m = re.match(r"(\d+)\s*x", v, re.IGNORECASE)
+        m = re.match(r"(\d+)\s*(?:x|vez(?:es)?)", v, re.IGNORECASE)
         if m:
             n = int(m.group(1))
             return "À vista" if n <= 1 else f"Parcelado em {n}x"
         return "À vista"
-    m = re.search(r"(\d+)\s*x\b", texto, re.IGNORECASE)
+    m = re.search(r"(\d+)\s*(?:x\b|vez(?:es)?)", texto, re.IGNORECASE)
     if m:
         n = int(m.group(1))
         return "À vista" if n <= 1 else f"Parcelado em {n}x"
