@@ -1,32 +1,35 @@
 const express = require('express');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 
 const router = express.Router();
 
-const SYSTEM_INSTRUCTION = `Você é um especialista em copy para redes sociais do perfil @pedro_destrava no Instagram.
+const SYSTEM_PROMPT = `Você é um especialista em copy para redes sociais do perfil @pedro_destrava no Instagram.
 O perfil tem tom inteligente, profundo, baseado em curiosidades e conhecimento.
 O conteúdo é voltado para reciclagem de vídeos virais com novas perspectivas.
 Nunca use linguagem genérica, motivacional vazia ou frases clichê.
 Sempre traga um ângulo intelectual, curioso ou contraintuitivo.`;
 
-// POST /api/generate — generate headline + Instagram caption using Gemini
+// POST /api/generate — generate headline + Instagram caption using GPT-4o
 router.post('/', async (req, res) => {
   const { text } = req.body;
 
   if (!text?.trim()) return res.status(400).json({ error: 'Texto é obrigatório' });
 
-  if (!process.env.GOOGLE_AI_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_AI_KEY não configurada no servidor' });
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      systemInstruction: SYSTEM_INSTRUCTION,
-    });
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const prompt = `Com base no seguinte texto extraído de um vídeo viral, gere:
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 2048,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `Com base no seguinte texto extraído de um vídeo viral, gere:
 
 1. HEADLINE (máximo 10 palavras, impactante, que gere curiosidade intelectual)
 2. LEGENDA COMPLETA (3 a 5 parágrafos, tom do @pedro_destrava: inteligente, aprofundado, com curiosidade ou fato surpreendente no início, CTA no final pedindo para salvar ou comentar)
@@ -39,10 +42,12 @@ Formato obrigatório:
 HEADLINE: [headline aqui]
 
 LEGENDA:
-[legenda aqui]`;
+[legenda aqui]`,
+        },
+      ],
+    });
 
-    const result = await model.generateContent(prompt);
-    const content = result.response.text();
+    const content = response.choices[0].message.content;
 
     const headlineMatch = content.match(/HEADLINE:\s*(.+?)(?:\n|$)/i);
     const legendaMatch = content.match(/LEGENDA:\s*([\s\S]+)/i);

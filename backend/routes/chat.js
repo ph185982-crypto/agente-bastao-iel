@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 const fs = require('fs');
 
 const router = express.Router();
@@ -10,7 +10,7 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
-const SYSTEM_INSTRUCTION = `Você é um agente criativo especialista em conteúdo para o perfil @pedro_destrava no Instagram.
+const SYSTEM_PROMPT = `Você é um agente criativo especialista em conteúdo para o perfil @pedro_destrava no Instagram.
 
 Seu papel:
 - Analisar documentos, roteiros e referências enviados pelo usuário
@@ -58,58 +58,69 @@ async function extractFileContent(file) {
   }
 }
 
-// POST /api/chat — multi-turn conversation with optional file attachments (Gemini)
+// POST /api/chat — multi-turn conversation with optional file attachments (GPT-4o)
 router.post('/', upload.array('files', 10), async (req, res) => {
   const { message, history } = req.body;
 
   if (!message?.trim()) return res.status(400).json({ error: 'Mensagem é obrigatória' });
 
-  if (!process.env.GOOGLE_AI_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_AI_KEY não configurada no servidor' });
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
   }
 
   const filePaths = (req.files || []).map((f) => f.path);
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      systemInstruction: SYSTEM_INSTRUCTION,
-    });
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    // Parse previous turns from frontend (role: user|assistant, content: string)
+    // Parse previous turns (role: user | assistant, content: string)
     let parsedHistory = [];
     try { parsedHistory = JSON.parse(history || '[]'); } catch (_) {}
 
-    // Convert to Gemini format (roles: user | model)
-    const geminiHistory = parsedHistory.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: typeof m.content === 'string' ? m.content : '' }],
+    // Convert history to OpenAI format
+    const historyMessages = parsedHistory.map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: typeof m.content === 'string' ? m.content : '',
     }));
 
-    // Build parts for the current user turn
-    const parts = [];
+    // Build content blocks for the current user turn
+    const userContent = [];
 
     for (const file of req.files || []) {
       try {
         const extracted = await extractFileContent(file);
         if (extracted.type === 'image') {
-          parts.push({ inlineData: { mimeType: extracted.mimeType, data: extracted.base64 } });
-          parts.push({ text: `[Imagem: ${extracted.name}]` });
+          userContent.push({
+            type: 'image_url',
+            image_url: { url: `data:${extracted.mimeType};base64,${extracted.base64}` },
+          });
+          userContent.push({ type: 'text', text: `[Imagem: ${extracted.name}]` });
         } else {
-          parts.push({ text: `\n--- DOCUMENTO: ${extracted.name} ---\n${extracted.content}\n--- FIM ---\n` });
+          userContent.push({
+            type: 'text',
+            text: `\n--- DOCUMENTO: ${extracted.name} ---\n${extracted.content}\n--- FIM ---\n`,
+          });
         }
       } catch (e) {
         console.error('File extraction error:', e.message);
       }
     }
 
-    parts.push({ text: message.trim() });
+    userContent.push({ type: 'text', text: message.trim() });
 
-    const chat = model.startChat({ history: geminiHistory });
-    const result = await chat.sendMessage(parts);
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...historyMessages,
+      { role: 'user', content: userContent },
+    ];
 
-    res.json({ response: result.response.text() });
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 4096,
+      messages,
+    });
+
+    res.json({ response: response.choices[0].message.content });
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ error: error.message || 'Erro ao processar mensagem' });

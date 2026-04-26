@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 const fs = require('fs');
 
 const router = express.Router();
@@ -14,28 +14,42 @@ const upload = multer({
   },
 });
 
-// POST /api/ocr — extract caption text from an image using Gemini Vision
+// POST /api/ocr — extract caption text from an image using GPT-4o Vision
 router.post('/', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
 
-  if (!process.env.GOOGLE_AI_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_AI_KEY não configurada no servidor' });
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_AI_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const imageBuffer = fs.readFileSync(req.file.path);
     const base64Image = imageBuffer.toString('base64');
     const mimeType = req.file.mimetype === 'image/jpg' ? 'image/jpeg' : req.file.mimetype;
 
-    const result = await model.generateContent([
-      { inlineData: { mimeType, data: base64Image } },
-      'Extraia apenas o texto da legenda visível nessa imagem. Retorne somente o texto puro, sem explicações.',
-    ]);
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 2048,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${base64Image}` },
+            },
+            {
+              type: 'text',
+              text: 'Extraia apenas o texto da legenda visível nessa imagem. Retorne somente o texto puro, sem explicações.',
+            },
+          ],
+        },
+      ],
+    });
 
-    res.json({ text: result.response.text() });
+    res.json({ text: response.choices[0].message.content });
   } catch (error) {
     console.error('OCR error:', error);
     res.status(500).json({ error: error.message || 'Erro ao processar imagem' });
