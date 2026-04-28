@@ -31,6 +31,7 @@ app.use(express.json());
 // Routes
 app.use('/api/download', require('./routes/download'));
 app.use('/api/ocr', require('./routes/ocr'));
+app.use('/api/analyze-print', require('./routes/analyzePrint'));
 app.use('/api/generate', require('./routes/generate'));
 app.use('/api/chat', require('./routes/chat'));
 

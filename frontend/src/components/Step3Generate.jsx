@@ -71,7 +71,7 @@ export default function Step3Generate({ initialText }) {
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Cole aqui o texto do vídeo (ou ele virá preenchido automaticamente após o passo 2)..."
+        placeholder="Cole aqui o texto manualmente — ou ele virá preenchido automaticamente a partir do print no passo 2..."
         rows={5}
         className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors resize-y scrollbar-thin"
       />
