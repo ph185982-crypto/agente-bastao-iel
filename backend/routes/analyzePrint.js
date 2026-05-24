@@ -95,11 +95,17 @@ LEGENDA:
     const headlineMatch = raw.match(/HEADLINE:\s*(.+?)(?:\n|$)/i);
     const legendaMatch  = raw.match(/LEGENDA:\s*([\s\S]+)/i);
 
+    const headline = headlineMatch ? headlineMatch[1].trim() : '';
+    const legenda  = legendaMatch  ? legendaMatch[1].trim()  : '';
+
+    if (raw && !headline) console.warn('analyzePrint: HEADLINE missing in GPT response');
+    if (raw && !legenda)  console.warn('analyzePrint: LEGENDA missing in GPT response');
+
     res.json({
-      original_text: originalMatch ? originalMatch[1].trim() : '',
-      portuguese_text: ptMatch ? ptMatch[1].trim() : '',
-      headline: headlineMatch ? headlineMatch[1].trim() : '',
-      legenda: legendaMatch ? legendaMatch[1].trim() : '',
+      original_text:   originalMatch ? originalMatch[1].trim() : '',
+      portuguese_text: ptMatch       ? ptMatch[1].trim()       : '',
+      headline,
+      legenda: legenda || raw.trim(),
     });
   } catch (error) {
     console.error('Analyze print error:', error);

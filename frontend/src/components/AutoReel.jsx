@@ -67,10 +67,12 @@ export default function AutoReel() {
       const { jobId, error: err } = await res.json()
       if (!res.ok || !jobId) throw new Error(err || 'Erro ao iniciar processamento')
 
+      let consecutiveErrors = 0
       pollRef.current = setInterval(async () => {
         try {
           const pr = await fetch(`${API_BASE}/api/auto-reel/${jobId}`)
           const data = await pr.json()
+          consecutiveErrors = 0
           if (data.progress !== undefined) setProgress(data.progress)
           if (data.message) setMessage(data.message)
 
@@ -86,7 +88,13 @@ export default function AutoReel() {
             setError(data.error || 'Erro ao processar')
           }
         } catch (e) {
+          consecutiveErrors++
           console.error('Poll error:', e)
+          if (consecutiveErrors >= 3) {
+            stopPolling()
+            setStatus('error')
+            setError('Erro de conexão com o servidor. Verifique sua internet e tente novamente.')
+          }
         }
       }, POLL_INTERVAL)
     } catch (e) {

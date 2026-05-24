@@ -43,7 +43,10 @@ async function extractFileContent(file) {
     try {
       const pdfParse = require('pdf-parse');
       const buffer = fs.readFileSync(file.path);
-      const data = await pdfParse(buffer);
+      const data = await Promise.race([
+        pdfParse(buffer),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('PDF parse timeout')), 15000)),
+      ]);
       return { type: 'text', content: data.text, name };
     } catch (e) {
       return { type: 'text', content: `[Não foi possível ler o PDF: ${e.message}]`, name };

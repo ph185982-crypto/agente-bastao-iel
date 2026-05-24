@@ -14,18 +14,17 @@ ffmpeg.setFfmpegPath(ffmpegStatic);
 const router = express.Router();
 const upload = multer({ dest: '/tmp/', limits: { fileSize: 100 * 1024 * 1024 } });
 
-// ── Canvas layout ───────────────────────────────────────────────
-const W = 1080;
-const H = 1920;
-const BRAND_H = 380;   // template branding reserved at top
-const H_PAD = 50;      // horizontal text padding
+const W        = 1080;
+const H        = 1920;
+const BRAND_H  = 380;
+const H_PAD    = 50;
 const FONT_SIZE = 54;
-const LINE_H = 76;
+const LINE_H   = 76;
 
-// ── In-memory job store ─────────────────────────────────────────
-const jobs = new Map(); // jobId → { status, progress, outputPath, error, createdAt }
+const FONT_PATH = path.join(__dirname, '..', 'assets', 'DejaVuSans-Bold.ttf');
 
-// Auto-clean jobs older than 15 min
+const jobs = new Map();
+
 setInterval(() => {
   const cutoff = Date.now() - 15 * 60 * 1000;
   for (const [id, job] of jobs.entries()) {
@@ -38,20 +37,14 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// ── Helpers ─────────────────────────────────────────────────────
-
 function wrapText(text, maxCharsPerLine) {
   const words = text.split(' ');
   const lines = [];
   let current = '';
   for (const word of words) {
     const test = current ? `${current} ${word}` : word;
-    if (test.length > maxCharsPerLine && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = test;
-    }
+    if (test.length > maxCharsPerLine && current) { lines.push(current); current = word; }
+    else { current = test; }
   }
   if (current) lines.push(current);
   return lines;
@@ -83,54 +76,72 @@ function runFFmpeg(cmd, outputPath, timeoutMs = 120000) {
       try { cmd.kill('SIGKILL'); } catch {}
       reject(new Error('FFmpeg timeout: processamento excedeu 2 minutos'));
     }, timeoutMs);
-
     cmd
-      .on('end', () => { clearTimeout(timer); resolve(); })
+      .on('end',   () => { clearTimeout(timer); resolve(); })
       .on('error', (err) => { clearTimeout(timer); reject(err); })
       .save(outputPath);
   });
 }
 
 async function buildBackgroundPng(templateBuf, headline, bgPath) {
-  // Wrap text (~28 chars per line at this font size and padding)
   const lines = wrapText(headline, 28);
   const textBlockH = 30 + lines.length * LINE_H + 20;
   const videoY = BRAND_H + textBlockH;
 
-  const svgLines = lines.map((line, i) => {
+  let fontFaceDecl = '';
+  try {
+    const fontB64 = fs.readFileSync(FONT_PATH).toString('base64');
+    fontFaceDecl = `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${fontB64}')}</style></defs>`;
+  } catch {}
+
+  const fontFamily = fontFaceDecl ? 'H' : 'sans-serif';
+  const textEls = lines.map((line, i) => {
     const y = BRAND_H + 30 + (i + 1) * LINE_H;
-    return `<text x="${H_PAD}" y="${y}" font-family="Liberation Sans,DejaVu Sans,Arial,sans-serif" font-size="${FONT_SIZE}" font-weight="bold" fill="#111111">${escXml(line)}</text>`;
-  }).join('\n');
+    return `<text x="${H_PAD}" y="${y}" font-family="${fontFamily}" font-size="${FONT_SIZE}" font-weight="bold" fill="#111111">${escXml(line)}</text>`;
+  }).join('');
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-    <rect width="${W}" height="${H}" fill="white"/>
-    ${svgLines}
-  </svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${fontFaceDecl}<rect width="${W}" height="${H}" fill="white"/>${textEls}</svg>`;
 
-  // Scale template to fill top branding area
-  const brandingBuf = await sharp(templateBuf)
-    .resize(W, BRAND_H, { fit: 'cover', position: 'north' })
-    .toBuffer();
+  const layers = [{ input: Buffer.from(svg), top: 0, left: 0 }];
+
+  if (templateBuf) {
+    const brandBuf = await sharp(templateBuf)
+      .resize(W, BRAND_H, { fit: 'cover', position: 'north' })
+      .toBuffer();
+    layers.unshift({ input: brandBuf, top: 0, left: 0 });
+  }
 
   await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
-    .composite([
-      { input: brandingBuf, top: 0, left: 0 },
-      { input: Buffer.from(svg), top: 0, left: 0 },
-    ])
+    .composite(layers)
     .png()
     .toFile(bgPath);
 
-  return { videoY, textBlockH, lines: lines.length };
+  return { videoY };
+}
+
+function streamDownload(url, destPath) {
+  return new Promise((resolve, reject) => {
+    axios.get(url, {
+      responseType: 'stream',
+      timeout: 90000,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
+    }).then(resp => {
+      const writer = fs.createWriteStream(destPath);
+      resp.data.pipe(writer);
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+      resp.data.on('error', reject);
+    }).catch(reject);
+  });
 }
 
 async function processReel({ videoUrl, headline, templateBuf, jobId }) {
   const sid = jobId;
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
-  const cropVideo = path.join(os.tmpdir(), `${sid}_crop.mp4`);
-  const bgPng = path.join(os.tmpdir(), `${sid}_bg.png`);
-  const output = path.join(os.tmpdir(), `${sid}_reel.mp4`);
+  const bgPng    = path.join(os.tmpdir(), `${sid}_bg.png`);
+  const output   = path.join(os.tmpdir(), `${sid}_reel.mp4`);
 
-  const cleanTmp = () => [rawVideo, cropVideo, bgPng].forEach(f => {
+  const cleanTmp = () => [rawVideo, bgPng].forEach(f => {
     try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
   });
 
@@ -140,76 +151,61 @@ async function processReel({ videoUrl, headline, templateBuf, jobId }) {
   try {
     // 1. Download video
     setProgress(5);
-    const resp = await axios.get(videoUrl, {
-      responseType: 'arraybuffer',
-      timeout: 90000,
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
-    });
-    fs.writeFileSync(rawVideo, Buffer.from(resp.data));
+    await streamDownload(videoUrl, rawVideo);
     setProgress(20);
 
-    // 2. Probe dimensions
-    const { width: vw, height: vh, hasAudio } = await getVideoInfo(rawVideo);
+    // 2. Build background PNG + probe video in parallel
+    const [{ videoY }, { width: vw, height: vh, hasAudio, duration }] = await Promise.all([
+      buildBackgroundPng(templateBuf, headline, bgPng),
+      getVideoInfo(rawVideo),
+    ]);
+    setProgress(45);
+
+    const clipDur = Math.min(duration, 60).toFixed(3);
+    const videoH  = H - videoY - 20;
+
+    // 3. Smart crop
     const vAspect = vw / vh;
-
-    // 3. Build background PNG + calculate layout
-    const { videoY } = await buildBackgroundPng(templateBuf, headline, bgPng);
-    setProgress(35);
-
-    // 4. Smart crop: fill videoArea (W × videoH)
-    const videoH = H - videoY - 20;
     const tAspect = W / videoH;
     let cropW, cropH, cropX, cropY;
     if (vAspect > tAspect) {
-      cropH = vh;
-      cropW = Math.round(vh * tAspect);
-      cropX = Math.round((vw - cropW) / 2);
-      cropY = 0;
+      cropH = vh; cropW = Math.round(vh * tAspect);
+      cropX = Math.round((vw - cropW) / 2); cropY = 0;
     } else {
-      cropW = vw;
-      cropH = Math.round(vw / tAspect);
-      cropX = 0;
-      // Bias 40% from top to keep faces/subjects in frame
-      cropY = Math.round((vh - cropH) * 0.4);
+      cropW = vw; cropH = Math.round(vw / tAspect);
+      cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
     }
 
-    // 5. Crop + scale video
-    setProgress(40);
-    const cropCmd = ffmpeg(rawVideo)
-      .videoFilter([
-        `crop=${cropW}:${cropH}:${cropX}:${cropY}`,
-        `scale=${W}:${videoH}`,
-      ])
-      .videoCodec('libx264')
-      .outputOptions(['-preset ultrafast', '-crf 26', '-t 60']);
-    if (hasAudio) cropCmd.audioCodec('aac').outputOptions(['-b:a 128k']);
-    else cropCmd.outputOptions(['-an']);
-    await runFFmpeg(cropCmd, cropVideo);
-    setProgress(70);
+    // 4. Single FFmpeg pass: scale bg + crop/scale video + overlay
+    //    -loop 1 -t clipDur on image input prevents infinite-loop hang.
+    //    eof_action=endall terminates the moment the video stream ends.
+    setProgress(55);
 
-    // 6. Composite background PNG + cropped video → final MP4
-    const overlayOpts = [
+    const filterGraph = [
+      `[0:v]scale=${W}:${H}[bg]`,
+      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
+      `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
+    ].join(';');
+
+    const outputOpts = [
       '-map [out]',
       '-c:v libx264',
       '-preset ultrafast',
       '-crf 26',
-      '-shortest',
+      `-t ${clipDur}`,
     ];
-    if (hasAudio) { overlayOpts.push('-map 1:a', '-c:a aac'); }
-    else { overlayOpts.push('-an'); }
+    if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 128k'); }
+    else { outputOpts.push('-an'); }
 
-    const overlayCmd = ffmpeg()
-      .input(bgPng).inputOptions(['-loop 1'])
-      .input(cropVideo)
-      .complexFilter([
-        `[0:v]scale=${W}:${H}[bg]`,
-        `[1:v]setpts=PTS-STARTPTS[vid]`,
-        `[bg][vid]overlay=0:${videoY}[out]`,
-      ])
-      .outputOptions(overlayOpts);
-    await runFFmpeg(overlayCmd, output);
+    const cmd = ffmpeg()
+      .input(bgPng).inputOptions(['-loop 1', `-t ${clipDur}`])
+      .input(rawVideo).inputOptions([`-t ${clipDur}`])
+      .complexFilter(filterGraph)
+      .outputOptions(outputOpts);
+
+    await runFFmpeg(cmd, output);
+
     setProgress(100);
-
     cleanTmp();
     if (job) { job.status = 'done'; job.outputPath = output; }
   } catch (err) {
@@ -219,9 +215,8 @@ async function processReel({ videoUrl, headline, templateBuf, jobId }) {
   }
 }
 
-// ── Routes ───────────────────────────────────────────────────────
+// ── Routes ────────────────────────────────────────────────────────────────────
 
-// POST / — start a reel editing job
 router.post('/', upload.single('template'), async (req, res) => {
   const { videoUrl, headline } = req.body;
   if (!videoUrl?.trim()) return res.status(400).json({ error: 'videoUrl é obrigatória' });
@@ -234,21 +229,18 @@ router.post('/', upload.single('template'), async (req, res) => {
   const templateBuf = fs.readFileSync(req.file.path);
   try { fs.unlinkSync(req.file.path); } catch {}
 
-  // Run async — do not await
   processReel({ videoUrl: videoUrl.trim(), headline: headline.trim(), templateBuf, jobId })
-    .catch(err => console.error('processReel error:', err.message));
+    .catch(err => console.error('editReel error:', err.message));
 
   res.status(202).json({ jobId });
 });
 
-// GET /:jobId — poll status
 router.get('/:jobId', (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job não encontrado' });
   res.json({ status: job.status, progress: job.progress, error: job.error });
 });
 
-// GET /:jobId/download — download the finished reel
 router.get('/:jobId/download', (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job não encontrado' });

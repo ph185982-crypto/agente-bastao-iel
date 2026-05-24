@@ -56,14 +56,19 @@ LEGENDA:
       ],
     });
 
-    const content = response.choices[0].message.content;
+    const content = response.choices[0].message.content || '';
 
     const headlineMatch = content.match(/HEADLINE:\s*(.+?)(?:\n|$)/i);
-    const legendaMatch = content.match(/LEGENDA:\s*([\s\S]+)/i);
+    const legendaMatch  = content.match(/LEGENDA:\s*([\s\S]+)/i);
+
+    const headline = headlineMatch ? headlineMatch[1].trim() : '';
+    const legenda  = legendaMatch  ? legendaMatch[1].trim()  : '';
+
+    if (content && !headline) console.warn('generate: HEADLINE missing in GPT response');
 
     res.json({
-      headline: headlineMatch ? headlineMatch[1].trim() : '',
-      legenda: legendaMatch ? legendaMatch[1].trim() : content,
+      headline: headline || content.split('\n').find(l => l.trim()) || '',
+      legenda:  legenda  || content,
     });
   } catch (error) {
     console.error('Generate error:', error);
