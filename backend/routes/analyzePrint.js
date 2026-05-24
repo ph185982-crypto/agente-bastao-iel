@@ -105,7 +105,7 @@ LEGENDA:
       original_text:   originalMatch ? originalMatch[1].trim() : '',
       portuguese_text: ptMatch       ? ptMatch[1].trim()       : '',
       headline,
-      legenda: legenda || raw.trim(),
+      legenda,
     });
   } catch (error) {
     console.error('Analyze print error:', error);

@@ -71,6 +71,18 @@ export default function AutoReel() {
       pollRef.current = setInterval(async () => {
         try {
           const pr = await fetch(`${API_BASE}/api/auto-reel/${jobId}`)
+
+          if (!pr.ok) {
+            // HTTP error (404 = job expired, 5xx = server error)
+            consecutiveErrors++
+            if (consecutiveErrors >= 3 || pr.status === 404) {
+              stopPolling()
+              setStatus('error')
+              setError(pr.status === 404 ? 'Job expirado. Tente novamente.' : 'Erro de servidor. Tente novamente.')
+            }
+            return
+          }
+
           const data = await pr.json()
           consecutiveErrors = 0
           if (data.progress !== undefined) setProgress(data.progress)
@@ -86,6 +98,10 @@ export default function AutoReel() {
             stopPolling()
             setStatus('error')
             setError(data.error || 'Erro ao processar')
+          } else if (!data.status) {
+            stopPolling()
+            setStatus('error')
+            setError(data.error || 'Resposta inesperada do servidor.')
           }
         } catch (e) {
           consecutiveErrors++

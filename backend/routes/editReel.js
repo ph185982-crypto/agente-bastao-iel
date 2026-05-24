@@ -108,7 +108,7 @@ async function buildBackgroundPng(templateBuf, headline, bgPath) {
     const brandBuf = await sharp(templateBuf)
       .resize(W, BRAND_H, { fit: 'cover', position: 'north' })
       .toBuffer();
-    layers.unshift({ input: brandBuf, top: 0, left: 0 });
+    layers.push({ input: brandBuf, top: 0, left: 0 });
   }
 
   await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
@@ -130,7 +130,7 @@ function streamDownload(url, destPath) {
       resp.data.pipe(writer);
       writer.on('finish', resolve);
       writer.on('error', reject);
-      resp.data.on('error', reject);
+      resp.data.on('error', (err) => { writer.destroy(); reject(err); });
     }).catch(reject);
   });
 }
@@ -209,7 +209,10 @@ async function processReel({ videoUrl, headline, templateBuf, jobId }) {
     cleanTmp();
     if (job) { job.status = 'done'; job.outputPath = output; }
   } catch (err) {
-    cleanTmp();
+    // rawVideo is fully written (await streamDownload resolved) — safe to delete immediately.
+    // bgPng may still be in-flight from a parallel buildBackgroundPng; delay cleanup to avoid leak.
+    try { if (fs.existsSync(rawVideo)) fs.unlinkSync(rawVideo); } catch {}
+    setTimeout(() => { try { if (fs.existsSync(bgPng)) fs.unlinkSync(bgPng); } catch {} }, 5000);
     if (job) { job.status = 'error'; job.error = err.message; }
     throw err;
   }
@@ -226,8 +229,14 @@ router.post('/', upload.single('template'), async (req, res) => {
   const jobId = crypto.randomUUID();
   jobs.set(jobId, { status: 'processing', progress: 0, createdAt: Date.now() });
 
-  const templateBuf = fs.readFileSync(req.file.path);
-  try { fs.unlinkSync(req.file.path); } catch {}
+  let templateBuf;
+  try {
+    templateBuf = fs.readFileSync(req.file.path);
+  } catch (e) {
+    return res.status(500).json({ error: 'Erro ao ler template enviado' });
+  } finally {
+    try { fs.unlinkSync(req.file.path); } catch {}
+  }
 
   processReel({ videoUrl: videoUrl.trim(), headline: headline.trim(), templateBuf, jobId })
     .catch(err => console.error('editReel error:', err.message));
@@ -253,6 +262,10 @@ router.get('/:jobId/download', (req, res) => {
   res.setHeader('Content-Length', stat.size);
   const stream = fs.createReadStream(job.outputPath);
   stream.pipe(res);
+  stream.on('error', (err) => {
+    console.error('Download stream error:', err.message);
+    if (!res.headersSent) res.status(500).json({ error: 'Erro ao enviar arquivo' });
+  });
   stream.on('end', () => {
     try { fs.unlinkSync(job.outputPath); } catch {}
     jobs.delete(req.params.jobId);

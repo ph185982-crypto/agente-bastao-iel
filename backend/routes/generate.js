@@ -67,7 +67,7 @@ LEGENDA:
     if (content && !headline) console.warn('generate: HEADLINE missing in GPT response');
 
     res.json({
-      headline: headline || content.split('\n').find(l => l.trim()) || '',
+      headline,
       legenda:  legenda  || content,
     });
   } catch (error) {

@@ -122,7 +122,7 @@ async function buildBackgroundPng(templateBuf, headline, bgPath) {
     const brandBuf = await sharp(templateBuf)
       .resize(W, BRAND_H, { fit: 'cover', position: 'north' })
       .toBuffer();
-    layers.unshift({ input: brandBuf, top: 0, left: 0 });
+    layers.push({ input: brandBuf, top: 0, left: 0 });
   }
 
   await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
@@ -183,7 +183,9 @@ Máximo 15 palavras. Responda APENAS com a headline, sem aspas nem explicações
     ],
     max_tokens: 120,
   });
-  return res.choices[0].message.content.trim().replace(/^["'""'']+|["'""'']+$/g, '');
+  const content = res.choices[0].message.content;
+  if (!content) throw new Error('OpenAI não retornou conteúdo (possível filtro de conteúdo)');
+  return content.trim().replace(/^["'""'']+|["'""'']+$/g, '');
 }
 
 // ── Video download ────────────────────────────────────────────────────────────
@@ -198,7 +200,7 @@ function streamDownload(url, destPath) {
       resp.data.pipe(writer);
       writer.on('finish', resolve);
       writer.on('error', reject);
-      resp.data.on('error', reject);
+      resp.data.on('error', (err) => { writer.destroy(); reject(err); });
     }).catch(reject);
   });
 }
@@ -306,11 +308,17 @@ router.post(
     const jobId = crypto.randomUUID();
     jobs.set(jobId, { status: 'processing', progress: 0, message: 'Iniciando…', createdAt: Date.now() });
 
-    const printBuf    = fs.readFileSync(req.files.print[0].path);
-    const templateBuf = req.files?.template ? fs.readFileSync(req.files.template[0].path) : null;
-    [req.files.print[0], req.files.template?.[0]].forEach(f => {
-      if (f) try { fs.unlinkSync(f.path); } catch {}
-    });
+    let printBuf, templateBuf = null;
+    try {
+      printBuf    = fs.readFileSync(req.files.print[0].path);
+      templateBuf = req.files?.template ? fs.readFileSync(req.files.template[0].path) : null;
+    } catch (e) {
+      return res.status(500).json({ error: 'Erro ao ler arquivos enviados' });
+    } finally {
+      [req.files.print[0], req.files.template?.[0]].forEach(f => {
+        if (f) try { fs.unlinkSync(f.path); } catch {}
+      });
+    }
 
     processAutoReel({ instagramUrl: instagramUrl.trim(), printBuf, templateBuf, jobId })
       .catch(err => console.error('autoReel error:', err.message));
@@ -337,6 +345,10 @@ router.get('/:jobId/download', (req, res) => {
   res.setHeader('Content-Length', stat.size);
   const stream = fs.createReadStream(job.outputPath);
   stream.pipe(res);
+  stream.on('error', (err) => {
+    console.error('Download stream error:', err.message);
+    if (!res.headersSent) res.status(500).json({ error: 'Erro ao enviar arquivo' });
+  });
   stream.on('end', () => {
     try { fs.unlinkSync(job.outputPath); } catch {}
     jobs.delete(req.params.jobId);
