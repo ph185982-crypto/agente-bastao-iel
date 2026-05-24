@@ -149,7 +149,7 @@ export default function Step1Download({ onVideoFound }) {
 
       <div className="flex gap-2">
         <input
-          type="url"
+          type="text"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
