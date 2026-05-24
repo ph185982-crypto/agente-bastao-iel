@@ -28,6 +28,10 @@ const LINE_H   = 76;
 // Font bundled with the repo — no system font dependency
 const FONT_PATH = path.join(__dirname, '..', 'assets', 'DejaVuSans-Bold.ttf');
 
+// Pre-load font as base64 at startup so every request avoids a disk read
+let FONT_B64 = '';
+try { FONT_B64 = fs.readFileSync(FONT_PATH).toString('base64'); } catch {}
+
 // ── Job store ────────────────────────────────────────────────────────────────
 const jobs = new Map();
 
@@ -101,12 +105,9 @@ async function buildBackgroundPng(templateBuf, headline, bgPath) {
   const textBlockH = 30 + lines.length * LINE_H + 20;
   const videoY = BRAND_H + textBlockH;
 
-  // Embed font so librsvg doesn't need system fonts
-  let fontFaceDecl = '';
-  try {
-    const fontB64 = fs.readFileSync(FONT_PATH).toString('base64');
-    fontFaceDecl = `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${fontB64}')}</style></defs>`;
-  } catch { /* fall back to generic sans-serif */ }
+  const fontFaceDecl = FONT_B64
+    ? `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${FONT_B64}')}</style></defs>`
+    : '';
 
   const fontFamily = fontFaceDecl ? 'H' : 'sans-serif';
   const textEls = lines.map((line, i) => {
@@ -206,7 +207,7 @@ function streamDownload(url, destPath) {
 }
 
 // ── Main pipeline ─────────────────────────────────────────────────────────────
-async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
+async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, preHeadline }) {
   const sid = jobId;
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
   const bgPng    = path.join(os.tmpdir(), `${sid}_bg.png`);
@@ -224,13 +225,15 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
     setProgress(5, 'Resolvendo URL do Instagram…');
     const cdnUrl = await resolveInstagramUrl(instagramUrl);
 
-    // 2. Extract headline + download video in parallel
-    setProgress(15, 'Analisando o print e baixando o vídeo…');
-    let headline;
-    await Promise.all([
-      extractHeadline(printBuf).then(h => { headline = h; }),
-      streamDownload(cdnUrl, rawVideo),
-    ]);
+    // 2. Download video (+ extract headline if not pre-computed)
+    setProgress(15, 'Baixando o vídeo…');
+    let headline = preHeadline || null;
+    const tasks = [streamDownload(cdnUrl, rawVideo)];
+    if (!headline) {
+      setProgress(15, 'Analisando o print e baixando o vídeo…');
+      tasks.push(extractHeadline(printBuf).then(h => { headline = h; }));
+    }
+    await Promise.all(tasks);
 
     // 3. Build background PNG (template + headline text via SVG with embedded font)
     setProgress(40, 'Montando o fundo com a headline…');
@@ -239,7 +242,7 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
     // 4. Probe video
     setProgress(50, 'Analisando o vídeo…');
     const { width: vw, height: vh, hasAudio, duration } = await getVideoInfo(rawVideo);
-    const clipDur = Math.min(duration, 30).toFixed(3);
+    const clipDur = Math.min(duration, 15).toFixed(3);
     const videoH  = H - videoY - 20;
 
     // 5. Calculate smart crop
@@ -271,7 +274,7 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       '-map [out]',
       '-c:v libx264',
       '-preset ultrafast',
-      '-crf 28',
+      '-crf 30',
       `-t ${clipDur}`,
     ];
     if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 96k'); }
@@ -310,11 +313,35 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+// POST /extract-headline — pre-extract headline from print BEFORE the main job.
+// Called as soon as the user selects a print image, removing GPT latency from critical path.
+router.post(
+  '/extract-headline',
+  upload.single('print'),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Print é obrigatório' });
+    let printBuf;
+    try {
+      printBuf = fs.readFileSync(req.file.path);
+    } catch {
+      return res.status(500).json({ error: 'Erro ao ler imagem' });
+    } finally {
+      try { fs.unlinkSync(req.file.path); } catch {}
+    }
+    try {
+      const headline = await extractHeadline(printBuf);
+      res.json({ headline });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  }
+);
+
 router.post(
   '/',
   upload.fields([{ name: 'print', maxCount: 1 }, { name: 'template', maxCount: 1 }]),
   async (req, res) => {
-    const { instagramUrl } = req.body;
+    const { instagramUrl, headline: preHeadline } = req.body;
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'URL do Instagram é obrigatória' });
     if (!req.files?.print)     return res.status(400).json({ error: 'O print é obrigatório' });
 
@@ -333,8 +360,13 @@ router.post(
       });
     }
 
-    processAutoReel({ instagramUrl: instagramUrl.trim(), printBuf, templateBuf, jobId })
-      .catch(err => console.error('autoReel error:', err.message));
+    processAutoReel({
+      instagramUrl: instagramUrl.trim(),
+      printBuf,
+      templateBuf,
+      jobId,
+      preHeadline: preHeadline?.trim() || null,
+    }).catch(err => console.error('autoReel error:', err.message));
 
     res.status(202).json({ jobId });
   }

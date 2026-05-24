@@ -16,21 +16,49 @@ export default function AutoReel() {
   const [downloadUrl, setDownloadUrl] = useState(null)
   const [error, setError] = useState('')
   const [printDragging, setPrintDragging] = useState(false)
+  const [preHeadline, setPreHeadline] = useState(null)    // pre-extracted before submit
+  const [extracting, setExtracting] = useState(false)     // GPT running in background
 
   const printInputRef = useRef(null)
   const templateInputRef = useRef(null)
   const pollRef = useRef(null)
+  const extractAbortRef = useRef(null)
 
   function stopPolling() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }
   useEffect(() => () => stopPolling(), [])
 
-  function handlePrint(file) {
+  async function handlePrint(file) {
     if (!file) return
     setPrint(file)
     setPrintPreview(URL.createObjectURL(file))
     setError('')
+    setPreHeadline(null)
+
+    // Cancel any in-flight extraction
+    if (extractAbortRef.current) extractAbortRef.current.abort()
+    const controller = new AbortController()
+    extractAbortRef.current = controller
+
+    setExtracting(true)
+    try {
+      const form = new FormData()
+      form.append('print', file)
+      const res = await fetch(`${API_BASE}/api/auto-reel/extract-headline`, {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      })
+      if (res.ok) {
+        const { headline: h } = await res.json()
+        if (h) setPreHeadline(h)
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') console.warn('Pre-extract failed:', e.message)
+    } finally {
+      setExtracting(false)
+    }
   }
 
   function handleTemplate(file) {
@@ -61,6 +89,7 @@ export default function AutoReel() {
     form.append('instagramUrl', instagramUrl.trim())
     form.append('print', print)
     if (template) form.append('template', template)
+    if (preHeadline) form.append('headline', preHeadline)
 
     try {
       const res = await fetch(`${API_BASE}/api/auto-reel`, { method: 'POST', body: form })
@@ -127,6 +156,8 @@ export default function AutoReel() {
     setError('')
     setDownloadUrl(null)
     setHeadline('')
+    setPreHeadline(null)
+    setExtracting(false)
   }
 
   const isProcessing = status === 'processing'
@@ -152,8 +183,14 @@ export default function AutoReel() {
 
       {/* Print upload */}
       <div>
-        <label className="block text-xs font-medium text-gray-400 mb-1.5">
-          Print / Screenshot <span className="text-gray-600">(a IA vai gerar a headline a partir dele)</span>
+        <label className="block text-xs font-medium text-gray-400 mb-1.5 flex items-center gap-2">
+          Print / Screenshot
+          {extracting && (
+            <span className="text-indigo-400 animate-pulse text-xs font-normal">analisando…</span>
+          )}
+          {preHeadline && !extracting && (
+            <span className="text-green-400 text-xs font-normal">headline pronta</span>
+          )}
         </label>
         <div
           onClick={() => !isProcessing && !isDone && printInputRef.current?.click()}
