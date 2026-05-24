@@ -28,6 +28,8 @@ const H_PAD = 50;
 const FONT_SIZE = 54;
 const LINE_H = 76;
 
+const FONT_PATH = path.join(__dirname, '..', 'assets', 'DejaVuSans-Bold.ttf');
+
 // ── Job store ────────────────────────────────────────────────────────────────
 const jobs = new Map();
 
@@ -62,9 +64,6 @@ function wrapText(text, maxCharsPerLine) {
   return lines;
 }
 
-function escXml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 function getVideoInfo(videoPath) {
   return new Promise((resolve, reject) => {
@@ -96,36 +95,46 @@ function runFFmpeg(cmd, outputPath, timeoutMs = 120000) {
   });
 }
 
-async function buildBackgroundPng(templateBuf, headline, bgPath) {
-  const lines = wrapText(headline, 28);
-  const textBlockH = 30 + lines.length * LINE_H + 20;
-  const videoY = BRAND_H + textBlockH;
-
-  const svgLines = lines.map((line, i) => {
-    const y = BRAND_H + 30 + (i + 1) * LINE_H;
-    return `<text x="${H_PAD}" y="${y}" font-family="Liberation Sans,DejaVu Sans,Arial,sans-serif" font-size="${FONT_SIZE}" font-weight="bold" fill="#111111">${escXml(line)}</text>`;
-  }).join('\n');
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-    <rect width="${W}" height="${H}" fill="white"/>
-    ${svgLines}
-  </svg>`;
-
-  const compositeInputs = [{ input: Buffer.from(svg), top: 0, left: 0 }];
-
+// Builds a plain white background with the template branding at the top.
+// Headline text is rendered later by FFmpeg drawtext (avoids system font dependency).
+async function buildBackgroundPng(templateBuf, bgPath) {
   if (templateBuf) {
     const brandingBuf = await sharp(templateBuf)
       .resize(W, BRAND_H, { fit: 'cover', position: 'north' })
       .toBuffer();
-    compositeInputs.unshift({ input: brandingBuf, top: 0, left: 0 });
+    await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
+      .composite([{ input: brandingBuf, top: 0, left: 0 }])
+      .png()
+      .toFile(bgPath);
+  } else {
+    await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
+      .png()
+      .toFile(bgPath);
   }
+}
 
-  await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
-    .composite(compositeInputs)
-    .png()
-    .toFile(bgPath);
+// Returns the video Y offset and drawtext filters for the headline.
+function headlineLayout(headline) {
+  const lines = wrapText(headline, 28);
+  const textBlockH = 30 + lines.length * LINE_H + 20;
+  const videoY = BRAND_H + textBlockH;
 
-  return { videoY };
+  // Escape text for FFmpeg drawtext filter expression
+  const escape = (s) => s
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, '’')   // typographic apostrophe avoids filter-quoting issues
+    .replace(/:/g, '\\:')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/,/g, '\\,')
+    .replace(/%/g, '\\%');
+
+  const drawFilters = lines.map((line, i) => {
+    const y = BRAND_H + 30 + (i + 1) * LINE_H - 10;
+    return `drawtext=fontfile='${FONT_PATH}':text='${escape(line)}':x=${H_PAD}:y=${y}:fontsize=${FONT_SIZE}:fontcolor=0x111111`;
+  }).join(',');
+
+  return { videoY, drawFilters };
 }
 
 async function resolveInstagramUrl(instagramUrl) {
@@ -232,8 +241,9 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       streamDownload(cdnUrl, rawVideo),
     ]);
 
-    setProgress(40, 'Montando o fundo com a headline…');
-    const { videoY } = await buildBackgroundPng(templateBuf, headline, bgPng);
+    setProgress(40, 'Montando o fundo…');
+    const { videoY, drawFilters } = headlineLayout(headline);
+    await buildBackgroundPng(templateBuf, bgPng);
 
     setProgress(50, 'Calculando corte do vídeo…');
     const { width: vw, height: vh, hasAudio, duration } = await getVideoInfo(rawVideo);
@@ -251,15 +261,15 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
     }
 
-    // Single FFmpeg pass: crop + scale + overlay in one filter graph.
-    // -loop 1 -t clipDur on the image limits the loop to the exact video
-    // duration so FFmpeg doesn't hang waiting for an input that never ends.
-    // eof_action=endall terminates the overlay when the video stream ends.
+    // Single FFmpeg pass: background + video overlay + headline text via drawtext.
+    // Image input is duration-capped so -loop 1 never hangs. eof_action=endall
+    // terminates the overlay the moment the video stream ends.
     setProgress(55, 'Processando e montando o Reel…');
     const filterGraph = [
-      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
       `[0:v]scale=${W}:${H}[bg]`,
-      `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
+      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
+      `[bg][vid]overlay=0:${videoY}:eof_action=endall[ov]`,
+      `[ov]${drawFilters}[out]`,
     ].join(';');
 
     const outputOpts = [
