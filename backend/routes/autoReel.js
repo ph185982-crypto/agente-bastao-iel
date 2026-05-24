@@ -1,0 +1,324 @@
+const express = require('express');
+const multer = require('multer');
+const axios = require('axios');
+const ffmpegStatic = require('ffmpeg-static');
+const ffmpeg = require('fluent-ffmpeg');
+const sharp = require('sharp');
+const { OpenAI } = require('openai');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const crypto = require('crypto');
+
+ffmpeg.setFfmpegPath(ffmpegStatic);
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const router = express.Router();
+const upload = multer({
+  dest: '/tmp/',
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
+
+// ── Layout ──────────────────────────────────────────────────────────────────
+const W = 1080;
+const H = 1920;
+const BRAND_H = 380;
+const H_PAD = 50;
+const FONT_SIZE = 54;
+const LINE_H = 76;
+
+// ── Job store ────────────────────────────────────────────────────────────────
+const jobs = new Map();
+
+setInterval(() => {
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  for (const [id, job] of jobs.entries()) {
+    if (job.createdAt < cutoff) {
+      if (job.outputPath && fs.existsSync(job.outputPath)) {
+        try { fs.unlinkSync(job.outputPath); } catch {}
+      }
+      jobs.delete(id);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function wrapText(text, maxCharsPerLine) {
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (test.length > maxCharsPerLine && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function escXml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function getVideoInfo(videoPath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (err, meta) => {
+      if (err) return reject(err);
+      const v = meta.streams.find(s => s.codec_type === 'video');
+      if (!v) return reject(new Error('Nenhum stream de vídeo encontrado'));
+      resolve({
+        width: v.width,
+        height: v.height,
+        duration: parseFloat(meta.format.duration) || 30,
+        hasAudio: meta.streams.some(s => s.codec_type === 'audio'),
+      });
+    });
+  });
+}
+
+function runFFmpeg(cmd) {
+  return new Promise((resolve, reject) => {
+    cmd.on('end', resolve).on('error', reject);
+  });
+}
+
+async function buildBackgroundPng(templateBuf, headline, bgPath) {
+  const lines = wrapText(headline, 28);
+  const textBlockH = 30 + lines.length * LINE_H + 20;
+  const videoY = BRAND_H + textBlockH;
+
+  const svgLines = lines.map((line, i) => {
+    const y = BRAND_H + 30 + (i + 1) * LINE_H;
+    return `<text x="${H_PAD}" y="${y}" font-family="Liberation Sans,DejaVu Sans,Arial,sans-serif" font-size="${FONT_SIZE}" font-weight="bold" fill="#111111">${escXml(line)}</text>`;
+  }).join('\n');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+    <rect width="${W}" height="${H}" fill="white"/>
+    ${svgLines}
+  </svg>`;
+
+  const compositeInputs = [{ input: Buffer.from(svg), top: 0, left: 0 }];
+
+  if (templateBuf) {
+    const brandingBuf = await sharp(templateBuf)
+      .resize(W, BRAND_H, { fit: 'cover', position: 'north' })
+      .toBuffer();
+    compositeInputs.unshift({ input: brandingBuf, top: 0, left: 0 });
+  }
+
+  await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
+    .composite(compositeInputs)
+    .png()
+    .toFile(bgPath);
+
+  return { videoY };
+}
+
+async function resolveInstagramUrl(instagramUrl) {
+  if (!process.env.RAPIDAPI_KEY) throw new Error('RAPIDAPI_KEY não configurada');
+
+  const response = await axios.get(
+    'https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert',
+    {
+      params: { url: instagramUrl.trim() },
+      headers: {
+        'x-rapidapi-host': 'instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com',
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+      },
+      timeout: 30000,
+    }
+  );
+
+  const data = response.data;
+  if (Array.isArray(data?.media)) {
+    const video = data.media.find(m => m.type === 'video' && m.url);
+    if (video) return video.url;
+    // fallback: any item with a url
+    const any = data.media.find(m => m.url);
+    if (any) return any.url;
+  }
+  throw new Error('Nenhum vídeo encontrado para essa URL do Instagram. Verifique se o post é público.');
+}
+
+async function extractHeadline(imageBuf) {
+  const base64 = imageBuf.toString('base64');
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `Você é especialista em copy de altíssima retenção para o Instagram do @pedro_destrava.
+Analise o print/screenshot fornecido, entenda o tema central e crie UMA headline irresistível em PORTUGUÊS DO BRASIL.
+Use obrigatoriamente um destes formatos de máxima retenção:
+• "Por que [fenômeno surpreendente]..."
+• "O que ninguém te contou sobre..."
+• "A verdade que [autoridade/sistema] esconde..."
+• "[Número] fatos que vão mudar como você vê..."
+• "Como [pessoa comum] descobriu..."
+• "O erro que 99% das pessoas cometem ao..."
+• "Isso foi censurado porque..."
+A headline deve ser curiosa, instigante, específica — NUNCA genérica.
+Máximo 15 palavras. Responda APENAS com a headline, sem aspas, sem explicações.`,
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' },
+          },
+          { type: 'text', text: 'Crie a headline em português do Brasil para este conteúdo.' },
+        ],
+      },
+    ],
+    max_tokens: 120,
+  });
+  return response.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
+}
+
+// ── Main pipeline ────────────────────────────────────────────────────────────
+
+async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
+  const sid = jobId;
+  const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
+  const cropVideo = path.join(os.tmpdir(), `${sid}_crop.mp4`);
+  const bgPng    = path.join(os.tmpdir(), `${sid}_bg.png`);
+  const output   = path.join(os.tmpdir(), `${sid}_reel.mp4`);
+
+  const cleanTmp = () => [rawVideo, cropVideo, bgPng].forEach(f => {
+    try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+  });
+
+  const job = jobs.get(jobId);
+  const setProgress = (p, msg) => { if (job) { job.progress = p; job.message = msg; } };
+
+  try {
+    setProgress(5, 'Resolvendo URL do Instagram…');
+    const cdnUrl = await resolveInstagramUrl(instagramUrl);
+
+    setProgress(15, 'Analisando o print e baixando o vídeo…');
+    // Run headline extraction and video download in parallel
+    let headline;
+    await Promise.all([
+      extractHeadline(printBuf).then(h => { headline = h; setProgress(35, 'Headline gerada!'); }),
+      axios.get(cdnUrl, {
+        responseType: 'arraybuffer',
+        timeout: 90000,
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
+      }).then(resp => {
+        fs.writeFileSync(rawVideo, Buffer.from(resp.data));
+      }),
+    ]);
+
+    setProgress(45, 'Montando o fundo com a headline…');
+    const { videoY } = await buildBackgroundPng(templateBuf, headline, bgPng);
+
+    setProgress(55, 'Analisando e recortando o vídeo…');
+    const { width: vw, height: vh, hasAudio } = await getVideoInfo(rawVideo);
+    const videoH  = H - videoY - 20;
+    const vAspect = vw / vh;
+    const tAspect = W / videoH;
+
+    let cropW, cropH, cropX, cropY;
+    if (vAspect > tAspect) {
+      cropH = vh; cropW = Math.round(vh * tAspect);
+      cropX = Math.round((vw - cropW) / 2); cropY = 0;
+    } else {
+      cropW = vw; cropH = Math.round(vw / tAspect);
+      cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
+    }
+
+    setProgress(60, 'Processando o vídeo…');
+    const cropCmd = ffmpeg(rawVideo)
+      .videoFilter([`crop=${cropW}:${cropH}:${cropX}:${cropY}`, `scale=${W}:${videoH}`])
+      .videoCodec('libx264')
+      .outputOptions(['-preset ultrafast', '-crf 26', '-t 60']);
+    if (hasAudio) cropCmd.audioCodec('aac').outputOptions(['-b:a 128k']);
+    else cropCmd.outputOptions(['-an']);
+    cropCmd.save(cropVideo);
+    await runFFmpeg(cropCmd);
+
+    setProgress(80, 'Finalizando a composição…');
+    const overlayCmd = ffmpeg()
+      .input(bgPng).inputOptions(['-loop 1'])
+      .input(cropVideo)
+      .complexFilter([
+        `[1:v]setpts=PTS-STARTPTS[vid]`,
+        `[0:v]scale=${W}:${H}[bg]`,
+        `[bg][vid]overlay=0:${videoY}[out]`,
+      ])
+      .map('[out]');
+    if (hasAudio) overlayCmd.map('1:a').audioCodec('aac');
+    else overlayCmd.outputOptions(['-an']);
+    overlayCmd.videoCodec('libx264')
+      .outputOptions(['-preset ultrafast', '-crf 26', '-movflags +faststart', '-shortest'])
+      .save(output);
+    await runFFmpeg(overlayCmd);
+
+    setProgress(100, 'Concluído!');
+    cleanTmp();
+    if (job) { job.status = 'done'; job.outputPath = output; job.headline = headline; }
+  } catch (err) {
+    cleanTmp();
+    if (job) { job.status = 'error'; job.error = err.message; }
+    throw err;
+  }
+}
+
+// ── Routes ───────────────────────────────────────────────────────────────────
+
+router.post(
+  '/',
+  upload.fields([{ name: 'print', maxCount: 1 }, { name: 'template', maxCount: 1 }]),
+  async (req, res) => {
+    const { instagramUrl } = req.body;
+    if (!instagramUrl?.trim()) return res.status(400).json({ error: 'URL do Instagram é obrigatória' });
+    if (!req.files?.print) return res.status(400).json({ error: 'O print é obrigatório' });
+
+    const jobId = crypto.randomUUID();
+    jobs.set(jobId, { status: 'processing', progress: 0, message: 'Iniciando…', createdAt: Date.now() });
+
+    const printBuf    = fs.readFileSync(req.files.print[0].path);
+    const templateBuf = req.files?.template ? fs.readFileSync(req.files.template[0].path) : null;
+    [req.files.print[0], req.files.template?.[0]].forEach(f => {
+      if (f) try { fs.unlinkSync(f.path); } catch {}
+    });
+
+    processAutoReel({ instagramUrl: instagramUrl.trim(), printBuf, templateBuf, jobId })
+      .catch(err => console.error('autoReel error:', err.message));
+
+    res.status(202).json({ jobId });
+  }
+);
+
+router.get('/:jobId', (req, res) => {
+  const job = jobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+  res.json({ status: job.status, progress: job.progress, message: job.message, error: job.error, headline: job.headline });
+});
+
+router.get('/:jobId/download', (req, res) => {
+  const job = jobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+  if (job.status !== 'done') return res.status(400).json({ error: 'Vídeo ainda não está pronto' });
+  if (!fs.existsSync(job.outputPath)) return res.status(410).json({ error: 'Arquivo expirado' });
+
+  const stat = fs.statSync(job.outputPath);
+  res.setHeader('Content-Type', 'video/mp4');
+  res.setHeader('Content-Disposition', 'attachment; filename="reel_pronto.mp4"');
+  res.setHeader('Content-Length', stat.size);
+  const stream = fs.createReadStream(job.outputPath);
+  stream.pipe(res);
+  stream.on('end', () => {
+    try { fs.unlinkSync(job.outputPath); } catch {}
+    jobs.delete(req.params.jobId);
+  });
+});
+
+module.exports = router;

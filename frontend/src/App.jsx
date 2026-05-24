@@ -1,21 +1,15 @@
 import { useState } from 'react'
 import Header from './components/Header'
-import Step1Download from './components/Step1Download'
-import Step2OCR from './components/Step2OCR'
-import Step3Generate from './components/Step3Generate'
-import Step4EditReel from './components/Step4EditReel'
+import AutoReel from './components/AutoReel'
 import AgentChat from './components/AgentChat'
 
 const TABS = [
-  { id: 'tool', label: 'Ferramenta' },
+  { id: 'reel', label: 'Criar Reel' },
   { id: 'agent', label: 'Agente IA' },
 ]
 
 export default function App() {
-  const [tab, setTab] = useState('tool')
-  const [extractedText, setExtractedText] = useState('')
-  const [videoUrl, setVideoUrl] = useState('')
-  const [headline, setHeadline] = useState('')
+  const [tab, setTab] = useState('reel')
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
@@ -39,13 +33,15 @@ export default function App() {
         </div>
       </div>
 
-      {/* Tab content */}
-      {tab === 'tool' && (
-        <main className="max-w-2xl mx-auto w-full px-4 py-10 space-y-6">
-          <Step1Download onVideoFound={setVideoUrl} />
-          <Step2OCR onTextExtracted={setExtractedText} onHeadlineGenerated={setHeadline} />
-          <Step3Generate initialText={extractedText} onHeadlineGenerated={setHeadline} />
-          <Step4EditReel videoUrl={videoUrl} headline={headline} />
+      {tab === 'reel' && (
+        <main className="max-w-2xl mx-auto w-full px-4 py-10">
+          <div className="mb-8 text-center">
+            <h1 className="text-xl font-bold text-white mb-1">Criar Reel editado</h1>
+            <p className="text-sm text-gray-400">
+              Cole o link + envie o print → receba o MP4 pronto para postar
+            </p>
+          </div>
+          <AutoReel />
         </main>
       )}
 
