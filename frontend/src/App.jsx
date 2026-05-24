@@ -3,6 +3,7 @@ import Header from './components/Header'
 import Step1Download from './components/Step1Download'
 import Step2OCR from './components/Step2OCR'
 import Step3Generate from './components/Step3Generate'
+import Step4EditReel from './components/Step4EditReel'
 import AgentChat from './components/AgentChat'
 
 const TABS = [
@@ -13,6 +14,8 @@ const TABS = [
 export default function App() {
   const [tab, setTab] = useState('tool')
   const [extractedText, setExtractedText] = useState('')
+  const [videoUrl, setVideoUrl] = useState('')
+  const [headline, setHeadline] = useState('')
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
@@ -39,9 +42,10 @@ export default function App() {
       {/* Tab content */}
       {tab === 'tool' && (
         <main className="max-w-2xl mx-auto w-full px-4 py-10 space-y-6">
-          <Step1Download />
-          <Step2OCR onTextExtracted={setExtractedText} />
-          <Step3Generate initialText={extractedText} />
+          <Step1Download onVideoFound={setVideoUrl} />
+          <Step2OCR onTextExtracted={setExtractedText} onHeadlineGenerated={setHeadline} />
+          <Step3Generate initialText={extractedText} onHeadlineGenerated={setHeadline} />
+          <Step4EditReel videoUrl={videoUrl} headline={headline} />
         </main>
       )}
 

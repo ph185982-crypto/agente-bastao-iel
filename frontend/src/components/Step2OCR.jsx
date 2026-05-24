@@ -32,7 +32,7 @@ function ResultBlock({ label, content, highlight = false }) {
   )
 }
 
-export default function Step2OCR({ onTextExtracted }) {
+export default function Step2OCR({ onTextExtracted, onHeadlineGenerated }) {
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -78,8 +78,8 @@ export default function Step2OCR({ onTextExtracted }) {
       if (!res.ok) throw new Error(data.error || 'Erro ao analisar imagem')
 
       setResult(data)
-      // Pass the Portuguese text upstream so Step 3 can use it
       if (onTextExtracted) onTextExtracted(data.portuguese_text || data.original_text)
+      if (onHeadlineGenerated && data.headline) onHeadlineGenerated(data.headline)
     } catch (err) {
       setError(err.message)
     } finally {

@@ -90,7 +90,7 @@ function MediaCard({ item, index }) {
   )
 }
 
-export default function Step1Download() {
+export default function Step1Download({ onVideoFound }) {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [mediaItems, setMediaItems] = useState([])
@@ -124,6 +124,10 @@ export default function Step1Download() {
       }
 
       setMediaItems(items)
+
+      // Pass first video URL to parent for Step 4
+      const firstVideo = items.find((item) => item.type === 'video')
+      if (firstVideo && onVideoFound) onVideoFound(firstVideo.url)
     } catch (err) {
       setError(err.message)
     } finally {

@@ -20,7 +20,7 @@ function CopyButton({ text }) {
   )
 }
 
-export default function Step3Generate({ initialText }) {
+export default function Step3Generate({ initialText, onHeadlineGenerated }) {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -47,6 +47,7 @@ export default function Step3Generate({ initialText }) {
       if (!res.ok) throw new Error(data.error || 'Erro ao gerar conteúdo')
 
       setResult(data)
+      if (onHeadlineGenerated && data.headline) onHeadlineGenerated(data.headline)
     } catch (err) {
       setError(err.message)
     } finally {
