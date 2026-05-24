@@ -82,9 +82,12 @@ function getVideoInfo(videoPath) {
   });
 }
 
-function runFFmpeg(cmd) {
+function runFFmpeg(cmd, outputPath) {
   return new Promise((resolve, reject) => {
-    cmd.on('end', resolve).on('error', reject);
+    cmd
+      .on('end', resolve)
+      .on('error', reject)
+      .save(outputPath);
   });
 }
 
@@ -241,25 +244,29 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       .outputOptions(['-preset ultrafast', '-crf 26', '-t 60']);
     if (hasAudio) cropCmd.audioCodec('aac').outputOptions(['-b:a 128k']);
     else cropCmd.outputOptions(['-an']);
-    cropCmd.save(cropVideo);
-    await runFFmpeg(cropCmd);
+    await runFFmpeg(cropCmd, cropVideo);
 
     setProgress(80, 'Finalizando a composição…');
+    const overlayOpts = [
+      '-map [out]',
+      '-c:v libx264',
+      '-preset ultrafast',
+      '-crf 26',
+      '-shortest',
+    ];
+    if (hasAudio) { overlayOpts.push('-map 1:a', '-c:a aac'); }
+    else { overlayOpts.push('-an'); }
+
     const overlayCmd = ffmpeg()
       .input(bgPng).inputOptions(['-loop 1'])
       .input(cropVideo)
       .complexFilter([
-        `[1:v]setpts=PTS-STARTPTS[vid]`,
         `[0:v]scale=${W}:${H}[bg]`,
+        `[1:v]setpts=PTS-STARTPTS[vid]`,
         `[bg][vid]overlay=0:${videoY}[out]`,
       ])
-      .map('[out]');
-    if (hasAudio) overlayCmd.map('1:a').audioCodec('aac');
-    else overlayCmd.outputOptions(['-an']);
-    overlayCmd.videoCodec('libx264')
-      .outputOptions(['-preset ultrafast', '-crf 26', '-movflags +faststart', '-shortest'])
-      .save(output);
-    await runFFmpeg(overlayCmd);
+      .outputOptions(overlayOpts);
+    await runFFmpeg(overlayCmd, output);
 
     setProgress(100, 'Concluído!');
     cleanTmp();
