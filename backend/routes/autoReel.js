@@ -82,11 +82,16 @@ function getVideoInfo(videoPath) {
   });
 }
 
-function runFFmpeg(cmd, outputPath) {
+function runFFmpeg(cmd, outputPath, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try { cmd.kill('SIGKILL'); } catch {}
+      reject(new Error('FFmpeg timeout: processamento excedeu 2 minutos'));
+    }, timeoutMs);
+
     cmd
-      .on('end', resolve)
-      .on('error', reject)
+      .on('end', () => { clearTimeout(timer); resolve(); })
+      .on('error', (err) => { clearTimeout(timer); reject(err); })
       .save(outputPath);
   });
 }
@@ -231,7 +236,8 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
     const { videoY } = await buildBackgroundPng(templateBuf, headline, bgPng);
 
     setProgress(50, 'Calculando corte do vídeo…');
-    const { width: vw, height: vh, hasAudio } = await getVideoInfo(rawVideo);
+    const { width: vw, height: vh, hasAudio, duration } = await getVideoInfo(rawVideo);
+    const clipDur = Math.min(duration, 30).toFixed(3);
     const videoH  = H - videoY - 20;
     const vAspect = vw / vh;
     const tAspect = W / videoH;
@@ -245,12 +251,15 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
     }
 
-    // Single FFmpeg pass: crop + scale + overlay all at once
+    // Single FFmpeg pass: crop + scale + overlay in one filter graph.
+    // -loop 1 -t clipDur on the image limits the loop to the exact video
+    // duration so FFmpeg doesn't hang waiting for an input that never ends.
+    // eof_action=endall terminates the overlay when the video stream ends.
     setProgress(55, 'Processando e montando o Reel…');
     const filterGraph = [
       `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
       `[0:v]scale=${W}:${H}[bg]`,
-      `[bg][vid]overlay=0:${videoY}[out]`,
+      `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
     ].join(';');
 
     const outputOpts = [
@@ -258,15 +267,14 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       '-c:v libx264',
       '-preset ultrafast',
       '-crf 28',
-      '-t 30',
-      '-shortest',
+      `-t ${clipDur}`,
     ];
     if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 96k'); }
     else { outputOpts.push('-an'); }
 
     const cmd = ffmpeg()
-      .input(bgPng).inputOptions(['-loop 1'])
-      .input(rawVideo)
+      .input(bgPng).inputOptions(['-loop 1', `-t ${clipDur}`])
+      .input(rawVideo).inputOptions([`-t ${clipDur}`])
       .complexFilter(filterGraph)
       .outputOptions(outputOpts);
     await runFFmpeg(cmd, output);

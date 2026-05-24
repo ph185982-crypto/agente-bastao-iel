@@ -77,11 +77,16 @@ function getVideoInfo(videoPath) {
   });
 }
 
-function runFFmpeg(cmd, outputPath) {
+function runFFmpeg(cmd, outputPath, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try { cmd.kill('SIGKILL'); } catch {}
+      reject(new Error('FFmpeg timeout: processamento excedeu 2 minutos'));
+    }, timeoutMs);
+
     cmd
-      .on('end', resolve)
-      .on('error', reject)
+      .on('end', () => { clearTimeout(timer); resolve(); })
+      .on('error', (err) => { clearTimeout(timer); reject(err); })
       .save(outputPath);
   });
 }
