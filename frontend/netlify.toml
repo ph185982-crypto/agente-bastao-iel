@@ -3,6 +3,14 @@
   command = "npm run build"
   publish = "dist"
 
+# Proxy API calls to the Render backend (must come before the SPA catch-all)
+[[redirects]]
+  from   = "/api/*"
+  to     = "https://nexos-paginas-backend.onrender.com/api/:splat"
+  status = 200
+  force  = true
+
+# SPA fallback
 [[redirects]]
   from   = "/*"
   to     = "/index.html"
