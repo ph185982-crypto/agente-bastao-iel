@@ -84,7 +84,7 @@ function runFFmpeg(cmd, outputPath, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       try { cmd.kill('SIGKILL'); } catch {}
-      reject(new Error('FFmpeg timeout: processamento excedeu 2 minutos'));
+      reject(new Error('FFmpeg timeout: processamento excedeu 5 minutos. Tente um vídeo mais curto.'));
     }, timeoutMs);
     cmd
       .on('end',   () => { clearTimeout(timer); resolve(); })
@@ -277,13 +277,26 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
     if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 96k'); }
     else { outputOpts.push('-an'); }
 
+    const clipDurSec = parseFloat(clipDur);
     const cmd = ffmpeg()
       .input(bgPng).inputOptions(['-loop 1', `-t ${clipDur}`])
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
       .complexFilter(filterGraph)
-      .outputOptions(outputOpts);
+      .outputOptions(outputOpts)
+      .on('progress', (info) => {
+        if (!job) return;
+        // timemark = "HH:MM:SS.xx" — use it to compute real encode progress
+        try {
+          const parts = (info.timemark || '').split(':');
+          const secs = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+          const pct = Math.min(secs / clipDurSec, 1);
+          job.progress = Math.round(55 + pct * 40);
+          job.message = `Codificando vídeo… ${Math.round(pct * 100)}%`;
+        } catch {}
+      });
 
-    await runFFmpeg(cmd, output);
+    // 5-minute timeout — free-tier CPU can be very slow
+    await runFFmpeg(cmd, output, 300000);
 
     setProgress(100, 'Concluído!');
     cleanTmp();
