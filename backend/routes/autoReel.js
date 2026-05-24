@@ -187,14 +187,29 @@ Máximo 15 palavras. Responda APENAS com a headline, sem aspas, sem explicaçõe
 
 // ── Main pipeline ────────────────────────────────────────────────────────────
 
+function streamDownload(url, destPath) {
+  return new Promise((resolve, reject) => {
+    axios.get(url, {
+      responseType: 'stream',
+      timeout: 90000,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
+    }).then(resp => {
+      const writer = fs.createWriteStream(destPath);
+      resp.data.pipe(writer);
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+      resp.data.on('error', reject);
+    }).catch(reject);
+  });
+}
+
 async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
   const sid = jobId;
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
-  const cropVideo = path.join(os.tmpdir(), `${sid}_crop.mp4`);
   const bgPng    = path.join(os.tmpdir(), `${sid}_bg.png`);
   const output   = path.join(os.tmpdir(), `${sid}_reel.mp4`);
 
-  const cleanTmp = () => [rawVideo, cropVideo, bgPng].forEach(f => {
+  const cleanTmp = () => [rawVideo, bgPng].forEach(f => {
     try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
   });
 
@@ -206,23 +221,16 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
     const cdnUrl = await resolveInstagramUrl(instagramUrl);
 
     setProgress(15, 'Analisando o print e baixando o vídeo…');
-    // Run headline extraction and video download in parallel
     let headline;
     await Promise.all([
-      extractHeadline(printBuf).then(h => { headline = h; setProgress(35, 'Headline gerada!'); }),
-      axios.get(cdnUrl, {
-        responseType: 'arraybuffer',
-        timeout: 90000,
-        headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
-      }).then(resp => {
-        fs.writeFileSync(rawVideo, Buffer.from(resp.data));
-      }),
+      extractHeadline(printBuf).then(h => { headline = h; }),
+      streamDownload(cdnUrl, rawVideo),
     ]);
 
-    setProgress(45, 'Montando o fundo com a headline…');
+    setProgress(40, 'Montando o fundo com a headline…');
     const { videoY } = await buildBackgroundPng(templateBuf, headline, bgPng);
 
-    setProgress(55, 'Analisando e recortando o vídeo…');
+    setProgress(50, 'Calculando corte do vídeo…');
     const { width: vw, height: vh, hasAudio } = await getVideoInfo(rawVideo);
     const videoH  = H - videoY - 20;
     const vAspect = vw / vh;
@@ -237,36 +245,31 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
     }
 
-    setProgress(60, 'Processando o vídeo…');
-    const cropCmd = ffmpeg(rawVideo)
-      .videoFilter([`crop=${cropW}:${cropH}:${cropX}:${cropY}`, `scale=${W}:${videoH}`])
-      .videoCodec('libx264')
-      .outputOptions(['-preset ultrafast', '-crf 26', '-t 60']);
-    if (hasAudio) cropCmd.audioCodec('aac').outputOptions(['-b:a 128k']);
-    else cropCmd.outputOptions(['-an']);
-    await runFFmpeg(cropCmd, cropVideo);
+    // Single FFmpeg pass: crop + scale + overlay all at once
+    setProgress(55, 'Processando e montando o Reel…');
+    const filterGraph = [
+      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
+      `[0:v]scale=${W}:${H}[bg]`,
+      `[bg][vid]overlay=0:${videoY}[out]`,
+    ].join(';');
 
-    setProgress(80, 'Finalizando a composição…');
-    const overlayOpts = [
+    const outputOpts = [
       '-map [out]',
       '-c:v libx264',
       '-preset ultrafast',
-      '-crf 26',
+      '-crf 28',
+      '-t 30',
       '-shortest',
     ];
-    if (hasAudio) { overlayOpts.push('-map 1:a', '-c:a aac'); }
-    else { overlayOpts.push('-an'); }
+    if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 96k'); }
+    else { outputOpts.push('-an'); }
 
-    const overlayCmd = ffmpeg()
+    const cmd = ffmpeg()
       .input(bgPng).inputOptions(['-loop 1'])
-      .input(cropVideo)
-      .complexFilter([
-        `[0:v]scale=${W}:${H}[bg]`,
-        `[1:v]setpts=PTS-STARTPTS[vid]`,
-        `[bg][vid]overlay=0:${videoY}[out]`,
-      ])
-      .outputOptions(overlayOpts);
-    await runFFmpeg(overlayCmd, output);
+      .input(rawVideo)
+      .complexFilter(filterGraph)
+      .outputOptions(outputOpts);
+    await runFFmpeg(cmd, output);
 
     setProgress(100, 'Concluído!');
     cleanTmp();
