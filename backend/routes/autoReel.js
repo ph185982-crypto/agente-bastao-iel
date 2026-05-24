@@ -15,19 +15,17 @@ ffmpeg.setFfmpegPath(ffmpegStatic);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const router = express.Router();
-const upload = multer({
-  dest: '/tmp/',
-  limits: { fileSize: 50 * 1024 * 1024 },
-});
+const upload = multer({ dest: '/tmp/', limits: { fileSize: 50 * 1024 * 1024 } });
 
-// ── Layout ──────────────────────────────────────────────────────────────────
-const W = 1080;
-const H = 1920;
-const BRAND_H = 380;
-const H_PAD = 50;
+// ── Layout constants ─────────────────────────────────────────────────────────
+const W        = 1080;
+const H        = 1920;
+const BRAND_H  = 380;   // height of template branding at top
+const H_PAD    = 50;    // horizontal text padding
 const FONT_SIZE = 54;
-const LINE_H = 76;
+const LINE_H   = 76;
 
+// Font bundled with the repo — no system font dependency
 const FONT_PATH = path.join(__dirname, '..', 'assets', 'DejaVuSans-Bold.ttf');
 
 // ── Job store ────────────────────────────────────────────────────────────────
@@ -45,7 +43,7 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Pure helpers ─────────────────────────────────────────────────────────────
 
 function wrapText(text, maxCharsPerLine) {
   const words = text.split(' ');
@@ -53,17 +51,16 @@ function wrapText(text, maxCharsPerLine) {
   let current = '';
   for (const word of words) {
     const test = current ? `${current} ${word}` : word;
-    if (test.length > maxCharsPerLine && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = test;
-    }
+    if (test.length > maxCharsPerLine && current) { lines.push(current); current = word; }
+    else { current = test; }
   }
   if (current) lines.push(current);
   return lines;
 }
 
+function escXml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function getVideoInfo(videoPath) {
   return new Promise((resolve, reject) => {
@@ -81,66 +78,66 @@ function getVideoInfo(videoPath) {
   });
 }
 
+// Attaches listeners BEFORE .save() to avoid race-condition where FFmpeg
+// finishes before listeners are registered. Kills the process on timeout.
 function runFFmpeg(cmd, outputPath, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       try { cmd.kill('SIGKILL'); } catch {}
       reject(new Error('FFmpeg timeout: processamento excedeu 2 minutos'));
     }, timeoutMs);
-
     cmd
-      .on('end', () => { clearTimeout(timer); resolve(); })
+      .on('end',   () => { clearTimeout(timer); resolve(); })
       .on('error', (err) => { clearTimeout(timer); reject(err); })
       .save(outputPath);
   });
 }
 
-// Builds a plain white background with the template branding at the top.
-// Headline text is rendered later by FFmpeg drawtext (avoids system font dependency).
-async function buildBackgroundPng(templateBuf, bgPath) {
-  if (templateBuf) {
-    const brandingBuf = await sharp(templateBuf)
-      .resize(W, BRAND_H, { fit: 'cover', position: 'north' })
-      .toBuffer();
-    await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
-      .composite([{ input: brandingBuf, top: 0, left: 0 }])
-      .png()
-      .toFile(bgPath);
-  } else {
-    await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
-      .png()
-      .toFile(bgPath);
-  }
-}
-
-// Returns the video Y offset and drawtext filters for the headline.
-function headlineLayout(headline) {
+// ── Background PNG ───────────────────────────────────────────────────────────
+// Renders template + headline text into a 1080×1920 PNG using Sharp/librsvg.
+// The font is embedded as a base64 data URI so no system fonts are required.
+async function buildBackgroundPng(templateBuf, headline, bgPath) {
   const lines = wrapText(headline, 28);
   const textBlockH = 30 + lines.length * LINE_H + 20;
   const videoY = BRAND_H + textBlockH;
 
-  // Escape text for FFmpeg drawtext filter expression
-  const escape = (s) => s
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, '’')   // typographic apostrophe avoids filter-quoting issues
-    .replace(/:/g, '\\:')
-    .replace(/\[/g, '\\[')
-    .replace(/\]/g, '\\]')
-    .replace(/,/g, '\\,')
-    .replace(/%/g, '\\%');
+  // Embed font so librsvg doesn't need system fonts
+  let fontFaceDecl = '';
+  try {
+    const fontB64 = fs.readFileSync(FONT_PATH).toString('base64');
+    fontFaceDecl = `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${fontB64}')}</style></defs>`;
+  } catch { /* fall back to generic sans-serif */ }
 
-  const drawFilters = lines.map((line, i) => {
-    const y = BRAND_H + 30 + (i + 1) * LINE_H - 10;
-    return `drawtext=fontfile='${FONT_PATH}':text='${escape(line)}':x=${H_PAD}:y=${y}:fontsize=${FONT_SIZE}:fontcolor=0x111111`;
-  }).join(',');
+  const fontFamily = fontFaceDecl ? 'H' : 'sans-serif';
+  const textEls = lines.map((line, i) => {
+    const y = BRAND_H + 30 + (i + 1) * LINE_H;
+    return `<text x="${H_PAD}" y="${y}" font-family="${fontFamily}" font-size="${FONT_SIZE}" font-weight="bold" fill="#111111">${escXml(line)}</text>`;
+  }).join('');
 
-  return { videoY, drawFilters };
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${fontFaceDecl}<rect width="${W}" height="${H}" fill="white"/>${textEls}</svg>`;
+
+  const layers = [{ input: Buffer.from(svg), top: 0, left: 0 }];
+
+  if (templateBuf) {
+    const brandBuf = await sharp(templateBuf)
+      .resize(W, BRAND_H, { fit: 'cover', position: 'north' })
+      .toBuffer();
+    layers.unshift({ input: brandBuf, top: 0, left: 0 });
+  }
+
+  await sharp({ create: { width: W, height: H, channels: 3, background: 'white' } })
+    .composite(layers)
+    .png()
+    .toFile(bgPath);
+
+  return { videoY };
 }
 
+// ── Instagram URL resolver ────────────────────────────────────────────────────
 async function resolveInstagramUrl(instagramUrl) {
-  if (!process.env.RAPIDAPI_KEY) throw new Error('RAPIDAPI_KEY não configurada');
+  if (!process.env.RAPIDAPI_KEY) throw new Error('RAPIDAPI_KEY não configurada no servidor');
 
-  const response = await axios.get(
+  const { data } = await axios.get(
     'https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert',
     {
       params: { url: instagramUrl.trim() },
@@ -152,55 +149,44 @@ async function resolveInstagramUrl(instagramUrl) {
     }
   );
 
-  const data = response.data;
   if (Array.isArray(data?.media)) {
     const video = data.media.find(m => m.type === 'video' && m.url);
     if (video) return video.url;
-    // fallback: any item with a url
     const any = data.media.find(m => m.url);
     if (any) return any.url;
   }
-  throw new Error('Nenhum vídeo encontrado para essa URL do Instagram. Verifique se o post é público.');
+  throw new Error('Nenhum vídeo encontrado. Verifique se o post é público.');
 }
 
+// ── Headline extractor ────────────────────────────────────────────────────────
 async function extractHeadline(imageBuf) {
   const base64 = imageBuf.toString('base64');
-  const response = await openai.chat.completions.create({
+  const res = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
         content: `Você é especialista em copy de altíssima retenção para o Instagram do @pedro_destrava.
-Analise o print/screenshot fornecido, entenda o tema central e crie UMA headline irresistível em PORTUGUÊS DO BRASIL.
-Use obrigatoriamente um destes formatos de máxima retenção:
-• "Por que [fenômeno surpreendente]..."
-• "O que ninguém te contou sobre..."
-• "A verdade que [autoridade/sistema] esconde..."
-• "[Número] fatos que vão mudar como você vê..."
-• "Como [pessoa comum] descobriu..."
-• "O erro que 99% das pessoas cometem ao..."
-• "Isso foi censurado porque..."
-A headline deve ser curiosa, instigante, específica — NUNCA genérica.
-Máximo 15 palavras. Responda APENAS com a headline, sem aspas, sem explicações.`,
+Analise o print/screenshot e crie UMA headline irresistível em PORTUGUÊS DO BRASIL.
+Use um destes formatos: "Por que [fenômeno]...", "O que ninguém te contou sobre...",
+"A verdade que [autoridade] esconde...", "Como [pessoa] descobriu...",
+"O erro que 99% cometem ao...", "Isso foi censurado porque...".
+Máximo 15 palavras. Responda APENAS com a headline, sem aspas nem explicações.`,
       },
       {
         role: 'user',
         content: [
-          {
-            type: 'image_url',
-            image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' },
-          },
-          { type: 'text', text: 'Crie a headline em português do Brasil para este conteúdo.' },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
+          { type: 'text', text: 'Crie a headline em português do Brasil.' },
         ],
       },
     ],
     max_tokens: 120,
   });
-  return response.choices[0].message.content.trim().replace(/^["']|["']$/g, '');
+  return res.choices[0].message.content.trim().replace(/^["'""'']+|["'""'']+$/g, '');
 }
 
-// ── Main pipeline ────────────────────────────────────────────────────────────
-
+// ── Video download ────────────────────────────────────────────────────────────
 function streamDownload(url, destPath) {
   return new Promise((resolve, reject) => {
     axios.get(url, {
@@ -217,6 +203,7 @@ function streamDownload(url, destPath) {
   });
 }
 
+// ── Main pipeline ─────────────────────────────────────────────────────────────
 async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
   const sid = jobId;
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
@@ -231,9 +218,11 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
   const setProgress = (p, msg) => { if (job) { job.progress = p; job.message = msg; } };
 
   try {
+    // 1. Resolve Instagram URL
     setProgress(5, 'Resolvendo URL do Instagram…');
     const cdnUrl = await resolveInstagramUrl(instagramUrl);
 
+    // 2. Extract headline + download video in parallel
     setProgress(15, 'Analisando o print e baixando o vídeo…');
     let headline;
     await Promise.all([
@@ -241,35 +230,39 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       streamDownload(cdnUrl, rawVideo),
     ]);
 
-    setProgress(40, 'Montando o fundo…');
-    const { videoY, drawFilters } = headlineLayout(headline);
-    await buildBackgroundPng(templateBuf, bgPng);
+    // 3. Build background PNG (template + headline text via SVG with embedded font)
+    setProgress(40, 'Montando o fundo com a headline…');
+    const { videoY } = await buildBackgroundPng(templateBuf, headline, bgPng);
 
-    setProgress(50, 'Calculando corte do vídeo…');
+    // 4. Probe video
+    setProgress(50, 'Analisando o vídeo…');
     const { width: vw, height: vh, hasAudio, duration } = await getVideoInfo(rawVideo);
     const clipDur = Math.min(duration, 30).toFixed(3);
     const videoH  = H - videoY - 20;
+
+    // 5. Calculate smart crop
     const vAspect = vw / vh;
     const tAspect = W / videoH;
-
     let cropW, cropH, cropX, cropY;
     if (vAspect > tAspect) {
+      // Landscape → crop sides, center horizontally
       cropH = vh; cropW = Math.round(vh * tAspect);
       cropX = Math.round((vw - cropW) / 2); cropY = 0;
     } else {
+      // Portrait → crop height, bias 40% from top (keeps faces in frame)
       cropW = vw; cropH = Math.round(vw / tAspect);
       cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
     }
 
-    // Single FFmpeg pass: background + video overlay + headline text via drawtext.
-    // Image input is duration-capped so -loop 1 never hangs. eof_action=endall
-    // terminates the overlay the moment the video stream ends.
+    // 6. Single FFmpeg pass: scale bg + crop/scale video + overlay
+    //    -loop 1 -t clipDur on image input prevents infinite-loop hang.
+    //    eof_action=endall terminates the moment the video stream ends.
     setProgress(55, 'Processando e montando o Reel…');
+
     const filterGraph = [
       `[0:v]scale=${W}:${H}[bg]`,
       `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
-      `[bg][vid]overlay=0:${videoY}:eof_action=endall[ov]`,
-      `[ov]${drawFilters}[out]`,
+      `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
     ].join(';');
 
     const outputOpts = [
@@ -287,6 +280,7 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
       .complexFilter(filterGraph)
       .outputOptions(outputOpts);
+
     await runFFmpeg(cmd, output);
 
     setProgress(100, 'Concluído!');
@@ -299,7 +293,7 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId }) {
   }
 }
 
-// ── Routes ───────────────────────────────────────────────────────────────────
+// ── Routes ────────────────────────────────────────────────────────────────────
 
 router.post(
   '/',
@@ -307,7 +301,7 @@ router.post(
   async (req, res) => {
     const { instagramUrl } = req.body;
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'URL do Instagram é obrigatória' });
-    if (!req.files?.print) return res.status(400).json({ error: 'O print é obrigatório' });
+    if (!req.files?.print)     return res.status(400).json({ error: 'O print é obrigatório' });
 
     const jobId = crypto.randomUUID();
     jobs.set(jobId, { status: 'processing', progress: 0, message: 'Iniciando…', createdAt: Date.now() });
