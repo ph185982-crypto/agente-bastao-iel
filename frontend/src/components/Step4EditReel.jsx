@@ -135,7 +135,7 @@ export default function Step4EditReel({ videoUrl: propVideoUrl, headline: propHe
             URL do vídeo <span className="text-gray-500">(preenchida automaticamente do passo 1)</span>
           </label>
           <input
-            type="url"
+            type="text"
             value={videoUrl}
             onChange={(e) => setVideoUrl(e.target.value)}
             placeholder="https://scontent-...instagram.com/..."
