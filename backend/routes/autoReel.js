@@ -86,13 +86,19 @@ function getVideoInfo(videoPath) {
 // finishes before listeners are registered. Kills the process on timeout.
 function runFFmpeg(cmd, outputPath, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
+    const stderrLines = [];
     const timer = setTimeout(() => {
       try { cmd.kill('SIGKILL'); } catch {}
-      reject(new Error('FFmpeg timeout: processamento excedeu 5 minutos. Tente um vídeo mais curto.'));
+      reject(new Error(`FFmpeg timeout (${Math.round(timeoutMs/1000)}s). Últimas linhas:\n${stderrLines.slice(-10).join('\n')}`));
     }, timeoutMs);
     cmd
+      .on('stderr', line => { stderrLines.push(line); })
       .on('end',   () => { clearTimeout(timer); resolve(); })
-      .on('error', (err) => { clearTimeout(timer); reject(err); })
+      .on('error', (err) => {
+        clearTimeout(timer);
+        const tail = stderrLines.slice(-8).join(' | ');
+        reject(new Error(`${err.message}${tail ? ' || ffmpeg: ' + tail : ''}`));
+      })
       .save(outputPath);
   });
 }
@@ -277,9 +283,10 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
       '-crf 30',
       '-r 30',
       `-t ${clipDur}`,
-      '-movflags +faststart',
+      '-threads 1',
+      '-pix_fmt yuv420p',
     ];
-    if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 96k'); }
+    if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 96k', '-shortest'); }
     else { outputOpts.push('-an'); }
 
     const clipDurSec = parseFloat(clipDur);
@@ -288,7 +295,6 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
       .complexFilter(filterGraph)
       .outputOptions(outputOpts)
-      .on('stderr', line => { if (/error|invalid|failed/i.test(line)) console.error('[ffmpeg]', line); })
       .on('progress', (info) => {
         if (!job) return;
         try {

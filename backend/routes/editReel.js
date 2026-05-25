@@ -72,13 +72,19 @@ function getVideoInfo(videoPath) {
 
 function runFFmpeg(cmd, outputPath, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
+    const stderrLines = [];
     const timer = setTimeout(() => {
       try { cmd.kill('SIGKILL'); } catch {}
-      reject(new Error('FFmpeg timeout: processamento excedeu 5 minutos. Tente um vídeo mais curto.'));
+      reject(new Error(`FFmpeg timeout (${Math.round(timeoutMs/1000)}s). Últimas linhas:\n${stderrLines.slice(-10).join('\n')}`));
     }, timeoutMs);
     cmd
+      .on('stderr', line => { stderrLines.push(line); })
       .on('end',   () => { clearTimeout(timer); resolve(); })
-      .on('error', (err) => { clearTimeout(timer); reject(err); })
+      .on('error', (err) => {
+        clearTimeout(timer);
+        const tail = stderrLines.slice(-8).join(' | ');
+        reject(new Error(`${err.message}${tail ? ' || ffmpeg: ' + tail : ''}`));
+      })
       .save(outputPath);
   });
 }
@@ -183,23 +189,26 @@ async function processReel({ videoUrl, headline, templateBuf, jobId }) {
 
     const filterGraph = [
       `[0:v]scale=${W}:${H}[bg]`,
-      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
-      `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
+      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},fps=30,setpts=PTS-STARTPTS[vid]`,
+      `[bg][vid]overlay=0:${videoY}:shortest=1[out]`,
     ].join(';');
 
     const outputOpts = [
       '-map [out]',
       '-c:v libx264',
       '-preset ultrafast',
-      '-crf 26',
+      '-crf 28',
+      '-r 30',
       `-t ${clipDur}`,
+      '-threads 1',
+      '-pix_fmt yuv420p',
     ];
-    if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 128k'); }
+    if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 128k', '-shortest'); }
     else { outputOpts.push('-an'); }
 
     const clipDurSec = parseFloat(clipDur);
     const cmd = ffmpeg()
-      .input(bgPng).inputOptions(['-loop 1', `-t ${clipDur}`])
+      .input(bgPng).inputOptions(['-loop 1', '-framerate 30', `-t ${clipDur}`])
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
       .complexFilter(filterGraph)
       .outputOptions(outputOpts)
