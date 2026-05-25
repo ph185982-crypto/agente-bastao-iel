@@ -260,14 +260,14 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
     }
 
     // 6. Single FFmpeg pass: scale bg + crop/scale video + overlay
-    //    -loop 1 -t clipDur on image input prevents infinite-loop hang.
-    //    eof_action=endall terminates the moment the video stream ends.
+    //    shortest=1 terminates the overlay when either input ends.
+    //    -t clipDur on output is a hard cap in case inputs disagree.
     setProgress(55, 'Processando e montando o Reel…');
 
     const filterGraph = [
       `[0:v]scale=${W}:${H}[bg]`,
-      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
-      `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
+      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},fps=30,setpts=PTS-STARTPTS[vid]`,
+      `[bg][vid]overlay=0:${videoY}:shortest=1[out]`,
     ].join(';');
 
     const outputOpts = [
@@ -275,30 +275,37 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
       '-c:v libx264',
       '-preset ultrafast',
       '-crf 30',
+      '-r 30',
       `-t ${clipDur}`,
+      '-movflags +faststart',
     ];
     if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 96k'); }
     else { outputOpts.push('-an'); }
 
     const clipDurSec = parseFloat(clipDur);
     const cmd = ffmpeg()
-      .input(bgPng).inputOptions(['-loop 1', `-t ${clipDur}`])
+      .input(bgPng).inputOptions(['-loop 1', '-framerate 30', `-t ${clipDur}`])
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
       .complexFilter(filterGraph)
       .outputOptions(outputOpts)
+      .on('stderr', line => { if (/error|invalid|failed/i.test(line)) console.error('[ffmpeg]', line); })
       .on('progress', (info) => {
         if (!job) return;
-        // timemark = "HH:MM:SS.xx" — use it to compute real encode progress
         try {
           const parts = (info.timemark || '').split(':');
-          const secs = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-          const pct = Math.min(secs / clipDurSec, 1);
+          if (parts.length < 3) return;
+          const h = parseFloat(parts[0]);
+          const m = parseFloat(parts[1]);
+          const s = parseFloat(parts[2]);
+          if (isNaN(h) || isNaN(m) || isNaN(s)) return;
+          const elapsed = h * 3600 + m * 60 + s;
+          const pct = Math.min(elapsed / clipDurSec, 1);
           job.progress = Math.round(55 + pct * 40);
           job.message = `Codificando vídeo… ${Math.round(pct * 100)}%`;
         } catch {}
       });
 
-    // 5-minute timeout — free-tier CPU can be very slow
+    // 5-minute timeout — free-tier CPU can be slow during burst
     await runFFmpeg(cmd, output, 300000);
 
     setProgress(100, 'Concluído!');
