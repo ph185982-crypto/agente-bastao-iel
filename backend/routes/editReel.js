@@ -182,15 +182,12 @@ async function processReel({ videoUrl, headline, templateBuf, jobId }) {
       cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
     }
 
-    // 4. Single FFmpeg pass: scale bg + crop/scale video + overlay
-    //    -loop 1 -t clipDur on image input prevents infinite-loop hang.
-    //    eof_action=endall terminates the moment the video stream ends.
     setProgress(55);
 
     const filterGraph = [
-      `[0:v]scale=${W}:${H}[bg]`,
-      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},fps=30,setpts=PTS-STARTPTS[vid]`,
-      `[bg][vid]overlay=0:${videoY}:shortest=1[out]`,
+      `[1:v]loop=loop=-1:size=1:start=0,scale=${W}:${H}[bg]`,
+      `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
+      `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
     ].join(';');
 
     const outputOpts = [
@@ -202,21 +199,23 @@ async function processReel({ videoUrl, headline, templateBuf, jobId }) {
       `-t ${clipDur}`,
       '-pix_fmt yuv420p',
     ];
-    if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 128k', '-shortest'); }
+    if (hasAudio) { outputOpts.push('-map 0:a', '-c:a aac', '-b:a 128k'); }
     else { outputOpts.push('-an'); }
 
     const clipDurSec = parseFloat(clipDur);
     const cmd = ffmpeg()
-      .input(bgPng).inputOptions(['-loop 1', '-framerate 30', `-t ${clipDur}`])
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
+      .input(bgPng)
       .complexFilter(filterGraph)
       .outputOptions(outputOpts)
       .on('progress', (info) => {
         if (!job) return;
         try {
           const parts = (info.timemark || '').split(':');
-          const secs = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-          job.progress = Math.round(55 + Math.min(secs / clipDurSec, 1) * 40);
+          if (parts.length < 3) return;
+          const h = parseFloat(parts[0]), m = parseFloat(parts[1]), s = parseFloat(parts[2]);
+          if (isNaN(h) || isNaN(m) || isNaN(s)) return;
+          job.progress = Math.round(55 + Math.min((h*3600+m*60+s) / clipDurSec, 1) * 40);
         } catch {}
       });
 

@@ -266,16 +266,16 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
       cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
     }
 
-    // 6. FFmpeg: vídeo como input 0, imagem de fundo como input 1 (frame estático).
-    //    O overlay usa eof_action padrão (repeat) — a imagem se repete pelo
-    //    tempo todo. -t no output é o hard cap de duração.
+    // 6. FFmpeg: vídeo como input 0, imagem de fundo como input 1.
+    //    loop=-1 torna a imagem infinita. eof_action=endall para quando
+    //    o vídeo (overlay) termina. -t no output é hard cap de segurança.
     setProgress(55, 'Processando e montando o Reel…');
     console.log(`[autoReel] FFmpeg iniciando — clip=${clipDur}s crop=${cropW}x${cropH} videoH=${videoH} videoY=${videoY}`);
 
     const filterGraph = [
-      `[1:v]scale=${W}:${H}[bg]`,
+      `[1:v]loop=loop=-1:size=1:start=0,scale=${W}:${H}[bg]`,
       `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
-      `[bg][vid]overlay=0:${videoY}[out]`,
+      `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
     ].join(';');
 
     const outputOpts = [
