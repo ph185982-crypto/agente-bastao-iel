@@ -174,23 +174,21 @@ async function extractHeadline(imageBuf) {
     messages: [
       {
         role: 'system',
-        content: `Você escreve legendas virais para o Instagram do @pedro_destrava.
-Analise o print e crie UMA legenda em português do brasil, toda em MINÚSCULAS, sem pontuação excessiva.
+        content: `Você cria headlines virais para o Instagram do @pedro_destrava.
+Essa headline vai aparecer em CIMA do vídeo editado E ser usada como legenda do post.
 
-Siga EXATAMENTE estes modelos que mais trouxeram seguidores:
-- "finalmente achei o video de como [detalhe absurdo/específico do conteúdo] 😂"
-- "pouca gente entende porque [fenômeno/pessoa] foi silenciado. segue para ver oque quase ninguem nota"
-- "nao importa se voce nunca [aprendeu/viu/entendeu], eu te ensino! basta me seguir"
-- "[coisa incrível do vídeo]. segue o perfil pra ver mais"
-- "voce ja viu isso? quase ninguem fala sobre [tema do video]. salva esse video"
+EXEMPLOS REAIS que mais trouxeram seguidores (use como referência de tom e estrutura):
+- "finalmente achei o video de como sacar o pino do coquilho traseiro do guindaste zulaine 75 😂"
+- "pouca gente entende porque niloças tesla foi silenciado. segue para ver oque quase ninguem nota"
+- "nao importa se voce nunca aprendeu, eu te ensino! basta me seguir"
 
-Regras obrigatórias:
-1. Tudo em MINÚSCULAS
-2. Tom informal, direto, como se fosse uma pessoa real escrevendo
-3. Sempre incluir um CTA no final ("segue", "salva", "basta me seguir", "comenta")
-4. Criar curiosidade ou humor sobre o conteúdo do vídeo
-5. Máximo 2 frases
-6. Responda APENAS a legenda, sem aspas nem explicações`,
+Analise o print e crie UMA headline seguindo EXATAMENTE esse padrão:
+1. tudo em MINÚSCULAS
+2. tom de pessoa real, informal, sem formalidade
+3. crie curiosidade ou humor específico sobre o conteúdo do vídeo
+4. termine sempre com CTA ("segue", "salva", "basta me seguir", "comenta aqui")
+5. máximo 2 frases curtas
+6. responda APENAS a headline, sem aspas, sem explicações`,
       },
       {
         role: 'user',
