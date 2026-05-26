@@ -200,7 +200,6 @@ async function processReel({ videoUrl, headline, templateBuf, jobId }) {
       '-crf 28',
       '-r 30',
       `-t ${clipDur}`,
-      '-threads 1',
       '-pix_fmt yuv420p',
     ];
     if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 128k', '-shortest'); }
