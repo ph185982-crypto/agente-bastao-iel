@@ -266,15 +266,16 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
       cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
     }
 
-    // 6. Single FFmpeg pass: scale bg + crop/scale video + overlay
-    //    shortest=1 terminates the overlay when either input ends.
-    //    -t clipDur on output is a hard cap in case inputs disagree.
+    // 6. FFmpeg: vídeo como input 0, imagem de fundo como input 1 (frame estático).
+    //    O overlay usa eof_action padrão (repeat) — a imagem se repete pelo
+    //    tempo todo. -t no output é o hard cap de duração.
     setProgress(55, 'Processando e montando o Reel…');
+    console.log(`[autoReel] FFmpeg iniciando — clip=${clipDur}s crop=${cropW}x${cropH} videoH=${videoH} videoY=${videoY}`);
 
     const filterGraph = [
-      `[0:v]scale=${W}:${H}[bg]`,
-      `[1:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},fps=30,setpts=PTS-STARTPTS[vid]`,
-      `[bg][vid]overlay=0:${videoY}:shortest=1[out]`,
+      `[1:v]scale=${W}:${H}[bg]`,
+      `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
+      `[bg][vid]overlay=0:${videoY}[out]`,
     ].join(';');
 
     const outputOpts = [
@@ -286,13 +287,13 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
       `-t ${clipDur}`,
       '-pix_fmt yuv420p',
     ];
-    if (hasAudio) { outputOpts.push('-map 1:a', '-c:a aac', '-b:a 96k', '-shortest'); }
+    if (hasAudio) { outputOpts.push('-map 0:a', '-c:a aac', '-b:a 96k'); }
     else { outputOpts.push('-an'); }
 
     const clipDurSec = parseFloat(clipDur);
     const cmd = ffmpeg()
-      .input(bgPng).inputOptions(['-loop 1', '-framerate 30', `-t ${clipDur}`])
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
+      .input(bgPng)
       .complexFilter(filterGraph)
       .outputOptions(outputOpts)
       .on('progress', (info) => {
@@ -308,10 +309,10 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
           const pct = Math.min(elapsed / clipDurSec, 1);
           job.progress = Math.round(55 + pct * 40);
           job.message = `Codificando vídeo… ${Math.round(pct * 100)}%`;
+          console.log(`[autoReel] progresso ${job.progress}% (${elapsed.toFixed(1)}s / ${clipDurSec}s)`);
         } catch {}
       });
 
-    // 5-minute timeout — free-tier CPU can be slow during burst
     await runFFmpeg(cmd, output, 300000);
 
     setProgress(100, 'Concluído!');
