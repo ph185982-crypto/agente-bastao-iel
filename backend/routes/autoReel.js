@@ -261,9 +261,10 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
       cropH = vh; cropW = Math.round(vh * tAspect);
       cropX = Math.round((vw - cropW) / 2); cropY = 0;
     } else {
-      // Portrait → crop height, bias 40% from top (keeps faces in frame)
+      // Portrait → bias 80% toward bottom: reels repostados têm texto/tweet
+      // no topo e o vídeo real embaixo — pegar a parte de baixo do frame.
       cropW = vw; cropH = Math.round(vw / tAspect);
-      cropX = 0; cropY = Math.round((vh - cropH) * 0.4);
+      cropX = 0; cropY = Math.round((vh - cropH) * 0.8);
     }
 
     // 6. FFmpeg: vídeo como input 0, imagem de fundo como input 1.

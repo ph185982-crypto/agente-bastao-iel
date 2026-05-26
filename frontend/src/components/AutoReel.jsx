@@ -299,16 +299,28 @@ export default function AutoReel() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <div className="text-center px-4">
-            <p className="text-sm font-semibold text-green-300 mb-1">Reel pronto!</p>
-            {headline && (
-              <p className="text-xs text-gray-400 italic">"{headline}"</p>
-            )}
-          </div>
+
+          <p className="text-sm font-semibold text-green-300">Reel pronto!</p>
+
+          {headline && (
+            <div className="w-full px-4">
+              <p className="text-xs font-medium text-gray-400 mb-1.5">Legenda para o Instagram</p>
+              <div className="bg-gray-800 rounded-xl p-3 text-sm text-gray-100 leading-relaxed">
+                {headline}
+              </div>
+              <button
+                onClick={() => navigator.clipboard.writeText(headline)}
+                className="mt-2 w-full py-2 bg-gray-700 hover:bg-gray-600 text-xs text-gray-300 font-medium rounded-lg transition-colors"
+              >
+                Copiar legenda
+              </button>
+            </div>
+          )}
+
           <a
             href={downloadUrl}
             download="reel_pronto.mp4"
-            className="px-8 py-3 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors"
+            className="w-full mx-4 text-center py-3 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors"
           >
             Baixar MP4
           </a>
