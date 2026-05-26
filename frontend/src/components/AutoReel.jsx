@@ -121,7 +121,7 @@ export default function AutoReel() {
             stopPolling()
             setStatus('done')
             setProgress(100)
-            if (data.headline) setHeadline(data.headline)
+            setHeadline(data.headline || preHeadline || '')
             setDownloadUrl(`${API_BASE}/api/auto-reel/${jobId}/download`)
           } else if (data.status === 'error') {
             stopPolling()

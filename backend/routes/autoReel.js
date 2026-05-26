@@ -174,22 +174,33 @@ async function extractHeadline(imageBuf) {
     messages: [
       {
         role: 'system',
-        content: `Você é especialista em copy de altíssima retenção para o Instagram do @pedro_destrava.
-Analise o print/screenshot e crie UMA headline irresistível em PORTUGUÊS DO BRASIL.
-Use um destes formatos: "Por que [fenômeno]...", "O que ninguém te contou sobre...",
-"A verdade que [autoridade] esconde...", "Como [pessoa] descobriu...",
-"O erro que 99% cometem ao...", "Isso foi censurado porque...".
-Máximo 15 palavras. Responda APENAS com a headline, sem aspas nem explicações.`,
+        content: `Você escreve legendas virais para o Instagram do @pedro_destrava.
+Analise o print e crie UMA legenda em português do brasil, toda em MINÚSCULAS, sem pontuação excessiva.
+
+Siga EXATAMENTE estes modelos que mais trouxeram seguidores:
+- "finalmente achei o video de como [detalhe absurdo/específico do conteúdo] 😂"
+- "pouca gente entende porque [fenômeno/pessoa] foi silenciado. segue para ver oque quase ninguem nota"
+- "nao importa se voce nunca [aprendeu/viu/entendeu], eu te ensino! basta me seguir"
+- "[coisa incrível do vídeo]. segue o perfil pra ver mais"
+- "voce ja viu isso? quase ninguem fala sobre [tema do video]. salva esse video"
+
+Regras obrigatórias:
+1. Tudo em MINÚSCULAS
+2. Tom informal, direto, como se fosse uma pessoa real escrevendo
+3. Sempre incluir um CTA no final ("segue", "salva", "basta me seguir", "comenta")
+4. Criar curiosidade ou humor sobre o conteúdo do vídeo
+5. Máximo 2 frases
+6. Responda APENAS a legenda, sem aspas nem explicações`,
       },
       {
         role: 'user',
         content: [
           { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
-          { type: 'text', text: 'Crie a headline em português do Brasil.' },
+          { type: 'text', text: 'Crie a legenda para esse vídeo.' },
         ],
       },
     ],
-    max_tokens: 120,
+    max_tokens: 150,
   });
   const content = res.choices[0].message.content;
   if (!content) throw new Error('OpenAI não retornou conteúdo (possível filtro de conteúdo)');
