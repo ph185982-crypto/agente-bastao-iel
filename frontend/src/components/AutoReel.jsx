@@ -160,6 +160,15 @@ export default function AutoReel() {
     setExtracting(false)
   }
 
+  const [copied, setCopied] = useState(false)
+
+  function copyCaption(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {})
+  }
+
   const isProcessing = status === 'processing'
   const isDone = status === 'done'
 
@@ -302,17 +311,20 @@ export default function AutoReel() {
 
           <p className="text-sm font-semibold text-green-300">Reel pronto!</p>
 
+          {/* Legenda para o Instagram */}
           {headline && (
-            <div className="w-full px-4">
-              <p className="text-xs font-medium text-gray-400 mb-1.5">Legenda para o Instagram</p>
-              <div className="bg-gray-800 rounded-xl p-3 text-sm text-gray-100 leading-relaxed">
+            <div className="w-full px-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide">
+                Legenda do post
+              </p>
+              <div className="bg-gray-800 border border-gray-600 rounded-xl p-4 text-base text-white leading-relaxed font-medium">
                 {headline}
               </div>
               <button
-                onClick={() => navigator.clipboard.writeText(headline)}
-                className="mt-2 w-full py-2 bg-gray-700 hover:bg-gray-600 text-xs text-gray-300 font-medium rounded-lg transition-colors"
+                onClick={() => copyCaption(headline)}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-colors"
               >
-                Copiar legenda
+                {copied ? 'Copiado!' : 'Copiar legenda'}
               </button>
             </div>
           )}
@@ -320,7 +332,7 @@ export default function AutoReel() {
           <a
             href={downloadUrl}
             download="reel_pronto.mp4"
-            className="w-full mx-4 text-center py-3 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors"
+            className="w-full mx-4 text-center py-3.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors"
           >
             Baixar MP4
           </a>
