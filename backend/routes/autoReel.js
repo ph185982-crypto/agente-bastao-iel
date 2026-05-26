@@ -18,12 +18,13 @@ const router = express.Router();
 const upload = multer({ dest: '/tmp/', limits: { fileSize: 50 * 1024 * 1024 } });
 
 // ── Layout constants ─────────────────────────────────────────────────────────
-const W        = 1080;
-const H        = 1920;
-const BRAND_H  = 380;   // height of template branding at top
-const H_PAD    = 50;    // horizontal text padding
-const FONT_SIZE = 54;
-const LINE_H   = 76;
+// 720×1280 (56% menos pixels que 1080p) → FFmpeg ~3× mais rápido no e2-micro
+const W        = 720;
+const H        = 1280;
+const BRAND_H  = 253;
+const H_PAD    = 34;
+const FONT_SIZE = 36;
+const LINE_H   = 50;
 
 // Font bundled with the repo — no system font dependency
 const FONT_PATH = path.join(__dirname, '..', 'assets', 'DejaVuSans-Bold.ttf');
