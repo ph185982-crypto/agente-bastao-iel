@@ -19,8 +19,6 @@ export default function AutoReel() {
   const [printDragging, setPrintDragging] = useState(false)
   const [preHeadline, setPreHeadline] = useState(null)
   const [preCaption, setPreCaption] = useState(null)
-  const [preContentStartPct, setPreContentStartPct] = useState(null)
-  const [preContentEndPct, setPreContentEndPct] = useState(null)
   const [extracting, setExtracting] = useState(false)
 
   const printInputRef = useRef(null)
@@ -40,8 +38,6 @@ export default function AutoReel() {
     setError('')
     setPreHeadline(null)
     setPreCaption(null)
-    setPreContentStartPct(null)
-    setPreContentEndPct(null)
 
     // Cancel any in-flight extraction
     if (extractAbortRef.current) extractAbortRef.current.abort()
@@ -58,11 +54,9 @@ export default function AutoReel() {
         signal: controller.signal,
       })
       if (res.ok) {
-        const { headline: h, caption: c, contentStartPct: s, contentEndPct: e } = await res.json()
+        const { headline: h, caption: c } = await res.json()
         if (h) setPreHeadline(h)
         if (c) setPreCaption(c)
-        if (s != null) setPreContentStartPct(s)
-        if (e != null) setPreContentEndPct(e)
       }
     } catch (e) {
       if (e.name !== 'AbortError') console.warn('Pre-extract failed:', e.message)
@@ -101,9 +95,7 @@ export default function AutoReel() {
     form.append('print', print)
     if (template) form.append('template', template)
     if (preHeadline) form.append('headline', preHeadline)
-    if (preCaption)               form.append('caption', preCaption)
-    if (preContentStartPct != null) form.append('contentStartPct', String(preContentStartPct))
-    if (preContentEndPct   != null) form.append('contentEndPct',   String(preContentEndPct))
+    if (preCaption)  form.append('caption', preCaption)
 
     try {
       const res = await fetch(`${API_BASE}/api/auto-reel`, { method: 'POST', body: form })
@@ -174,8 +166,6 @@ export default function AutoReel() {
     setCaption('')
     setPreHeadline(null)
     setPreCaption(null)
-    setPreContentStartPct(null)
-    setPreContentEndPct(null)
     setExtracting(false)
   }
 
