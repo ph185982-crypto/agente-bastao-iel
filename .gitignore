@@ -16,3 +16,6 @@ backend/.env
 
 # Claude Code internal
 .claude/
+
+# Netlify CLI cache
+.netlify/
