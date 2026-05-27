@@ -167,12 +167,8 @@ async function resolveInstagramUrl(instagramUrl) {
 }
 
 // ── Content extractor ─────────────────────────────────────────────────────────
-// Returns { headline, caption, cropBias } from a single GPT-4o call.
-// headline  → short viral text rendered on the video frame
-// caption   → long Instagram post caption with paragraphs + hashtags
-// cropBias  → 0.0–1.0: where to start the vertical crop in the source video
-//             0.0 = start from the very top (content fills whole frame / starts at top)
-//             0.8 = start 80% down (content is in the bottom portion of the frame)
+// Returns { headline, caption, contentStartPct, contentEndPct }
+// contentStartPct/contentEndPct → exact vertical region of interesting content (0-100%)
 async function extractContent(imageBuf) {
   const base64 = imageBuf.toString('base64');
   const res = await openai.chat.completions.create({
@@ -180,43 +176,47 @@ async function extractContent(imageBuf) {
     messages: [
       {
         role: 'system',
-        content: `Você cria conteúdo para o Instagram do @pedro_destrava. Analise o print e retorne um JSON com três campos:
+        content: `Você cria conteúdo para o Instagram do @pedro_destrava. Analise o print e retorne um JSON com quatro campos:
 
 "headline": texto CURTO que vai aparecer em CIMA do vídeo editado.
-- tudo em minúsculas
-- tom informal, de pessoa real
-- crie curiosidade ou humor sobre o conteúdo do vídeo
+- tudo em minúsculas, tom informal, pessoa real
+- crie curiosidade ou humor sobre o conteúdo
 - termine com CTA ("segue", "salva", "basta me seguir")
 - máximo 2 frases curtas
 - EXEMPLOS: "finalmente achei o video de como sacar o pino do coquilho traseiro do guindaste zulaine 75 😂" / "pouca gente entende porque niloças tesla foi silenciado. segue para ver oque quase ninguem nota"
 
-"caption": legenda LONGA para o post do Instagram, em português, seguindo EXATAMENTE esta estrutura:
+"caption": legenda LONGA para o post do Instagram, em português:
 SIGA @pedro_destrava para não perder nenhum conteúdo incrível 🌱🚀
 
-[Uma linha com o assunto principal do vídeo + emoji relacionado]
+[Uma linha com o assunto principal do vídeo + emoji]
 
-[Parágrafo 1: descreva o que acontece no vídeo de forma clara e envolvente, 2-3 frases]
+[Parágrafo 1: descreva o conteúdo de forma clara e envolvente, 2-3 frases]
 
-[Parágrafo 2: aprofunde com um fato curioso, processo ou dado interessante sobre o assunto, 2-3 frases]
+[Parágrafo 2: fato curioso ou aprofundamento, 2-3 frases]
 
-[Parágrafo 3 opcional: conclusão inspiradora ou gancho emocional, 1-2 frases]
+[Parágrafo 3 opcional: conclusão inspiradora, 1-2 frases]
 
-[3 a 5 hashtags relevantes em português]
+[3 a 5 hashtags em português]
 
-"cropBias": número de 0.0 a 1.0 indicando DE ONDE COMEÇAR O CORTE VERTICAL no vídeo fonte.
-- Analise ONDE está o conteúdo visual interessante no print:
-- Use 0.05 a 0.20 se o conteúdo começa PERTO DO TOPO (ex: print mostra tweet/post completo com texto + vídeo embutido, e você quer mostrar tudo desde o início do post)
-- Use 0.40 a 0.60 se o conteúdo está no MEIO do frame
-- Use 0.70 a 0.90 se o vídeo principal está na PARTE INFERIOR (ex: vídeo de natureza/ação no fundo, texto sobreposto no topo)
-- REGRA: se o print mostra um tweet/screenshot de rede social com vídeo embutido abaixo do texto, use 0.10 a 0.25 para capturar o post inteiro
+"contentStartPct": número inteiro 0-100 indicando em qual % DO TOPO o conteúdo visual interessante COMEÇA.
+"contentEndPct": número inteiro 0-100 indicando em qual % DO TOPO o conteúdo visual interessante TERMINA.
 
-Responda APENAS o JSON, sem markdown. Formato: {"headline":"...","caption":"...","cropBias":0.15}`,
+REGRAS para contentStartPct/contentEndPct:
+- Se o print mostra um vídeo/imagem preenchendo quase todo o frame: start=5, end=95
+- Se mostra um tweet do @pedro_destrava com texto + vídeo embutido de outra conta:
+  start = % onde o avatar/texto do @pedro_destrava começa (geralmente 10-20)
+  end = % onde o vídeo embutido termina (geralmente 85-95)
+- Se o vídeo interessante está só na parte inferior (sem texto do @pedro_destrava acima):
+  start = % onde esse vídeo começa, end = % onde termina
+- SEJA PRECISO: se o vídeo da moeda ocupa de 62% a 92% do frame, retorne start=62, end=92
+
+Responda APENAS o JSON. Formato: {"headline":"...","caption":"...","contentStartPct":15,"contentEndPct":90}`,
       },
       {
         role: 'user',
         content: [
           { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
-          { type: 'text', text: 'Analise esse print e gere o headline, caption e cropBias.' },
+          { type: 'text', text: 'Analise esse print e gere headline, caption, contentStartPct e contentEndPct.' },
         ],
       },
     ],
@@ -226,14 +226,13 @@ Responda APENAS o JSON, sem markdown. Formato: {"headline":"...","caption":"..."
   const raw = res.choices[0].message.content;
   if (!raw) throw new Error('OpenAI não retornou conteúdo');
   const parsed = JSON.parse(raw);
-  const headline = (parsed.headline || '').trim().replace(/^["'""'']+|["'""'']+$/g, '');
-  const caption  = (parsed.caption  || '').trim();
-  const cropBias = typeof parsed.cropBias === 'number'
-    ? Math.max(0, Math.min(1, parsed.cropBias))
-    : 0.5;
+  const headline         = (parsed.headline || '').trim().replace(/^["'""'']+|["'""'']+$/g, '');
+  const caption          = (parsed.caption  || '').trim();
+  const contentStartPct  = Math.max(0,  Math.min(99, parseInt(parsed.contentStartPct) || 5));
+  const contentEndPct    = Math.max(1,  Math.min(100, parseInt(parsed.contentEndPct)  || 95));
   if (!headline) throw new Error('OpenAI não gerou headline');
   if (!caption)  throw new Error('OpenAI não gerou caption');
-  return { headline, caption, cropBias };
+  return { headline, caption, contentStartPct, contentEndPct };
 }
 
 // ── Video download ────────────────────────────────────────────────────────────
@@ -254,7 +253,7 @@ function streamDownload(url, destPath) {
 }
 
 // ── Main pipeline ─────────────────────────────────────────────────────────────
-async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, preHeadline, preCaption, preCropBias }) {
+async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, preHeadline, preCaption, preContentStartPct, preContentEndPct }) {
   const sid = jobId;
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
   const bgPng    = path.join(os.tmpdir(), `${sid}_bg.png`);
@@ -274,16 +273,18 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
 
     // 2. Download video (+ extract content if not pre-computed)
     setProgress(15, 'Baixando o vídeo…');
-    let headline = preHeadline || null;
-    let caption  = preCaption  || null;
-    let cropBias = typeof preCropBias === 'number' ? preCropBias : null;
+    let headline         = preHeadline        || null;
+    let caption          = preCaption         || null;
+    let contentStartPct  = preContentStartPct ?? null;
+    let contentEndPct    = preContentEndPct   ?? null;
     const tasks = [streamDownload(cdnUrl, rawVideo)];
-    if (!headline || !caption || cropBias === null) {
+    if (!headline || !caption || contentStartPct === null) {
       setProgress(15, 'Analisando o print e baixando o vídeo…');
-      tasks.push(extractContent(printBuf).then(({ headline: h, caption: c, cropBias: b }) => {
-        if (!headline)       headline = h;
-        if (!caption)        caption  = c;
-        if (cropBias === null) cropBias = b;
+      tasks.push(extractContent(printBuf).then(({ headline: h, caption: c, contentStartPct: s, contentEndPct: e }) => {
+        if (!headline)              headline        = h;
+        if (!caption)               caption         = c;
+        if (contentStartPct === null) contentStartPct = s;
+        if (contentEndPct   === null) contentEndPct   = e;
       }));
     }
     await Promise.all(tasks);
@@ -298,31 +299,23 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
     const clipDur = Math.min(duration, 15).toFixed(3);
     const videoH  = H - videoY - 20;
 
-    // 5. Calculate smart crop
-    const vAspect = vw / vh;
-    const tAspect = W / videoH;
-    let cropW, cropH, cropX, cropY;
-    if (vAspect > tAspect) {
-      // Landscape → crop sides, center horizontally
-      cropH = vh; cropW = Math.round(vh * tAspect);
-      cropX = Math.round((vw - cropW) / 2); cropY = 0;
-    } else {
-      // Portrait → use GPT-determined cropBias to start the crop at the right vertical position.
-      // cropBias=0.1 → start near top (tweet/post from the beginning)
-      // cropBias=0.8 → start near bottom (video content in lower portion)
-      cropW = vw; cropH = Math.round(vw / tAspect);
-      cropX = 0; cropY = Math.round((vh - cropH) * cropBias);
-    }
+    // 5. Crop to the exact content region identified by GPT, then fill+center-crop the slot.
+    //    This handles any aspect ratio: landscape embedded videos, portrait reels, etc.
+    const startY  = Math.max(0,  Math.round(vh * contentStartPct / 100));
+    const endY    = Math.min(vh, Math.round(vh * contentEndPct   / 100));
+    const cropH   = Math.max(50, endY - startY);
+    const cropW   = vw;
+    const cropX   = 0;
+    const cropY   = startY;
 
-    // 6. FFmpeg: vídeo como input 0, imagem de fundo como input 1.
-    //    loop=-1 torna a imagem infinita. eof_action=endall para quando
-    //    o vídeo (overlay) termina. -t no output é hard cap de segurança.
+    // 6. FFmpeg: fill+center-crop scales the content region to fill videoH×W,
+    //    zooming in on the center if the content is wider than the slot.
     setProgress(55, 'Processando e montando o Reel…');
-    console.log(`[autoReel] FFmpeg iniciando — clip=${clipDur}s crop=${cropW}x${cropH} videoH=${videoH} videoY=${videoY}`);
+    console.log(`[autoReel] clip=${clipDur}s content=${contentStartPct}-${contentEndPct}% crop=${cropW}x${cropH}@${cropY} slot=${W}x${videoH}`);
 
     const filterGraph = [
       `[1:v]loop=loop=-1:size=1:start=0,scale=${W}:${H}[bg]`,
-      `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH},setpts=PTS-STARTPTS[vid]`,
+      `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},scale=${W}:${videoH}:force_original_aspect_ratio=increase,crop=${W}:${videoH}:(iw-${W})/2:(ih-${videoH})/2,setpts=PTS-STARTPTS[vid]`,
       `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
     ].join(';');
 
@@ -365,7 +358,7 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
 
     setProgress(100, 'Concluído!');
     cleanTmp();
-    console.log(`[autoReel] concluído — headline="${headline?.slice(0,40)}" cropBias=${cropBias}`);
+    console.log(`[autoReel] concluído — headline="${headline?.slice(0,40)}" content=${contentStartPct}-${contentEndPct}%`);
     if (job) { job.status = 'done'; job.outputPath = output; job.headline = headline; job.caption = caption; }
   } catch (err) {
     cleanTmp();
@@ -392,8 +385,8 @@ router.post(
       try { fs.unlinkSync(req.file.path); } catch {}
     }
     try {
-      const { headline, caption, cropBias } = await extractContent(printBuf);
-      res.json({ headline, caption, cropBias });
+      const { headline, caption, contentStartPct, contentEndPct } = await extractContent(printBuf);
+      res.json({ headline, caption, contentStartPct, contentEndPct });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -404,8 +397,10 @@ router.post(
   '/',
   upload.fields([{ name: 'print', maxCount: 1 }, { name: 'template', maxCount: 1 }]),
   async (req, res) => {
-    const { instagramUrl, headline: preHeadline, caption: preCaption, cropBias: preCropBiasRaw } = req.body;
-    const preCropBias = preCropBiasRaw !== undefined ? parseFloat(preCropBiasRaw) : null;
+    const { instagramUrl, headline: preHeadline, caption: preCaption,
+            contentStartPct: startRaw, contentEndPct: endRaw } = req.body;
+    const preContentStartPct = startRaw !== undefined ? parseInt(startRaw) : null;
+    const preContentEndPct   = endRaw   !== undefined ? parseInt(endRaw)   : null;
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'URL do Instagram é obrigatória' });
     if (!req.files?.print)     return res.status(400).json({ error: 'O print é obrigatório' });
 
@@ -429,9 +424,10 @@ router.post(
       printBuf,
       templateBuf,
       jobId,
-      preHeadline: preHeadline?.trim() || null,
-      preCaption:  preCaption?.trim()  || null,
-      preCropBias: isNaN(preCropBias) ? null : preCropBias,
+      preHeadline:        preHeadline?.trim() || null,
+      preCaption:         preCaption?.trim()  || null,
+      preContentStartPct: isNaN(preContentStartPct) ? null : preContentStartPct,
+      preContentEndPct:   isNaN(preContentEndPct)   ? null : preContentEndPct,
     }).catch(err => console.error('autoReel error:', err.message));
 
     res.status(202).json({ jobId });
