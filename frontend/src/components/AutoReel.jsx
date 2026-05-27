@@ -13,11 +13,13 @@ export default function AutoReel() {
   const [progress, setProgress] = useState(0)
   const [message, setMessage] = useState('')
   const [headline, setHeadline] = useState('')
+  const [caption, setCaption] = useState('')
   const [downloadUrl, setDownloadUrl] = useState(null)
   const [error, setError] = useState('')
   const [printDragging, setPrintDragging] = useState(false)
-  const [preHeadline, setPreHeadline] = useState(null)    // pre-extracted before submit
-  const [extracting, setExtracting] = useState(false)     // GPT running in background
+  const [preHeadline, setPreHeadline] = useState(null)
+  const [preCaption, setPreCaption] = useState(null)
+  const [extracting, setExtracting] = useState(false)
 
   const printInputRef = useRef(null)
   const templateInputRef = useRef(null)
@@ -35,6 +37,7 @@ export default function AutoReel() {
     setPrintPreview(URL.createObjectURL(file))
     setError('')
     setPreHeadline(null)
+    setPreCaption(null)
 
     // Cancel any in-flight extraction
     if (extractAbortRef.current) extractAbortRef.current.abort()
@@ -51,8 +54,9 @@ export default function AutoReel() {
         signal: controller.signal,
       })
       if (res.ok) {
-        const { headline: h } = await res.json()
+        const { headline: h, caption: c } = await res.json()
         if (h) setPreHeadline(h)
+        if (c) setPreCaption(c)
       }
     } catch (e) {
       if (e.name !== 'AbortError') console.warn('Pre-extract failed:', e.message)
@@ -84,12 +88,14 @@ export default function AutoReel() {
     setError('')
     setDownloadUrl(null)
     setHeadline('')
+    setCaption('')
 
     const form = new FormData()
     form.append('instagramUrl', instagramUrl.trim())
     form.append('print', print)
     if (template) form.append('template', template)
     if (preHeadline) form.append('headline', preHeadline)
+    if (preCaption)  form.append('caption', preCaption)
 
     try {
       const res = await fetch(`${API_BASE}/api/auto-reel`, { method: 'POST', body: form })
@@ -122,6 +128,7 @@ export default function AutoReel() {
             setStatus('done')
             setProgress(100)
             setHeadline(data.headline || preHeadline || '')
+            setCaption(data.caption   || preCaption  || '')
             setDownloadUrl(`${API_BASE}/api/auto-reel/${jobId}/download`)
           } else if (data.status === 'error') {
             stopPolling()
@@ -156,7 +163,9 @@ export default function AutoReel() {
     setError('')
     setDownloadUrl(null)
     setHeadline('')
+    setCaption('')
     setPreHeadline(null)
+    setPreCaption(null)
     setExtracting(false)
   }
 
@@ -311,17 +320,17 @@ export default function AutoReel() {
 
           <p className="text-sm font-semibold text-green-300">Reel pronto!</p>
 
-          {/* Legenda para o Instagram */}
-          {headline && (
+          {/* Legenda longa para o Instagram */}
+          {caption && (
             <div className="w-full px-4 space-y-2">
               <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide">
                 Legenda do post
               </p>
-              <div className="bg-gray-800 border border-gray-600 rounded-xl p-4 text-base text-white leading-relaxed font-medium">
-                {headline}
+              <div className="bg-gray-800 border border-gray-600 rounded-xl p-4 text-sm text-gray-100 leading-relaxed whitespace-pre-line">
+                {caption}
               </div>
               <button
-                onClick={() => copyCaption(headline)}
+                onClick={() => copyCaption(caption)}
                 className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-colors"
               >
                 {copied ? 'Copiado!' : 'Copiar legenda'}

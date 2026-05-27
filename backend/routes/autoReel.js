@@ -166,43 +166,61 @@ async function resolveInstagramUrl(instagramUrl) {
   throw new Error('Nenhum vídeo encontrado. Verifique se o post é público.');
 }
 
-// ── Headline extractor ────────────────────────────────────────────────────────
-async function extractHeadline(imageBuf) {
+// ── Content extractor ─────────────────────────────────────────────────────────
+// Returns { headline, caption } from a single GPT-4o call.
+// headline → short viral text rendered on the video frame
+// caption  → long Instagram post caption with paragraphs + hashtags
+async function extractContent(imageBuf) {
   const base64 = imageBuf.toString('base64');
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: `Você cria headlines virais para o Instagram do @pedro_destrava.
-Essa headline vai aparecer em CIMA do vídeo editado E ser usada como legenda do post.
+        content: `Você cria conteúdo para o Instagram do @pedro_destrava. Analise o print e retorne um JSON com dois campos:
 
-EXEMPLOS REAIS que mais trouxeram seguidores (use como referência de tom e estrutura):
-- "finalmente achei o video de como sacar o pino do coquilho traseiro do guindaste zulaine 75 😂"
-- "pouca gente entende porque niloças tesla foi silenciado. segue para ver oque quase ninguem nota"
-- "nao importa se voce nunca aprendeu, eu te ensino! basta me seguir"
+"headline": texto CURTO que vai aparecer em CIMA do vídeo editado.
+- tudo em minúsculas
+- tom informal, de pessoa real
+- crie curiosidade ou humor sobre o conteúdo do vídeo
+- termine com CTA ("segue", "salva", "basta me seguir")
+- máximo 2 frases curtas
+- EXEMPLOS: "finalmente achei o video de como sacar o pino do coquilho traseiro do guindaste zulaine 75 😂" / "pouca gente entende porque niloças tesla foi silenciado. segue para ver oque quase ninguem nota"
 
-Analise o print e crie UMA headline seguindo EXATAMENTE esse padrão:
-1. tudo em MINÚSCULAS
-2. tom de pessoa real, informal, sem formalidade
-3. crie curiosidade ou humor específico sobre o conteúdo do vídeo
-4. termine sempre com CTA ("segue", "salva", "basta me seguir", "comenta aqui")
-5. máximo 2 frases curtas
-6. responda APENAS a headline, sem aspas, sem explicações`,
+"caption": legenda LONGA para o post do Instagram, em português, seguindo EXATAMENTE esta estrutura:
+SIGA @pedro_destrava para não perder nenhum conteúdo incrível 🌱🚀
+
+[Uma linha com o assunto principal do vídeo + emoji relacionado]
+
+[Parágrafo 1: descreva o que acontece no vídeo de forma clara e envolvente, 2-3 frases]
+
+[Parágrafo 2: aprofunde com um fato curioso, processo ou dado interessante sobre o assunto, 2-3 frases]
+
+[Parágrafo 3 opcional: conclusão inspiradora ou gancho emocional, 1-2 frases]
+
+[3 a 5 hashtags relevantes em português]
+
+Responda APENAS o JSON, sem markdown, sem explicações. Formato: {"headline":"...","caption":"..."}`,
       },
       {
         role: 'user',
         content: [
           { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
-          { type: 'text', text: 'Crie a legenda para esse vídeo.' },
+          { type: 'text', text: 'Analise esse print e gere o headline e a caption.' },
         ],
       },
     ],
-    max_tokens: 150,
+    max_tokens: 600,
+    response_format: { type: 'json_object' },
   });
-  const content = res.choices[0].message.content;
-  if (!content) throw new Error('OpenAI não retornou conteúdo (possível filtro de conteúdo)');
-  return content.trim().replace(/^["'""'']+|["'""'']+$/g, '');
+  const raw = res.choices[0].message.content;
+  if (!raw) throw new Error('OpenAI não retornou conteúdo');
+  const parsed = JSON.parse(raw);
+  const headline = (parsed.headline || '').trim().replace(/^["'""'']+|["'""'']+$/g, '');
+  const caption  = (parsed.caption  || '').trim();
+  if (!headline) throw new Error('OpenAI não gerou headline');
+  if (!caption)  throw new Error('OpenAI não gerou caption');
+  return { headline, caption };
 }
 
 // ── Video download ────────────────────────────────────────────────────────────
@@ -223,7 +241,7 @@ function streamDownload(url, destPath) {
 }
 
 // ── Main pipeline ─────────────────────────────────────────────────────────────
-async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, preHeadline }) {
+async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, preHeadline, preCaption }) {
   const sid = jobId;
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
   const bgPng    = path.join(os.tmpdir(), `${sid}_bg.png`);
@@ -241,13 +259,17 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
     setProgress(5, 'Resolvendo URL do Instagram…');
     const cdnUrl = await resolveInstagramUrl(instagramUrl);
 
-    // 2. Download video (+ extract headline if not pre-computed)
+    // 2. Download video (+ extract content if not pre-computed)
     setProgress(15, 'Baixando o vídeo…');
     let headline = preHeadline || null;
+    let caption  = preCaption  || null;
     const tasks = [streamDownload(cdnUrl, rawVideo)];
-    if (!headline) {
+    if (!headline || !caption) {
       setProgress(15, 'Analisando o print e baixando o vídeo…');
-      tasks.push(extractHeadline(printBuf).then(h => { headline = h; }));
+      tasks.push(extractContent(printBuf).then(({ headline: h, caption: c }) => {
+        if (!headline) headline = h;
+        if (!caption)  caption  = c;
+      }));
     }
     await Promise.all(tasks);
 
@@ -327,7 +349,7 @@ async function processAutoReel({ instagramUrl, printBuf, templateBuf, jobId, pre
 
     setProgress(100, 'Concluído!');
     cleanTmp();
-    if (job) { job.status = 'done'; job.outputPath = output; job.headline = headline; }
+    if (job) { job.status = 'done'; job.outputPath = output; job.headline = headline; job.caption = caption; }
   } catch (err) {
     cleanTmp();
     if (job) { job.status = 'error'; job.error = err.message; }
@@ -353,8 +375,8 @@ router.post(
       try { fs.unlinkSync(req.file.path); } catch {}
     }
     try {
-      const headline = await extractHeadline(printBuf);
-      res.json({ headline });
+      const { headline, caption } = await extractContent(printBuf);
+      res.json({ headline, caption });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
@@ -365,7 +387,7 @@ router.post(
   '/',
   upload.fields([{ name: 'print', maxCount: 1 }, { name: 'template', maxCount: 1 }]),
   async (req, res) => {
-    const { instagramUrl, headline: preHeadline } = req.body;
+    const { instagramUrl, headline: preHeadline, caption: preCaption } = req.body;
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'URL do Instagram é obrigatória' });
     if (!req.files?.print)     return res.status(400).json({ error: 'O print é obrigatório' });
 
@@ -390,6 +412,7 @@ router.post(
       templateBuf,
       jobId,
       preHeadline: preHeadline?.trim() || null,
+      preCaption:  preCaption?.trim()  || null,
     }).catch(err => console.error('autoReel error:', err.message));
 
     res.status(202).json({ jobId });
@@ -399,7 +422,7 @@ router.post(
 router.get('/:jobId', (req, res) => {
   const job = jobs.get(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'Job não encontrado' });
-  res.json({ status: job.status, progress: job.progress, message: job.message, error: job.error, headline: job.headline });
+  res.json({ status: job.status, progress: job.progress, message: job.message, error: job.error, headline: job.headline, caption: job.caption });
 });
 
 router.get('/:jobId/download', (req, res) => {
