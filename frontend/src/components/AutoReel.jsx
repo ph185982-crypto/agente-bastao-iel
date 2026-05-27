@@ -19,6 +19,7 @@ export default function AutoReel() {
   const [printDragging, setPrintDragging] = useState(false)
   const [preHeadline, setPreHeadline] = useState(null)
   const [preCaption, setPreCaption] = useState(null)
+  const [preCropBias, setPreCropBias] = useState(null)
   const [extracting, setExtracting] = useState(false)
 
   const printInputRef = useRef(null)
@@ -38,6 +39,7 @@ export default function AutoReel() {
     setError('')
     setPreHeadline(null)
     setPreCaption(null)
+    setPreCropBias(null)
 
     // Cancel any in-flight extraction
     if (extractAbortRef.current) extractAbortRef.current.abort()
@@ -54,9 +56,10 @@ export default function AutoReel() {
         signal: controller.signal,
       })
       if (res.ok) {
-        const { headline: h, caption: c } = await res.json()
+        const { headline: h, caption: c, cropBias: b } = await res.json()
         if (h) setPreHeadline(h)
         if (c) setPreCaption(c)
+        if (typeof b === 'number') setPreCropBias(b)
       }
     } catch (e) {
       if (e.name !== 'AbortError') console.warn('Pre-extract failed:', e.message)
@@ -96,6 +99,7 @@ export default function AutoReel() {
     if (template) form.append('template', template)
     if (preHeadline) form.append('headline', preHeadline)
     if (preCaption)  form.append('caption', preCaption)
+    if (preCropBias !== null) form.append('cropBias', String(preCropBias))
 
     try {
       const res = await fetch(`${API_BASE}/api/auto-reel`, { method: 'POST', body: form })
@@ -166,6 +170,7 @@ export default function AutoReel() {
     setCaption('')
     setPreHeadline(null)
     setPreCaption(null)
+    setPreCropBias(null)
     setExtracting(false)
   }
 
