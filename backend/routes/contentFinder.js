@@ -131,50 +131,44 @@ async function buildHeadlineOverlay(headline, overlayPath) {
 }
 
 // ── Agent 1 — Buscador ────────────────────────────────────────────────────────
-async function searchHashtag(hashtag) {
-  const tag = hashtag.replace(/^#/, '').trim();
-  console.log(`[contentFinder] Buscando #${tag}…`);
+async function searchUserReels(username) {
+  const user = username.replace(/^@/, '').trim();
+  console.log(`[contentFinder] Buscando reels de @${user}…`);
 
-  const { data } = await axios.get(
-    'https://instagram-scraper-api2.p.rapidapi.com/v1/hashtag',
+  const { data } = await axios.post(
+    'https://instagram-scraper-stable-api.p.rapidapi.com/get_ig_user_reels.php',
+    new URLSearchParams({ username_or_url: user, amount: '12' }).toString(),
     {
-      params: { hashtag: tag },
       headers: {
-        'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com',
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+        'x-rapidapi-host': 'instagram-scraper-stable-api.p.rapidapi.com',
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY_STABLE,
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      timeout: 15000,
+      timeout: 20000,
     }
   );
 
-  const items = data?.data?.items || data?.items || [];
+  const reels = data?.reels || [];
 
-  return items
-    .filter(item => {
-      const isVideo = item.media_type === 2 || item.is_video === true;
-      const likes   = item.like_count  || 0;
-      const views   = item.play_count  || item.view_count || 0;
-      return isVideo && (views >= 50000 || likes >= 5000);
+  return reels
+    .map(r => {
+      const m = r?.node?.media || r?.node || {};
+      const code  = m.code || '';
+      const likes = m.like_count  || 0;
+      const views = m.play_count  || m.view_count || 0;
+      const thumb = m.image_versions2?.candidates?.[0]?.url || null;
+      return { code, likes, views, thumb };
     })
+    .filter(r => r.code && (r.views >= 50000 || r.likes >= 5000))
     .slice(0, 5)
-    .map(item => {
-      const code = item.code || item.shortcode || '';
-      const thumb =
-        item.thumbnail_url ||
-        item.display_url   ||
-        item.image_versions2?.candidates?.[0]?.url ||
-        item.image_versions?.items?.[0]?.url ||
-        null;
-      return {
-        url:             `https://www.instagram.com/reel/${code}/`,
-        videoUrl:        item.video_url || null,
-        thumbnail:       thumb,
-        likes:           item.like_count || 0,
-        views:           item.play_count || item.view_count || 0,
-        originalCaption: item.caption?.text || '',
-      };
-    })
-    .filter(item => item.url && item.url !== 'https://www.instagram.com/reel//');
+    .map(r => ({
+      url:             `https://www.instagram.com/reel/${r.code}/`,
+      videoUrl:        null,
+      thumbnail:       r.thumb,
+      likes:           r.likes,
+      views:           r.views,
+      originalCaption: '',
+    }));
 }
 
 // ── Agent 2 — Analisador ──────────────────────────────────────────────────────
@@ -275,9 +269,9 @@ Gere headline impactante e legenda longa para este conteúdo.`,
 }
 
 // ── Main search pipeline (synchronous, parallel) ──────────────────────────────
-async function runSearch(hashtags) {
-  // Agent 1: search all hashtags in parallel
-  const searchResults = await Promise.allSettled(hashtags.map(tag => searchHashtag(tag)));
+async function runSearch(usernames) {
+  // Agent 1: search all accounts in parallel
+  const searchResults = await Promise.allSettled(usernames.map(u => searchUserReels(u)));
 
   const candidates = [];
   for (const r of searchResults) {
@@ -341,16 +335,17 @@ async function runSearch(hashtags) {
 
 // POST /api/content-finder/search — runs full pipeline synchronously, returns JSON
 router.post('/search', async (req, res) => {
-  const { hashtags } = req.body;
-  if (!Array.isArray(hashtags) || hashtags.length === 0) {
-    return res.status(400).json({ error: 'Envie pelo menos uma hashtag' });
+  const { usernames, hashtags } = req.body;
+  const targets = usernames || hashtags; // backward-compat
+  if (!Array.isArray(targets) || targets.length === 0) {
+    return res.status(400).json({ error: 'Envie pelo menos um perfil (@usuario)' });
   }
-  if (!process.env.RAPIDAPI_KEY) {
-    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
+  if (!process.env.RAPIDAPI_KEY_STABLE) {
+    return res.status(500).json({ error: 'RAPIDAPI_KEY_STABLE não configurada no servidor' });
   }
 
   try {
-    const results = await runSearch(hashtags);
+    const results = await runSearch(targets);
     res.json({ results });
   } catch (e) {
     console.error('[contentFinder] search error:', e.message);

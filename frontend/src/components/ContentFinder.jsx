@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { API_BASE } from '../utils/api'
 
-const PRESET_TAGS = [
-  'tecnologia', 'curiosidades', 'inovação', 'China', 'NASA',
-  'história', 'ciência', 'futuro', 'engenharia', 'espaço',
+const PRESET_USERS = [
+  'bbcbrasil', 'natgeo', 'nasa', 'vice', 'wired',
+  'mit', 'sciencenews', 'theguardian', 'techinsider', 'businessinsider',
 ]
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -40,9 +40,9 @@ function RiskBadge({ label, level }) {
 function ResultCard({ result, onApprove }) {
   const [headline, setHeadline] = useState(() => result.headline || '')
   const [caption, setCaption]   = useState(() => result.caption  || '')
-  const [editStatus,   setEditStatus]   = useState('idle')
-  const [editError,    setEditError]    = useState(null)
-  const [blobUrl,      setBlobUrl]      = useState(null)
+  const [editStatus, setEditStatus] = useState('idle')
+  const [editError, setEditError]   = useState(null)
+  const [blobUrl, setBlobUrl]       = useState(null)
   const [copied, setCopied] = useState(false)
 
   async function handlePrepare() {
@@ -68,7 +68,6 @@ function ResultCard({ result, onApprove }) {
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      {/* Top: thumbnail + scores */}
       <div className="flex gap-3 p-4">
         {result.thumbnail ? (
           <img
@@ -96,7 +95,7 @@ function ResultCard({ result, onApprove }) {
               {result.views > 0 && <span>👁 {(result.views).toLocaleString('pt-BR')}</span>}
             </div>
           </div>
-          <ScoreBar score={result.viral_score  || 0} label="Viral score" />
+          <ScoreBar score={result.viral_score   || 0} label="Viral score" />
           <ScoreBar score={result.fit_for_profile || 0} label="Fit perfil" />
           <div className="flex gap-1.5 flex-wrap">
             <RiskBadge label="Ban"       level={result.ban_risk       || 'baixo'} />
@@ -105,7 +104,6 @@ function ResultCard({ result, onApprove }) {
         </div>
       </div>
 
-      {/* Bottom: editable fields + actions */}
       <div className="border-t border-gray-800 px-4 pt-3 pb-4 space-y-3">
         <div>
           <label className="block text-xs font-medium text-gray-400 mb-1.5">Headline (vídeo)</label>
@@ -129,7 +127,6 @@ function ResultCard({ result, onApprove }) {
           />
         </div>
 
-        {/* Processing state */}
         {editStatus === 'processing' && (
           <div className="flex items-center gap-2 text-xs text-indigo-400">
             <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -140,14 +137,12 @@ function ResultCard({ result, onApprove }) {
           </div>
         )}
 
-        {/* Error */}
         {editStatus === 'error' && editError && (
           <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">
             Erro: {editError}
           </p>
         )}
 
-        {/* Action buttons */}
         <div className="flex gap-2">
           {(editStatus === 'idle' || editStatus === 'error') && (
             <button
@@ -183,7 +178,6 @@ function ResultCard({ result, onApprove }) {
           )}
         </div>
 
-        {/* Link to original */}
         <a
           href={result.url}
           target="_blank"
@@ -199,28 +193,28 @@ function ResultCard({ result, onApprove }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ContentFinder() {
-  const [selectedTags, setSelectedTags] = useState(['tecnologia', 'curiosidades'])
-  const [customTag, setCustomTag]       = useState('')
-  const [status, setStatus]     = useState('idle')  // idle | processing | done | error
-  const [results, setResults]   = useState([])
-  const [error, setError]       = useState('')
+  const [selectedUsers, setSelectedUsers] = useState(['bbcbrasil', 'natgeo', 'nasa'])
+  const [customUser, setCustomUser]       = useState('')
+  const [status, setStatus]   = useState('idle')
+  const [results, setResults] = useState([])
+  const [error, setError]     = useState('')
 
-  function toggleTag(tag) {
-    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
+  function toggleUser(u) {
+    setSelectedUsers(prev => prev.includes(u) ? prev.filter(x => x !== u) : [...prev, u])
   }
 
-  function addCustomTag() {
-    const tag = customTag.trim().replace(/^#/, '')
-    if (tag && !selectedTags.includes(tag)) setSelectedTags(prev => [...prev, tag])
-    setCustomTag('')
+  function addCustomUser() {
+    const u = customUser.trim().replace(/^@/, '')
+    if (u && !selectedUsers.includes(u)) setSelectedUsers(prev => [...prev, u])
+    setCustomUser('')
   }
 
-  function removeTag(tag) {
-    setSelectedTags(prev => prev.filter(t => t !== tag))
+  function removeUser(u) {
+    setSelectedUsers(prev => prev.filter(x => x !== u))
   }
 
   async function handleSearch() {
-    if (selectedTags.length === 0) return
+    if (selectedUsers.length === 0) return
     setStatus('processing')
     setResults([])
     setError('')
@@ -229,7 +223,7 @@ export default function ContentFinder() {
       const res = await fetch(`${API_BASE}/api/content-finder/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hashtags: selectedTags }),
+        body: JSON.stringify({ usernames: selectedUsers }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erro na busca')
@@ -272,31 +266,31 @@ export default function ContentFinder() {
   return (
     <div className="max-w-lg mx-auto w-full space-y-6">
 
-      {/* Header */}
       <div className="text-center">
         <h1 className="text-xl font-bold text-white mb-1">Reciclagem de Conteúdo</h1>
         <p className="text-sm text-gray-400">
-          4 agentes de IA buscam, analisam, criam copy e editam o vídeo pronto para postar
+          4 agentes de IA buscam reels virais de perfis do nicho, analisam e entregam vídeo pronto
         </p>
       </div>
 
-      {/* ── Search section ── */}
       {!isProcessing && !isDone && (
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-2">Temas / hashtags</label>
+            <label className="block text-xs font-medium text-gray-400 mb-2">
+              Perfis para buscar reels virais
+            </label>
 
             <div className="flex flex-wrap gap-2 mb-3">
-              {PRESET_TAGS.map(tag => (
+              {PRESET_USERS.map(u => (
                 <button
-                  key={tag}
-                  onClick={() => toggleTag(tag)}
+                  key={u}
+                  onClick={() => toggleUser(u)}
                   className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border
-                    ${selectedTags.includes(tag)
+                    ${selectedUsers.includes(u)
                       ? 'bg-indigo-600 border-indigo-500 text-white'
                       : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'}`}
                 >
-                  #{tag}
+                  @{u}
                 </button>
               ))}
             </div>
@@ -304,15 +298,15 @@ export default function ContentFinder() {
             <div className="flex gap-2">
               <input
                 type="text"
-                value={customTag}
-                onChange={e => setCustomTag(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addCustomTag()}
-                placeholder="Adicionar hashtag customizada…"
+                value={customUser}
+                onChange={e => setCustomUser(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addCustomUser()}
+                placeholder="@usuario do Instagram…"
                 className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-colors"
               />
               <button
-                onClick={addCustomTag}
-                disabled={!customTag.trim()}
+                onClick={addCustomUser}
+                disabled={!customUser.trim()}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors"
               >
                 +
@@ -320,17 +314,17 @@ export default function ContentFinder() {
             </div>
           </div>
 
-          {selectedTags.length > 0 && (
+          {selectedUsers.length > 0 && (
             <div>
-              <p className="text-xs text-gray-500 mb-2">Selecionadas ({selectedTags.length}):</p>
+              <p className="text-xs text-gray-500 mb-2">Selecionados ({selectedUsers.length}):</p>
               <div className="flex flex-wrap gap-1.5">
-                {selectedTags.map(tag => (
+                {selectedUsers.map(u => (
                   <span
-                    key={tag}
+                    key={u}
                     className="flex items-center gap-1 bg-indigo-900/30 border border-indigo-700/50 text-indigo-300 text-xs px-2 py-0.5 rounded-full"
                   >
-                    #{tag}
-                    <button onClick={() => removeTag(tag)} className="hover:text-white leading-none ml-0.5">×</button>
+                    @{u}
+                    <button onClick={() => removeUser(u)} className="hover:text-white leading-none ml-0.5">×</button>
                   </span>
                 ))}
               </div>
@@ -343,22 +337,21 @@ export default function ContentFinder() {
 
           <button
             onClick={handleSearch}
-            disabled={selectedTags.length === 0}
+            disabled={selectedUsers.length === 0}
             className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
           >
-            🔍 Buscar Conteúdos
+            🔍 Buscar Reels Virais
           </button>
 
           {!error && (
             <div className="text-center py-4 text-gray-600 text-sm">
               <p className="text-3xl mb-2">♻️</p>
-              <p>Selecione hashtags e clique em buscar para encontrar conteúdos<br />com potencial viral para o seu perfil</p>
+              <p>Selecione perfis do seu nicho e clique em buscar.<br />A IA filtra reels virais e gera copy pronto para postar.</p>
             </div>
           )}
         </div>
       )}
 
-      {/* ── Processing state ── */}
       {isProcessing && (
         <div className="flex flex-col items-center gap-4 py-10">
           <svg className="w-10 h-10 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
@@ -366,13 +359,12 @@ export default function ContentFinder() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
           <p className="text-sm text-gray-400 text-center">
-            Buscando e analisando conteúdos…<br />
+            Buscando e analisando reels virais…<br />
             <span className="text-xs text-gray-600">Agentes 1 → 2 → 3 em execução. Até 1 minuto.</span>
           </p>
         </div>
       )}
 
-      {/* ── Results ── */}
       {isDone && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -392,7 +384,7 @@ export default function ContentFinder() {
           {results.length === 0 && (
             <div className="text-center py-8 text-gray-500 text-sm bg-gray-900 rounded-2xl border border-gray-800">
               <p className="text-2xl mb-2">🔍</p>
-              <p>Tente outras hashtags ou ampliar o nicho de busca.</p>
+              <p>Tente outros perfis ou perfis com mais reels virais recentes.</p>
             </div>
           )}
 
