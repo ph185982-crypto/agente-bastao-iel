@@ -25,6 +25,7 @@ app.use('/api/edit-reel', require('./routes/editReel'));
 app.use('/api/auto-reel', require('./routes/autoReel'));
 app.use('/api/generate', require('./routes/generate'));
 app.use('/api/chat', require('./routes/chat'));
+app.use('/api/content-finder', require('./routes/contentFinder'));
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })

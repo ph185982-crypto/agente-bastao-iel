@@ -2,10 +2,12 @@ import { useState } from 'react'
 import Header from './components/Header'
 import AutoReel from './components/AutoReel'
 import AgentChat from './components/AgentChat'
+import ContentFinder from './components/ContentFinder'
 
 const TABS = [
-  { id: 'reel', label: 'Criar Reel' },
-  { id: 'agent', label: 'Agente IA' },
+  { id: 'reel',    label: 'Criar Reel' },
+  { id: 'recycle', label: '♻️ Reciclagem' },
+  { id: 'agent',   label: 'Agente IA' },
 ]
 
 export default function App() {
@@ -42,6 +44,12 @@ export default function App() {
             </p>
           </div>
           <AutoReel />
+        </main>
+      )}
+
+      {tab === 'recycle' && (
+        <main className="max-w-2xl mx-auto w-full px-4 py-10">
+          <ContentFinder />
         </main>
       )}
 
