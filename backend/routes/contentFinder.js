@@ -112,47 +112,38 @@ async function resolveInstagramUrl(url) {
 }
 
 // ── Layout constants for full-frame composite ─────────────────────────────────
-const PROFILE_H  = 240;   // height reserved for profile header (top of frame)
-const HEADLINE_H = 320;   // height reserved for headline text block
-const VIDEO_Y    = PROFILE_H + HEADLINE_H; // y-offset where video starts = 560
-const VIDEO_H    = H - VIDEO_Y - 20;       // video slot height = 1340
+const PROFILE_H  = 240;
+const HEADLINE_H = 320;
+const VIDEO_Y    = PROFILE_H + HEADLINE_H; // 560
+const VIDEO_H    = H - VIDEO_Y - 20;       // 1340
 
 async function buildHeadlineOverlay(headline, overlayPath) {
   const lines = wrapText(headline, 28);
   const barH = Math.max(140, 36 + lines.length * LINE_H + 24);
-
   const textEls = lines.map((line, i) =>
     `<text x="${H_PAD}" y="${36 + (i + 1) * LINE_H}" font-family="${FONT_FAMILY}" font-size="${FONT_SIZE}" font-weight="bold" fill="white" stroke="black" stroke-width="1">${escXml(line)}</text>`
   ).join('');
-
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${barH}">
     <rect width="${W}" height="${barH}" fill="black" fill-opacity="0.72"/>
     ${textEls}
   </svg>`;
-
   await sharp(Buffer.from(svg)).png().toFile(overlayPath);
   return { barH };
 }
 
-// Builds the full 1080x1920 frame: template header + headline text block (white bg)
 async function buildReelFrame(templateBuf, headline, framePath) {
   const TXT_FONT_SIZE = 58;
   const TXT_LINE_H    = 84;
-
   const lines = wrapText(headline, 22);
   const totalTextH = lines.length * TXT_LINE_H;
   const textTopY   = PROFILE_H + (HEADLINE_H - totalTextH) / 2;
-
   const textEls = lines.map((line, i) =>
     `<text x="${W / 2}" y="${textTopY + (i + 1) * TXT_LINE_H}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
   ).join('');
-
-  // Full white canvas with headline text positioned in the middle section
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
     <rect width="${W}" height="${H}" fill="white"/>
     ${textEls}
   </svg>`;
-
   const frameBuf = await sharp(Buffer.from(svg))
     .composite([{
       input: await sharp(templateBuf)
@@ -162,115 +153,161 @@ async function buildReelFrame(templateBuf, headline, framePath) {
     }])
     .png()
     .toBuffer();
-
   await sharp(frameBuf).toFile(framePath);
 }
 
-// ── Agent 1 — Buscador ────────────────────────────────────────────────────────
+// ── Agent 1 — Buscador por hashtags ──────────────────────────────────────────
+
+// Hashtag pools por tema selecionado no frontend
+const HASHTAG_POOLS = {
+  ciencia:      ['ciencia', 'science', 'biologia', 'fisica', 'quimica'],
+  tecnologia:   ['tecnologia', 'tech', 'inovacao', 'futuro', 'robotica'],
+  historia:     ['historia', 'history', 'curiosidades', 'fatos', 'vocesabia'],
+  espaco:       ['espaco', 'astronomy', 'universe', 'cosmos', 'nasa'],
+  china:        ['china', 'chinesa', 'inovacaochina', 'shenzhen', 'innovation'],
+  engenharia:   ['engenharia', 'engineering', 'construcao', 'arquitetura', 'design'],
+  curiosidades: ['curiosidades', 'vocesabia', 'aprenda', 'fatosincrivel', 'sabiacuriosa'],
+  invencoes:    ['invencao', 'invention', 'descoberta', 'discovery', 'genial'],
+};
+
+// Palavras que indicam conteúdo educativo/informativo (PT + EN)
+const EDUCATION_KEYWORDS = [
+  'você sabia', 'ninguém te contou', 'descoberta', 'incrível', 'impressionante',
+  'a china', 'a nasa', 'a ciência', 'engenharia', 'tecnologia', 'sabia que',
+  'fato', 'história real', 'antes de', 'o segredo', 'pesquisa', 'estudo',
+  'scientist', 'engineer', 'innovation', 'technology', 'history', 'science',
+  'discovery', 'invention', 'amazing', 'incredible', 'never knew', 'did you know',
+];
+
+// Palavras que indicam spam/comercial — excluir antes do GPT
+const SPAM_WORDS = [
+  'sorteio', 'giveaway', 'link na bio para comprar', 'promoção',
+  'desconto', 'venda', 'preço', 'oferta', 'compre agora', 'whatsapp',
+  'clique no link', 'acesse o link',
+];
+
+function calcViralScore(post) {
+  let score = 0;
+  const views    = post.views    || 0;
+  const likes    = post.likes    || 0;
+  const comments = post.comments || 0;
+  const duration = post.duration || 0;
+
+  // Views
+  if (views > 1000000)     score += 40;
+  else if (views > 500000) score += 30;
+  else if (views > 100000) score += 20;
+  else if (views > 50000)  score += 10;
+
+  // Ratio likes/views (engajamento)
+  const ratio = views > 0 ? likes / views : 0;
+  if (ratio > 0.05)      score += 20;
+  else if (ratio > 0.03) score += 15;
+  else if (ratio > 0.01) score += 10;
+
+  // Comentários (debate/curiosidade)
+  if (comments > 1000)     score += 20;
+  else if (comments > 500) score += 15;
+  else if (comments > 100) score += 10;
+
+  // Duração ideal para Reels (15–60s)
+  if (duration >= 15 && duration <= 60) score += 20;
+  else if (duration > 0 && duration <= 90) score += 10;
+
+  return score; // máximo ~100
+}
+
+// Retorna motivo de exclusão ou null se aprovado
+function shouldExclude(post) {
+  const cap = (post.caption || '').toLowerCase();
+
+  if (SPAM_WORDS.some(w => cap.includes(w)))
+    return `spam/comercial`;
+
+  // Mais de 10 emojis = baixa qualidade
+  const emojiCount = (cap.match(/\p{Emoji_Presentation}/gu) || []).length;
+  if (emojiCount > 10)
+    return `excesso de emojis (${emojiCount})`;
+
+  if (post.duration > 0 && post.duration < 10)
+    return `vídeo muito curto (${post.duration.toFixed(1)}s)`;
+
+  if (post.followers > 0 && post.followers < 1000)
+    return `conta pequena (${post.followers} seguidores)`;
+
+  if (post.is_ad)
+    return 'é anúncio (is_ad)';
+
+  return null;
+}
+
+// Heurística simples de idioma PT
+function isPtContent(caption) {
+  const text = caption || '';
+  if (/[áéíóúãõâêôçÁÉÍÓÚÃÕÂÊÔÇ]/.test(text)) return true;
+  if (/\b(você|com|não|mas|para|que|uma|esse|essa|isso|por|como|mais|também|são|foi|era|tem|ser|fazer|ver|quando|onde)\b/i.test(text)) return true;
+  return false;
+}
 
 function rapidApiError(e) {
   const msg = e.response?.data?.message || e.message;
   if (e.response?.status === 429) return new Error(`Cota mensal da API esgotada: ${msg}`);
-  if (e.response?.status === 403) return new Error(`Chave não assinada nesta API: ${msg}`);
+  if (e.response?.status === 403) return new Error(`Chave não assinada nesta API (${msg})`);
   return new Error(msg);
 }
 
-// Fonte primária: instagram-looter2 (usa RAPIDAPI_KEY)
-async function searchUserReelsLooter(user) {
-  const looterHeaders = {
-    'x-rapidapi-host': 'instagram-looter2.p.rapidapi.com',
-    'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-  };
-
-  const { data: profile } = await axios.get(
-    'https://instagram-looter2.p.rapidapi.com/profile',
-    { params: { username: user }, headers: looterHeaders, timeout: 25000 }
-  );
-  const userId = profile?.id;
-  if (!userId) throw new Error(`Perfil @${user} não encontrado`);
-
+// Busca posts por hashtag via instagram-scraper-api2
+async function searchHashtag(hashtag) {
+  console.log(`[A1] Buscando #${hashtag}…`);
   const { data } = await axios.get(
-    'https://instagram-looter2.p.rapidapi.com/reels',
-    { params: { id: userId, count: 12 }, headers: looterHeaders, timeout: 25000 }
-  );
-
-  return (data?.items || []).map(item => {
-    const m = item?.media || item || {};
-    return {
-      code:     m.code || '',
-      likes:    m.like_count || 0,
-      views:    m.play_count || m.view_count || 0,
-      caption:  m.caption?.text || '',
-      videoUrl: m.video_versions?.[0]?.url || null,
-      username: user,
-    };
-  });
-}
-
-// Fallback: instagram-scraper-stable-api (usa RAPIDAPI_KEY_STABLE)
-async function searchUserReelsStable(user) {
-  const { data } = await axios.post(
-    'https://instagram-scraper-stable-api.p.rapidapi.com/get_ig_user_reels.php',
-    new URLSearchParams({ username_or_url: user, amount: '12' }).toString(),
+    'https://instagram-scraper-api2.p.rapidapi.com/v1/hashtag',
     {
+      params: { hashtag },
       headers: {
-        'x-rapidapi-host': 'instagram-scraper-stable-api.p.rapidapi.com',
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY_STABLE,
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com',
+        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
       },
       timeout: 20000,
     }
   );
 
-  return (data?.reels || []).map(r => {
-    const m = r?.node?.media || r?.node || {};
-    return {
-      code:     m.code || '',
-      likes:    m.like_count || 0,
-      views:    m.play_count || m.view_count || 0,
-      caption:  m.caption?.text || '',
-      videoUrl: null,
-      username: user,
-    };
-  });
-}
+  // API pode variar a estrutura — tentamos múltiplas chaves
+  const items = (
+    data?.data?.medias        ||
+    data?.data?.top_posts     ||
+    data?.data?.items         ||
+    data?.medias              ||
+    data?.items               ||
+    []
+  );
 
-async function searchUserReels(username) {
-  const user = username.replace(/^@/, '').trim();
-  console.log(`[contentFinder] Buscando reels de @${user}…`);
+  const posts = items
+    .filter(item => {
+      const m = item?.media || item;
+      return m.video_versions?.length > 0 || m.is_video === true || m.media_type === 2;
+    })
+    .map(item => {
+      const m = item?.media || item;
+      const rawCap = m.caption?.text ?? m.caption_text ?? m.caption ?? '';
+      const cap = typeof rawCap === 'string' ? rawCap : '';
+      const user = m.user || m.owner || {};
+      return {
+        code:      m.code || m.shortcode || '',
+        likes:     m.like_count || 0,
+        views:     m.play_count || m.video_view_count || m.view_count || 0,
+        comments:  m.comment_count || 0,
+        duration:  m.video_duration || m.duration || 0,
+        caption:   cap,
+        videoUrl:  m.video_versions?.[0]?.url || null,
+        username:  user.username || user.pk?.toString() || '',
+        followers: user.follower_count || 0,
+        is_ad:     m.is_ad || false,
+      };
+    })
+    .filter(p => p.code);
 
-  let reels;
-  try {
-    reels = await searchUserReelsLooter(user);
-  } catch (e) {
-    const primaryErr = rapidApiError(e);
-    console.warn(`[contentFinder] looter2 falhou para @${user}: ${primaryErr.message}`);
-    if (!process.env.RAPIDAPI_KEY_STABLE) throw primaryErr;
-    try {
-      reels = await searchUserReelsStable(user);
-    } catch (e2) {
-      throw rapidApiError(e2);
-    }
-  }
-
-  const valid = reels.filter(r => r.code);
-  let selected = valid.filter(r => r.views >= 50000 || r.likes >= 5000);
-  // Perfis menores: se nada passou no corte, usa os 3 reels com mais views
-  if (selected.length === 0) {
-    selected = [...valid].sort((a, b) => b.views - a.views).slice(0, 3);
-  }
-
-  return selected.slice(0, 5).map(r => ({
-    url:             `https://www.instagram.com/reel/${r.code}/`,
-    videoUrl:        r.videoUrl,
-    thumbnail:       null,
-    likes:           r.likes,
-    views:           r.views,
-    originalCaption: r.caption
-      ? `Caption original: "${r.caption.slice(0, 400)}" — @${r.username}, ${r.views.toLocaleString()} views, ${r.likes.toLocaleString()} likes`
-      : `Reel do perfil @${r.username} — ${r.views.toLocaleString()} views, ${r.likes.toLocaleString()} likes`,
-    sourceUsername:  r.username,
-  }));
+  console.log(`[A1] #${hashtag}: ${posts.length} vídeos encontrados`);
+  return posts;
 }
 
 // ── Agent 2 — Analisador ──────────────────────────────────────────────────────
@@ -290,7 +327,7 @@ async function analyzeContent(candidate) {
   "copyright_reasons": [],
   "approved": true | false,
   "reject_reason": "string ou null",
-  "content_category": "tecnologia" | "curiosidade" | "história" | "ciência" | "negócios" | "outro",
+  "content_category": "tecnologia" | "curiosidade" | "história" | "ciência" | "engenharia" | "espaço" | "negócios" | "outro",
   "fit_for_profile": número de 0 a 100
 }
 
@@ -299,18 +336,19 @@ Perfil do criador (@pedro_destrava):
 - Tom: informativo, surpreendente, "o que ninguém te contou"
 - Audiência: 175k seguidores brasileiros, adultos
 - Conteúdos que mais viralizam: tecnologia retrô vs atual, inovações chinesas, curiosidades históricas, ciência aplicada
-- NÃO aprovar: conteúdo político, violento, sexual, músicas famosas (alto risco copyright), humor genérico
+- NÃO aprovar: conteúdo político, violento, sexual, músicas famosas (alto risco copyright), humor genérico, vlogs pessoais
 - APROVAR se viral_score >= 55 E ban_risk != "alto" E fit_for_profile >= 50
-- Perfis de mídia/ciência/tecnologia têm conteúdo geralmente seguro — assuma baixo risco se não há indicação contrária`,
+- Perfis de mídia/ciência/tecnologia são geralmente seguros — assuma baixo risco se não há indicação contrária`,
       },
       {
         role: 'user',
         content: `Perfil de origem: @${candidate.sourceUsername || 'desconhecido'}
 Views: ${(candidate.views || 0).toLocaleString('pt-BR')}
 Likes: ${(candidate.likes || 0).toLocaleString('pt-BR')}
-Contexto: ${candidate.originalCaption || '(sem caption)'}
+Comentários: ${(candidate.comments || 0).toLocaleString('pt-BR')}
+Contexto/Caption: ${candidate.originalCaption || '(sem caption)'}
 
-Com base no perfil de origem e métricas, avalie o potencial viral e adequação para @pedro_destrava.`,
+Com base no perfil e métricas, avalie o potencial viral e adequação para @pedro_destrava.`,
       },
     ],
     max_tokens: 400,
@@ -361,92 +399,190 @@ Gere headline impactante e legenda longa para este conteúdo.`,
   };
 }
 
-// ── Main search pipeline (synchronous, parallel) ──────────────────────────────
-async function runSearch(usernames) {
-  // Agent 1: search all accounts in parallel
-  const searchResults = await Promise.allSettled(usernames.map(u => searchUserReels(u)));
+// ── Main search pipeline ──────────────────────────────────────────────────────
+async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lang = 'any' }) {
+  // ── A1: seleciona hashtags dos temas escolhidos ───────────────────────────
+  const allTags = themes.flatMap(t => HASHTAG_POOLS[t] || []);
+  // fallback: se nenhum tema, usa primeiros de cada pool
+  if (allTags.length === 0) Object.values(HASHTAG_POOLS).forEach(p => allTags.push(p[0]));
+  const unique = [...new Set(allTags)];
+  const toSearch = unique.sort(() => Math.random() - 0.5).slice(0, 5);
+  console.log(`[A1] Hashtags sorteadas: ${toSearch.join(', ')}`);
 
-  const candidates = [];
-  const searchErrors = [];
-  for (const r of searchResults) {
-    if (r.status === 'fulfilled') candidates.push(...r.value);
-    else {
-      console.warn('[contentFinder] busca falhou:', r.reason?.message);
-      searchErrors.push(r.reason?.message || 'erro desconhecido');
+  // Busca paralela; falhas individuais são silenciosas
+  const searchResults = await Promise.allSettled(toSearch.map(async h => {
+    try { return await searchHashtag(h); }
+    catch (e) {
+      const err = rapidApiError(e);
+      console.warn(`[A1][skip] #${h} falhou: ${err.message}`);
+      throw err;
     }
-  }
-
-  // Se TODAS as buscas falharam, informa o motivo real ao usuário
-  if (candidates.length === 0 && searchErrors.length > 0) {
-    throw new Error(searchErrors[0]);
-  }
-  if (candidates.length === 0) return [];
-
-  // Deduplicate by URL, cap at 10
-  const unique = [...new Map(candidates.map(c => [c.url, c])).values()].slice(0, 10);
-  console.log(`[contentFinder] ${unique.length} candidatos únicos para analisar`);
-
-  // Agent 2: analyze all in parallel
-  const analyses = await Promise.allSettled(unique.map(c => analyzeContent(c)));
-  const analyzed = unique.map((c, i) => ({
-    ...c,
-    ...(analyses[i].status === 'fulfilled' ? analyses[i].value : { approved: false }),
   }));
 
-  const approved = analyzed.filter(a => a.approved === true);
-  console.log(`[contentFinder] ${approved.length}/${analyzed.length} aprovados pelo Agente 2`);
+  const rawPosts = [];
+  let allFailed = true;
+  let firstError = null;
+  for (const r of searchResults) {
+    if (r.status === 'fulfilled') { rawPosts.push(...r.value); allFailed = false; }
+    else if (!firstError) firstError = r.reason;
+  }
+  if (allFailed && firstError) throw firstError;
+  console.log(`[A1] Total bruto: ${rawPosts.length} posts`);
 
-  if (approved.length === 0) return [];
+  // ── Pré-filtros (antes do GPT-4o) ────────────────────────────────────────
+  const candidates = [];
+  for (const post of rawPosts) {
+    // 1. Filtros de exclusão automática
+    const excl = shouldExclude(post);
+    if (excl) {
+      console.log(`[A1][excl] ${post.code}: ${excl}`);
+      continue;
+    }
 
-  // Agent 3: generate copy for all approved in parallel
-  const copies = await Promise.allSettled(approved.map(c => generateCopy(c, c)));
+    // 2. Views mínimas
+    if (post.views < minViews) {
+      console.log(`[A1][views] ${post.code}: ${post.views.toLocaleString()} < mín ${minViews.toLocaleString()}`);
+      continue;
+    }
 
-  const results = [];
-  for (let i = 0; i < approved.length; i++) {
-    const item = approved[i];
-    if (copies[i].status !== 'fulfilled') continue;
-    const copy = copies[i].value;
-    if (!copy.headline) continue;
+    // 3. Engajamento mínimo
+    const ratio = post.views > 0 ? post.likes / post.views : 0;
+    if (ratio < minEngagement) {
+      console.log(`[A1][eng] ${post.code}: ${(ratio * 100).toFixed(1)}% < mín ${(minEngagement * 100).toFixed(1)}%`);
+      continue;
+    }
 
-    results.push({
-      index:            results.length,
-      url:              item.url,
-      videoUrl:         item.videoUrl,
-      thumbnail:        item.thumbnail,
-      likes:            item.likes,
-      views:            item.views,
-      originalCaption:  item.originalCaption,
-      viral_score:      item.viral_score      || 0,
-      viral_reasons:    item.viral_reasons    || [],
-      ban_risk:         item.ban_risk         || 'baixo',
-      ban_reasons:      item.ban_reasons      || [],
-      copyright_risk:   item.copyright_risk   || 'baixo',
-      copyright_reasons: item.copyright_reasons || [],
-      content_category: item.content_category || 'outro',
-      fit_for_profile:  item.fit_for_profile  || 0,
-      headline:         copy.headline,
-      caption:          copy.caption,
+    // 4. Filtro de idioma
+    if (lang === 'pt' && !isPtContent(post.caption)) {
+      console.log(`[A1][lang] ${post.code}: conteúdo não-PT ignorado`);
+      continue;
+    }
+
+    // 5. Keywords educativas (boost de score)
+    const capLower = (post.caption || '').toLowerCase();
+    const hasEduKw = EDUCATION_KEYWORDS.some(k => capLower.includes(k));
+
+    // 6. Score preliminar
+    const preScore = calcViralScore(post) + (hasEduKw ? 10 : 0);
+    console.log(`[A1] ${post.code}: preScore=${preScore}, edu=${hasEduKw}, views=${post.views.toLocaleString()}, eng=${(ratio * 100).toFixed(1)}%`);
+
+    if (preScore < 40) {
+      console.log(`[A1][score] ${post.code}: score ${preScore} < 40, descartado`);
+      continue;
+    }
+
+    candidates.push({
+      url:             `https://www.instagram.com/reel/${post.code}/`,
+      videoUrl:        post.videoUrl,
+      thumbnail:       null,
+      likes:           post.likes,
+      views:           post.views,
+      comments:        post.comments,
+      preScore,
+      originalCaption: post.caption
+        ? `Caption original: "${post.caption.slice(0, 400)}" — @${post.username}, ${post.views.toLocaleString()} views, ${post.likes.toLocaleString()} likes`
+        : `Reel de @${post.username} — ${post.views.toLocaleString()} views, ${post.likes.toLocaleString()} likes`,
+      sourceUsername:  post.username,
     });
   }
 
-  return results;
+  // Ordena por score, desduplicar por URL, limita a 10 para o GPT
+  candidates.sort((a, b) => b.preScore - a.preScore);
+  const deduped = [...new Map(candidates.map(c => [c.url, c])).values()].slice(0, 10);
+  console.log(`[A1] ${deduped.length} candidatos após pré-filtro → Agente 2`);
+
+  if (deduped.length === 0) return [];
+
+  // ── A2: análise paralela com GPT-4o ──────────────────────────────────────
+  const analyses = await Promise.allSettled(deduped.map(c => analyzeContent(c)));
+  const analyzed = deduped.map((c, i) => ({
+    ...c,
+    ...(analyses[i].status === 'fulfilled' ? analyses[i].value : { approved: false }),
+  }));
+  const approved = analyzed.filter(a => a.approved === true);
+  console.log(`[A2] ${approved.length}/${analyzed.length} aprovados`);
+
+  if (approved.length === 0) return [];
+
+  // ── A3: geração de copy paralela ──────────────────────────────────────────
+  const copies = await Promise.allSettled(approved.map(c => generateCopy(c, c)));
+
+  const withCopy = [];
+  for (let i = 0; i < approved.length; i++) {
+    if (copies[i].status !== 'fulfilled') continue;
+    const copy = copies[i].value;
+    if (!copy.headline) continue;
+    withCopy.push({ ...approved[i], headline: copy.headline, caption: copy.caption });
+  }
+
+  // ── Diversificação: máx 3 por nicho, máx 2 por conta ─────────────────────
+  const byCat = {};
+  const byAcc = {};
+  const final = [];
+
+  for (const r of withCopy) {
+    const cat = r.content_category || 'outro';
+    const acc = r.sourceUsername   || '';
+
+    if ((byCat[cat] || 0) >= 3) {
+      console.log(`[diversify] skip: já 3 do nicho "${cat}"`);
+      continue;
+    }
+    if ((byAcc[acc] || 0) >= 2) {
+      console.log(`[diversify] skip: já 2 da conta @${acc}`);
+      continue;
+    }
+
+    byCat[cat] = (byCat[cat] || 0) + 1;
+    byAcc[acc] = (byAcc[acc] || 0) + 1;
+
+    final.push({
+      index:             final.length,
+      url:               r.url,
+      videoUrl:          r.videoUrl,
+      thumbnail:         r.thumbnail,
+      likes:             r.likes,
+      views:             r.views,
+      originalCaption:   r.originalCaption,
+      viral_score:       r.viral_score       || 0,
+      viral_reasons:     r.viral_reasons     || [],
+      ban_risk:          r.ban_risk          || 'baixo',
+      ban_reasons:       r.ban_reasons       || [],
+      copyright_risk:    r.copyright_risk    || 'baixo',
+      copyright_reasons: r.copyright_reasons || [],
+      content_category:  r.content_category  || 'outro',
+      fit_for_profile:   r.fit_for_profile   || 0,
+      headline:          r.headline,
+      caption:           r.caption,
+    });
+
+    if (final.length >= 10) break;
+  }
+
+  console.log(`[pipeline] ${final.length} resultados finais`);
+  return final;
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// POST /api/content-finder/search — runs full pipeline synchronously, returns JSON
+// POST /api/content-finder/search
 router.post('/search', async (req, res) => {
-  const { usernames, hashtags } = req.body;
-  const targets = usernames || hashtags; // backward-compat
-  if (!Array.isArray(targets) || targets.length === 0) {
-    return res.status(400).json({ error: 'Envie pelo menos um perfil (@usuario)' });
+  const { themes, minViews, minEngagement, lang } = req.body;
+
+  if (!Array.isArray(themes) || themes.length === 0) {
+    return res.status(400).json({ error: 'Selecione pelo menos um tema' });
   }
-  if (!process.env.RAPIDAPI_KEY && !process.env.RAPIDAPI_KEY_STABLE) {
+  if (!process.env.RAPIDAPI_KEY) {
     return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
   }
 
   try {
-    const results = await runSearch(targets);
+    const results = await runSearch({
+      themes,
+      minViews:      Number(minViews)      || 50000,
+      minEngagement: Number(minEngagement) || 0,
+      lang:          lang || 'any',
+    });
     res.json({ results });
   } catch (e) {
     console.error('[contentFinder] search error:', e.message);
@@ -476,13 +612,10 @@ router.post('/approve', upload.single('template'), async (req, res) => {
   });
 
   try {
-    // Tenta a URL direta do CDN primeiro; se expirou/bloqueou, resolve via API
     const downloadVideo = async () => {
       if (directUrl) {
-        try {
-          await streamDownload(directUrl, rawVideo);
-          return;
-        } catch (e) {
+        try { await streamDownload(directUrl, rawVideo); return; }
+        catch (e) {
           console.warn('[contentFinder] URL direta falhou, resolvendo via API:', e.message);
           if (!postUrl) throw e;
         }
@@ -499,21 +632,15 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     ]);
 
     const clipDur = Math.min(duration, 20).toFixed(3);
-
-    let filterGraph, outputOpts;
+    let filterGraph;
 
     if (templateBuf) {
-      // Full composite layout: frame (white bg + profile header + headline) + video in slot
       filterGraph = [
-        // Scale video to fill the video slot (1080 × VIDEO_H), crop from center
         `[0:v]scale=${W}:-2,crop=${W}:${VIDEO_H}:0:(ih-${VIDEO_H})/2,setpts=PTS-STARTPTS[vid]`,
-        // Loop the static frame PNG for the full clip duration
         `[1:v]loop=loop=-1:size=1:start=0[frame]`,
-        // Overlay video onto the frame at VIDEO_Y
         `[frame][vid]overlay=0:${VIDEO_Y}:eof_action=endall[out]`,
       ].join(';');
     } else {
-      // Fallback: dark headline bar on top of full-screen video
       filterGraph = [
         `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
         `[1:v]loop=loop=-1:size=1:start=0[bar]`,
@@ -521,7 +648,7 @@ router.post('/approve', upload.single('template'), async (req, res) => {
       ].join(';');
     }
 
-    outputOpts = [
+    const outputOpts = [
       '-map [out]', '-c:v libx264', '-preset ultrafast', '-crf 28',
       '-r 30', `-t ${clipDur}`, '-pix_fmt yuv420p',
     ];
