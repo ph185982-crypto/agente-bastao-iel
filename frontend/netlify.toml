@@ -3,10 +3,10 @@
   command = "npm run build"
   publish = "dist"
 
-# Proxy API calls to the Render backend (must come before the SPA catch-all)
+# Proxy API calls → Fly.io backend (substitui Render)
 [[redirects]]
   from   = "/api/*"
-  to     = "https://nexos-paginas-backend.onrender.com/api/:splat"
+  to     = "https://nexos-paginas-backend.fly.dev/api/:splat"
   status = 200
   force  = true
 

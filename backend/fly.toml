@@ -1,0 +1,27 @@
+# fly.toml — Nexos Páginas Backend
+# Gerado para deploy no Fly.io (tier gratuito)
+# Documentação: https://fly.io/docs/reference/configuration/
+
+app = "nexos-paginas-backend"
+primary_region = "gru"   # São Paulo — mais próximo do Brasil
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT       = "3001"
+  NODE_ENV   = "production"
+  # OPENAI_API_KEY  → definir via: fly secrets set OPENAI_API_KEY=sk-...
+  # RAPIDAPI_KEY    → definir via: fly secrets set RAPIDAPI_KEY=...
+  # FRONTEND_URL    → definir via: fly secrets set FRONTEND_URL=https://nexos-paginas.netlify.app
+
+[http_service]
+  internal_port        = 3001
+  force_https          = true
+  auto_stop_machines   = "stop"   # para a VM quando ocioso (economiza cota)
+  auto_start_machines  = true     # reinicia na próxima requisição (~2s cold start)
+  min_machines_running = 0
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"          # 256mb grátis; 512mb recomendado para FFmpeg
