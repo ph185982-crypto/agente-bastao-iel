@@ -10,6 +10,7 @@ const os = require('os');
 const crypto = require('crypto');
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
+ffmpeg.setFfprobePath(require('ffprobe-static').path);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const router = express.Router();
 

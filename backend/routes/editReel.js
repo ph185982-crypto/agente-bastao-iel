@@ -10,6 +10,7 @@ const os = require('os');
 const crypto = require('crypto');
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
+ffmpeg.setFfprobePath(require('ffprobe-static').path);
 
 const router = express.Router();
 const upload = multer({ dest: '/tmp/', limits: { fileSize: 100 * 1024 * 1024 } });
