@@ -14,7 +14,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 ffmpeg.setFfprobePath(require('ffprobe-static').path);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let _openai = null;
+const getOpenAI = () => (_openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
 const router = express.Router();
 
 // ── Layout constants ──────────────────────────────────────────────────────────
@@ -179,10 +180,48 @@ async function buildReelFrame(templateBuf, headline, framePath) {
 }
 
 // ── Agent 1 — Buscador ────────────────────────────────────────────────────────
-async function searchUserReels(username) {
-  const user = username.replace(/^@/, '').trim();
-  console.log(`[contentFinder] Buscando reels de @${user}…`);
 
+function rapidApiError(e) {
+  const msg = e.response?.data?.message || e.message;
+  if (e.response?.status === 429) return new Error(`Cota mensal da API esgotada: ${msg}`);
+  if (e.response?.status === 403) return new Error(`Chave não assinada nesta API: ${msg}`);
+  return new Error(msg);
+}
+
+// Fonte primária: instagram-looter2 (usa RAPIDAPI_KEY)
+async function searchUserReelsLooter(user) {
+  const looterHeaders = {
+    'x-rapidapi-host': 'instagram-looter2.p.rapidapi.com',
+    'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+  };
+
+  const { data: profile } = await axios.get(
+    'https://instagram-looter2.p.rapidapi.com/profile',
+    { params: { username: user }, headers: looterHeaders, timeout: 25000 }
+  );
+  const userId = profile?.id;
+  if (!userId) throw new Error(`Perfil @${user} não encontrado`);
+
+  const { data } = await axios.get(
+    'https://instagram-looter2.p.rapidapi.com/reels',
+    { params: { id: userId, count: 12 }, headers: looterHeaders, timeout: 25000 }
+  );
+
+  return (data?.items || []).map(item => {
+    const m = item?.media || item || {};
+    return {
+      code:     m.code || '',
+      likes:    m.like_count || 0,
+      views:    m.play_count || m.view_count || 0,
+      caption:  m.caption?.text || '',
+      videoUrl: m.video_versions?.[0]?.url || null,
+      username: user,
+    };
+  });
+}
+
+// Fallback: instagram-scraper-stable-api (usa RAPIDAPI_KEY_STABLE)
+async function searchUserReelsStable(user) {
   const { data } = await axios.post(
     'https://instagram-scraper-stable-api.p.rapidapi.com/get_ig_user_reels.php',
     new URLSearchParams({ username_or_url: user, amount: '12' }).toString(),
@@ -196,32 +235,60 @@ async function searchUserReels(username) {
     }
   );
 
-  const reels = data?.reels || [];
+  return (data?.reels || []).map(r => {
+    const m = r?.node?.media || r?.node || {};
+    return {
+      code:     m.code || '',
+      likes:    m.like_count || 0,
+      views:    m.play_count || m.view_count || 0,
+      caption:  m.caption?.text || '',
+      videoUrl: null,
+      username: user,
+    };
+  });
+}
 
-  return reels
-    .map(r => {
-      const m = r?.node?.media || r?.node || {};
-      const code  = m.code || '';
-      const likes = m.like_count  || 0;
-      const views = m.play_count  || m.view_count || 0;
-      return { code, likes, views, username: user };
-    })
-    .filter(r => r.code && (r.views >= 50000 || r.likes >= 5000))
-    .slice(0, 5)
-    .map(r => ({
-      url:             `https://www.instagram.com/reel/${r.code}/`,
-      videoUrl:        null,
-      thumbnail:       null,
-      likes:           r.likes,
-      views:           r.views,
-      originalCaption: `Reel do perfil @${r.username} — ${r.views.toLocaleString()} views, ${r.likes.toLocaleString()} likes`,
-      sourceUsername:  r.username,
-    }));
+async function searchUserReels(username) {
+  const user = username.replace(/^@/, '').trim();
+  console.log(`[contentFinder] Buscando reels de @${user}…`);
+
+  let reels;
+  try {
+    reels = await searchUserReelsLooter(user);
+  } catch (e) {
+    const primaryErr = rapidApiError(e);
+    console.warn(`[contentFinder] looter2 falhou para @${user}: ${primaryErr.message}`);
+    if (!process.env.RAPIDAPI_KEY_STABLE) throw primaryErr;
+    try {
+      reels = await searchUserReelsStable(user);
+    } catch (e2) {
+      throw rapidApiError(e2);
+    }
+  }
+
+  const valid = reels.filter(r => r.code);
+  let selected = valid.filter(r => r.views >= 50000 || r.likes >= 5000);
+  // Perfis menores: se nada passou no corte, usa os 3 reels com mais views
+  if (selected.length === 0) {
+    selected = [...valid].sort((a, b) => b.views - a.views).slice(0, 3);
+  }
+
+  return selected.slice(0, 5).map(r => ({
+    url:             `https://www.instagram.com/reel/${r.code}/`,
+    videoUrl:        r.videoUrl,
+    thumbnail:       null,
+    likes:           r.likes,
+    views:           r.views,
+    originalCaption: r.caption
+      ? `Caption original: "${r.caption.slice(0, 400)}" — @${r.username}, ${r.views.toLocaleString()} views, ${r.likes.toLocaleString()} likes`
+      : `Reel do perfil @${r.username} — ${r.views.toLocaleString()} views, ${r.likes.toLocaleString()} likes`,
+    sourceUsername:  r.username,
+  }));
 }
 
 // ── Agent 2 — Analisador ──────────────────────────────────────────────────────
 async function analyzeContent(candidate) {
-  const res = await openai.chat.completions.create({
+  const res = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
@@ -268,7 +335,7 @@ Com base no perfil de origem e métricas, avalie o potencial viral e adequação
 
 // ── Agent 3 — Criador de Copy ─────────────────────────────────────────────────
 async function generateCopy(candidate, analysis) {
-  const res = await openai.chat.completions.create({
+  const res = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
@@ -313,11 +380,19 @@ async function runSearch(usernames) {
   const searchResults = await Promise.allSettled(usernames.map(u => searchUserReels(u)));
 
   const candidates = [];
+  const searchErrors = [];
   for (const r of searchResults) {
     if (r.status === 'fulfilled') candidates.push(...r.value);
-    else console.warn('[contentFinder] hashtag search failed:', r.reason?.message);
+    else {
+      console.warn('[contentFinder] busca falhou:', r.reason?.message);
+      searchErrors.push(r.reason?.message || 'erro desconhecido');
+    }
   }
 
+  // Se TODAS as buscas falharam, informa o motivo real ao usuário
+  if (candidates.length === 0 && searchErrors.length > 0) {
+    throw new Error(searchErrors[0]);
+  }
   if (candidates.length === 0) return [];
 
   // Deduplicate by URL, cap at 10
@@ -379,8 +454,8 @@ router.post('/search', async (req, res) => {
   if (!Array.isArray(targets) || targets.length === 0) {
     return res.status(400).json({ error: 'Envie pelo menos um perfil (@usuario)' });
   }
-  if (!process.env.RAPIDAPI_KEY_STABLE) {
-    return res.status(500).json({ error: 'RAPIDAPI_KEY_STABLE não configurada no servidor' });
+  if (!process.env.RAPIDAPI_KEY && !process.env.RAPIDAPI_KEY_STABLE) {
+    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
   }
 
   try {
@@ -414,11 +489,23 @@ router.post('/approve', upload.single('template'), async (req, res) => {
   });
 
   try {
-    let videoUrl = directUrl;
-    if (!videoUrl) videoUrl = await resolveInstagramUrl(postUrl);
+    // Tenta a URL direta do CDN primeiro; se expirou/bloqueou, resolve via API
+    const downloadVideo = async () => {
+      if (directUrl) {
+        try {
+          await streamDownload(directUrl, rawVideo);
+          return;
+        } catch (e) {
+          console.warn('[contentFinder] URL direta falhou, resolvendo via API:', e.message);
+          if (!postUrl) throw e;
+        }
+      }
+      const resolved = await resolveInstagramUrl(postUrl);
+      await streamDownload(resolved, rawVideo);
+    };
 
     const [{ hasAudio, duration }] = await Promise.all([
-      streamDownload(videoUrl, rawVideo).then(() => getVideoInfo(rawVideo)),
+      downloadVideo().then(() => getVideoInfo(rawVideo)),
       templateBuf
         ? buildReelFrame(templateBuf, headline.trim(), framePng)
         : buildHeadlineOverlay(headline.trim(), framePng),
