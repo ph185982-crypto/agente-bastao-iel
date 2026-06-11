@@ -1,4 +1,5 @@
 const express = require('express');
+const multer  = require('multer');
 const axios = require('axios');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
@@ -8,6 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 ffmpeg.setFfprobePath(require('ffprobe-static').path);
@@ -108,6 +111,12 @@ async function resolveInstagramUrl(url) {
   throw new Error('Nenhum vídeo encontrado para este URL');
 }
 
+// ── Layout constants for full-frame composite ─────────────────────────────────
+const PROFILE_H  = 240;   // height reserved for profile header (top of frame)
+const HEADLINE_H = 320;   // height reserved for headline text block
+const VIDEO_Y    = PROFILE_H + HEADLINE_H; // y-offset where video starts = 560
+const VIDEO_H    = H - VIDEO_Y - 20;       // video slot height = 1340
+
 async function buildHeadlineOverlay(headline, overlayPath) {
   const lines = wrapText(headline, 28);
   const barH = Math.max(140, 36 + lines.length * LINE_H + 24);
@@ -129,6 +138,44 @@ async function buildHeadlineOverlay(headline, overlayPath) {
 
   await sharp(Buffer.from(svg)).png().toFile(overlayPath);
   return { barH };
+}
+
+// Builds the full 1080x1920 frame: template header + headline text block (white bg)
+async function buildReelFrame(templateBuf, headline, framePath) {
+  const TXT_FONT_SIZE = 58;
+  const TXT_LINE_H    = 84;
+  const TXT_H_PAD     = 70;
+  const fontFaceDecl  = FONT_B64
+    ? `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${FONT_B64}')}</style></defs>`
+    : '';
+  const fontFamily    = FONT_B64 ? 'H' : 'sans-serif';
+
+  const lines = wrapText(headline, 22);
+  const totalTextH = lines.length * TXT_LINE_H;
+  const textTopY   = PROFILE_H + (HEADLINE_H - totalTextH) / 2;
+
+  const textEls = lines.map((line, i) =>
+    `<text x="${W / 2}" y="${textTopY + (i + 1) * TXT_LINE_H}" font-family="${fontFamily}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
+  ).join('');
+
+  // Full white canvas with headline text positioned in the middle section
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+    ${fontFaceDecl}
+    <rect width="${W}" height="${H}" fill="white"/>
+    ${textEls}
+  </svg>`;
+
+  const frameBuf = await sharp(Buffer.from(svg))
+    .composite([{
+      input: await sharp(templateBuf)
+        .resize(W, PROFILE_H, { fit: 'cover', position: 'top' })
+        .toBuffer(),
+      top: 0, left: 0,
+    }])
+    .png()
+    .toBuffer();
+
+  await sharp(frameBuf).toFile(framePath);
 }
 
 // ── Agent 1 — Buscador ────────────────────────────────────────────────────────
@@ -346,7 +393,8 @@ router.post('/search', async (req, res) => {
 });
 
 // POST /api/content-finder/approve — Agent 4: edits video, streams MP4 directly
-router.post('/approve', async (req, res) => {
+// Accepts multipart/form-data: fields (videoUrl, postUrl, headline, caption) + file (template)
+router.post('/approve', upload.single('template'), async (req, res) => {
   const { videoUrl: directUrl, postUrl, headline, caption } = req.body;
   if (!headline?.trim()) return res.status(400).json({ error: 'headline é obrigatória' });
   if (!directUrl && !postUrl) return res.status(400).json({ error: 'videoUrl ou postUrl é obrigatório' });
@@ -355,12 +403,13 @@ router.post('/approve', async (req, res) => {
     return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
   }
 
-  const sid        = crypto.randomUUID();
-  const rawVideo   = path.join(os.tmpdir(), `${sid}_raw.mp4`);
-  const overlayPng = path.join(os.tmpdir(), `${sid}_overlay.png`);
-  const output     = path.join(os.tmpdir(), `${sid}_final.mp4`);
+  const templateBuf = req.file?.buffer || null;
+  const sid         = crypto.randomUUID();
+  const rawVideo    = path.join(os.tmpdir(), `${sid}_raw.mp4`);
+  const framePng    = path.join(os.tmpdir(), `${sid}_frame.png`);
+  const output      = path.join(os.tmpdir(), `${sid}_final.mp4`);
 
-  const cleanTmp = () => [rawVideo, overlayPng].forEach(f => {
+  const cleanTmp = () => [rawVideo, framePng].forEach(f => {
     try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
   });
 
@@ -368,22 +417,37 @@ router.post('/approve', async (req, res) => {
     let videoUrl = directUrl;
     if (!videoUrl) videoUrl = await resolveInstagramUrl(postUrl);
 
-    await streamDownload(videoUrl, rawVideo);
-
-    const [, { hasAudio, duration }] = await Promise.all([
-      buildHeadlineOverlay(headline.trim(), overlayPng),
-      getVideoInfo(rawVideo),
+    const [{ hasAudio, duration }] = await Promise.all([
+      streamDownload(videoUrl, rawVideo).then(() => getVideoInfo(rawVideo)),
+      templateBuf
+        ? buildReelFrame(templateBuf, headline.trim(), framePng)
+        : buildHeadlineOverlay(headline.trim(), framePng),
     ]);
 
     const clipDur = Math.min(duration, 20).toFixed(3);
 
-    const filterGraph = [
-      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
-      `[1:v]loop=loop=-1:size=1:start=0[bar]`,
-      `[scaled][bar]overlay=0:0:eof_action=endall[out]`,
-    ].join(';');
+    let filterGraph, outputOpts;
 
-    const outputOpts = [
+    if (templateBuf) {
+      // Full composite layout: frame (white bg + profile header + headline) + video in slot
+      filterGraph = [
+        // Scale video to fill the video slot (1080 × VIDEO_H), crop from center
+        `[0:v]scale=${W}:-2,crop=${W}:${VIDEO_H}:0:(ih-${VIDEO_H})/2,setpts=PTS-STARTPTS[vid]`,
+        // Loop the static frame PNG for the full clip duration
+        `[1:v]loop=loop=-1:size=1:start=0[frame]`,
+        // Overlay video onto the frame at VIDEO_Y
+        `[frame][vid]overlay=0:${VIDEO_Y}:eof_action=endall[out]`,
+      ].join(';');
+    } else {
+      // Fallback: dark headline bar on top of full-screen video
+      filterGraph = [
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
+        `[1:v]loop=loop=-1:size=1:start=0[bar]`,
+        `[scaled][bar]overlay=0:0:eof_action=endall[out]`,
+      ].join(';');
+    }
+
+    outputOpts = [
       '-map [out]', '-c:v libx264', '-preset ultrafast', '-crf 28',
       '-r 30', `-t ${clipDur}`, '-pix_fmt yuv420p',
     ];
@@ -392,7 +456,7 @@ router.post('/approve', async (req, res) => {
 
     const cmd = ffmpeg()
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
-      .input(overlayPng)
+      .input(framePng)
       .complexFilter(filterGraph)
       .outputOptions(outputOpts);
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { API_BASE } from '../utils/api'
 
 const PRESET_USERS = [
@@ -37,7 +37,59 @@ function RiskBadge({ label, level }) {
   )
 }
 
-function ResultCard({ result, onApprove }) {
+function TemplateUpload({ templateFile, onTemplate }) {
+  const inputRef = useRef(null)
+  const previewUrl = templateFile ? URL.createObjectURL(templateFile) : null
+
+  return (
+    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-white">Fundo do Reel</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Envie o template com seu cabeçalho (@Pedro Destrava). Usado em todos os vídeos.
+          </p>
+        </div>
+        {templateFile && (
+          <span className="text-xs bg-green-900/40 text-green-300 border border-green-700/60 px-2 py-0.5 rounded-full">
+            ✓ Carregado
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        {previewUrl && (
+          <img
+            src={previewUrl}
+            alt="template"
+            className="w-10 h-16 object-cover rounded-lg shrink-0 border border-gray-700"
+          />
+        )}
+        <button
+          onClick={() => inputRef.current?.click()}
+          className="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-600 hover:border-gray-500 text-gray-200 text-sm font-medium rounded-xl transition-colors"
+        >
+          {templateFile ? '↩ Trocar template' : '📁 Selecionar template (PNG/JPG)'}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={e => { if (e.target.files[0]) onTemplate(e.target.files[0]) }}
+        />
+      </div>
+
+      {!templateFile && (
+        <p className="text-xs text-yellow-500/80">
+          ⚠️ Sem template: o vídeo sai com barra de título simples (sem o fundo do seu perfil).
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ResultCard({ result, templateFile, onApprove }) {
   const [headline, setHeadline] = useState(() => result.headline || '')
   const [caption, setCaption]   = useState(() => result.caption  || '')
   const [editStatus, setEditStatus] = useState('idle')
@@ -50,7 +102,7 @@ function ResultCard({ result, onApprove }) {
     setEditError(null)
     setBlobUrl(null)
     try {
-      const url = await onApprove(result, headline, caption)
+      const url = await onApprove(result, headline, caption, templateFile)
       setBlobUrl(url)
       setEditStatus('done')
     } catch (e) {
@@ -69,21 +121,12 @@ function ResultCard({ result, onApprove }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
       <div className="flex gap-3 p-4">
-        {result.thumbnail ? (
-          <img
-            src={result.thumbnail}
-            alt="thumbnail"
-            className="w-20 h-28 object-cover rounded-xl shrink-0 bg-gray-800"
-            onError={e => { e.target.style.display = 'none' }}
-          />
-        ) : (
-          <div className="w-20 h-28 bg-gray-800 rounded-xl shrink-0 flex items-center justify-center">
-            <svg className="w-7 h-7 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </div>
-        )}
+        <div className="w-20 h-28 bg-gray-800 rounded-xl shrink-0 flex items-center justify-center">
+          <svg className="w-7 h-7 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+              d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </div>
 
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -106,7 +149,7 @@ function ResultCard({ result, onApprove }) {
 
       <div className="border-t border-gray-800 px-4 pt-3 pb-4 space-y-3">
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1.5">Headline (vídeo)</label>
+          <label className="block text-xs font-medium text-gray-400 mb-1.5">Headline (aparece no vídeo)</label>
           <input
             type="text"
             value={headline}
@@ -133,7 +176,7 @@ function ResultCard({ result, onApprove }) {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
             </svg>
-            Editando vídeo… até 1 minuto
+            Montando o reel… até 1 minuto
           </div>
         )}
 
@@ -193,6 +236,7 @@ function ResultCard({ result, onApprove }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function ContentFinder() {
+  const [templateFile, setTemplateFile]   = useState(null)
   const [selectedUsers, setSelectedUsers] = useState(['bbcbrasil', 'natgeo', 'nasa'])
   const [customUser, setCustomUser]       = useState('')
   const [status, setStatus]   = useState('idle')
@@ -235,16 +279,17 @@ export default function ContentFinder() {
     }
   }
 
-  async function handleApprove(result, headline, caption) {
+  async function handleApprove(result, headline, caption, templateFile) {
+    const form = new FormData()
+    form.append('postUrl',  result.url)
+    if (result.videoUrl) form.append('videoUrl', result.videoUrl)
+    form.append('headline', headline)
+    form.append('caption',  caption)
+    if (templateFile) form.append('template', templateFile)
+
     const res = await fetch(`${API_BASE}/api/content-finder/approve`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        videoUrl: result.videoUrl || null,
-        postUrl:  result.url,
-        headline,
-        caption,
-      }),
+      body: form,
     })
     if (!res.ok) {
       const { error: err } = await res.json().catch(() => ({}))
@@ -269,9 +314,12 @@ export default function ContentFinder() {
       <div className="text-center">
         <h1 className="text-xl font-bold text-white mb-1">Reciclagem de Conteúdo</h1>
         <p className="text-sm text-gray-400">
-          4 agentes de IA buscam reels virais de perfis do nicho, analisam e entregam vídeo pronto
+          4 agentes de IA buscam reels virais, analisam e montam o vídeo pronto no seu formato
         </p>
       </div>
+
+      {/* Template upload — always visible */}
+      <TemplateUpload templateFile={templateFile} onTemplate={setTemplateFile} />
 
       {!isProcessing && !isDone && (
         <div className="space-y-4">
@@ -392,6 +440,7 @@ export default function ContentFinder() {
             <ResultCard
               key={i}
               result={result}
+              templateFile={templateFile}
               onApprove={handleApprove}
             />
           ))}
