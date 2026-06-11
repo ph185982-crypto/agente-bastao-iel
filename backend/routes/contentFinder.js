@@ -156,47 +156,29 @@ async function searchUserReels(username) {
       const code  = m.code || '';
       const likes = m.like_count  || 0;
       const views = m.play_count  || m.view_count || 0;
-      const thumb = m.image_versions2?.candidates?.[0]?.url || null;
-      return { code, likes, views, thumb };
+      return { code, likes, views, username: user };
     })
     .filter(r => r.code && (r.views >= 50000 || r.likes >= 5000))
     .slice(0, 5)
     .map(r => ({
       url:             `https://www.instagram.com/reel/${r.code}/`,
       videoUrl:        null,
-      thumbnail:       r.thumb,
+      thumbnail:       null,
       likes:           r.likes,
       views:           r.views,
-      originalCaption: '',
+      originalCaption: `Reel do perfil @${r.username} — ${r.views.toLocaleString()} views, ${r.likes.toLocaleString()} likes`,
+      sourceUsername:  r.username,
     }));
 }
 
 // ── Agent 2 — Analisador ──────────────────────────────────────────────────────
 async function analyzeContent(candidate) {
-  const userContent = [];
-
-  if (candidate.thumbnail) {
-    userContent.push({
-      type: 'image_url',
-      image_url: { url: candidate.thumbnail, detail: 'low' },
-    });
-  }
-
-  userContent.push({
-    type: 'text',
-    text: `Caption original: ${candidate.originalCaption || '(sem caption)'}
-Likes: ${candidate.likes.toLocaleString('pt-BR')}
-Views: ${candidate.views.toLocaleString('pt-BR')}
-
-Analise este conteúdo para o perfil @pedro_destrava.`,
-  });
-
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: `Você é um especialista em conteúdo viral do Instagram. Analise este conteúdo e retorne um JSON com:
+        content: `Você é um especialista em conteúdo viral do Instagram. Analise este conteúdo com base nas métricas e contexto fornecidos e retorne um JSON com:
 {
   "viral_score": número de 0 a 100,
   "viral_reasons": ["motivo1", "motivo2"],
@@ -210,15 +192,24 @@ Analise este conteúdo para o perfil @pedro_destrava.`,
   "fit_for_profile": número de 0 a 100
 }
 
-Perfil do criador:
+Perfil do criador (@pedro_destrava):
 - Nicho: curiosidades de tecnologia, ciência, história e inovação
 - Tom: informativo, surpreendente, "o que ninguém te contou"
 - Audiência: 175k seguidores brasileiros, adultos
 - Conteúdos que mais viralizam: tecnologia retrô vs atual, inovações chinesas, curiosidades históricas, ciência aplicada
 - NÃO aprovar: conteúdo político, violento, sexual, músicas famosas (alto risco copyright), humor genérico
-- APROVAR apenas se viral_score >= 60 E ban_risk != "alto" E copyright_risk != "alto" E fit_for_profile >= 60`,
+- APROVAR se viral_score >= 55 E ban_risk != "alto" E fit_for_profile >= 50
+- Perfis de mídia/ciência/tecnologia têm conteúdo geralmente seguro — assuma baixo risco se não há indicação contrária`,
       },
-      { role: 'user', content: userContent },
+      {
+        role: 'user',
+        content: `Perfil de origem: @${candidate.sourceUsername || 'desconhecido'}
+Views: ${(candidate.views || 0).toLocaleString('pt-BR')}
+Likes: ${(candidate.likes || 0).toLocaleString('pt-BR')}
+Contexto: ${candidate.originalCaption || '(sem caption)'}
+
+Com base no perfil de origem e métricas, avalie o potencial viral e adequação para @pedro_destrava.`,
+      },
     ],
     max_tokens: 400,
     response_format: { type: 'json_object' },
