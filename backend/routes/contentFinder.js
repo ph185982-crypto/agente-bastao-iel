@@ -25,9 +25,8 @@ const FONT_SIZE = 48;
 const LINE_H    = 66;
 const H_PAD     = 48;
 
-const FONT_PATH = path.join(__dirname, '..', 'assets', 'DejaVuSans-Bold.ttf');
-let FONT_B64 = '';
-try { FONT_B64 = fs.readFileSync(FONT_PATH).toString('base64'); } catch {}
+// Família registrada via fontconfig em backend/fontSetup.js (backend/assets)
+const FONT_FAMILY = "'DejaVu Sans', sans-serif";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -122,17 +121,11 @@ async function buildHeadlineOverlay(headline, overlayPath) {
   const lines = wrapText(headline, 28);
   const barH = Math.max(140, 36 + lines.length * LINE_H + 24);
 
-  const fontFaceDecl = FONT_B64
-    ? `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${FONT_B64}')}</style></defs>`
-    : '';
-  const fontFamily = FONT_B64 ? 'H' : 'sans-serif';
-
   const textEls = lines.map((line, i) =>
-    `<text x="${H_PAD}" y="${36 + (i + 1) * LINE_H}" font-family="${fontFamily}" font-size="${FONT_SIZE}" font-weight="bold" fill="white" stroke="black" stroke-width="1">${escXml(line)}</text>`
+    `<text x="${H_PAD}" y="${36 + (i + 1) * LINE_H}" font-family="${FONT_FAMILY}" font-size="${FONT_SIZE}" font-weight="bold" fill="white" stroke="black" stroke-width="1">${escXml(line)}</text>`
   ).join('');
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${barH}">
-    ${fontFaceDecl}
     <rect width="${W}" height="${barH}" fill="black" fill-opacity="0.72"/>
     ${textEls}
   </svg>`;
@@ -145,23 +138,17 @@ async function buildHeadlineOverlay(headline, overlayPath) {
 async function buildReelFrame(templateBuf, headline, framePath) {
   const TXT_FONT_SIZE = 58;
   const TXT_LINE_H    = 84;
-  const TXT_H_PAD     = 70;
-  const fontFaceDecl  = FONT_B64
-    ? `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${FONT_B64}')}</style></defs>`
-    : '';
-  const fontFamily    = FONT_B64 ? 'H' : 'sans-serif';
 
   const lines = wrapText(headline, 22);
   const totalTextH = lines.length * TXT_LINE_H;
   const textTopY   = PROFILE_H + (HEADLINE_H - totalTextH) / 2;
 
   const textEls = lines.map((line, i) =>
-    `<text x="${W / 2}" y="${textTopY + (i + 1) * TXT_LINE_H}" font-family="${fontFamily}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
+    `<text x="${W / 2}" y="${textTopY + (i + 1) * TXT_LINE_H}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
   ).join('');
 
   // Full white canvas with headline text positioned in the middle section
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-    ${fontFaceDecl}
     <rect width="${W}" height="${H}" fill="white"/>
     ${textEls}
   </svg>`;

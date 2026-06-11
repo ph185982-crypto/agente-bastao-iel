@@ -81,19 +81,13 @@ async function buildBackgroundPng(templateBuf, headline, bgPath) {
   const textBlockH = 30 + lines.length * LINE_H + 20;
   const videoY = BRAND_H + textBlockH;
 
-  let fontFaceDecl = '';
-  try {
-    const fontB64 = fs.readFileSync(FONT_PATH).toString('base64');
-    fontFaceDecl = `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${fontB64}')}</style></defs>`;
-  } catch {}
-
-  const fontFamily = fontFaceDecl ? 'H' : 'sans-serif';
+  const fontFamily = "'DejaVu Sans', sans-serif"; // registrada via backend/fontSetup.js
   const textEls = lines.map((line, i) => {
     const y = BRAND_H + 30 + (i + 1) * LINE_H;
     return `<text x="${H_PAD}" y="${y}" font-family="${fontFamily}" font-size="${FONT_SIZE}" font-weight="bold" fill="#111111">${escXml(line)}</text>`;
   }).join('');
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${fontFaceDecl}<rect width="${W}" height="${H}" fill="white"/>${textEls}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="white"/>${textEls}</svg>`;
 
   const layers = [{ input: Buffer.from(svg), top: 0, left: 0 }];
 
