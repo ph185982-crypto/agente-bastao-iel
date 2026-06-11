@@ -3,17 +3,15 @@ import Header from './components/Header'
 import AutoReel from './components/AutoReel'
 import AgentChat from './components/AgentChat'
 import ContentFinder from './components/ContentFinder'
-import HeadlineJury from './components/HeadlineJury'
 
 const TABS = [
-  { id: 'reel',    label: 'Criar Reel' },
-  { id: 'recycle', label: '♻️ Reciclagem' },
-  { id: 'jury',    label: '⚖️ Júri' },
-  { id: 'agent',   label: 'Agente IA' },
+  { id: 'studio', label: '♻️ Studio' },
+  { id: 'reel',   label: 'Criar Reel' },
+  { id: 'agent',  label: 'Agente IA' },
 ]
 
 export default function App() {
-  const [tab, setTab] = useState('reel')
+  const [tab, setTab] = useState('studio')
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
@@ -37,6 +35,12 @@ export default function App() {
         </div>
       </div>
 
+      {tab === 'studio' && (
+        <main className="max-w-2xl mx-auto w-full px-4 py-10">
+          <ContentFinder />
+        </main>
+      )}
+
       {tab === 'reel' && (
         <main className="max-w-2xl mx-auto w-full px-4 py-10">
           <div className="mb-8 text-center">
@@ -46,18 +50,6 @@ export default function App() {
             </p>
           </div>
           <AutoReel />
-        </main>
-      )}
-
-      {tab === 'recycle' && (
-        <main className="max-w-2xl mx-auto w-full px-4 py-10">
-          <ContentFinder />
-        </main>
-      )}
-
-      {tab === 'jury' && (
-        <main className="max-w-2xl mx-auto w-full px-4 py-10">
-          <HeadlineJury />
         </main>
       )}
 
