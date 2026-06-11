@@ -1,6 +1,9 @@
 {
+  "version": 2,
+  "functions": {
+    "api/index.js": { "maxDuration": 60, "memory": 1024 }
+  },
   "rewrites": [
-    { "source": "/api/gerar", "destination": "/api/gerar" },
-    { "source": "/(.*)",       "destination": "/public/$1" }
+    { "source": "/api/(.*)", "destination": "/api/index" }
   ]
 }

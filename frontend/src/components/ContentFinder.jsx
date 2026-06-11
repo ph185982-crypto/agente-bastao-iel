@@ -1,7 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef } from 'react'
 import { API_BASE } from '../utils/api'
-
-const POLL_INTERVAL = 2500
 
 const PRESET_TAGS = [
   'tecnologia', 'curiosidades', 'inovação', 'China', 'NASA',
@@ -39,26 +37,26 @@ function RiskBadge({ label, level }) {
   )
 }
 
-function ResultCard({ result, jobId, index, onApprove }) {
+function ResultCard({ result, onApprove }) {
   const [headline, setHeadline] = useState(() => result.headline || '')
   const [caption, setCaption]   = useState(() => result.caption  || '')
-  const [editStatus,   setEditStatus]   = useState(result.editStatus   || 'idle')
-  const [editProgress, setEditProgress] = useState(result.editProgress || 0)
-  const [editError,    setEditError]    = useState(result.editError     || null)
+  const [editStatus,   setEditStatus]   = useState('idle')
+  const [editError,    setEditError]    = useState(null)
+  const [blobUrl,      setBlobUrl]      = useState(null)
   const [copied, setCopied] = useState(false)
 
-  // Sync only edit-state fields from parent poll (never overwrite user-edited headline/caption)
-  useEffect(() => {
-    setEditStatus(result.editStatus   || 'idle')
-    setEditProgress(result.editProgress || 0)
-    setEditError(result.editError       || null)
-  }, [result.editStatus, result.editProgress, result.editError])
-
-  function handlePrepare() {
+  async function handlePrepare() {
     setEditStatus('processing')
-    setEditProgress(0)
     setEditError(null)
-    onApprove(index, headline, caption)
+    setBlobUrl(null)
+    try {
+      const url = await onApprove(result, headline, caption)
+      setBlobUrl(url)
+      setEditStatus('done')
+    } catch (e) {
+      setEditError(e.message)
+      setEditStatus('error')
+    }
   }
 
   function copyCaption() {
@@ -67,8 +65,6 @@ function ResultCard({ result, jobId, index, onApprove }) {
       setTimeout(() => setCopied(false), 2000)
     }).catch(() => {})
   }
-
-  const downloadUrl = `${API_BASE}/api/content-finder/download/${jobId}/${index}`
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
@@ -133,19 +129,14 @@ function ResultCard({ result, jobId, index, onApprove }) {
           />
         </div>
 
-        {/* Edit progress bar */}
+        {/* Processing state */}
         {editStatus === 'processing' && (
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs text-gray-400">
-              <span>🎬 Editando vídeo…</span>
-              <span>{editProgress}%</span>
-            </div>
-            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-                style={{ width: `${editProgress}%` }}
-              />
-            </div>
+          <div className="flex items-center gap-2 text-xs text-indigo-400">
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            Editando vídeo… até 1 minuto
           </div>
         )}
 
@@ -173,11 +164,11 @@ function ResultCard({ result, jobId, index, onApprove }) {
             </button>
           )}
 
-          {editStatus === 'done' && (
+          {editStatus === 'done' && blobUrl && (
             <>
               <a
-                href={downloadUrl}
-                download={`reel_reciclado_${index + 1}.mp4`}
+                href={blobUrl}
+                download="reel_reciclado.mp4"
                 className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors text-center"
               >
                 ⬇️ Baixar Vídeo
@@ -211,65 +202,8 @@ export default function ContentFinder() {
   const [selectedTags, setSelectedTags] = useState(['tecnologia', 'curiosidades'])
   const [customTag, setCustomTag]       = useState('')
   const [status, setStatus]     = useState('idle')  // idle | processing | done | error
-  const [progress, setProgress] = useState(0)
-  const [currentStep, setCurrentStep] = useState('')
   const [results, setResults]   = useState([])
-  const [jobId, setJobId]       = useState(null)
   const [error, setError]       = useState('')
-
-  const pollRef  = useRef(null)
-  const jobIdRef = useRef(null)
-
-  useEffect(() => { jobIdRef.current = jobId }, [jobId])
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
-
-  const startPolling = useCallback((jid) => {
-    if (pollRef.current) clearInterval(pollRef.current)
-    let errors = 0
-
-    pollRef.current = setInterval(async () => {
-      const id = jid || jobIdRef.current
-      if (!id) { clearInterval(pollRef.current); return }
-
-      try {
-        const pr = await fetch(`${API_BASE}/api/content-finder/status/${id}`)
-        if (!pr.ok) {
-          errors++
-          if (errors >= 3 || pr.status === 404) {
-            clearInterval(pollRef.current); pollRef.current = null
-            setStatus('error')
-            setError(pr.status === 404 ? 'Job expirado. Tente novamente.' : 'Erro de servidor.')
-          }
-          return
-        }
-
-        const data = await pr.json()
-        errors = 0
-
-        if (data.progress !== undefined) setProgress(data.progress)
-        if (data.currentStep)            setCurrentStep(data.currentStep)
-        if (data.results)                setResults(data.results)
-
-        if (data.status === 'error') {
-          clearInterval(pollRef.current); pollRef.current = null
-          setStatus('error')
-          setError(data.error || 'Erro no pipeline')
-        } else if (data.status === 'done') {
-          const hasActiveEdits = data.results?.some(r => r.editStatus === 'processing')
-          if (!hasActiveEdits) { clearInterval(pollRef.current); pollRef.current = null }
-          setStatus('done')
-          setProgress(100)
-        }
-      } catch (e) {
-        errors++
-        if (errors >= 3) {
-          clearInterval(pollRef.current); pollRef.current = null
-          setStatus('error')
-          setError('Erro de conexão com o servidor.')
-        }
-      }
-    }, POLL_INTERVAL)
-  }, [])
 
   function toggleTag(tag) {
     setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
@@ -288,11 +222,8 @@ export default function ContentFinder() {
   async function handleSearch() {
     if (selectedTags.length === 0) return
     setStatus('processing')
-    setProgress(0)
-    setCurrentStep('Iniciando pipeline…')
     setResults([])
     setError('')
-    setJobId(null)
 
     try {
       const res = await fetch(`${API_BASE}/api/content-finder/search`, {
@@ -300,67 +231,43 @@ export default function ContentFinder() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hashtags: selectedTags }),
       })
-      const { jobId: jid, error: err } = await res.json()
-      if (!res.ok || !jid) throw new Error(err || 'Erro ao iniciar busca')
-      setJobId(jid)
-      startPolling(jid)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erro na busca')
+      setResults(data.results || [])
+      setStatus('done')
     } catch (e) {
       setStatus('error')
       setError(e.message)
     }
   }
 
-  async function handleApprove(index, headline, caption) {
-    const jid = jobIdRef.current
-    if (!jid) return
-
-    // Optimistic update
-    setResults(prev => prev.map((r, i) =>
-      i === index ? { ...r, editStatus: 'processing', editProgress: 0, editError: null } : r
-    ))
-
-    try {
-      const res = await fetch(`${API_BASE}/api/content-finder/approve/${jid}/${index}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ headline, caption }),
-      })
-      if (!res.ok) {
-        const { error: err } = await res.json()
-        setResults(prev => prev.map((r, i) =>
-          i === index ? { ...r, editStatus: 'error', editError: err || 'Erro ao iniciar edição' } : r
-        ))
-        return
-      }
-      // Restart polling if it stopped (pipeline was already done)
-      if (!pollRef.current && jid) startPolling(jid)
-    } catch (e) {
-      setResults(prev => prev.map((r, i) =>
-        i === index ? { ...r, editStatus: 'error', editError: e.message } : r
-      ))
+  async function handleApprove(result, headline, caption) {
+    const res = await fetch(`${API_BASE}/api/content-finder/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        videoUrl: result.videoUrl || null,
+        postUrl:  result.url,
+        headline,
+        caption,
+      }),
+    })
+    if (!res.ok) {
+      const { error: err } = await res.json().catch(() => ({}))
+      throw new Error(err || `Erro ${res.status}`)
     }
+    const blob = await res.blob()
+    return URL.createObjectURL(blob)
   }
 
   function reset() {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     setStatus('idle')
-    setProgress(0)
-    setCurrentStep('')
     setResults([])
-    setJobId(null)
     setError('')
   }
 
   const isProcessing = status === 'processing'
   const isDone       = status === 'done'
-
-  // Agent step indicator
-  const agentSteps = [
-    { label: '🔍 Buscar', threshold: 5  },
-    { label: '🧠 Analisar', threshold: 20 },
-    { label: '✍️ Copy', threshold: 55 },
-    { label: '🎬 Editar', threshold: 95 },
-  ]
 
   return (
     <div className="max-w-lg mx-auto w-full space-y-6">
@@ -379,7 +286,6 @@ export default function ContentFinder() {
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-2">Temas / hashtags</label>
 
-            {/* Preset chips */}
             <div className="flex flex-wrap gap-2 mb-3">
               {PRESET_TAGS.map(tag => (
                 <button
@@ -395,7 +301,6 @@ export default function ContentFinder() {
               ))}
             </div>
 
-            {/* Custom tag input */}
             <div className="flex gap-2">
               <input
                 type="text"
@@ -415,7 +320,6 @@ export default function ContentFinder() {
             </div>
           </div>
 
-          {/* Selected tags summary */}
           {selectedTags.length > 0 && (
             <div>
               <p className="text-xs text-gray-500 mb-2">Selecionadas ({selectedTags.length}):</p>
@@ -433,7 +337,6 @@ export default function ContentFinder() {
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</p>
           )}
@@ -446,7 +349,6 @@ export default function ContentFinder() {
             🔍 Buscar Conteúdos
           </button>
 
-          {/* Empty state */}
           {!error && (
             <div className="text-center py-4 text-gray-600 text-sm">
               <p className="text-3xl mb-2">♻️</p>
@@ -458,57 +360,36 @@ export default function ContentFinder() {
 
       {/* ── Processing state ── */}
       {isProcessing && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs text-gray-400">
-              <span className="truncate pr-2">{currentStep || 'Processando…'}</span>
-              <span className="shrink-0">{progress}%</span>
-            </div>
-            <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-indigo-500 rounded-full transition-all duration-700"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Agent step indicators */}
-          <div className="grid grid-cols-4 gap-1.5">
-            {agentSteps.map((s, i) => (
-              <div
-                key={i}
-                className={`py-2 rounded-lg text-center text-xs font-medium transition-colors
-                  ${progress >= s.threshold
-                    ? 'bg-indigo-900/50 text-indigo-300'
-                    : 'bg-gray-800/50 text-gray-600'}`}
-              >
-                {s.label}
-              </div>
-            ))}
-          </div>
+        <div className="flex flex-col items-center gap-4 py-10">
+          <svg className="w-10 h-10 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <p className="text-sm text-gray-400 text-center">
+            Buscando e analisando conteúdos…<br />
+            <span className="text-xs text-gray-600">Agentes 1 → 2 → 3 em execução. Até 1 minuto.</span>
+          </p>
         </div>
       )}
 
       {/* ── Results ── */}
-      {(isDone || (isProcessing && results.length > 0)) && (
+      {isDone && (
         <div className="space-y-4">
-          {isDone && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-green-300">
-                {results.length > 0
-                  ? `${results.length} vídeo(s) aprovado(s) ✅`
-                  : 'Nenhum vídeo passou nos critérios ⚠️'}
-              </p>
-              <button
-                onClick={reset}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                Nova busca
-              </button>
-            </div>
-          )}
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-green-300">
+              {results.length > 0
+                ? `${results.length} vídeo(s) aprovado(s) ✅`
+                : 'Nenhum vídeo passou nos critérios ⚠️'}
+            </p>
+            <button
+              onClick={reset}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Nova busca
+            </button>
+          </div>
 
-          {isDone && results.length === 0 && (
+          {results.length === 0 && (
             <div className="text-center py-8 text-gray-500 text-sm bg-gray-900 rounded-2xl border border-gray-800">
               <p className="text-2xl mb-2">🔍</p>
               <p>Tente outras hashtags ou ampliar o nicho de busca.</p>
@@ -519,8 +400,6 @@ export default function ContentFinder() {
             <ResultCard
               key={i}
               result={result}
-              jobId={jobId}
-              index={i}
               onApprove={handleApprove}
             />
           ))}

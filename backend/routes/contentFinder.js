@@ -24,24 +24,8 @@ const FONT_PATH = path.join(__dirname, '..', 'assets', 'DejaVuSans-Bold.ttf');
 let FONT_B64 = '';
 try { FONT_B64 = fs.readFileSync(FONT_PATH).toString('base64'); } catch {}
 
-// ── Job store ─────────────────────────────────────────────────────────────────
-const jobs = new Map();
-
-setInterval(() => {
-  const cutoff = Date.now() - 15 * 60 * 1000;
-  for (const [id, job] of jobs.entries()) {
-    if (job.createdAt < cutoff) {
-      for (const r of (job.results || [])) {
-        if (r.editOutputPath && fs.existsSync(r.editOutputPath)) {
-          try { fs.unlinkSync(r.editOutputPath); } catch {}
-        }
-      }
-      jobs.delete(id);
-    }
-  }
-}, 5 * 60 * 1000);
-
 // ── Shared helpers ────────────────────────────────────────────────────────────
+
 function wrapText(text, maxChars) {
   const words = text.split(' ');
   const lines = [];
@@ -104,7 +88,6 @@ function runFFmpeg(cmd, outputPath, timeoutMs = 300000) {
   });
 }
 
-// Resolve Instagram reel URL → direct CDN video URL
 async function resolveInstagramUrl(url) {
   const { data } = await axios.get(
     'https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert',
@@ -124,7 +107,6 @@ async function resolveInstagramUrl(url) {
   throw new Error('Nenhum vídeo encontrado para este URL');
 }
 
-// Build semi-transparent headline bar PNG (barHeight × W)
 async function buildHeadlineOverlay(headline, overlayPath) {
   const lines = wrapText(headline, 28);
   const barH = Math.max(140, 36 + lines.length * LINE_H + 24);
@@ -170,8 +152,8 @@ async function searchHashtag(hashtag) {
   return items
     .filter(item => {
       const isVideo = item.media_type === 2 || item.is_video === true;
-      const likes   = item.like_count   || 0;
-      const views   = item.play_count   || item.view_count || 0;
+      const likes   = item.like_count  || 0;
+      const views   = item.play_count  || item.view_count || 0;
       return isVideo && (views >= 50000 || likes >= 5000);
     })
     .slice(0, 5)
@@ -187,8 +169,8 @@ async function searchHashtag(hashtag) {
         url:             `https://www.instagram.com/reel/${code}/`,
         videoUrl:        item.video_url || null,
         thumbnail:       thumb,
-        likes:           item.like_count  || 0,
-        views:           item.play_count  || item.view_count || 0,
+        likes:           item.like_count || 0,
+        views:           item.play_count || item.view_count || 0,
         originalCaption: item.caption?.text || '',
       };
     })
@@ -292,226 +274,72 @@ Gere headline impactante e legenda longa para este conteúdo.`,
   };
 }
 
-// ── Agent 4 — Editor de Vídeo ─────────────────────────────────────────────────
-async function editVideo(jobId, index) {
-  const job = jobs.get(jobId);
-  if (!job || !job.results[index]) return;
+// ── Main search pipeline (synchronous, parallel) ──────────────────────────────
+async function runSearch(hashtags) {
+  // Agent 1: search all hashtags in parallel
+  const searchResults = await Promise.allSettled(hashtags.map(tag => searchHashtag(tag)));
 
-  const result  = job.results[index];
-  const sid     = `${jobId}_${index}`;
-  const rawVideo   = path.join(os.tmpdir(), `${sid}_raw.mp4`);
-  const overlayPng = path.join(os.tmpdir(), `${sid}_overlay.png`);
-  const output     = path.join(os.tmpdir(), `${sid}_final.mp4`);
-
-  const cleanTmp = () => [rawVideo, overlayPng].forEach(f => {
-    try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
-  });
-
-  result.editStatus   = 'processing';
-  result.editProgress = 0;
-  result.editError    = null;
-
-  try {
-    // Resolve video URL if we only have the post URL
-    console.log(`[contentFinder] Agent 4 — resolvendo vídeo para slot ${index}`);
-    let videoUrl = result.videoUrl;
-    if (!videoUrl) {
-      result.editProgress = 3;
-      videoUrl = await resolveInstagramUrl(result.url);
-    }
-
-    // Download
-    result.editProgress = 8;
-    console.log(`[contentFinder] Baixando vídeo ${sid}`);
-    await streamDownload(videoUrl, rawVideo);
-    result.editProgress = 30;
-
-    // Build overlay + probe in parallel
-    const [{ barH }, { hasAudio, duration }] = await Promise.all([
-      buildHeadlineOverlay(result.headline, overlayPng),
-      getVideoInfo(rawVideo),
-    ]);
-    result.editProgress = 45;
-
-    const clipDur    = Math.min(duration, 90).toFixed(3);
-    const clipDurSec = parseFloat(clipDur);
-
-    // Scale+letterbox video to 1080×1920, overlay headline bar at top
-    const filterGraph = [
-      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
-      `[1:v]loop=loop=-1:size=1:start=0[bar]`,
-      `[scaled][bar]overlay=0:0:eof_action=endall[out]`,
-    ].join(';');
-
-    const outputOpts = [
-      '-map [out]',
-      '-c:v libx264', '-preset ultrafast', '-crf 28',
-      '-r 30', `-t ${clipDur}`, '-pix_fmt yuv420p',
-    ];
-    if (hasAudio) outputOpts.push('-map 0:a', '-c:a aac', '-b:a 128k');
-    else outputOpts.push('-an');
-
-    const cmd = ffmpeg()
-      .input(rawVideo).inputOptions([`-t ${clipDur}`])
-      .input(overlayPng)
-      .complexFilter(filterGraph)
-      .outputOptions(outputOpts)
-      .on('progress', info => {
-        try {
-          const parts = (info.timemark || '').split(':');
-          if (parts.length < 3) return;
-          const elapsed = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-          result.editProgress = Math.round(45 + Math.min(elapsed / clipDurSec, 1) * 50);
-        } catch {}
-      });
-
-    await runFFmpeg(cmd, output);
-
-    cleanTmp();
-    result.editStatus     = 'done';
-    result.editProgress   = 100;
-    result.editOutputPath = output;
-    console.log(`[contentFinder] Agent 4 concluído — slot ${index}`);
-  } catch (err) {
-    cleanTmp();
-    result.editStatus = 'error';
-    result.editError  = err.message;
-    console.error(`[contentFinder] Agent 4 erro slot ${index}:`, err.message);
+  const candidates = [];
+  for (const r of searchResults) {
+    if (r.status === 'fulfilled') candidates.push(...r.value);
+    else console.warn('[contentFinder] hashtag search failed:', r.reason?.message);
   }
-}
 
-// ── Main pipeline ─────────────────────────────────────────────────────────────
-async function runPipeline(jobId, hashtags) {
-  const job = jobs.get(jobId);
-  if (!job) return;
+  if (candidates.length === 0) return [];
 
-  const step = (progress, msg) => {
-    job.progress    = progress;
-    job.currentStep = msg;
-    console.log(`[contentFinder][${jobId.slice(0,8)}] ${msg}`);
-  };
+  // Deduplicate by URL, cap at 10
+  const unique = [...new Map(candidates.map(c => [c.url, c])).values()].slice(0, 10);
+  console.log(`[contentFinder] ${unique.length} candidatos únicos para analisar`);
 
-  try {
-    // ── Agent 1: busca ────────────────────────────────────────────────────────
-    step(5, '🔍 Agente 1: Buscando vídeos virais…');
+  // Agent 2: analyze all in parallel
+  const analyses = await Promise.allSettled(unique.map(c => analyzeContent(c)));
+  const analyzed = unique.map((c, i) => ({
+    ...c,
+    ...(analyses[i].status === 'fulfilled' ? analyses[i].value : { approved: false }),
+  }));
 
-    const candidates = [];
-    const tried = new Set();
+  const approved = analyzed.filter(a => a.approved === true);
+  console.log(`[contentFinder] ${approved.length}/${analyzed.length} aprovados pelo Agente 2`);
 
-    for (const tag of hashtags) {
-      if (candidates.length >= 15 || tried.has(tag)) continue;
-      tried.add(tag);
-      try {
-        const found = await searchHashtag(tag);
-        candidates.push(...found);
-        console.log(`[contentFinder] #${tag}: ${found.length} candidatos encontrados`);
-      } catch (e) {
-        console.warn(`[contentFinder] #${tag} falhou:`, e.message);
-      }
-    }
+  if (approved.length === 0) return [];
 
-    // Retry remaining hashtags if not enough results
-    if (candidates.length < 3) {
-      for (const tag of hashtags) {
-        if (candidates.length >= 10 || tried.has(tag)) continue;
-        tried.add(tag);
-        try { const found = await searchHashtag(tag); candidates.push(...found); } catch {}
-      }
-    }
+  // Agent 3: generate copy for all approved in parallel
+  const copies = await Promise.allSettled(approved.map(c => generateCopy(c, c)));
 
-    if (candidates.length === 0) {
-      job.status      = 'done';
-      job.results     = [];
-      job.progress    = 100;
-      job.currentStep = '✅ Nenhum vídeo encontrado com os filtros aplicados.';
-      return;
-    }
+  const results = [];
+  for (let i = 0; i < approved.length; i++) {
+    const item = approved[i];
+    if (copies[i].status !== 'fulfilled') continue;
+    const copy = copies[i].value;
+    if (!copy.headline) continue;
 
-    // Deduplicate by URL, cap at 10
-    const unique = [...new Map(candidates.map(c => [c.url, c])).values()].slice(0, 10);
-    step(20, `🧠 Agente 2: Analisando ${unique.length} vídeos…`);
-
-    // ── Agent 2: análise ──────────────────────────────────────────────────────
-    const analyzed = [];
-    for (let i = 0; i < unique.length; i++) {
-      try {
-        const analysis = await analyzeContent(unique[i]);
-        analyzed.push({ ...unique[i], ...analysis });
-        step(
-          Math.round(20 + ((i + 1) / unique.length) * 30),
-          `🧠 Agente 2: Analisando vídeo ${i + 1}/${unique.length}…`
-        );
-      } catch (e) {
-        console.warn(`[contentFinder] Análise ${i} falhou:`, e.message);
-      }
-    }
-
-    const approved = analyzed.filter(a => a.approved === true);
-    console.log(`[contentFinder] ${approved.length}/${analyzed.length} aprovados pelo Agente 2`);
-
-    if (approved.length === 0) {
-      job.status      = 'done';
-      job.results     = [];
-      job.progress    = 100;
-      job.currentStep = '✅ Nenhum vídeo passou na análise de qualidade.';
-      return;
-    }
-
-    step(55, `✍️ Agente 3: Gerando copy para ${approved.length} vídeo(s)…`);
-
-    // ── Agent 3: copy ─────────────────────────────────────────────────────────
-    const results = [];
-    for (let i = 0; i < approved.length; i++) {
-      const item = approved[i];
-      try {
-        const copy = await generateCopy(item, item);
-        results.push({
-          index:           i,
-          url:             item.url,
-          videoUrl:        item.videoUrl,
-          thumbnail:       item.thumbnail,
-          likes:           item.likes,
-          views:           item.views,
-          originalCaption: item.originalCaption,
-          viral_score:     item.viral_score     || 0,
-          viral_reasons:   item.viral_reasons   || [],
-          ban_risk:        item.ban_risk         || 'baixo',
-          ban_reasons:     item.ban_reasons      || [],
-          copyright_risk:  item.copyright_risk   || 'baixo',
-          copyright_reasons: item.copyright_reasons || [],
-          content_category: item.content_category || 'outro',
-          fit_for_profile: item.fit_for_profile  || 0,
-          headline:        copy.headline,
-          caption:         copy.caption,
-          editStatus:      'idle',
-          editProgress:    0,
-          editOutputPath:  null,
-          editError:       null,
-        });
-        step(
-          Math.round(55 + ((i + 1) / approved.length) * 35),
-          `✍️ Agente 3: Copy ${i + 1}/${approved.length} gerada…`
-        );
-      } catch (e) {
-        console.warn(`[contentFinder] Copy ${i} falhou:`, e.message);
-      }
-    }
-
-    job.results     = results;
-    job.status      = 'done';
-    job.progress    = 100;
-    job.currentStep = `✅ Concluído! ${results.length} vídeo(s) pronto(s) para edição.`;
-  } catch (err) {
-    job.status      = 'error';
-    job.error       = err.message;
-    job.currentStep = `Erro: ${err.message}`;
-    console.error(`[contentFinder] Pipeline erro:`, err.message);
+    results.push({
+      index:            results.length,
+      url:              item.url,
+      videoUrl:         item.videoUrl,
+      thumbnail:        item.thumbnail,
+      likes:            item.likes,
+      views:            item.views,
+      originalCaption:  item.originalCaption,
+      viral_score:      item.viral_score      || 0,
+      viral_reasons:    item.viral_reasons    || [],
+      ban_risk:         item.ban_risk         || 'baixo',
+      ban_reasons:      item.ban_reasons      || [],
+      copyright_risk:   item.copyright_risk   || 'baixo',
+      copyright_reasons: item.copyright_reasons || [],
+      content_category: item.content_category || 'outro',
+      fit_for_profile:  item.fit_for_profile  || 0,
+      headline:         copy.headline,
+      caption:          copy.caption,
+    });
   }
+
+  return results;
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// POST /api/content-finder/search
+// POST /api/content-finder/search — runs full pipeline synchronously, returns JSON
 router.post('/search', async (req, res) => {
   const { hashtags } = req.body;
   if (!Array.isArray(hashtags) || hashtags.length === 0) {
@@ -521,90 +349,87 @@ router.post('/search', async (req, res) => {
     return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
   }
 
-  const jobId = crypto.randomUUID();
-  jobs.set(jobId, {
-    status:      'processing',
-    progress:    0,
-    currentStep: 'Iniciando pipeline…',
-    results:     [],
-    createdAt:   Date.now(),
-  });
-
-  runPipeline(jobId, hashtags).catch(err =>
-    console.error('[contentFinder] unhandled pipeline error:', err.message)
-  );
-
-  res.status(202).json({ jobId, status: 'processing' });
+  try {
+    const results = await runSearch(hashtags);
+    res.json({ results });
+  } catch (e) {
+    console.error('[contentFinder] search error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// GET /api/content-finder/status/:jobId
-router.get('/status/:jobId', (req, res) => {
-  const job = jobs.get(req.params.jobId);
-  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
-  res.json({
-    status:      job.status,
-    progress:    job.progress,
-    currentStep: job.currentStep,
-    results:     job.results,
-    error:       job.error,
-  });
-});
+// POST /api/content-finder/approve — Agent 4: edits video, streams MP4 directly
+router.post('/approve', async (req, res) => {
+  const { videoUrl: directUrl, postUrl, headline, caption } = req.body;
+  if (!headline?.trim()) return res.status(400).json({ error: 'headline é obrigatória' });
+  if (!directUrl && !postUrl) return res.status(400).json({ error: 'videoUrl ou postUrl é obrigatório' });
 
-// POST /api/content-finder/approve/:jobId/:index  — dispara Agent 4
-router.post('/approve/:jobId/:index', (req, res) => {
-  const { jobId } = req.params;
-  const index = parseInt(req.params.index, 10);
-
-  const job = jobs.get(jobId);
-  if (!job)               return res.status(404).json({ error: 'Job não encontrado' });
-  if (!job.results[index]) return res.status(404).json({ error: 'Resultado não encontrado' });
-
-  const result = job.results[index];
-  if (result.editStatus === 'processing') {
-    return res.status(409).json({ error: 'Vídeo já está sendo processado' });
+  if (!process.env.RAPIDAPI_KEY && !directUrl) {
+    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
   }
 
-  // Apply user edits before editing
-  if (req.body?.headline) result.headline = String(req.body.headline).trim();
-  if (req.body?.caption)  result.caption  = String(req.body.caption).trim();
+  const sid        = crypto.randomUUID();
+  const rawVideo   = path.join(os.tmpdir(), `${sid}_raw.mp4`);
+  const overlayPng = path.join(os.tmpdir(), `${sid}_overlay.png`);
+  const output     = path.join(os.tmpdir(), `${sid}_final.mp4`);
 
-  editVideo(jobId, index).catch(err =>
-    console.error('[contentFinder] editVideo unhandled:', err.message)
-  );
+  const cleanTmp = () => [rawVideo, overlayPng].forEach(f => {
+    try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+  });
 
-  res.json({ status: 'processing' });
-});
+  try {
+    let videoUrl = directUrl;
+    if (!videoUrl) videoUrl = await resolveInstagramUrl(postUrl);
 
-// GET /api/content-finder/download/:jobId/:index
-router.get('/download/:jobId/:index', (req, res) => {
-  const { jobId } = req.params;
-  const index = parseInt(req.params.index, 10);
+    await streamDownload(videoUrl, rawVideo);
 
-  const job = jobs.get(jobId);
-  if (!job)                return res.status(404).json({ error: 'Job não encontrado' });
-  const result = job.results?.[index];
-  if (!result)             return res.status(404).json({ error: 'Resultado não encontrado' });
-  if (result.editStatus !== 'done') return res.status(400).json({ error: 'Vídeo ainda não está pronto' });
-  if (!result.editOutputPath || !fs.existsSync(result.editOutputPath)) {
-    return res.status(410).json({ error: 'Arquivo expirado' });
+    const [, { hasAudio, duration }] = await Promise.all([
+      buildHeadlineOverlay(headline.trim(), overlayPng),
+      getVideoInfo(rawVideo),
+    ]);
+
+    const clipDur = Math.min(duration, 20).toFixed(3);
+
+    const filterGraph = [
+      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
+      `[1:v]loop=loop=-1:size=1:start=0[bar]`,
+      `[scaled][bar]overlay=0:0:eof_action=endall[out]`,
+    ].join(';');
+
+    const outputOpts = [
+      '-map [out]', '-c:v libx264', '-preset ultrafast', '-crf 28',
+      '-r 30', `-t ${clipDur}`, '-pix_fmt yuv420p',
+    ];
+    if (hasAudio) outputOpts.push('-map 0:a', '-c:a aac', '-b:a 128k');
+    else outputOpts.push('-an');
+
+    const cmd = ffmpeg()
+      .input(rawVideo).inputOptions([`-t ${clipDur}`])
+      .input(overlayPng)
+      .complexFilter(filterGraph)
+      .outputOptions(outputOpts);
+
+    await runFFmpeg(cmd, output, 50000);
+    cleanTmp();
+
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', 'attachment; filename="reel_reciclado.mp4"');
+    res.setHeader('Access-Control-Expose-Headers', 'X-Headline, X-Caption');
+    res.setHeader('X-Headline', encodeURIComponent(headline || ''));
+    res.setHeader('X-Caption',  encodeURIComponent(caption  || ''));
+
+    const stream = fs.createReadStream(output);
+    stream.pipe(res);
+    stream.on('end', () => { try { fs.unlinkSync(output); } catch {} });
+    stream.on('error', err => {
+      console.error('[contentFinder] stream error:', err.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Erro ao enviar vídeo' });
+    });
+  } catch (e) {
+    cleanTmp();
+    console.error('[contentFinder] approve error:', e.message);
+    if (!res.headersSent) res.status(500).json({ error: e.message });
   }
-
-  const stat = fs.statSync(result.editOutputPath);
-  res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader('Content-Disposition', `attachment; filename="reel_reciclado_${index + 1}.mp4"`);
-  res.setHeader('Content-Length', stat.size);
-
-  const stream = fs.createReadStream(result.editOutputPath);
-  stream.pipe(res);
-  stream.on('error', err => {
-    console.error('Download stream error:', err.message);
-    if (!res.headersSent) res.status(500).json({ error: 'Erro ao enviar arquivo' });
-  });
-  stream.on('end', () => {
-    try { fs.unlinkSync(result.editOutputPath); } catch {}
-    result.editOutputPath = null;
-    result.editStatus     = 'downloaded';
-  });
 });
 
 module.exports = router;

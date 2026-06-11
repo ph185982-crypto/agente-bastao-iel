@@ -12,8 +12,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS — backend is a private API behind Netlify proxy; allow all origins
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({
+  origin: true,
+  credentials: true,
+  exposedHeaders: ['X-Headline', 'X-Caption'],
+}));
 
 app.use(express.json());
 
@@ -37,6 +40,10 @@ app.get('/', (req, res) => {
   res.redirect(302, frontend);
 });
 
-app.listen(PORT, () => {
-  console.log(`Nexos Páginas backend running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Nexos Páginas backend running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

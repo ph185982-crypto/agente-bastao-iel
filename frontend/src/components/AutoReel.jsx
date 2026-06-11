@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { API_BASE } from '../utils/api'
 
-const POLL_INTERVAL = 2500
-
 export default function AutoReel() {
   const [instagramUrl, setInstagramUrl] = useState('')
   const [print, setPrint] = useState(null)
@@ -23,13 +21,10 @@ export default function AutoReel() {
 
   const printInputRef = useRef(null)
   const templateInputRef = useRef(null)
-  const pollRef = useRef(null)
   const extractAbortRef = useRef(null)
+  const fakeTimerRef = useRef(null)
 
-  function stopPolling() {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
-  }
-  useEffect(() => () => stopPolling(), [])
+  useEffect(() => () => { if (fakeTimerRef.current) clearInterval(fakeTimerRef.current) }, [])
 
   async function handlePrint(file) {
     if (!file) return
@@ -39,7 +34,6 @@ export default function AutoReel() {
     setPreHeadline(null)
     setPreCaption(null)
 
-    // Cancel any in-flight extraction
     if (extractAbortRef.current) extractAbortRef.current.abort()
     const controller = new AbortController()
     extractAbortRef.current = controller
@@ -84,11 +78,16 @@ export default function AutoReel() {
 
     setStatus('processing')
     setProgress(0)
-    setMessage('Iniciando…')
+    setMessage('Processando… isso pode levar até 1 minuto.')
     setError('')
     setDownloadUrl(null)
     setHeadline('')
     setCaption('')
+
+    // Fake progress bar so the user sees activity
+    fakeTimerRef.current = setInterval(() => {
+      setProgress(p => Math.min(p + 1.5, 90))
+    }, 1000)
 
     const form = new FormData()
     form.append('instagramUrl', instagramUrl.trim())
@@ -99,64 +98,32 @@ export default function AutoReel() {
 
     try {
       const res = await fetch(`${API_BASE}/api/auto-reel`, { method: 'POST', body: form })
-      const { jobId, error: err } = await res.json()
-      if (!res.ok || !jobId) throw new Error(err || 'Erro ao iniciar processamento')
+      clearInterval(fakeTimerRef.current)
 
-      let consecutiveErrors = 0
-      pollRef.current = setInterval(async () => {
-        try {
-          const pr = await fetch(`${API_BASE}/api/auto-reel/${jobId}`)
+      if (!res.ok) {
+        const { error: err } = await res.json().catch(() => ({}))
+        throw new Error(err || `Erro ${res.status}`)
+      }
 
-          if (!pr.ok) {
-            // HTTP error (404 = job expired, 5xx = server error)
-            consecutiveErrors++
-            if (consecutiveErrors >= 3 || pr.status === 404) {
-              stopPolling()
-              setStatus('error')
-              setError(pr.status === 404 ? 'Job expirado. Tente novamente.' : 'Erro de servidor. Tente novamente.')
-            }
-            return
-          }
+      const h = decodeURIComponent(res.headers.get('X-Headline') || '')
+      const c = decodeURIComponent(res.headers.get('X-Caption')  || '')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
 
-          const data = await pr.json()
-          consecutiveErrors = 0
-          if (data.progress !== undefined) setProgress(data.progress)
-          if (data.message) setMessage(data.message)
-
-          if (data.status === 'done') {
-            stopPolling()
-            setStatus('done')
-            setProgress(100)
-            setHeadline(data.headline || preHeadline || '')
-            setCaption(data.caption   || preCaption  || '')
-            setDownloadUrl(`${API_BASE}/api/auto-reel/${jobId}/download`)
-          } else if (data.status === 'error') {
-            stopPolling()
-            setStatus('error')
-            setError(data.error || 'Erro ao processar')
-          } else if (!data.status) {
-            stopPolling()
-            setStatus('error')
-            setError(data.error || 'Resposta inesperada do servidor.')
-          }
-        } catch (e) {
-          consecutiveErrors++
-          console.error('Poll error:', e)
-          if (consecutiveErrors >= 3) {
-            stopPolling()
-            setStatus('error')
-            setError('Erro de conexão com o servidor. Verifique sua internet e tente novamente.')
-          }
-        }
-      }, POLL_INTERVAL)
+      setDownloadUrl(url)
+      setHeadline(h || preHeadline || '')
+      setCaption(c  || preCaption  || '')
+      setStatus('done')
+      setProgress(100)
     } catch (e) {
+      clearInterval(fakeTimerRef.current)
       setStatus('error')
       setError(e.message)
     }
   }
 
   function reset() {
-    stopPolling()
+    if (fakeTimerRef.current) clearInterval(fakeTimerRef.current)
     setStatus('idle')
     setProgress(0)
     setMessage('')
@@ -287,11 +254,11 @@ export default function AutoReel() {
         <div className="space-y-2 pt-1">
           <div className="flex items-center justify-between text-xs text-gray-400">
             <span>{message || 'Processando…'}</span>
-            <span>{progress}%</span>
+            <span>{Math.round(progress)}%</span>
           </div>
           <div className="w-full bg-gray-800 rounded-full h-2.5">
             <div
-              className="bg-indigo-500 h-2.5 rounded-full transition-all duration-500"
+              className="bg-indigo-500 h-2.5 rounded-full transition-all duration-1000"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -320,7 +287,6 @@ export default function AutoReel() {
 
           <p className="text-sm font-semibold text-green-300">Reel pronto!</p>
 
-          {/* Legenda longa para o Instagram */}
           {caption && (
             <div className="w-full px-4 space-y-2">
               <p className="text-xs font-semibold text-gray-300 uppercase tracking-wide">
