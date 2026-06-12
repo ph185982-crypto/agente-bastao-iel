@@ -136,18 +136,24 @@ async function buildReelFrame(templateBuf, headline, framePath) {
   const TXT_LINE_H    = 84;
   const lines = wrapText(headline, 22);
   const totalTextH = lines.length * TXT_LINE_H;
+  // Text centered in the headline zone (below the profile area)
   const textTopY   = PROFILE_H + (HEADLINE_H - totalTextH) / 2;
   const textEls = lines.map((line, i) =>
     `<text x="${W / 2}" y="${textTopY + (i + 1) * TXT_LINE_H}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
   ).join('');
+  // SVG is the base layer (white background + headline text)
+  // Template is composited on top — headline text appears BEHIND the template where it overlaps
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
     <rect width="${W}" height="${H}" fill="white"/>
     ${textEls}
   </svg>`;
+  // SVG is base layer — template composited on top so headline text appears behind the template photo.
+  // Resize to VIDEO_Y height (not just PROFILE_H) so profile circle at top is never cut.
+  // position: 'left top' preserves the top-left corner where the profile circle sits.
   const frameBuf = await sharp(Buffer.from(svg))
     .composite([{
       input: await sharp(templateBuf)
-        .resize(W, PROFILE_H, { fit: 'cover', position: 'top' })
+        .resize(W, VIDEO_Y, { fit: 'cover', position: 'left top' })
         .toBuffer(),
       top: 0, left: 0,
     }])
@@ -194,12 +200,28 @@ const EDUCATION_KEYWORDS = [
   'discovery', 'invention', 'amazing', 'incredible', 'never knew', 'did you know',
 ];
 
-// Palavras que indicam spam/comercial — excluir antes do GPT
-const SPAM_WORDS = [
-  'sorteio', 'giveaway', 'link na bio para comprar', 'promoção',
-  'desconto', 'venda', 'preço', 'oferta', 'compre agora', 'whatsapp',
-  'clique no link', 'acesse o link',
+// Semantic spam patterns (score-based, threshold 60 = exclude)
+const SPAM_PATTERNS = [
+  { re: /marque?\s+\d+\s+amigos?/i,                        score: 40, tag: 'engajamento forçado' },
+  { re: /coment[ae]\s+sim\b/i,                             score: 30, tag: 'engajamento forçado' },
+  { re: /arrast[ae]?\s+(para\s+cima|pra\s+cima|p[/'`]?cima)/i, score: 25, tag: 'CTA arrasta' },
+  { re: /\bwhatsapp\.com\b|\bwa\.me\b/i,                   score: 50, tag: 'WhatsApp redirect' },
+  { re: /link\s+(na|no)\s+bio/i,                           score: 25, tag: 'link externo' },
+  { re: /R\$\s*\d+|\d+\s*reais\b/i,                       score: 60, tag: 'preço/venda' },
+  { re: /\b(sorteio|giveaway|concurso)\b/i,                score: 70, tag: 'sorteio/giveaway' },
+  { re: /\b(desconto|promoção|oferta\s+exclusiva)\b/i,     score: 50, tag: 'promoção' },
+  { re: /\b(compre|comprar|compra\s+agora)\b/i,            score: 40, tag: 'venda' },
+  { re: /\bfrete\s+gr[aá]tis\b|\bentrega\s+gr[aá]tis\b/i, score: 50, tag: 'e-commerce' },
 ];
+
+function calcSpamScore(text) {
+  let score = 0;
+  const tags = [];
+  for (const p of SPAM_PATTERNS) {
+    if (p.re.test(text)) { score += p.score; tags.push(p.tag); }
+  }
+  return { score: Math.min(score, 100), tags };
+}
 
 function calcViralScore(post) {
   let score = 0;
@@ -208,39 +230,36 @@ function calcViralScore(post) {
   const comments = post.comments || 0;
   const duration = post.duration || 0;
 
-  // Views
   if (views > 1000000)     score += 40;
   else if (views > 500000) score += 30;
   else if (views > 100000) score += 20;
   else if (views > 50000)  score += 10;
 
-  // Ratio likes/views (engajamento)
   const ratio = views > 0 ? likes / views : 0;
   if (ratio > 0.05)      score += 20;
   else if (ratio > 0.03) score += 15;
   else if (ratio > 0.01) score += 10;
 
-  // Comentários (debate/curiosidade)
   if (comments > 1000)     score += 20;
   else if (comments > 500) score += 15;
   else if (comments > 100) score += 10;
 
-  // Duração ideal para Reels (15–60s)
   if (duration >= 15 && duration <= 60) score += 20;
   else if (duration > 0 && duration <= 90) score += 10;
 
-  return score; // máximo ~100
+  // TikTok needs higher viral signal to compensate for lower trust
+  if (post.source === 'tiktok') score -= 10;
+
+  return Math.max(0, score);
 }
 
 // Retorna motivo de exclusão ou null se aprovado
 function shouldExclude(post) {
-  const cap = (post.caption || '').toLowerCase();
+  const { score: spamScore, tags } = calcSpamScore(post.caption || '');
+  if (spamScore >= 60)
+    return `spam/comercial (score ${spamScore}: ${tags.join(', ')})`;
 
-  if (SPAM_WORDS.some(w => cap.includes(w)))
-    return `spam/comercial`;
-
-  // Mais de 10 emojis = baixa qualidade
-  const emojiCount = (cap.match(/\p{Emoji_Presentation}/gu) || []).length;
+  const emojiCount = ((post.caption || '').match(/\p{Emoji_Presentation}/gu) || []).length;
   if (emojiCount > 10)
     return `excesso de emojis (${emojiCount})`;
 
@@ -278,6 +297,9 @@ const ig120Headers = () => ({
   'x-rapidapi-host': IG120_HOST,
   'x-rapidapi-key': IG120_KEY,
 });
+
+// In-memory session dedup — persists across warm serverless invocations
+const usedVideoUrls = new Set();
 
 // Busca reels de uma conta (retorna play_count mas sem video_versions)
 async function fetchReels(username) {
@@ -397,92 +419,144 @@ async function searchTikTok(keyword) {
   return posts;
 }
 
-// ── Agent 2 — Analisador ──────────────────────────────────────────────────────
-async function analyzeContent(candidate) {
+// ── Agent 2+3 — Analista Unificado (análise + fact-check + copy em 1 call) ────
+async function analyzeAndGenerate(candidate) {
+  const isTikTok = candidate.source === 'tiktok';
+  const controversyNote = candidate.controversy_flag
+    ? `\n⚠️ ATENÇÃO: ratio comentários/likes=${candidate.controversy_ratio?.toFixed(2)} (anormalmente alto — pode ser conteúdo polêmico).`
+    : '';
+
   const res = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: `Você é um especialista em conteúdo viral do Instagram. Analise este conteúdo com base nas métricas e contexto fornecidos e retorne um JSON com:
+        content: `Você é agente de curadoria para @pedro_destrava (175k seguidores BR, nicho tech/ciência/curiosidades/história).
+
+Analise o candidato e retorne JSON completo com análise, fact-check, copy e veredito:
 {
-  "viral_score": número de 0 a 100,
-  "viral_reasons": ["motivo1", "motivo2"],
-  "ban_risk": "baixo" | "médio" | "alto",
+  "viral_score": 0-100,
+  "viral_reasons": ["reason"],
+  "content_category": "tecnologia"|"curiosidade"|"história"|"ciência"|"engenharia"|"espaço"|"negócios"|"outro",
+  "fit_for_profile": 0-100,
+  "ban_risk": "baixo"|"médio"|"alto",
   "ban_reasons": [],
-  "copyright_risk": "baixo" | "médio" | "alto",
+  "copyright_risk": "baixo"|"médio"|"alto",
   "copyright_reasons": [],
-  "approved": true | false,
-  "reject_reason": "string ou null",
-  "content_category": "tecnologia" | "curiosidade" | "história" | "ciência" | "engenharia" | "espaço" | "negócios" | "outro",
-  "fit_for_profile": número de 0 a 100
+  "factual_confidence": 0-100,
+  "factual_flags": [],
+  "misleading_caption": false,
+  "headline": "máx 8 palavras, impactante",
+  "caption": "legenda completa para postar — começa com fato surpreendente, parágrafos curtos, termina com 'Segue o @pedro_destrava'",
+  "headline_matches_source": true,
+  "headline_clickbait_risk": "baixo"|"médio"|"alto",
+  "approved": true|false,
+  "reject_reason": null,
+  "quality_tier": "A"|"B"|"C"|"D",
+  "warnings": []
 }
 
-Perfil do criador (@pedro_destrava):
-- Nicho: curiosidades de tecnologia, ciência, história e inovação
-- Tom: informativo, surpreendente, "o que ninguém te contou"
-- Audiência: 175k seguidores brasileiros, adultos
-- Conteúdos que mais viralizam: tecnologia retrô vs atual, inovações chinesas, curiosidades históricas, ciência aplicada
-- NÃO aprovar: conteúdo político, violento, sexual, músicas famosas (alto risco copyright), humor genérico, vlogs pessoais
-- APROVAR se viral_score >= 55 E ban_risk != "alto" E fit_for_profile >= 50
-- Perfis de mídia/ciência/tecnologia são geralmente seguros — assuma baixo risco se não há indicação contrária`,
+Regras de aprovação:
+- approved = true SE: viral_score >= 55 E ban_risk != "alto" E fit_for_profile >= 50 E factual_confidence >= 40 E misleading_caption = false E headline_matches_source = true
+- Para fonte TikTok: exigir factual_confidence >= 60
+- quality_tier: A (viral_score>80 sem warnings), B (>65), C (>50), D (abaixo)
+- NÃO aprovar: político, violento, sexual, músicas famosas (copyright), humor genérico, vlogs
+- Headlines style: "O que ninguém te contou sobre…", "A China fez isso e o mundo ignorou"`,
       },
       {
         role: 'user',
-        content: `Perfil de origem: @${candidate.sourceUsername || 'desconhecido'}
+        content: `Fonte: ${isTikTok ? 'TikTok (escrutínio extra — exige factual_confidence>=60)' : 'Instagram'}
+Perfil: @${candidate.sourceUsername || 'desconhecido'}
 Views: ${(candidate.views || 0).toLocaleString('pt-BR')}
 Likes: ${(candidate.likes || 0).toLocaleString('pt-BR')}
 Comentários: ${(candidate.comments || 0).toLocaleString('pt-BR')}
-Contexto/Caption: ${candidate.originalCaption || '(sem caption)'}
-
-Com base no perfil e métricas, avalie o potencial viral e adequação para @pedro_destrava.`,
+Caption original (até 600 chars): ${(candidate.originalCaption || '(sem caption)').slice(0, 600)}${controversyNote}`,
       },
     ],
-    max_tokens: 400,
-    response_format: { type: 'json_object' },
-  });
-
-  return JSON.parse(res.choices[0].message.content || '{}');
-}
-
-// ── Agent 3 — Criador de Copy ─────────────────────────────────────────────────
-async function generateCopy(candidate, analysis) {
-  const res = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
-    messages: [
-      {
-        role: 'system',
-        content: `Você é especialista em copy viral para Instagram Reels brasileiro.
-Estilo do criador @pedro_destrava:
-- Headlines: curtas, impactantes, geram curiosidade. Ex: "O que ninguém te contou sobre…", "Isso mudou o mundo e ninguém percebeu", "A China fez isso e o mundo ignorou"
-- Legendas: começam com fato surpreendente, explicam em parágrafos curtos, terminam com CTA "Segue o @pedro_destrava"
-- Tom: informativo, direto, surpreendente
-- Sem hashtags genéricas em excesso
-
-Retorne JSON:
-{
-  "headline": "texto curto para sobrepor no vídeo (máximo 8 palavras)",
-  "caption": "legenda completa pronta para postar no Instagram"
-}`,
-      },
-      {
-        role: 'user',
-        content: `Conteúdo original: ${candidate.originalCaption || '(sem caption)'}
-Categoria: ${analysis.content_category}
-Motivos virais: ${(analysis.viral_reasons || []).join(', ')}
-Viral score: ${analysis.viral_score}
-
-Gere headline impactante e legenda longa para este conteúdo.`,
-      },
-    ],
-    max_tokens: 800,
+    max_tokens: 900,
     response_format: { type: 'json_object' },
   });
 
   const parsed = JSON.parse(res.choices[0].message.content || '{}');
+  if (parsed.headline) {
+    parsed.headline = parsed.headline.trim().replace(/^["'""'']+|["'""'']+$/g, '');
+  }
+  return parsed;
+}
+
+// ── Mini-Júri (10 personas, 1 rodada, gpt-4o-mini, GATING) ───────────────────
+const MINI_JURY_PERSONAS = [
+  { id:  1, name: 'João',    age: 22, desc: 'Estudante universitário de TI, atenção curtíssima, passa o dedo se não entender em 2 segundos.' },
+  { id: 10, name: 'Bruna',   age: 26, desc: 'Recepcionista, faz scroll compulsivo no almoço, headline precisa ser irresistível para ela parar.' },
+  { id: 41, name: 'Sérgio',  age: 44, desc: 'Construtor civil, celular só à noite, gosta de curiosidades práticas e diretas.' },
+  { id: 55, name: 'Luiz',    age: 42, desc: 'Gerente de TI, exigente com qualidade, detecta conteúdo raso na hora.' },
+  { id: 61, name: 'Bianca',  age: 31, desc: 'Analista de dados, adora fatos e números concretos, desconfia de generalizações.' },
+  { id: 72, name: 'Gustavo', age: 34, desc: 'Arquiteto cloud, entusiasta de tecnologia, engaja quando vê inovação genuína.' },
+  { id: 81, name: 'Geraldo', age: 55, desc: 'Engenheiro aposentado, lê com calma, detecta inconsistência técnica facilmente.' },
+  { id: 86, name: 'Lúcia',   age: 44, desc: 'Advogada, cética, pesquisa antes de compartilhar, não tolera sensacionalismo.' },
+  { id: 91, name: 'Rafa',    age: 31, desc: 'Jornalista investigativo, detecta clickbait em milissegundos, denuncia conteúdo enganoso.' },
+  { id: 96, name: 'Clara',   age: 25, desc: 'Doutoranda em ciências sociais, analisa retórica e manipulação, imune a sensacionalismo.' },
+];
+
+async function runMiniJury(headline, originalCaption) {
+  const results = await Promise.all(
+    MINI_JURY_PERSONAS.map(async (persona) => {
+      try {
+        const res = await getOpenAI().chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `Você é ${persona.name}, ${persona.age} anos. ${persona.desc} Está scrollando Instagram agora.`,
+            },
+            {
+              role: 'user',
+              content: `Headline: "${headline}"
+Conteúdo original: "${(originalCaption || '').slice(0, 300)}"
+
+Avalie brevemente. Retorne JSON:
+{ "parou": boolean, "problema": "string descrevendo problema sério OU null se ok", "factual_issue": boolean }`,
+            },
+          ],
+          max_tokens: 120,
+          response_format: { type: 'json_object' },
+          temperature: 0.8,
+        });
+        const r = JSON.parse(res.choices[0].message.content || '{}');
+        return { persona, parou: !!r.parou, problema: r.problema || null, factual_issue: !!r.factual_issue };
+      } catch {
+        return { persona, parou: false, problema: null, factual_issue: false };
+      }
+    })
+  );
+
+  const stoppedCount    = results.filter(r => r.parou).length;
+  const factualIssues   = results.filter(r => r.factual_issue && r.problema);
+  const problemMessages = results.filter(r => r.problema).map(r => r.problema);
+
+  if (factualIssues.length > 0) {
+    return {
+      verdict: 'BLOCK',
+      reason: `${factualIssues.length} persona(s) detectaram problema factual: ${factualIssues.map(r => r.problema).join('; ')}`,
+      stopped: stoppedCount,
+      total: 10,
+    };
+  }
+
+  if (stoppedCount < 4) {
+    return {
+      verdict: 'WARN',
+      reason: `Apenas ${stoppedCount}/10 personas pararam — engajamento esperado baixo`,
+      stopped: stoppedCount,
+      total: 10,
+    };
+  }
+
   return {
-    headline: (parsed.headline || '').trim().replace(/^["'""'']+|["'""'']+$/g, ''),
-    caption:  (parsed.caption  || '').trim(),
+    verdict: 'OK',
+    reason: `${stoppedCount}/10 personas aprovaram`,
+    stopped: stoppedCount,
+    total: 10,
   };
 }
 
@@ -557,7 +631,7 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
     const capLower = (post.caption || '').toLowerCase();
     const hasEduKw = EDUCATION_KEYWORDS.some(k => capLower.includes(k));
 
-    // 6. Score preliminar
+    // 6. Score preliminar (TikTok penalty already inside calcViralScore)
     const preScore = calcViralScore(post) + (hasEduKw ? 10 : 0);
     console.log(`[A1] ${post.code}: preScore=${preScore}, edu=${hasEduKw}, views=${post.views.toLocaleString()}, eng=${(ratio * 100).toFixed(1)}%`);
 
@@ -566,22 +640,36 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       continue;
     }
 
+    // 7. Controversy flag (comments/likes ratio unusually high)
+    const controversyRatio = post.likes > 0 ? post.comments / post.likes : 0;
+    const controversyFlag  = controversyRatio > 0.15;
+    if (controversyFlag)
+      console.log(`[A1][controversy] ${post.code}: comments/likes=${controversyRatio.toFixed(2)} — possível conteúdo polêmico`);
+
     const isTikTok = post.source === 'tiktok';
+    const postUrl  = isTikTok
+      ? `https://www.tiktok.com/@${post.username}/video/${post.code}`
+      : `https://www.instagram.com/reel/${post.code}/`;
+
+    // 8. Dedup check
+    const alreadyUsed = usedVideoUrls.has(postUrl);
+
     candidates.push({
-      url:             isTikTok
-        ? `https://www.tiktok.com/@${post.username}/video/${post.code}`
-        : `https://www.instagram.com/reel/${post.code}/`,
-      videoUrl:        post.videoUrl,
-      thumbnail:       null,
-      likes:           post.likes,
-      views:           post.views,
-      comments:        post.comments,
+      url:               postUrl,
+      videoUrl:          post.videoUrl,
+      thumbnail:         null,
+      likes:             post.likes,
+      views:             post.views,
+      comments:          post.comments,
       preScore,
-      originalCaption: post.caption
+      originalCaption:   post.caption
         ? `Caption original: "${post.caption.slice(0, 400)}" — @${post.username}, ${post.views.toLocaleString()} views, ${post.likes.toLocaleString()} likes`
         : `Reel de @${post.username} — ${post.views.toLocaleString()} views, ${post.likes.toLocaleString()} likes`,
-      sourceUsername:  post.username,
-      source:          isTikTok ? 'tiktok' : 'instagram',
+      sourceUsername:    post.username,
+      source:            isTikTok ? 'tiktok' : 'instagram',
+      controversy_flag:  controversyFlag,
+      controversy_ratio: controversyRatio,
+      already_used:      alreadyUsed,
     });
   }
 
@@ -592,34 +680,23 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
 
   if (deduped.length === 0) return [];
 
-  // ── A2: análise paralela com GPT-4o ──────────────────────────────────────
-  const analyses = await Promise.allSettled(deduped.map(c => analyzeContent(c)));
+  // ── A2+A3: análise + fact-check + copy unificados (1 call por candidato) ──
+  const analyses = await Promise.allSettled(deduped.map(c => analyzeAndGenerate(c)));
   const analyzed = deduped.map((c, i) => ({
     ...c,
     ...(analyses[i].status === 'fulfilled' ? analyses[i].value : { approved: false }),
   }));
-  const approved = analyzed.filter(a => a.approved === true);
+  const approved = analyzed.filter(a => a.approved === true && a.headline);
   console.log(`[A2] ${approved.length}/${analyzed.length} aprovados`);
 
   if (approved.length === 0) return [];
-
-  // ── A3: geração de copy paralela ──────────────────────────────────────────
-  const copies = await Promise.allSettled(approved.map(c => generateCopy(c, c)));
-
-  const withCopy = [];
-  for (let i = 0; i < approved.length; i++) {
-    if (copies[i].status !== 'fulfilled') continue;
-    const copy = copies[i].value;
-    if (!copy.headline) continue;
-    withCopy.push({ ...approved[i], headline: copy.headline, caption: copy.caption });
-  }
 
   // ── Diversificação: máx 3 por nicho, máx 2 por conta ─────────────────────
   const byCat = {};
   const byAcc = {};
   const final = [];
 
-  for (const r of withCopy) {
+  for (const r of approved) {
     const cat = r.content_category || 'outro';
     const acc = r.sourceUsername   || '';
 
@@ -636,24 +713,32 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
     byAcc[acc] = (byAcc[acc] || 0) + 1;
 
     final.push({
-      index:             final.length,
-      url:               r.url,
-      videoUrl:          r.videoUrl,
-      thumbnail:         r.thumbnail,
-      likes:             r.likes,
-      views:             r.views,
-      originalCaption:   r.originalCaption,
-      viral_score:       r.viral_score       || 0,
-      viral_reasons:     r.viral_reasons     || [],
-      ban_risk:          r.ban_risk          || 'baixo',
-      ban_reasons:       r.ban_reasons       || [],
-      copyright_risk:    r.copyright_risk    || 'baixo',
-      copyright_reasons: r.copyright_reasons || [],
-      content_category:  r.content_category  || 'outro',
-      fit_for_profile:   r.fit_for_profile   || 0,
-      headline:          r.headline,
-      caption:           r.caption,
-      source:            r.source             || 'instagram',
+      index:                  final.length,
+      url:                    r.url,
+      videoUrl:               r.videoUrl,
+      thumbnail:              r.thumbnail,
+      likes:                  r.likes,
+      views:                  r.views,
+      originalCaption:        r.originalCaption,
+      viral_score:            r.viral_score            || 0,
+      viral_reasons:          r.viral_reasons          || [],
+      ban_risk:               r.ban_risk               || 'baixo',
+      ban_reasons:            r.ban_reasons            || [],
+      copyright_risk:         r.copyright_risk         || 'baixo',
+      copyright_reasons:      r.copyright_reasons      || [],
+      content_category:       r.content_category       || 'outro',
+      fit_for_profile:        r.fit_for_profile        || 0,
+      factual_confidence:     r.factual_confidence     ?? 50,
+      factual_flags:          r.factual_flags          || [],
+      misleading_caption:     r.misleading_caption     || false,
+      headline_clickbait_risk:r.headline_clickbait_risk || 'baixo',
+      quality_tier:           r.quality_tier           || 'C',
+      warnings:               r.warnings               || [],
+      headline:               r.headline,
+      caption:                r.caption,
+      source:                 r.source                 || 'instagram',
+      controversy_flag:       r.controversy_flag       || false,
+      already_used:           r.already_used           || false,
     });
 
     if (final.length >= 10) break;
@@ -691,9 +776,9 @@ router.post('/search', async (req, res) => {
 });
 
 // POST /api/content-finder/approve — Agent 4: edits video, streams MP4 directly
-// Accepts multipart/form-data: fields (videoUrl, postUrl, headline, caption) + file (template)
+// Accepts multipart/form-data: fields (videoUrl, postUrl, headline, caption, originalCaption) + file (template)
 router.post('/approve', upload.single('template'), async (req, res) => {
-  const { videoUrl: directUrl, postUrl, headline, caption } = req.body;
+  const { videoUrl: directUrl, postUrl, headline, caption, originalCaption } = req.body;
   if (!headline?.trim()) return res.status(400).json({ error: 'headline é obrigatória' });
   if (!directUrl && !postUrl) return res.status(400).json({ error: 'videoUrl ou postUrl é obrigatório' });
 
@@ -724,12 +809,26 @@ router.post('/approve', upload.single('template'), async (req, res) => {
       await streamDownload(resolved, rawVideo);
     };
 
-    const [{ hasAudio, duration }] = await Promise.all([
-      downloadVideo().then(() => getVideoInfo(rawVideo)),
-      templateBuf
-        ? buildReelFrame(templateBuf, headline.trim(), framePng)
-        : buildHeadlineOverlay(headline.trim(), framePng),
+    // Run video download + overlay build + mini-jury in parallel
+    const [[{ hasAudio, duration }], juryResult] = await Promise.all([
+      Promise.all([
+        downloadVideo().then(() => getVideoInfo(rawVideo)),
+        templateBuf
+          ? buildReelFrame(templateBuf, headline.trim(), framePng)
+          : buildHeadlineOverlay(headline.trim(), framePng),
+      ]),
+      runMiniJury(headline.trim(), originalCaption || ''),
     ]);
+
+    // Mini-jury gating
+    if (juryResult.verdict === 'BLOCK') {
+      cleanTmp();
+      console.log(`[miniJury] BLOCK: ${juryResult.reason}`);
+      return res.json({ blocked: true, reason: juryResult.reason, juryResult });
+    }
+    if (juryResult.verdict === 'WARN') {
+      console.log(`[miniJury] WARN: ${juryResult.reason}`);
+    }
 
     const clipDur = Math.min(duration, 20).toFixed(3);
     let filterGraph;
@@ -766,9 +865,17 @@ router.post('/approve', upload.single('template'), async (req, res) => {
 
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Disposition', 'attachment; filename="reel_reciclado.mp4"');
-    res.setHeader('Access-Control-Expose-Headers', 'X-Headline, X-Caption');
-    res.setHeader('X-Headline', encodeURIComponent(headline || ''));
-    res.setHeader('X-Caption',  encodeURIComponent(caption  || ''));
+    res.setHeader('X-Headline',          encodeURIComponent(headline || ''));
+    res.setHeader('X-Caption',           encodeURIComponent(caption  || ''));
+    res.setHeader('X-Mini-Jury-Verdict', juryResult.verdict);
+    res.setHeader('X-Mini-Jury-Stopped', `${juryResult.stopped}/${juryResult.total}`);
+    if (juryResult.verdict === 'WARN') {
+      res.setHeader('X-Mini-Jury-Reason', encodeURIComponent(juryResult.reason));
+    }
+
+    // Mark this URL as used (dedup for future searches in this session)
+    const videoKey = postUrl || directUrl || '';
+    if (videoKey) usedVideoUrls.add(videoKey);
 
     const stream = fs.createReadStream(output);
     stream.pipe(res);

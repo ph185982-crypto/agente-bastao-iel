@@ -175,13 +175,37 @@ function SearchPhase({ selectedThemes, setSelectedThemes, minViews, setMinViews,
 }
 
 // ─── ResultCard ───────────────────────────────────────────────────────────────
+const TIER_STYLES = {
+  A: 'bg-green-900/50 text-green-300 border-green-700/60',
+  B: 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50',
+  C: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50',
+  D: 'bg-red-900/40 text-red-300 border-red-700/50',
+}
+
 function ResultCard({ result, onPrepare }) {
   const [headline, setHeadline] = useState(result.headline || '')
   const [caption,  setCaption]  = useState(result.caption  || '')
   const [showCaption, setShowCaption] = useState(false)
 
+  const tier      = result.quality_tier || 'C'
+  const factual   = result.factual_confidence ?? 50
+  const clickbait = result.headline_clickbait_risk === 'alto'
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+    <div className={`bg-gray-900 border rounded-2xl overflow-hidden
+      ${result.already_used ? 'border-gray-700 opacity-60' : 'border-gray-800'}`}>
+
+      {clickbait && (
+        <div className="px-4 py-2 bg-red-900/30 border-b border-red-800/50 flex items-center gap-2">
+          <span className="text-xs text-red-300 font-medium">🚨 Risco de clickbait detectado — revise a headline</span>
+        </div>
+      )}
+      {result.already_used && (
+        <div className="px-4 py-2 bg-gray-800/60 border-b border-gray-700 flex items-center gap-2">
+          <span className="text-xs text-gray-400">✓ Já usado nesta sessão</span>
+        </div>
+      )}
+
       <div className="p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap">
@@ -192,16 +216,25 @@ function ResultCard({ result, onPrepare }) {
               ${result.source === 'tiktok'
                 ? 'bg-pink-900/40 text-pink-300 border-pink-700/50'
                 : 'bg-purple-900/40 text-purple-300 border-purple-700/50'}`}>
-              {result.source === 'tiktok' ? '🎵 TikTok' : '📸 Instagram'}
+              {result.source === 'tiktok' ? '🎵 TikTok — escrutínio extra' : '📸 Instagram'}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full border font-bold ${TIER_STYLES[tier] || TIER_STYLES.C}`}>
+              Tier {tier}
             </span>
             <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold
               ${(result.viral_score ?? 0) >= 60
                 ? 'bg-green-900/40 text-green-300 border-green-700/50'
                 : 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50'}`}>
-              ⚡ Score {result.viral_score ?? 0}
+              ⚡ {result.viral_score ?? 0}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full border
+              ${factual >= 80 ? 'bg-green-900/30 text-green-400 border-green-800/50'
+                : factual >= 40 ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800/50'
+                : 'bg-red-900/30 text-red-400 border-red-800/50'}`}>
+              {factual >= 80 ? '✓' : factual >= 40 ? '⚠' : '✗'} factual {factual}%
             </span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500">
+          <div className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
             {result.views > 0 && <span>👁 {result.views.toLocaleString('pt-BR')}</span>}
             <span>❤️ {(result.likes || 0).toLocaleString('pt-BR')}</span>
           </div>
@@ -243,97 +276,70 @@ function ResultCard({ result, onPrepare }) {
           className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
           Ver original ↗
         </a>
-        <button
-          onClick={() => onPrepare(result, headline, caption)}
-          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-colors"
-        >
-          🚀 Preparar Reel
-        </button>
+        {result.already_used ? (
+          <span className="text-xs text-gray-500 px-5 py-2.5">Já usado</span>
+        ) : (
+          <button
+            onClick={() => onPrepare(result, headline, caption)}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-colors"
+          >
+            Preparar Reel
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
 // ─── PreparingPhase ───────────────────────────────────────────────────────────
-function PreparingPhase({ videoStatus, videoError, juryStatus, juryData }) {
-  const round         = juryData?.round ?? 0
-  const personasDone  = juryData?.personasAnalyzed ?? 0
-  const ROUND_LABEL   = {
-    0: '⏳ Iniciando…',
-    1: `🧑‍🤝‍🧑 Rodada 1 — ${personasDone}/100 pessoas reagiram`,
-    2: '📖 Rodada 2 — Análise da descrição',
-    3: '💬 Rodada 3 — Debates em grupo',
-    4: '⚖️ Rodada 4 — Veredito final',
-  }
-
-  function TaskRow({ icon, title, subtitle, status, extra }) {
-    return (
-      <div className={`flex items-start gap-4 rounded-2xl border p-4 transition-colors
-        ${status === 'done'  ? 'border-green-700/50 bg-green-900/20'
-          : status === 'error' ? 'border-red-700/50 bg-red-900/20'
-          : 'border-indigo-700/50 bg-indigo-900/20'}`}>
-        <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center shrink-0">
-          {status === 'done'  ? <span className="text-xl">✅</span>
-           : status === 'error' ? <span className="text-xl">❌</span>
-           : (
-            <svg className="w-5 h-5 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-            </svg>
-          )}
-        </div>
-        <div className="flex-1 min-w-0 space-y-1.5">
-          <p className="text-sm font-semibold text-white">{icon} {title}</p>
-          <p className="text-xs text-gray-400">{subtitle}</p>
-          {extra}
-        </div>
+function TaskRow({ icon, title, subtitle, status, extra }) {
+  return (
+    <div className={`flex items-start gap-4 rounded-2xl border p-4 transition-colors
+      ${status === 'done'    ? 'border-green-700/50 bg-green-900/20'
+        : status === 'error'   ? 'border-red-700/50 bg-red-900/20'
+        : status === 'blocked' ? 'border-red-700/50 bg-red-900/20'
+        : 'border-indigo-700/50 bg-indigo-900/20'}`}>
+      <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center shrink-0">
+        {status === 'done'    ? <span className="text-xl">✅</span>
+         : status === 'error' || status === 'blocked' ? <span className="text-xl">❌</span>
+         : (
+          <svg className="w-5 h-5 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+        )}
       </div>
-    )
-  }
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <p className="text-sm font-semibold text-white">{icon} {title}</p>
+        <p className="text-xs text-gray-400">{subtitle}</p>
+        {extra}
+      </div>
+    </div>
+  )
+}
 
+function PreparingPhase({ videoStatus, videoError }) {
   return (
     <div className="space-y-4 py-4">
       <p className="text-center text-sm font-semibold text-white">Preparando seu Reel…</p>
-      <p className="text-center text-xs text-gray-500">As duas tarefas rodam ao mesmo tempo ⚡</p>
+      <p className="text-center text-xs text-gray-500">Download + mini-júri rodam em paralelo ⚡</p>
 
       <TaskRow
         icon="🎬" title="Criando seu Reel"
         subtitle={
           videoStatus === 'done'  ? 'Vídeo pronto para baixar!'
           : videoStatus === 'error' ? (videoError || 'Erro ao criar vídeo')
-          : 'Baixando → adicionando template e headline…'
+          : 'Baixando → mini-júri → adicionando template e headline…'
         }
         status={videoStatus}
-      />
-
-      <TaskRow
-        icon="⚖️" title="Júri de 100 Agentes"
-        subtitle={
-          juryStatus === 'done'  ? 'Análise completa!'
-          : juryStatus === 'error' ? 'Erro na análise'
-          : ROUND_LABEL[round] || '⏳ Iniciando…'
-        }
-        status={juryStatus}
-        extra={
-          juryStatus !== 'done' && juryStatus !== 'error' && round === 1 && personasDone > 0 ? (
-            <div className="space-y-1">
-              <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                <div className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-                  style={{ width: `${personasDone}%` }}/>
-              </div>
-            </div>
-          ) : null
-        }
       />
     </div>
   )
 }
 
 // ─── ReadyPhase ───────────────────────────────────────────────────────────────
-function ReadyPhase({ videoBlobUrl, videoError, caption, juryStatus, juryData, onReset }) {
+function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJuryReason, onReset }) {
   const [copied, setCopied] = useState(false)
-  const v     = juryData?.results?.verdict ?? {}
-  const score = v.score_geral ?? null
 
   function copyCaption() {
     navigator.clipboard.writeText(caption).then(() => {
@@ -351,7 +357,13 @@ function ReadyPhase({ videoBlobUrl, videoError, caption, juryStatus, juryData, o
         </button>
       </div>
 
-      {/* ─ Baixar vídeo + copiar legenda ─ */}
+      {miniJuryVerdict === 'WARN' && miniJuryReason && (
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-yellow-900/30 border border-yellow-700/50 rounded-xl">
+          <span className="text-yellow-400 shrink-0">⚠️</span>
+          <p className="text-xs text-yellow-300">{miniJuryReason}</p>
+        </div>
+      )}
+
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
         <p className="text-sm font-semibold text-white">🎬 Seu Reel editado</p>
 
@@ -372,97 +384,12 @@ function ReadyPhase({ videoBlobUrl, videoError, caption, juryStatus, juryData, o
         </button>
       </div>
 
-      {/* ─ Veredicto do Júri ─ */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
-        <p className="text-sm font-semibold text-white">⚖️ Veredicto do Júri</p>
-
-        {juryStatus === 'loading' && (
-          <div className="flex items-center gap-3 text-xs text-gray-400 py-2">
-            <svg className="w-4 h-4 animate-spin text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-            </svg>
-            <span>
-              {juryData?.progress || '100 agentes analisando…'}
-              {juryData?.round ? ` (rodada ${juryData.round}/4)` : ''}
-            </span>
-          </div>
-        )}
-
-        {juryStatus === 'error' && (
-          <p className="text-xs text-red-400">Não foi possível obter o veredicto do júri.</p>
-        )}
-
-        {juryStatus === 'done' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <ScoreRing score={score} size={80} />
-              <div>
-                <p className={`text-2xl font-black
-                  ${score >= 75 ? 'text-green-400' : score >= 55 ? 'text-yellow-400' : 'text-red-400'}`}>
-                  {score >= 75 ? 'APROVADO' : score >= 55 ? 'REVISAR' : 'REPROVAR'}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">Score geral do júri</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { icon: '👁️', label: 'parariam', value: v.taxa_parada ?? 0 },
-                { icon: '▶️', label: 'assistiriam', value: v.taxa_retencao ?? 0 },
-                { icon: '📤', label: 'compartilhariam', value: v.taxa_compartilhamento ?? 0 },
-              ].map(m => (
-                <div key={m.label} className="flex flex-col items-center gap-1 bg-gray-800 rounded-xl p-2.5">
-                  <span className="text-lg">{m.icon}</span>
-                  <span className="text-lg font-bold text-indigo-300">{m.value}%</span>
-                  <span className="text-xs text-gray-500 text-center leading-tight">{m.label}</span>
-                </div>
-              ))}
-            </div>
-
-            {(v.alerta_clickbait || v.alerta_muito_generico || v.alerta_muito_complexo) && (
-              <div className="space-y-1.5">
-                {v.alerta_clickbait      && <p className="text-xs text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-1.5">🚨 Risco de clickbait</p>}
-                {v.alerta_muito_generico && <p className="text-xs text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-1.5">🚨 Headline muito genérica</p>}
-                {v.alerta_muito_complexo && <p className="text-xs text-yellow-400 bg-yellow-900/20 border border-yellow-800/40 rounded-lg px-3 py-1.5">⚠️ Complexo para audiência casual</p>}
-              </div>
-            )}
-
-            {v.veredicto_texto && (
-              <p className="text-sm text-gray-300 leading-relaxed">{v.veredicto_texto}</p>
-            )}
-
-            {(v.headline_reescrita || v.headline_alternativas?.length > 0) && (
-              <div className="space-y-2 border-t border-gray-800 pt-3">
-                <p className="text-xs font-semibold text-gray-400">💡 Sugestões do júri</p>
-
-                {v.headline_reescrita && (
-                  <div className="flex items-center gap-2 bg-indigo-900/30 border border-indigo-700/40 rounded-xl px-3 py-2.5">
-                    <p className="flex-1 text-sm font-semibold text-indigo-200">{v.headline_reescrita}</p>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(v.headline_reescrita).catch(() => {})}
-                      className="text-xs px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-gray-300 shrink-0">
-                      Copiar
-                    </button>
-                  </div>
-                )}
-
-                {v.headline_alternativas?.map((alt, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2">
-                    <span className="text-xs text-gray-500 w-4 shrink-0">{i + 1}.</span>
-                    <p className="flex-1 text-sm text-gray-200">{alt}</p>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(alt).catch(() => {})}
-                      className="text-xs px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-gray-300 shrink-0">
-                      Copiar
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {miniJuryVerdict && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-1">
+          <p className="text-xs font-semibold text-gray-400">⚖️ Mini-júri (10 agentes)</p>
+          <p className="text-xs text-gray-300">{miniJuryReason}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -486,36 +413,15 @@ export default function ContentFinder() {
   const [videoBlobUrl,    setVideoBlobUrl]    = useState(null)
   const [videoError,      setVideoError]      = useState('')
 
-  const [juryStatus,      setJuryStatus]      = useState('idle')
-  const [juryJobId,       setJuryJobId]       = useState(null)
-  const [juryData,        setJuryData]        = useState(null)
+  const [miniJuryVerdict, setMiniJuryVerdict] = useState(null)
+  const [miniJuryReason,  setMiniJuryReason]  = useState('')
+  const [blockedReason,   setBlockedReason]   = useState('')
   const pollRef = useRef(null)
 
-  // Jury polling
-  useEffect(() => {
-    if (juryStatus !== 'loading' || !juryJobId) return
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/headline-jury/status/${juryJobId}`)
-        if (!res.ok) return
-        const data = await res.json()
-        setJuryData(data)
-        if (data.status === 'done') {
-          setJuryStatus('done')
-          clearInterval(pollRef.current)
-        } else if (data.status === 'error') {
-          setJuryStatus('error')
-          clearInterval(pollRef.current)
-        }
-      } catch (_) {}
-    }, 2000)
-    return () => clearInterval(pollRef.current)
-  }, [juryStatus, juryJobId])
-
-  // Transition to ready as soon as video finishes (jury keeps loading in the ready screen)
+  // Transition to ready (or blocked) when video request finishes
   useEffect(() => {
     if (phase === 'preparing' && (videoStatus === 'done' || videoStatus === 'error')) {
-      setPhase('ready')
+      setPhase(videoStatus === 'blocked' ? 'blocked' : 'ready')
     }
   }, [videoStatus, phase])
 
@@ -545,49 +451,51 @@ export default function ContentFinder() {
     setActiveCaption(caption)
     setPhase('preparing')
     setVideoStatus('loading')
-    setJuryStatus('loading')
     setVideoBlobUrl(null)
     setVideoError('')
-    setJuryData(null)
-    setJuryJobId(null)
+    setMiniJuryVerdict(null)
+    setMiniJuryReason('')
+    setBlockedReason('')
 
-    // Video editing — fire and track
     ;(async () => {
       try {
         const form = new FormData()
-        form.append('postUrl',  result.url)
+        form.append('postUrl',         result.url)
         if (result.videoUrl) form.append('videoUrl', result.videoUrl)
-        form.append('headline', headline)
-        form.append('caption',  caption)
+        form.append('headline',        headline)
+        form.append('caption',         caption)
+        form.append('originalCaption', result.originalCaption || '')
         if (templateFile) form.append('template', templateFile)
 
         const res = await fetch(`${API_BASE}/api/content-finder/approve`, { method: 'POST', body: form })
-        if (!res.ok) {
-          const { error } = await res.json().catch(() => ({}))
-          throw new Error(error || `Erro ${res.status}`)
+
+        // Check for mini-jury block (JSON response with blocked:true)
+        const contentType = res.headers.get('content-type') || ''
+        if (contentType.includes('application/json')) {
+          const data = await res.json()
+          if (data.blocked) {
+            setBlockedReason(data.reason || 'Conteúdo bloqueado pelo mini-júri')
+            setVideoStatus('blocked')
+            setPhase('blocked')
+            return
+          }
+          throw new Error(data.error || `Erro ${res.status}`)
         }
+
+        if (!res.ok) throw new Error(`Erro ${res.status}`)
+
+        // Read mini-jury verdict from headers
+        const verdict = res.headers.get('X-Mini-Jury-Verdict')
+        const reason  = res.headers.get('X-Mini-Jury-Reason')
+        if (verdict) setMiniJuryVerdict(verdict)
+        if (reason)  setMiniJuryReason(decodeURIComponent(reason))
+
         const blob = await res.blob()
         setVideoBlobUrl(URL.createObjectURL(blob))
         setVideoStatus('done')
       } catch (e) {
         setVideoError(e.message)
         setVideoStatus('error')
-      }
-    })()
-
-    // Jury — fire and track via polling
-    ;(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/headline-jury/analyze`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ headline, description: caption, videoUrl: result.url }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'Erro')
-        setJuryJobId(data.jobId)
-      } catch (_) {
-        setJuryStatus('error')
       }
     })()
   }
@@ -602,9 +510,9 @@ export default function ContentFinder() {
     setVideoStatus('idle')
     setVideoBlobUrl(null)
     setVideoError('')
-    setJuryStatus('idle')
-    setJuryJobId(null)
-    setJuryData(null)
+    setMiniJuryVerdict(null)
+    setMiniJuryReason('')
+    setBlockedReason('')
   }
 
   return (
@@ -657,17 +565,32 @@ export default function ContentFinder() {
       )}
 
       {phase === 'preparing' && (
-        <PreparingPhase
-          videoStatus={videoStatus} videoError={videoError}
-          juryStatus={juryStatus} juryData={juryData}
-        />
+        <PreparingPhase videoStatus={videoStatus} videoError={videoError} />
+      )}
+
+      {phase === 'blocked' && (
+        <div className="space-y-4 py-4">
+          <div className="bg-red-900/30 border border-red-700/60 rounded-2xl p-5 space-y-3">
+            <p className="text-sm font-bold text-red-300">🚫 Conteúdo bloqueado pelo mini-júri</p>
+            <p className="text-xs text-red-200 leading-relaxed">{blockedReason}</p>
+            <p className="text-xs text-gray-400">Revise a headline ou escolha outro vídeo.</p>
+          </div>
+          <button onClick={() => setPhase('results')}
+            className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-semibold rounded-xl transition-colors">
+            ← Voltar aos resultados
+          </button>
+          <button onClick={reset}
+            className="w-full py-2.5 border border-gray-700 text-gray-500 hover:text-gray-300 text-sm rounded-xl transition-colors">
+            Nova busca
+          </button>
+        </div>
       )}
 
       {phase === 'ready' && (
         <ReadyPhase
           videoBlobUrl={videoBlobUrl} videoError={videoError}
           caption={activeCaption}
-          juryStatus={juryStatus} juryData={juryData}
+          miniJuryVerdict={miniJuryVerdict} miniJuryReason={miniJuryReason}
           onReset={reset}
         />
       )}
