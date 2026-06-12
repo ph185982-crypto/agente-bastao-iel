@@ -9,6 +9,9 @@ dotenv.config();
 ['OPENAI_API_KEY', 'RAPIDAPI_KEY'].forEach(key => {
   if (!process.env[key]) console.warn(`WARNING: ${key} is not set — dependent features will fail`);
 });
+['RAPIDAPI_KEY_IG120', 'RAPIDAPI_KEY_TIKTOK'].forEach(key => {
+  if (!process.env[key]) console.warn(`INFO: ${key} not set — will fallback to RAPIDAPI_KEY`);
+});
 
 const app = express();
 const PORT = process.env.PORT || 3001;

@@ -188,6 +188,12 @@ function ResultCard({ result, onPrepare }) {
             <span className="text-xs bg-indigo-900/50 text-indigo-300 border border-indigo-700/60 px-2 py-0.5 rounded-full">
               {result.content_category}
             </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full border
+              ${result.source === 'tiktok'
+                ? 'bg-pink-900/40 text-pink-300 border-pink-700/50'
+                : 'bg-purple-900/40 text-purple-300 border-purple-700/50'}`}>
+              {result.source === 'tiktok' ? '🎵 TikTok' : '📸 Instagram'}
+            </span>
             <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold
               ${(result.viral_score ?? 0) >= 60
                 ? 'bg-green-900/40 text-green-300 border-green-700/50'

@@ -156,19 +156,34 @@ async function buildReelFrame(templateBuf, headline, framePath) {
   await sharp(frameBuf).toFile(framePath);
 }
 
-// ── Agent 1 — Buscador por hashtags ──────────────────────────────────────────
+// ── Agent 1 — Buscador por contas-semente ────────────────────────────────────
 
-// Hashtag pools por tema selecionado no frontend
-const HASHTAG_POOLS = {
-  ciencia:      ['ciencia', 'science', 'biologia', 'fisica', 'quimica'],
-  tecnologia:   ['tecnologia', 'tech', 'inovacao', 'futuro', 'robotica'],
-  historia:     ['historia', 'history', 'curiosidades', 'fatos', 'vocesabia'],
-  espaco:       ['espaco', 'astronomy', 'universe', 'cosmos', 'nasa'],
-  china:        ['china', 'chinesa', 'inovacaochina', 'shenzhen', 'innovation'],
-  engenharia:   ['engenharia', 'engineering', 'construcao', 'arquitetura', 'design'],
-  curiosidades: ['curiosidades', 'vocesabia', 'aprenda', 'fatosincrivel', 'sabiacuriosa'],
-  invencoes:    ['invencao', 'invention', 'descoberta', 'discovery', 'genial'],
+// Contas Instagram curadas por tema (validadas na instagram120 API)
+const SEED_ACCOUNTS = {
+  ciencia:      ['natgeo', 'sciencechannel', 'bbcearth', 'discovery', 'smithsonian', 'newscientist'],
+  tecnologia:   ['tecmundo', 'canaltech', 'tech', 'mrwhosetheboss', 'hashem.alghaili'],
+  historia:     ['dw_stories', 'smithsonian', 'natgeo', 'discovery'],
+  espaco:       ['nasa', 'spacex', 'europeanspaceagency'],
+  china:        ['cgtn', 'dw_stories', 'discovery', 'natgeo'],
+  engenharia:   ['interestingengineering', 'hashem.alghaili', 'futurism', 'tech'],
+  curiosidades: ['unilad', 'didyouknowpage', 'discovery', 'natgeo', 'bbcearth'],
+  invencoes:    ['interestingengineering', 'futurism', 'hashem.alghaili', 'tech'],
 };
+
+// Keywords de busca no TikTok por tema
+const TIKTOK_KEYWORDS = {
+  ciencia:      ['ciencia incrivel', 'science facts', 'descoberta cientifica'],
+  tecnologia:   ['technology innovation', 'tech gadgets 2024', 'tecnologia futuro'],
+  historia:     ['history facts', 'curiosidade historica', 'fatos historicos'],
+  espaco:       ['space discovery', 'nasa news', 'universe facts'],
+  china:        ['china technology', 'china innovation', 'made in china'],
+  engenharia:   ['engineering amazing', 'mega construction', 'engenharia impressionante'],
+  curiosidades: ['did you know', 'voce sabia', 'mind blowing facts'],
+  invencoes:    ['invention amazing', 'cool gadgets', 'genius invention'],
+};
+
+const TIKTOK_HOST = 'tiktok-api23.p.rapidapi.com';
+const TIKTOK_KEY  = process.env.RAPIDAPI_KEY_TIKTOK || process.env.RAPIDAPI_KEY;
 
 // Palavras que indicam conteúdo educativo/informativo (PT + EN)
 const EDUCATION_KEYWORDS = [
@@ -256,57 +271,129 @@ function rapidApiError(e) {
   return new Error(msg);
 }
 
-// Busca posts por hashtag via instagram-scraper-api2
-async function searchHashtag(hashtag) {
-  console.log(`[A1] Buscando #${hashtag}…`);
+const IG120_HOST = 'instagram120.p.rapidapi.com';
+const IG120_KEY  = process.env.RAPIDAPI_KEY_IG120 || process.env.RAPIDAPI_KEY;
+const ig120Headers = () => ({
+  'Content-Type': 'application/json',
+  'x-rapidapi-host': IG120_HOST,
+  'x-rapidapi-key': IG120_KEY,
+});
+
+// Busca reels de uma conta (retorna play_count mas sem video_versions)
+async function fetchReels(username) {
+  console.log(`[A1] Buscando reels de @${username}…`);
+  const { data } = await axios.post(
+    `https://${IG120_HOST}/api/instagram/reels`,
+    { username, maxId: '' },
+    { headers: ig120Headers(), timeout: 20000 }
+  );
+  const edges = data?.result?.edges || [];
+  return edges.map(e => {
+    const m = e.node?.media || e.node || {};
+    return {
+      code:      m.code || '',
+      views:     m.play_count || 0,
+      likes:     m.like_count || 0,
+      comments:  m.comment_count || 0,
+      username,
+    };
+  }).filter(p => p.code);
+}
+
+// Busca posts de uma conta (retorna video_versions + caption)
+async function fetchPosts(username) {
+  console.log(`[A1] Buscando posts de @${username}…`);
+  const { data } = await axios.post(
+    `https://${IG120_HOST}/api/instagram/posts`,
+    { username, maxId: '' },
+    { headers: ig120Headers(), timeout: 20000 }
+  );
+  const edges = data?.result?.edges || [];
+  const map = {};
+  for (const e of edges) {
+    const n = e.node || {};
+    if (!n.video_versions?.length) continue;
+    const cap = n.caption || {};
+    map[n.code] = {
+      videoUrl:  n.video_versions[0].url,
+      caption:   typeof cap === 'object' ? (cap.text || '') : String(cap || ''),
+      duration:  n.video_duration || 0,
+      hasAudio:  n.has_audio ?? true,
+      is_ad:     n.is_paid_partnership || false,
+    };
+  }
+  return map;
+}
+
+// Busca completa de uma conta: reels (métricas) + posts (vídeo/caption), cruzando por code
+async function searchAccount(username) {
+  const [reels, postsMap] = await Promise.all([
+    fetchReels(username).catch(e => { console.warn(`[A1] reels @${username} falhou: ${e.message}`); return []; }),
+    fetchPosts(username).catch(e => { console.warn(`[A1] posts @${username} falhou: ${e.message}`); return {}; }),
+  ]);
+
+  const merged = [];
+  for (const reel of reels) {
+    const post = postsMap[reel.code];
+    if (!post) continue; // sem video_versions → pula
+    merged.push({
+      code:      reel.code,
+      views:     reel.views,
+      likes:     reel.likes,
+      comments:  reel.comments,
+      duration:  post.duration,
+      caption:   post.caption,
+      videoUrl:  post.videoUrl,
+      username:  reel.username,
+      followers: 0,
+      is_ad:     post.is_ad,
+    });
+  }
+  console.log(`[A1] @${username}: ${reels.length} reels, ${Object.keys(postsMap).length} vídeo-posts, ${merged.length} cruzados`);
+  return merged;
+}
+
+// ── TikTok search via tiktok-api23 ──────────────────────────────────────────
+async function searchTikTok(keyword) {
+  console.log(`[A1-TT] Buscando TikTok: "${keyword}"…`);
   const { data } = await axios.get(
-    'https://instagram-scraper-api2.p.rapidapi.com/v1/hashtag',
+    `https://${TIKTOK_HOST}/api/search/general`,
     {
-      params: { hashtag },
+      params: { keyword, count: 15 },
       headers: {
-        'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com',
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+        'x-rapidapi-host': TIKTOK_HOST,
+        'x-rapidapi-key': TIKTOK_KEY,
       },
       timeout: 20000,
     }
   );
-
-  // API pode variar a estrutura — tentamos múltiplas chaves
-  const items = (
-    data?.data?.medias        ||
-    data?.data?.top_posts     ||
-    data?.data?.items         ||
-    data?.medias              ||
-    data?.items               ||
-    []
-  );
-
+  const items = data?.item_list || [];
   const posts = items
     .filter(item => {
-      const m = item?.media || item;
-      return m.video_versions?.length > 0 || m.is_video === true || m.media_type === 2;
+      const vid = item?.video;
+      return vid && (vid.playAddr || vid.downloadAddr);
     })
     .map(item => {
-      const m = item?.media || item;
-      const rawCap = m.caption?.text ?? m.caption_text ?? m.caption ?? '';
-      const cap = typeof rawCap === 'string' ? rawCap : '';
-      const user = m.user || m.owner || {};
+      const stats = item.stats || {};
+      const vid   = item.video || {};
+      const author = item.author || {};
+      const durMs = vid.duration || 0;
       return {
-        code:      m.code || m.shortcode || '',
-        likes:     m.like_count || 0,
-        views:     m.play_count || m.video_view_count || m.view_count || 0,
-        comments:  m.comment_count || 0,
-        duration:  m.video_duration || m.duration || 0,
-        caption:   cap,
-        videoUrl:  m.video_versions?.[0]?.url || null,
-        username:  user.username || user.pk?.toString() || '',
-        followers: user.follower_count || 0,
-        is_ad:     m.is_ad || false,
+        code:      item.id || '',
+        views:     stats.playCount || 0,
+        likes:     stats.diggCount || 0,
+        comments:  stats.commentCount || 0,
+        duration:  durMs > 1000 ? Math.round(durMs / 1000) : durMs,
+        caption:   item.desc || '',
+        videoUrl:  vid.downloadAddr || vid.playAddr || null,
+        username:  author.uniqueId || author.nickname || '',
+        followers: 0,
+        is_ad:     item.isAd || false,
+        source:    'tiktok',
       };
     })
-    .filter(p => p.code);
-
-  console.log(`[A1] #${hashtag}: ${posts.length} vídeos encontrados`);
+    .filter(p => p.code && p.videoUrl);
+  console.log(`[A1-TT] "${keyword}": ${posts.length} vídeos encontrados`);
   return posts;
 }
 
@@ -401,33 +488,41 @@ Gere headline impactante e legenda longa para este conteúdo.`,
 
 // ── Main search pipeline ──────────────────────────────────────────────────────
 async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lang = 'any' }) {
-  // ── A1: seleciona hashtags dos temas escolhidos ───────────────────────────
-  const allTags = themes.flatMap(t => HASHTAG_POOLS[t] || []);
-  // fallback: se nenhum tema, usa primeiros de cada pool
-  if (allTags.length === 0) Object.values(HASHTAG_POOLS).forEach(p => allTags.push(p[0]));
-  const unique = [...new Set(allTags)];
-  const toSearch = unique.sort(() => Math.random() - 0.5).slice(0, 5);
-  console.log(`[A1] Hashtags sorteadas: ${toSearch.join(', ')}`);
+  // ── A1: busca paralela em Instagram (contas-semente) + TikTok (keywords) ──
+  const allAccounts = themes.flatMap(t => SEED_ACCOUNTS[t] || []);
+  if (allAccounts.length === 0) Object.values(SEED_ACCOUNTS).forEach(a => allAccounts.push(a[0]));
+  const uniqueAccounts = [...new Set(allAccounts)];
+  const igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 3);
 
-  // Busca paralela; falhas individuais são silenciosas
-  const searchResults = await Promise.allSettled(toSearch.map(async h => {
-    try { return await searchHashtag(h); }
-    catch (e) {
-      const err = rapidApiError(e);
-      console.warn(`[A1][skip] #${h} falhou: ${err.message}`);
-      throw err;
-    }
-  }));
+  const allKeywords = themes.flatMap(t => TIKTOK_KEYWORDS[t] || []);
+  if (allKeywords.length === 0) Object.values(TIKTOK_KEYWORDS).forEach(k => allKeywords.push(k[0]));
+  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 2);
+
+  console.log(`[A1] Instagram: ${igAccounts.map(u => '@' + u).join(', ')}`);
+  console.log(`[A1] TikTok: ${ttKeywords.map(k => '"' + k + '"').join(', ')}`);
+
+  // Busca paralela em ambas as plataformas
+  const igPromises = igAccounts.map(async u => {
+    try { return await searchAccount(u); }
+    catch (e) { console.warn(`[A1][skip] @${u}: ${rapidApiError(e).message}`); return []; }
+  });
+  const ttPromises = ttKeywords.map(async k => {
+    try { return await searchTikTok(k); }
+    catch (e) { console.warn(`[A1-TT][skip] "${k}": ${rapidApiError(e).message}`); return []; }
+  });
+
+  const allResults = await Promise.allSettled([...igPromises, ...ttPromises]);
 
   const rawPosts = [];
-  let allFailed = true;
+  let anyOk = false;
   let firstError = null;
-  for (const r of searchResults) {
-    if (r.status === 'fulfilled') { rawPosts.push(...r.value); allFailed = false; }
-    else if (!firstError) firstError = r.reason;
+  for (const r of allResults) {
+    if (r.status === 'fulfilled' && r.value.length > 0) { rawPosts.push(...r.value); anyOk = true; }
+    else if (r.status === 'rejected' && !firstError) firstError = r.reason;
   }
-  if (allFailed && firstError) throw firstError;
-  console.log(`[A1] Total bruto: ${rawPosts.length} posts`);
+  if (!anyOk && firstError) throw firstError;
+  if (!anyOk) throw new Error('Nenhuma fonte retornou resultados. Tente novamente ou selecione outros temas.');
+  console.log(`[A1] Total bruto: ${rawPosts.length} posts (IG + TikTok)`);
 
   // ── Pré-filtros (antes do GPT-4o) ────────────────────────────────────────
   const candidates = [];
@@ -471,8 +566,11 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       continue;
     }
 
+    const isTikTok = post.source === 'tiktok';
     candidates.push({
-      url:             `https://www.instagram.com/reel/${post.code}/`,
+      url:             isTikTok
+        ? `https://www.tiktok.com/@${post.username}/video/${post.code}`
+        : `https://www.instagram.com/reel/${post.code}/`,
       videoUrl:        post.videoUrl,
       thumbnail:       null,
       likes:           post.likes,
@@ -483,6 +581,7 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
         ? `Caption original: "${post.caption.slice(0, 400)}" — @${post.username}, ${post.views.toLocaleString()} views, ${post.likes.toLocaleString()} likes`
         : `Reel de @${post.username} — ${post.views.toLocaleString()} views, ${post.likes.toLocaleString()} likes`,
       sourceUsername:  post.username,
+      source:          isTikTok ? 'tiktok' : 'instagram',
     });
   }
 
@@ -554,6 +653,7 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       fit_for_profile:   r.fit_for_profile   || 0,
       headline:          r.headline,
       caption:           r.caption,
+      source:            r.source             || 'instagram',
     });
 
     if (final.length >= 10) break;
