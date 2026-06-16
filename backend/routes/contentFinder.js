@@ -473,7 +473,7 @@ Comentários: ${(candidate.comments || 0).toLocaleString('pt-BR')}
 Caption original (até 600 chars): ${(candidate.originalCaption || '(sem caption)').slice(0, 600)}${controversyNote}`,
       },
     ],
-    max_tokens: 900,
+    max_tokens: 1500,
     response_format: { type: 'json_object' },
   });
 
