@@ -457,15 +457,15 @@ Analise o candidato e retorne JSON completo com análise, fact-check, copy e ver
 }
 
 Regras de aprovação:
-- approved = true SE: viral_score >= 55 E ban_risk != "alto" E fit_for_profile >= 50 E factual_confidence >= 40 E misleading_caption = false E headline_matches_source = true
-- Para fonte TikTok: exigir factual_confidence >= 60
+- approved = true SE: viral_score >= 50 E ban_risk != "alto" E fit_for_profile >= 40 E factual_confidence >= 30 E misleading_caption = false
+- Seja generoso com conteúdo de ciência, tecnologia, curiosidades, história, engenharia e espaço — esses são os nichos do perfil
 - quality_tier: A (viral_score>80 sem warnings), B (>65), C (>50), D (abaixo)
-- NÃO aprovar: político, violento, sexual, músicas famosas (copyright), humor genérico, vlogs
+- NÃO aprovar: político partidário, violento, sexual, músicas famosas (copyright), vlogs pessoais
 - Headlines style: "O que ninguém te contou sobre…", "A China fez isso e o mundo ignorou"`,
       },
       {
         role: 'user',
-        content: `Fonte: ${isTikTok ? 'TikTok (escrutínio extra — exige factual_confidence>=60)' : 'Instagram'}
+        content: `Fonte: ${isTikTok ? 'TikTok (verifique factual_confidence com cuidado)' : 'Instagram'}
 Perfil: @${candidate.sourceUsername || 'desconhecido'}
 Views: ${(candidate.views || 0).toLocaleString('pt-BR')}
 Likes: ${(candidate.likes || 0).toLocaleString('pt-BR')}
@@ -682,14 +682,34 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
 
   // ── A2+A3: análise + fact-check + copy unificados (1 call por candidato) ──
   const analyses = await Promise.allSettled(deduped.map(c => analyzeAndGenerate(c)));
-  const analyzed = deduped.map((c, i) => ({
-    ...c,
-    ...(analyses[i].status === 'fulfilled' ? analyses[i].value : { approved: false }),
-  }));
-  const approved = analyzed.filter(a => a.approved === true && a.headline);
+  const analyzed = deduped.map((c, i) => {
+    const a = analyses[i].status === 'fulfilled' ? analyses[i].value : {};
+    const isTikTok = c.source === 'tiktok';
+    // Approval calculated server-side with calibrated thresholds (don't rely solely on GPT's
+    // conservative self-assessment — GPT tends to be overly cautious with "approved" flag)
+    const approved = !!(
+      a.headline &&
+      (a.viral_score ?? 0) >= 45 &&
+      a.ban_risk !== 'alto' &&
+      (a.fit_for_profile ?? 0) >= 35 &&
+      (a.factual_confidence ?? 0) >= (isTikTok ? 45 : 25) &&
+      a.misleading_caption !== true
+    );
+    return { ...c, ...a, approved };
+  });
+  let approved = analyzed.filter(a => a.approved && a.headline);
   console.log(`[A2] ${approved.length}/${analyzed.length} aprovados`);
 
-  if (approved.length === 0) return [];
+  // Fallback: se nada passou, retornar os 3 melhores por viral_score com aviso
+  if (approved.length === 0) {
+    const withHeadline = analyzed.filter(a => a.headline);
+    if (withHeadline.length === 0) return [];
+    approved = withHeadline
+      .sort((a, b) => (b.viral_score ?? 0) - (a.viral_score ?? 0))
+      .slice(0, 3)
+      .map(a => ({ ...a, approved: true, quality_tier: 'D', warnings: [...(a.warnings || []), 'Abaixo do limiar de aprovação — use com cautela'] }));
+    console.log(`[A2] fallback: retornando ${approved.length} candidatos de menor qualidade`);
+  }
 
   // ── Diversificação: máx 3 por nicho, máx 2 por conta ─────────────────────
   const byCat = {};

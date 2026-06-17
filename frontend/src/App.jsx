@@ -3,10 +3,12 @@ import Header from './components/Header'
 import AutoReel from './components/AutoReel'
 import AgentChat from './components/AgentChat'
 import ContentFinder from './components/ContentFinder'
+import HeadlineJury from './components/HeadlineJury'
 
 const TABS = [
   { id: 'studio', label: '♻️ Studio' },
   { id: 'reel',   label: 'Criar Reel' },
+  { id: 'jury',   label: '⚖️ Júri' },
   { id: 'agent',  label: 'Agente IA' },
 ]
 
@@ -50,6 +52,12 @@ export default function App() {
             </p>
           </div>
           <AutoReel />
+        </main>
+      )}
+
+      {tab === 'jury' && (
+        <main className="max-w-2xl mx-auto w-full px-4 py-10">
+          <HeadlineJury />
         </main>
       )}
 
