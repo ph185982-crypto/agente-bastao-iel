@@ -7,7 +7,7 @@ export default function Header() {
         </div>
         <div>
           <h1 className="text-base font-bold text-white leading-tight">Nexos Páginas</h1>
-          <p className="text-xs text-gray-400">Content Tool para Instagram</p>
+          <p className="text-xs text-gray-400">Studio de Reels para Instagram</p>
         </div>
       </div>
     </header>
