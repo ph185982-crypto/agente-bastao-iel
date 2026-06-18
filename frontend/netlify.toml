@@ -3,10 +3,10 @@
   command = "npm run build"
   publish = "dist"
 
-# Proxy API calls → Fly.io backend (substitui Render)
+# Proxy API calls → Vercel backend
 [[redirects]]
   from   = "/api/*"
-  to     = "https://nexos-paginas-backend.fly.dev/api/:splat"
+  to     = "https://nexos-paginas-api.vercel.app/api/:splat"
   status = 200
   force  = true
 
