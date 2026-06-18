@@ -387,13 +387,13 @@ function TaskRow({ icon, title, subtitle, status, extra }) {
   )
 }
 
-function PreparingPhase({ videoStatus, videoError, headlineEmpty }) {
+function PreparingPhase({ videoStatus, videoError, headlineEmpty, onBackToResults }) {
   return (
     <div className="space-y-4 py-4">
       <p className="text-center text-sm font-semibold text-white">Preparando seu Reel…</p>
       <p className="text-center text-xs text-gray-500">Download + mini-júri rodam em paralelo</p>
 
-      {headlineEmpty && (
+      {headlineEmpty && videoStatus === 'loading' && (
         <div className="flex items-center gap-2 px-3 py-2 bg-indigo-900/30 border border-indigo-700/50 rounded-xl">
           <svg className="w-4 h-4 text-indigo-400 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -412,12 +412,19 @@ function PreparingPhase({ videoStatus, videoError, headlineEmpty }) {
         }
         status={videoStatus}
       />
+
+      {videoStatus === 'error' && onBackToResults && (
+        <button onClick={onBackToResults}
+          className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-semibold rounded-xl transition-colors">
+          ← Voltar aos resultados
+        </button>
+      )}
     </div>
   )
 }
 
 // ─── ReadyPhase ───────────────────────────────────────────────────────────────
-function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJuryReason, onReset }) {
+function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJuryReason, onReset, onBackToResults }) {
   const [copied, setCopied] = useState(false)
 
   function copyCaption() {
@@ -431,9 +438,16 @@ function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJu
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-green-300">✅ Pronto para postar!</p>
-        <button onClick={onReset} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
-          ← Nova busca
-        </button>
+        <div className="flex gap-3">
+          {onBackToResults && (
+            <button onClick={onBackToResults} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+              ← Resultados
+            </button>
+          )}
+          <button onClick={onReset} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+            Nova busca
+          </button>
+        </div>
       </div>
 
       {miniJuryVerdict === 'WARN' && miniJuryReason && (
@@ -645,7 +659,8 @@ export default function ContentFinder() {
       )}
 
       {phase === 'preparing' && (
-        <PreparingPhase videoStatus={videoStatus} videoError={videoError} headlineEmpty={headlineWasEmpty} />
+        <PreparingPhase videoStatus={videoStatus} videoError={videoError} headlineEmpty={headlineWasEmpty}
+          onBackToResults={results.length > 0 ? () => setPhase('results') : null} />
       )}
 
       {phase === 'blocked' && (
@@ -672,6 +687,7 @@ export default function ContentFinder() {
           caption={activeCaption}
           miniJuryVerdict={miniJuryVerdict} miniJuryReason={miniJuryReason}
           onReset={reset}
+          onBackToResults={results.length > 0 ? () => setPhase('results') : null}
         />
       )}
     </div>
