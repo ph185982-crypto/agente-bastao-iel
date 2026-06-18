@@ -1,3 +1,4 @@
+require('./fontSetup');
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -8,12 +9,18 @@ dotenv.config();
 ['OPENAI_API_KEY', 'RAPIDAPI_KEY'].forEach(key => {
   if (!process.env[key]) console.warn(`WARNING: ${key} is not set — dependent features will fail`);
 });
+['RAPIDAPI_KEY_IG120', 'RAPIDAPI_KEY_TIKTOK'].forEach(key => {
+  if (!process.env[key]) console.warn(`INFO: ${key} not set — will fallback to RAPIDAPI_KEY`);
+});
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS — backend is a private API behind Netlify proxy; allow all origins
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({
+  origin: true,
+  credentials: true,
+  exposedHeaders: ['X-Headline', 'X-Caption', 'X-Mini-Jury-Verdict', 'X-Mini-Jury-Stopped', 'X-Mini-Jury-Reason'],
+}));
 
 app.use(express.json());
 
@@ -26,8 +33,9 @@ app.use('/api/auto-reel', require('./routes/autoReel'));
 app.use('/api/generate', require('./routes/generate'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/content-finder', require('./routes/contentFinder'));
+app.use('/api/headline-jury', require('./routes/headlineJury'));
 
-app.get('/health', (req, res) =>
+app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
@@ -37,6 +45,10 @@ app.get('/', (req, res) => {
   res.redirect(302, frontend);
 });
 
-app.listen(PORT, () => {
-  console.log(`Nexos Páginas backend running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Nexos Páginas backend running on port ${PORT}`);
+  });
+}
+
+module.exports = app;

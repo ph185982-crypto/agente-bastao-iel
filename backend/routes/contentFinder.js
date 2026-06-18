@@ -1,4 +1,5 @@
 const express = require('express');
+const multer  = require('multer');
 const axios = require('axios');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
@@ -9,8 +10,12 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
 ffmpeg.setFfmpegPath(ffmpegStatic);
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+ffmpeg.setFfprobePath(require('ffprobe-static').path);
+let _openai = null;
+const getOpenAI = () => (_openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
 const router = express.Router();
 
 // ── Layout constants ──────────────────────────────────────────────────────────
@@ -20,28 +25,11 @@ const FONT_SIZE = 48;
 const LINE_H    = 66;
 const H_PAD     = 48;
 
-const FONT_PATH = path.join(__dirname, '..', 'assets', 'DejaVuSans-Bold.ttf');
-let FONT_B64 = '';
-try { FONT_B64 = fs.readFileSync(FONT_PATH).toString('base64'); } catch {}
-
-// ── Job store ─────────────────────────────────────────────────────────────────
-const jobs = new Map();
-
-setInterval(() => {
-  const cutoff = Date.now() - 15 * 60 * 1000;
-  for (const [id, job] of jobs.entries()) {
-    if (job.createdAt < cutoff) {
-      for (const r of (job.results || [])) {
-        if (r.editOutputPath && fs.existsSync(r.editOutputPath)) {
-          try { fs.unlinkSync(r.editOutputPath); } catch {}
-        }
-      }
-      jobs.delete(id);
-    }
-  }
-}, 5 * 60 * 1000);
+// Família registrada via fontconfig em backend/fontSetup.js (backend/assets)
+const FONT_FAMILY = "'DejaVu Sans', sans-serif";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
+
 function wrapText(text, maxChars) {
   const words = text.split(' ');
   const lines = [];
@@ -104,7 +92,6 @@ function runFFmpeg(cmd, outputPath, timeoutMs = 300000) {
   });
 }
 
-// Resolve Instagram reel URL → direct CDN video URL
 async function resolveInstagramUrl(url) {
   const { data } = await axios.get(
     'https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert',
@@ -124,228 +111,772 @@ async function resolveInstagramUrl(url) {
   throw new Error('Nenhum vídeo encontrado para este URL');
 }
 
-// Build semi-transparent headline bar PNG (barHeight × W)
+// ── Layout constants for full-frame composite ─────────────────────────────────
+const PROFILE_H  = 240;
+const HEADLINE_H = 320;
+const VIDEO_Y    = PROFILE_H + HEADLINE_H; // 560
+const VIDEO_H    = H - VIDEO_Y - 20;       // 1340
+
 async function buildHeadlineOverlay(headline, overlayPath) {
   const lines = wrapText(headline, 28);
   const barH = Math.max(140, 36 + lines.length * LINE_H + 24);
-
-  const fontFaceDecl = FONT_B64
-    ? `<defs><style>@font-face{font-family:'H';src:url('data:font/truetype;base64,${FONT_B64}')}</style></defs>`
-    : '';
-  const fontFamily = FONT_B64 ? 'H' : 'sans-serif';
-
   const textEls = lines.map((line, i) =>
-    `<text x="${H_PAD}" y="${36 + (i + 1) * LINE_H}" font-family="${fontFamily}" font-size="${FONT_SIZE}" font-weight="bold" fill="white" stroke="black" stroke-width="1">${escXml(line)}</text>`
+    `<text x="${H_PAD}" y="${36 + (i + 1) * LINE_H}" font-family="${FONT_FAMILY}" font-size="${FONT_SIZE}" font-weight="bold" fill="white" stroke="black" stroke-width="1">${escXml(line)}</text>`
   ).join('');
-
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${barH}">
-    ${fontFaceDecl}
     <rect width="${W}" height="${barH}" fill="black" fill-opacity="0.72"/>
     ${textEls}
   </svg>`;
-
   await sharp(Buffer.from(svg)).png().toFile(overlayPath);
   return { barH };
 }
 
-// ── Agent 1 — Buscador ────────────────────────────────────────────────────────
-async function searchHashtag(hashtag) {
-  const tag = hashtag.replace(/^#/, '').trim();
-  console.log(`[contentFinder] Buscando #${tag}…`);
-
-  const { data } = await axios.get(
-    'https://instagram-scraper-api2.p.rapidapi.com/v1/hashtag',
-    {
-      params: { hashtag: tag },
-      headers: {
-        'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com',
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-      },
-      timeout: 15000,
-    }
-  );
-
-  const items = data?.data?.items || data?.items || [];
-
-  return items
-    .filter(item => {
-      const isVideo = item.media_type === 2 || item.is_video === true;
-      const likes   = item.like_count   || 0;
-      const views   = item.play_count   || item.view_count || 0;
-      return isVideo && (views >= 50000 || likes >= 5000);
-    })
-    .slice(0, 5)
-    .map(item => {
-      const code = item.code || item.shortcode || '';
-      const thumb =
-        item.thumbnail_url ||
-        item.display_url   ||
-        item.image_versions2?.candidates?.[0]?.url ||
-        item.image_versions?.items?.[0]?.url ||
-        null;
-      return {
-        url:             `https://www.instagram.com/reel/${code}/`,
-        videoUrl:        item.video_url || null,
-        thumbnail:       thumb,
-        likes:           item.like_count  || 0,
-        views:           item.play_count  || item.view_count || 0,
-        originalCaption: item.caption?.text || '',
-      };
-    })
-    .filter(item => item.url && item.url !== 'https://www.instagram.com/reel//');
+async function buildReelFrame(templateBuf, headline, framePath) {
+  const TXT_FONT_SIZE = 58;
+  const TXT_LINE_H    = 84;
+  const lines = wrapText(headline, 22);
+  const totalTextH = lines.length * TXT_LINE_H;
+  // Text centered in the headline zone (below the profile area)
+  const textTopY   = PROFILE_H + (HEADLINE_H - totalTextH) / 2;
+  const textEls = lines.map((line, i) =>
+    `<text x="${W / 2}" y="${textTopY + (i + 1) * TXT_LINE_H}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
+  ).join('');
+  // SVG is the base layer (white background + headline text)
+  // Template is composited on top — headline text appears BEHIND the template where it overlaps
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+    <rect width="${W}" height="${H}" fill="white"/>
+    ${textEls}
+  </svg>`;
+  // SVG is base layer — template composited on top so headline text appears behind the template photo.
+  // Resize to VIDEO_Y height (not just PROFILE_H) so profile circle at top is never cut.
+  // position: 'left top' preserves the top-left corner where the profile circle sits.
+  const frameBuf = await sharp(Buffer.from(svg))
+    .composite([{
+      input: await sharp(templateBuf)
+        .resize(W, VIDEO_Y, { fit: 'cover', position: 'left top' })
+        .toBuffer(),
+      top: 0, left: 0,
+    }])
+    .png()
+    .toBuffer();
+  await sharp(frameBuf).toFile(framePath);
 }
 
-// ── Agent 2 — Analisador ──────────────────────────────────────────────────────
-async function analyzeContent(candidate) {
-  const userContent = [];
+// ── Agent 1 — Buscador por contas-semente ────────────────────────────────────
 
-  if (candidate.thumbnail) {
-    userContent.push({
-      type: 'image_url',
-      image_url: { url: candidate.thumbnail, detail: 'low' },
+// Contas Instagram curadas por tema (validadas na instagram120 API)
+const SEED_ACCOUNTS = {
+  ciencia:      ['natgeo', 'sciencechannel', 'bbcearth', 'discovery', 'smithsonian', 'newscientist'],
+  tecnologia:   ['tecmundo', 'canaltech', 'tech', 'mrwhosetheboss', 'hashem.alghaili'],
+  historia:     ['dw_stories', 'smithsonian', 'natgeo', 'discovery'],
+  espaco:       ['nasa', 'spacex', 'europeanspaceagency'],
+  china:        ['cgtn', 'dw_stories', 'discovery', 'natgeo'],
+  engenharia:   ['interestingengineering', 'hashem.alghaili', 'futurism', 'tech'],
+  curiosidades: ['unilad', 'didyouknowpage', 'discovery', 'natgeo', 'bbcearth'],
+  invencoes:    ['interestingengineering', 'futurism', 'hashem.alghaili', 'tech'],
+};
+
+// Keywords de busca no TikTok por tema
+const TIKTOK_KEYWORDS = {
+  ciencia:      ['ciencia incrivel', 'science facts', 'descoberta cientifica'],
+  tecnologia:   ['technology innovation', 'tech gadgets 2024', 'tecnologia futuro'],
+  historia:     ['history facts', 'curiosidade historica', 'fatos historicos'],
+  espaco:       ['space discovery', 'nasa news', 'universe facts'],
+  china:        ['china technology', 'china innovation', 'made in china'],
+  engenharia:   ['engineering amazing', 'mega construction', 'engenharia impressionante'],
+  curiosidades: ['did you know', 'voce sabia', 'mind blowing facts'],
+  invencoes:    ['invention amazing', 'cool gadgets', 'genius invention'],
+};
+
+const TIKTOK_HOST = 'tiktok-api23.p.rapidapi.com';
+const TIKTOK_KEY  = process.env.RAPIDAPI_KEY_TIKTOK || process.env.RAPIDAPI_KEY;
+
+// Palavras que indicam conteúdo educativo/informativo (PT + EN)
+const EDUCATION_KEYWORDS = [
+  'você sabia', 'ninguém te contou', 'descoberta', 'incrível', 'impressionante',
+  'a china', 'a nasa', 'a ciência', 'engenharia', 'tecnologia', 'sabia que',
+  'fato', 'história real', 'antes de', 'o segredo', 'pesquisa', 'estudo',
+  'scientist', 'engineer', 'innovation', 'technology', 'history', 'science',
+  'discovery', 'invention', 'amazing', 'incredible', 'never knew', 'did you know',
+];
+
+// Semantic spam patterns (score-based, threshold 60 = exclude)
+const SPAM_PATTERNS = [
+  { re: /marque?\s+\d+\s+amigos?/i,                        score: 40, tag: 'engajamento forçado' },
+  { re: /coment[ae]\s+sim\b/i,                             score: 30, tag: 'engajamento forçado' },
+  { re: /arrast[ae]?\s+(para\s+cima|pra\s+cima|p[/'`]?cima)/i, score: 25, tag: 'CTA arrasta' },
+  { re: /\bwhatsapp\.com\b|\bwa\.me\b/i,                   score: 50, tag: 'WhatsApp redirect' },
+  { re: /link\s+(na|no)\s+bio/i,                           score: 25, tag: 'link externo' },
+  { re: /R\$\s*\d+|\d+\s*reais\b/i,                       score: 60, tag: 'preço/venda' },
+  { re: /\b(sorteio|giveaway|concurso)\b/i,                score: 70, tag: 'sorteio/giveaway' },
+  { re: /\b(desconto|promoção|oferta\s+exclusiva)\b/i,     score: 50, tag: 'promoção' },
+  { re: /\b(compre|comprar|compra\s+agora)\b/i,            score: 40, tag: 'venda' },
+  { re: /\bfrete\s+gr[aá]tis\b|\bentrega\s+gr[aá]tis\b/i, score: 50, tag: 'e-commerce' },
+];
+
+function calcSpamScore(text) {
+  let score = 0;
+  const tags = [];
+  for (const p of SPAM_PATTERNS) {
+    if (p.re.test(text)) { score += p.score; tags.push(p.tag); }
+  }
+  return { score: Math.min(score, 100), tags };
+}
+
+function calcViralScore(post) {
+  let score = 0;
+  const views    = post.views    || 0;
+  const likes    = post.likes    || 0;
+  const comments = post.comments || 0;
+  const duration = post.duration || 0;
+
+  if (views > 1000000)     score += 40;
+  else if (views > 500000) score += 30;
+  else if (views > 100000) score += 20;
+  else if (views > 50000)  score += 10;
+
+  const ratio = views > 0 ? likes / views : 0;
+  if (ratio > 0.05)      score += 20;
+  else if (ratio > 0.03) score += 15;
+  else if (ratio > 0.01) score += 10;
+
+  if (comments > 1000)     score += 20;
+  else if (comments > 500) score += 15;
+  else if (comments > 100) score += 10;
+
+  if (duration >= 15 && duration <= 60) score += 20;
+  else if (duration > 0 && duration <= 90) score += 10;
+
+  // TikTok needs higher viral signal to compensate for lower trust
+  if (post.source === 'tiktok') score -= 10;
+
+  return Math.max(0, score);
+}
+
+// Retorna motivo de exclusão ou null se aprovado
+function shouldExclude(post) {
+  const { score: spamScore, tags } = calcSpamScore(post.caption || '');
+  if (spamScore >= 60)
+    return `spam/comercial (score ${spamScore}: ${tags.join(', ')})`;
+
+  const emojiCount = ((post.caption || '').match(/\p{Emoji_Presentation}/gu) || []).length;
+  if (emojiCount > 10)
+    return `excesso de emojis (${emojiCount})`;
+
+  if (post.duration > 0 && post.duration < 10)
+    return `vídeo muito curto (${post.duration.toFixed(1)}s)`;
+
+  if (post.followers > 0 && post.followers < 1000)
+    return `conta pequena (${post.followers} seguidores)`;
+
+  if (post.is_ad)
+    return 'é anúncio (is_ad)';
+
+  return null;
+}
+
+// Heurística simples de idioma PT
+function isPtContent(caption) {
+  const text = caption || '';
+  if (/[áéíóúãõâêôçÁÉÍÓÚÃÕÂÊÔÇ]/.test(text)) return true;
+  if (/\b(você|com|não|mas|para|que|uma|esse|essa|isso|por|como|mais|também|são|foi|era|tem|ser|fazer|ver|quando|onde)\b/i.test(text)) return true;
+  return false;
+}
+
+function rapidApiError(e) {
+  const msg = e.response?.data?.message || e.message;
+  if (e.response?.status === 429) return new Error(`Cota mensal da API esgotada: ${msg}`);
+  if (e.response?.status === 403) return new Error(`Chave não assinada nesta API (${msg})`);
+  return new Error(msg);
+}
+
+const IG120_HOST = 'instagram120.p.rapidapi.com';
+const IG120_KEY  = process.env.RAPIDAPI_KEY_IG120 || process.env.RAPIDAPI_KEY;
+const ig120Headers = () => ({
+  'Content-Type': 'application/json',
+  'x-rapidapi-host': IG120_HOST,
+  'x-rapidapi-key': IG120_KEY,
+});
+
+// In-memory session dedup — persists across warm serverless invocations
+const usedVideoUrls = new Set();
+
+// Busca reels de uma conta (retorna play_count mas sem video_versions)
+async function fetchReels(username) {
+  console.log(`[A1] Buscando reels de @${username}…`);
+  const { data } = await axios.post(
+    `https://${IG120_HOST}/api/instagram/reels`,
+    { username, maxId: '' },
+    { headers: ig120Headers(), timeout: 20000 }
+  );
+  const edges = data?.result?.edges || [];
+  return edges.map(e => {
+    const m = e.node?.media || e.node || {};
+    return {
+      code:      m.code || '',
+      views:     m.play_count || 0,
+      likes:     m.like_count || 0,
+      comments:  m.comment_count || 0,
+      username,
+    };
+  }).filter(p => p.code);
+}
+
+// Busca posts de uma conta (retorna video_versions + caption)
+async function fetchPosts(username) {
+  console.log(`[A1] Buscando posts de @${username}…`);
+  const { data } = await axios.post(
+    `https://${IG120_HOST}/api/instagram/posts`,
+    { username, maxId: '' },
+    { headers: ig120Headers(), timeout: 20000 }
+  );
+  const edges = data?.result?.edges || [];
+  const map = {};
+  for (const e of edges) {
+    const n = e.node || {};
+    if (!n.video_versions?.length) continue;
+    const cap = n.caption || {};
+    map[n.code] = {
+      videoUrl:  n.video_versions[0].url,
+      caption:   typeof cap === 'object' ? (cap.text || '') : String(cap || ''),
+      duration:  n.video_duration || 0,
+      hasAudio:  n.has_audio ?? true,
+      is_ad:     n.is_paid_partnership || false,
+    };
+  }
+  return map;
+}
+
+// Busca completa de uma conta: reels (métricas) + posts (vídeo/caption), cruzando por code
+async function searchAccount(username) {
+  const [reels, postsMap] = await Promise.all([
+    fetchReels(username).catch(e => { console.warn(`[A1] reels @${username} falhou: ${e.message}`); return []; }),
+    fetchPosts(username).catch(e => { console.warn(`[A1] posts @${username} falhou: ${e.message}`); return {}; }),
+  ]);
+
+  const merged = [];
+  for (const reel of reels) {
+    const post = postsMap[reel.code];
+    if (!post) continue; // sem video_versions → pula
+    merged.push({
+      code:      reel.code,
+      views:     reel.views,
+      likes:     reel.likes,
+      comments:  reel.comments,
+      duration:  post.duration,
+      caption:   post.caption,
+      videoUrl:  post.videoUrl,
+      username:  reel.username,
+      followers: 0,
+      is_ad:     post.is_ad,
     });
   }
-
-  userContent.push({
-    type: 'text',
-    text: `Caption original: ${candidate.originalCaption || '(sem caption)'}
-Likes: ${candidate.likes.toLocaleString('pt-BR')}
-Views: ${candidate.views.toLocaleString('pt-BR')}
-
-Analise este conteúdo para o perfil @pedro_destrava.`,
-  });
-
-  const res = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    messages: [
-      {
-        role: 'system',
-        content: `Você é um especialista em conteúdo viral do Instagram. Analise este conteúdo e retorne um JSON com:
-{
-  "viral_score": número de 0 a 100,
-  "viral_reasons": ["motivo1", "motivo2"],
-  "ban_risk": "baixo" | "médio" | "alto",
-  "ban_reasons": [],
-  "copyright_risk": "baixo" | "médio" | "alto",
-  "copyright_reasons": [],
-  "approved": true | false,
-  "reject_reason": "string ou null",
-  "content_category": "tecnologia" | "curiosidade" | "história" | "ciência" | "negócios" | "outro",
-  "fit_for_profile": número de 0 a 100
+  console.log(`[A1] @${username}: ${reels.length} reels, ${Object.keys(postsMap).length} vídeo-posts, ${merged.length} cruzados`);
+  return merged;
 }
 
-Perfil do criador:
-- Nicho: curiosidades de tecnologia, ciência, história e inovação
-- Tom: informativo, surpreendente, "o que ninguém te contou"
-- Audiência: 175k seguidores brasileiros, adultos
-- Conteúdos que mais viralizam: tecnologia retrô vs atual, inovações chinesas, curiosidades históricas, ciência aplicada
-- NÃO aprovar: conteúdo político, violento, sexual, músicas famosas (alto risco copyright), humor genérico
-- APROVAR apenas se viral_score >= 60 E ban_risk != "alto" E copyright_risk != "alto" E fit_for_profile >= 60`,
+// ── TikTok search via tiktok-api23 ──────────────────────────────────────────
+async function searchTikTok(keyword) {
+  console.log(`[A1-TT] Buscando TikTok: "${keyword}"…`);
+  const { data } = await axios.get(
+    `https://${TIKTOK_HOST}/api/search/general`,
+    {
+      params: { keyword, count: 15 },
+      headers: {
+        'x-rapidapi-host': TIKTOK_HOST,
+        'x-rapidapi-key': TIKTOK_KEY,
       },
-      { role: 'user', content: userContent },
-    ],
-    max_tokens: 400,
-    response_format: { type: 'json_object' },
-  });
-
-  return JSON.parse(res.choices[0].message.content || '{}');
+      timeout: 20000,
+    }
+  );
+  const items = data?.item_list || [];
+  const posts = items
+    .filter(item => {
+      const vid = item?.video;
+      return vid && (vid.playAddr || vid.downloadAddr);
+    })
+    .map(item => {
+      const stats = item.stats || {};
+      const vid   = item.video || {};
+      const author = item.author || {};
+      const durMs = vid.duration || 0;
+      return {
+        code:      item.id || '',
+        views:     stats.playCount || 0,
+        likes:     stats.diggCount || 0,
+        comments:  stats.commentCount || 0,
+        duration:  durMs > 1000 ? Math.round(durMs / 1000) : durMs,
+        caption:   item.desc || '',
+        videoUrl:  vid.downloadAddr || vid.playAddr || null,
+        username:  author.uniqueId || author.nickname || '',
+        followers: 0,
+        is_ad:     item.isAd || false,
+        source:    'tiktok',
+      };
+    })
+    .filter(p => p.code && p.videoUrl);
+  console.log(`[A1-TT] "${keyword}": ${posts.length} vídeos encontrados`);
+  return posts;
 }
 
-// ── Agent 3 — Criador de Copy ─────────────────────────────────────────────────
-async function generateCopy(candidate, analysis) {
-  const res = await openai.chat.completions.create({
+// ── Agent 2+3 — Analista Unificado (análise + fact-check + copy em 1 call) ────
+async function analyzeAndGenerate(candidate) {
+  const isTikTok = candidate.source === 'tiktok';
+  const controversyNote = candidate.controversy_flag
+    ? `\n⚠️ ATENÇÃO: ratio comentários/likes=${candidate.controversy_ratio?.toFixed(2)} (anormalmente alto — pode ser conteúdo polêmico).`
+    : '';
+
+  const res = await getOpenAI().chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: `Você é especialista em copy viral para Instagram Reels brasileiro.
-Estilo do criador @pedro_destrava:
-- Headlines: curtas, impactantes, geram curiosidade. Ex: "O que ninguém te contou sobre…", "Isso mudou o mundo e ninguém percebeu", "A China fez isso e o mundo ignorou"
-- Legendas: começam com fato surpreendente, explicam em parágrafos curtos, terminam com CTA "Segue o @pedro_destrava"
-- Tom: informativo, direto, surpreendente
-- Sem hashtags genéricas em excesso
+        content: `Você é agente de curadoria para @pedro_destrava (175k seguidores BR, nicho tech/ciência/curiosidades/história).
 
-Retorne JSON:
+Analise o candidato e retorne JSON completo com análise, fact-check, copy e veredito:
 {
-  "headline": "texto curto para sobrepor no vídeo (máximo 8 palavras)",
-  "caption": "legenda completa pronta para postar no Instagram"
-}`,
+  "viral_score": 0-100,
+  "viral_reasons": ["reason"],
+  "content_category": "tecnologia"|"curiosidade"|"história"|"ciência"|"engenharia"|"espaço"|"negócios"|"outro",
+  "fit_for_profile": 0-100,
+  "ban_risk": "baixo"|"médio"|"alto",
+  "ban_reasons": [],
+  "copyright_risk": "baixo"|"médio"|"alto",
+  "copyright_reasons": [],
+  "factual_confidence": 0-100,
+  "factual_flags": [],
+  "misleading_caption": false,
+  "headline": "máx 8 palavras, impactante",
+  "caption": "legenda completa para postar — começa com fato surpreendente, parágrafos curtos, termina com 'Segue o @pedro_destrava'",
+  "headline_matches_source": true,
+  "headline_clickbait_risk": "baixo"|"médio"|"alto",
+  "approved": true|false,
+  "reject_reason": null,
+  "quality_tier": "A"|"B"|"C"|"D",
+  "warnings": []
+}
+
+Regras de aprovação:
+- approved = true SE: viral_score >= 50 E ban_risk != "alto" E fit_for_profile >= 40 E factual_confidence >= 30 E misleading_caption = false
+- Seja generoso com conteúdo de ciência, tecnologia, curiosidades, história, engenharia e espaço — esses são os nichos do perfil
+- quality_tier: A (viral_score>80 sem warnings), B (>65), C (>50), D (abaixo)
+- NÃO aprovar: político partidário, violento, sexual, músicas famosas (copyright), vlogs pessoais
+- Headlines style: "O que ninguém te contou sobre…", "A China fez isso e o mundo ignorou"`,
       },
       {
         role: 'user',
-        content: `Conteúdo original: ${candidate.originalCaption || '(sem caption)'}
-Categoria: ${analysis.content_category}
-Motivos virais: ${(analysis.viral_reasons || []).join(', ')}
-Viral score: ${analysis.viral_score}
-
-Gere headline impactante e legenda longa para este conteúdo.`,
+        content: `Fonte: ${isTikTok ? 'TikTok (verifique factual_confidence com cuidado)' : 'Instagram'}
+Perfil: @${candidate.sourceUsername || 'desconhecido'}
+Views: ${(candidate.views || 0).toLocaleString('pt-BR')}
+Likes: ${(candidate.likes || 0).toLocaleString('pt-BR')}
+Comentários: ${(candidate.comments || 0).toLocaleString('pt-BR')}
+Caption original (até 600 chars): ${(candidate.originalCaption || '(sem caption)').slice(0, 600)}${controversyNote}`,
       },
     ],
-    max_tokens: 800,
+    max_tokens: 1500,
     response_format: { type: 'json_object' },
   });
 
   const parsed = JSON.parse(res.choices[0].message.content || '{}');
+  if (parsed.headline) {
+    parsed.headline = parsed.headline.trim().replace(/^["'""'']+|["'""'']+$/g, '');
+  }
+  return parsed;
+}
+
+// ── Mini-Júri (10 personas, 1 rodada, gpt-4o-mini, GATING) ───────────────────
+const MINI_JURY_PERSONAS = [
+  { id:  1, name: 'João',    age: 22, desc: 'Estudante universitário de TI, atenção curtíssima, passa o dedo se não entender em 2 segundos.' },
+  { id: 10, name: 'Bruna',   age: 26, desc: 'Recepcionista, faz scroll compulsivo no almoço, headline precisa ser irresistível para ela parar.' },
+  { id: 41, name: 'Sérgio',  age: 44, desc: 'Construtor civil, celular só à noite, gosta de curiosidades práticas e diretas.' },
+  { id: 55, name: 'Luiz',    age: 42, desc: 'Gerente de TI, exigente com qualidade, detecta conteúdo raso na hora.' },
+  { id: 61, name: 'Bianca',  age: 31, desc: 'Analista de dados, adora fatos e números concretos, desconfia de generalizações.' },
+  { id: 72, name: 'Gustavo', age: 34, desc: 'Arquiteto cloud, entusiasta de tecnologia, engaja quando vê inovação genuína.' },
+  { id: 81, name: 'Geraldo', age: 55, desc: 'Engenheiro aposentado, lê com calma, detecta inconsistência técnica facilmente.' },
+  { id: 86, name: 'Lúcia',   age: 44, desc: 'Advogada, cética, pesquisa antes de compartilhar, não tolera sensacionalismo.' },
+  { id: 91, name: 'Rafa',    age: 31, desc: 'Jornalista investigativo, detecta clickbait em milissegundos, denuncia conteúdo enganoso.' },
+  { id: 96, name: 'Clara',   age: 25, desc: 'Doutoranda em ciências sociais, analisa retórica e manipulação, imune a sensacionalismo.' },
+];
+
+async function runMiniJury(headline, originalCaption) {
+  const results = await Promise.all(
+    MINI_JURY_PERSONAS.map(async (persona) => {
+      try {
+        const res = await getOpenAI().chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `Você é ${persona.name}, ${persona.age} anos. ${persona.desc} Está scrollando Instagram agora.`,
+            },
+            {
+              role: 'user',
+              content: `Headline: "${headline}"
+Conteúdo original: "${(originalCaption || '').slice(0, 300)}"
+
+Avalie brevemente. Retorne JSON:
+{ "parou": boolean, "problema": "string descrevendo problema sério OU null se ok", "factual_issue": boolean }`,
+            },
+          ],
+          max_tokens: 120,
+          response_format: { type: 'json_object' },
+          temperature: 0.8,
+        });
+        const r = JSON.parse(res.choices[0].message.content || '{}');
+        return { persona, parou: !!r.parou, problema: r.problema || null, factual_issue: !!r.factual_issue };
+      } catch {
+        return { persona, parou: false, problema: null, factual_issue: false };
+      }
+    })
+  );
+
+  const stoppedCount    = results.filter(r => r.parou).length;
+  const factualIssues   = results.filter(r => r.factual_issue && r.problema);
+  const problemMessages = results.filter(r => r.problema).map(r => r.problema);
+
+  if (factualIssues.length > 0) {
+    return {
+      verdict: 'BLOCK',
+      reason: `${factualIssues.length} persona(s) detectaram problema factual: ${factualIssues.map(r => r.problema).join('; ')}`,
+      stopped: stoppedCount,
+      total: 10,
+    };
+  }
+
+  if (stoppedCount < 4) {
+    return {
+      verdict: 'WARN',
+      reason: `Apenas ${stoppedCount}/10 personas pararam — engajamento esperado baixo`,
+      stopped: stoppedCount,
+      total: 10,
+    };
+  }
+
   return {
-    headline: (parsed.headline || '').trim().replace(/^["'""'']+|["'""'']+$/g, ''),
-    caption:  (parsed.caption  || '').trim(),
+    verdict: 'OK',
+    reason: `${stoppedCount}/10 personas aprovaram`,
+    stopped: stoppedCount,
+    total: 10,
   };
 }
 
-// ── Agent 4 — Editor de Vídeo ─────────────────────────────────────────────────
-async function editVideo(jobId, index) {
-  const job = jobs.get(jobId);
-  if (!job || !job.results[index]) return;
+// ── Main search pipeline ──────────────────────────────────────────────────────
+async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lang = 'any' }) {
+  // ── A1: busca paralela em Instagram (contas-semente) + TikTok (keywords) ──
+  const allAccounts = themes.flatMap(t => SEED_ACCOUNTS[t] || []);
+  if (allAccounts.length === 0) Object.values(SEED_ACCOUNTS).forEach(a => allAccounts.push(a[0]));
+  const uniqueAccounts = [...new Set(allAccounts)];
+  const igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 5);
 
-  const result  = job.results[index];
-  const sid     = `${jobId}_${index}`;
-  const rawVideo   = path.join(os.tmpdir(), `${sid}_raw.mp4`);
-  const overlayPng = path.join(os.tmpdir(), `${sid}_overlay.png`);
-  const output     = path.join(os.tmpdir(), `${sid}_final.mp4`);
+  const allKeywords = themes.flatMap(t => TIKTOK_KEYWORDS[t] || []);
+  if (allKeywords.length === 0) Object.values(TIKTOK_KEYWORDS).forEach(k => allKeywords.push(k[0]));
+  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 4);
 
-  const cleanTmp = () => [rawVideo, overlayPng].forEach(f => {
+  console.log(`[A1] Instagram: ${igAccounts.map(u => '@' + u).join(', ')}`);
+  console.log(`[A1] TikTok: ${ttKeywords.map(k => '"' + k + '"').join(', ')}`);
+
+  // Busca paralela em ambas as plataformas
+  const igPromises = igAccounts.map(async u => {
+    try { return await searchAccount(u); }
+    catch (e) { console.warn(`[A1][skip] @${u}: ${rapidApiError(e).message}`); return []; }
+  });
+  const ttPromises = ttKeywords.map(async k => {
+    try { return await searchTikTok(k); }
+    catch (e) { console.warn(`[A1-TT][skip] "${k}": ${rapidApiError(e).message}`); return []; }
+  });
+
+  const allResults = await Promise.allSettled([...igPromises, ...ttPromises]);
+
+  const rawPosts = [];
+  let anyOk = false;
+  let firstError = null;
+  for (const r of allResults) {
+    if (r.status === 'fulfilled' && r.value.length > 0) { rawPosts.push(...r.value); anyOk = true; }
+    else if (r.status === 'rejected' && !firstError) firstError = r.reason;
+  }
+  if (!anyOk && firstError) throw firstError;
+  if (!anyOk) throw new Error('Nenhuma fonte retornou resultados. Tente novamente ou selecione outros temas.');
+  console.log(`[A1] Total bruto: ${rawPosts.length} posts (IG + TikTok)`);
+
+  // ── Pré-filtros (antes do GPT-4o) ────────────────────────────────────────
+  const candidates = [];
+  for (const post of rawPosts) {
+    // 1. Filtros de exclusão automática
+    const excl = shouldExclude(post);
+    if (excl) {
+      console.log(`[A1][excl] ${post.code}: ${excl}`);
+      continue;
+    }
+
+    // 2. Views mínimas
+    if (post.views < minViews) {
+      console.log(`[A1][views] ${post.code}: ${post.views.toLocaleString()} < mín ${minViews.toLocaleString()}`);
+      continue;
+    }
+
+    // 3. Engajamento mínimo
+    const ratio = post.views > 0 ? post.likes / post.views : 0;
+    if (ratio < minEngagement) {
+      console.log(`[A1][eng] ${post.code}: ${(ratio * 100).toFixed(1)}% < mín ${(minEngagement * 100).toFixed(1)}%`);
+      continue;
+    }
+
+    // 4. Filtro de idioma
+    if (lang === 'pt' && !isPtContent(post.caption)) {
+      console.log(`[A1][lang] ${post.code}: conteúdo não-PT ignorado`);
+      continue;
+    }
+
+    // 5. Keywords educativas (boost de score)
+    const capLower = (post.caption || '').toLowerCase();
+    const hasEduKw = EDUCATION_KEYWORDS.some(k => capLower.includes(k));
+
+    // 6. Score preliminar (TikTok penalty already inside calcViralScore)
+    const preScore = calcViralScore(post) + (hasEduKw ? 10 : 0);
+    console.log(`[A1] ${post.code}: preScore=${preScore}, edu=${hasEduKw}, views=${post.views.toLocaleString()}, eng=${(ratio * 100).toFixed(1)}%`);
+
+    if (preScore < 40) {
+      console.log(`[A1][score] ${post.code}: score ${preScore} < 40, descartado`);
+      continue;
+    }
+
+    // 7. Controversy flag (comments/likes ratio unusually high)
+    const controversyRatio = post.likes > 0 ? post.comments / post.likes : 0;
+    const controversyFlag  = controversyRatio > 0.15;
+    if (controversyFlag)
+      console.log(`[A1][controversy] ${post.code}: comments/likes=${controversyRatio.toFixed(2)} — possível conteúdo polêmico`);
+
+    const isTikTok = post.source === 'tiktok';
+    const postUrl  = isTikTok
+      ? `https://www.tiktok.com/@${post.username}/video/${post.code}`
+      : `https://www.instagram.com/reel/${post.code}/`;
+
+    // 8. Dedup check
+    const alreadyUsed = usedVideoUrls.has(postUrl);
+
+    candidates.push({
+      url:               postUrl,
+      videoUrl:          post.videoUrl,
+      thumbnail:         null,
+      likes:             post.likes,
+      views:             post.views,
+      comments:          post.comments,
+      preScore,
+      originalCaption:   post.caption
+        ? `Caption original: "${post.caption.slice(0, 400)}" — @${post.username}, ${post.views.toLocaleString()} views, ${post.likes.toLocaleString()} likes`
+        : `Reel de @${post.username} — ${post.views.toLocaleString()} views, ${post.likes.toLocaleString()} likes`,
+      sourceUsername:    post.username,
+      source:            isTikTok ? 'tiktok' : 'instagram',
+      controversy_flag:  controversyFlag,
+      controversy_ratio: controversyRatio,
+      already_used:      alreadyUsed,
+    });
+  }
+
+  // Ordena por score, desduplicar por URL, limita a 30 (sem GPT nesta fase)
+  candidates.sort((a, b) => b.preScore - a.preScore);
+  const deduped = [...new Map(candidates.map(c => [c.url, c])).values()].slice(0, 30);
+  console.log(`[A1] ${deduped.length} candidatos após pré-filtro (sem GPT)`);
+
+  if (deduped.length === 0) return [];
+
+  // Diversificação leve: máx 6 por conta (sem GPT não temos category ainda)
+  const byAcc = {};
+  const final = [];
+
+  for (const c of deduped) {
+    const acc = c.sourceUsername || '';
+    if ((byAcc[acc] || 0) >= 6) continue;
+    byAcc[acc] = (byAcc[acc] || 0) + 1;
+
+    // Derive a rough content_category from the theme that was searched
+    // (best effort — GPT will refine this in the approve step)
+    const capLower = (c.originalCaption || '').toLowerCase();
+    let content_category = 'outro';
+    if (/tecnolog|tech|gadget|inovação|innovation/.test(capLower)) content_category = 'tecnologia';
+    else if (/ciência|science|descoberta|discovery|scientist/.test(capLower)) content_category = 'ciência';
+    else if (/história|history|historical|fato histórico/.test(capLower)) content_category = 'história';
+    else if (/espaço|space|nasa|universe|cosmos/.test(capLower)) content_category = 'espaço';
+    else if (/china|chinês|chinese/.test(capLower)) content_category = 'china';
+    else if (/engenharia|engineering|construção|construction/.test(capLower)) content_category = 'engenharia';
+    else if (/curiosidade|did you know|você sabia|amazing|incrível/.test(capLower)) content_category = 'curiosidades';
+    else if (/invenção|invention|invented|inventor/.test(capLower)) content_category = 'invencoes';
+
+    final.push({
+      index:           final.length,
+      url:             c.url,
+      videoUrl:        c.videoUrl,
+      thumbnail:       c.thumbnail,
+      likes:           c.likes,
+      views:           c.views,
+      comments:        c.comments,
+      originalCaption: c.originalCaption,
+      viral_score:     c.preScore,
+      content_category,
+      source:          c.source          || 'instagram',
+      sourceUsername:  c.sourceUsername  || '',
+      controversy_flag:c.controversy_flag || false,
+      already_used:    c.already_used    || false,
+    });
+
+    if (final.length >= 30) break;
+  }
+
+  console.log(`[pipeline] ${final.length} resultados finais (sem GPT)`);
+  return final;
+}
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+
+// POST /api/content-finder/search
+router.post('/search', async (req, res) => {
+  const { themes, minViews, minEngagement, lang } = req.body;
+
+  if (!Array.isArray(themes) || themes.length === 0) {
+    return res.status(400).json({ error: 'Selecione pelo menos um tema' });
+  }
+  if (!process.env.RAPIDAPI_KEY) {
+    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
+  }
+
+  try {
+    const results = await runSearch({
+      themes,
+      minViews:      Number(minViews)      || 50000,
+      minEngagement: Number(minEngagement) || 0,
+      lang:          lang || 'any',
+    });
+    res.json({ results });
+  } catch (e) {
+    console.error('[contentFinder] search error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/content-finder/preview-video — proxy video stream (bypass CORS)
+router.post('/preview-video', async (req, res) => {
+  const { videoUrl } = req.body;
+  if (!videoUrl) return res.status(400).json({ error: 'videoUrl é obrigatório' });
+
+  try {
+    const response = await axios.get(videoUrl, {
+      responseType: 'stream',
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+        'Referer': 'https://www.instagram.com/',
+      },
+    });
+    const contentType = response.headers['content-type'] || 'video/mp4';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    response.data.pipe(res);
+    response.data.on('error', () => { if (!res.headersSent) res.status(500).end(); });
+  } catch (e) {
+    console.error('[preview-video] error:', e.message);
+    if (!res.headersSent) res.status(502).json({ error: 'Não foi possível carregar o vídeo' });
+  }
+});
+
+// POST /api/content-finder/approve — Agent 4: edits video, streams MP4 directly
+// Accepts multipart/form-data: fields (videoUrl, postUrl, headline, caption, originalCaption) + file (template)
+router.post('/approve', upload.single('template'), async (req, res) => {
+  let { videoUrl: directUrl, postUrl, headline, caption, originalCaption } = req.body;
+  if (!directUrl && !postUrl) return res.status(400).json({ error: 'videoUrl ou postUrl é obrigatório' });
+
+  if (!process.env.RAPIDAPI_KEY && !directUrl) {
+    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
+  }
+
+  const templateBuf = req.file?.buffer || null;
+  const sid         = crypto.randomUUID();
+  const rawVideo    = path.join(os.tmpdir(), `${sid}_raw.mp4`);
+  const framePng    = path.join(os.tmpdir(), `${sid}_frame.png`);
+  const output      = path.join(os.tmpdir(), `${sid}_final.mp4`);
+
+  const cleanTmp = () => [rawVideo, framePng].forEach(f => {
     try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
   });
 
-  result.editStatus   = 'processing';
-  result.editProgress = 0;
-  result.editError    = null;
-
   try {
-    // Resolve video URL if we only have the post URL
-    console.log(`[contentFinder] Agent 4 — resolvendo vídeo para slot ${index}`);
-    let videoUrl = result.videoUrl;
-    if (!videoUrl) {
-      result.editProgress = 3;
-      videoUrl = await resolveInstagramUrl(result.url);
+    // ── If no headline provided, run GPT analysis first ──────────────────────
+    if (!headline?.trim()) {
+      console.log('[approve] Sem headline — rodando analyzeAndGenerate…');
+      const candidate = {
+        url:             postUrl || directUrl || '',
+        videoUrl:        directUrl || null,
+        views:           Number(req.body.views)    || 0,
+        likes:           Number(req.body.likes)    || 0,
+        comments:        Number(req.body.comments) || 0,
+        originalCaption: originalCaption || '',
+        sourceUsername:  req.body.sourceUsername  || '',
+        source:          req.body.source          || 'instagram',
+        controversy_flag: false,
+        controversy_ratio: 0,
+      };
+      try {
+        const analysis = await analyzeAndGenerate(candidate);
+        headline = analysis.headline || 'Reel incrível';
+        if (!caption?.trim()) caption = analysis.caption || '';
+        console.log(`[approve] headline gerada: "${headline}"`);
+      } catch (e) {
+        console.warn('[approve] analyzeAndGenerate falhou:', e.message);
+        headline = 'Descubra isso agora';
+      }
     }
 
-    // Download
-    result.editProgress = 8;
-    console.log(`[contentFinder] Baixando vídeo ${sid}`);
-    await streamDownload(videoUrl, rawVideo);
-    result.editProgress = 30;
+    const downloadVideo = async () => {
+      if (directUrl) {
+        try { await streamDownload(directUrl, rawVideo); return; }
+        catch (e) {
+          console.warn('[contentFinder] URL direta falhou, resolvendo via API:', e.message);
+          if (!postUrl) throw e;
+        }
+      }
+      const resolved = await resolveInstagramUrl(postUrl);
+      await streamDownload(resolved, rawVideo);
+    };
 
-    // Build overlay + probe in parallel
-    const [{ barH }, { hasAudio, duration }] = await Promise.all([
-      buildHeadlineOverlay(result.headline, overlayPng),
-      getVideoInfo(rawVideo),
+    // Run video download + overlay build + mini-jury in parallel
+    const [[{ hasAudio, duration }], juryResult] = await Promise.all([
+      Promise.all([
+        downloadVideo().then(() => getVideoInfo(rawVideo)),
+        templateBuf
+          ? buildReelFrame(templateBuf, headline.trim(), framePng)
+          : buildHeadlineOverlay(headline.trim(), framePng),
+      ]),
+      runMiniJury(headline.trim(), originalCaption || ''),
     ]);
-    result.editProgress = 45;
 
-    const clipDur    = Math.min(duration, 90).toFixed(3);
-    const clipDurSec = parseFloat(clipDur);
+    // Mini-jury gating
+    if (juryResult.verdict === 'BLOCK') {
+      cleanTmp();
+      console.log(`[miniJury] BLOCK: ${juryResult.reason}`);
+      return res.json({ blocked: true, reason: juryResult.reason, juryResult });
+    }
+    if (juryResult.verdict === 'WARN') {
+      console.log(`[miniJury] WARN: ${juryResult.reason}`);
+    }
 
-    // Scale+letterbox video to 1080×1920, overlay headline bar at top
-    const filterGraph = [
-      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
-      `[1:v]loop=loop=-1:size=1:start=0[bar]`,
-      `[scaled][bar]overlay=0:0:eof_action=endall[out]`,
-    ].join(';');
+    const clipDur = Math.min(duration, 20).toFixed(3);
+    let filterGraph;
+
+    if (templateBuf) {
+      filterGraph = [
+        `[0:v]scale=${W}:-2,crop=${W}:${VIDEO_H}:0:(ih-${VIDEO_H})/2,setpts=PTS-STARTPTS[vid]`,
+        `[1:v]loop=loop=-1:size=1:start=0[frame]`,
+        `[frame][vid]overlay=0:${VIDEO_Y}:eof_action=endall[out]`,
+      ].join(';');
+    } else {
+      filterGraph = [
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
+        `[1:v]loop=loop=-1:size=1:start=0[bar]`,
+        `[scaled][bar]overlay=0:0:eof_action=endall[out]`,
+      ].join(';');
+    }
 
     const outputOpts = [
-      '-map [out]',
-      '-c:v libx264', '-preset ultrafast', '-crf 28',
+      '-map [out]', '-c:v libx264', '-preset ultrafast', '-crf 28',
       '-r 30', `-t ${clipDur}`, '-pix_fmt yuv420p',
     ];
     if (hasAudio) outputOpts.push('-map 0:a', '-c:a aac', '-b:a 128k');
@@ -353,258 +884,39 @@ async function editVideo(jobId, index) {
 
     const cmd = ffmpeg()
       .input(rawVideo).inputOptions([`-t ${clipDur}`])
-      .input(overlayPng)
+      .input(framePng)
       .complexFilter(filterGraph)
-      .outputOptions(outputOpts)
-      .on('progress', info => {
-        try {
-          const parts = (info.timemark || '').split(':');
-          if (parts.length < 3) return;
-          const elapsed = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
-          result.editProgress = Math.round(45 + Math.min(elapsed / clipDurSec, 1) * 50);
-        } catch {}
-      });
+      .outputOptions(outputOpts);
 
-    await runFFmpeg(cmd, output);
-
+    await runFFmpeg(cmd, output, 50000);
     cleanTmp();
-    result.editStatus     = 'done';
-    result.editProgress   = 100;
-    result.editOutputPath = output;
-    console.log(`[contentFinder] Agent 4 concluído — slot ${index}`);
-  } catch (err) {
+
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', 'attachment; filename="reel_reciclado.mp4"');
+    res.setHeader('X-Headline',          encodeURIComponent(headline || ''));
+    res.setHeader('X-Caption',           encodeURIComponent(caption  || ''));
+    res.setHeader('X-Mini-Jury-Verdict', juryResult.verdict);
+    res.setHeader('X-Mini-Jury-Stopped', `${juryResult.stopped}/${juryResult.total}`);
+    if (juryResult.verdict === 'WARN') {
+      res.setHeader('X-Mini-Jury-Reason', encodeURIComponent(juryResult.reason));
+    }
+
+    // Mark this URL as used (dedup for future searches in this session)
+    const videoKey = postUrl || directUrl || '';
+    if (videoKey) usedVideoUrls.add(videoKey);
+
+    const stream = fs.createReadStream(output);
+    stream.pipe(res);
+    stream.on('end', () => { try { fs.unlinkSync(output); } catch {} });
+    stream.on('error', err => {
+      console.error('[contentFinder] stream error:', err.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Erro ao enviar vídeo' });
+    });
+  } catch (e) {
     cleanTmp();
-    result.editStatus = 'error';
-    result.editError  = err.message;
-    console.error(`[contentFinder] Agent 4 erro slot ${index}:`, err.message);
+    console.error('[contentFinder] approve error:', e.message);
+    if (!res.headersSent) res.status(500).json({ error: e.message });
   }
-}
-
-// ── Main pipeline ─────────────────────────────────────────────────────────────
-async function runPipeline(jobId, hashtags) {
-  const job = jobs.get(jobId);
-  if (!job) return;
-
-  const step = (progress, msg) => {
-    job.progress    = progress;
-    job.currentStep = msg;
-    console.log(`[contentFinder][${jobId.slice(0,8)}] ${msg}`);
-  };
-
-  try {
-    // ── Agent 1: busca ────────────────────────────────────────────────────────
-    step(5, '🔍 Agente 1: Buscando vídeos virais…');
-
-    const candidates = [];
-    const tried = new Set();
-
-    for (const tag of hashtags) {
-      if (candidates.length >= 15 || tried.has(tag)) continue;
-      tried.add(tag);
-      try {
-        const found = await searchHashtag(tag);
-        candidates.push(...found);
-        console.log(`[contentFinder] #${tag}: ${found.length} candidatos encontrados`);
-      } catch (e) {
-        console.warn(`[contentFinder] #${tag} falhou:`, e.message);
-      }
-    }
-
-    // Retry remaining hashtags if not enough results
-    if (candidates.length < 3) {
-      for (const tag of hashtags) {
-        if (candidates.length >= 10 || tried.has(tag)) continue;
-        tried.add(tag);
-        try { const found = await searchHashtag(tag); candidates.push(...found); } catch {}
-      }
-    }
-
-    if (candidates.length === 0) {
-      job.status      = 'done';
-      job.results     = [];
-      job.progress    = 100;
-      job.currentStep = '✅ Nenhum vídeo encontrado com os filtros aplicados.';
-      return;
-    }
-
-    // Deduplicate by URL, cap at 10
-    const unique = [...new Map(candidates.map(c => [c.url, c])).values()].slice(0, 10);
-    step(20, `🧠 Agente 2: Analisando ${unique.length} vídeos…`);
-
-    // ── Agent 2: análise ──────────────────────────────────────────────────────
-    const analyzed = [];
-    for (let i = 0; i < unique.length; i++) {
-      try {
-        const analysis = await analyzeContent(unique[i]);
-        analyzed.push({ ...unique[i], ...analysis });
-        step(
-          Math.round(20 + ((i + 1) / unique.length) * 30),
-          `🧠 Agente 2: Analisando vídeo ${i + 1}/${unique.length}…`
-        );
-      } catch (e) {
-        console.warn(`[contentFinder] Análise ${i} falhou:`, e.message);
-      }
-    }
-
-    const approved = analyzed.filter(a => a.approved === true);
-    console.log(`[contentFinder] ${approved.length}/${analyzed.length} aprovados pelo Agente 2`);
-
-    if (approved.length === 0) {
-      job.status      = 'done';
-      job.results     = [];
-      job.progress    = 100;
-      job.currentStep = '✅ Nenhum vídeo passou na análise de qualidade.';
-      return;
-    }
-
-    step(55, `✍️ Agente 3: Gerando copy para ${approved.length} vídeo(s)…`);
-
-    // ── Agent 3: copy ─────────────────────────────────────────────────────────
-    const results = [];
-    for (let i = 0; i < approved.length; i++) {
-      const item = approved[i];
-      try {
-        const copy = await generateCopy(item, item);
-        results.push({
-          index:           i,
-          url:             item.url,
-          videoUrl:        item.videoUrl,
-          thumbnail:       item.thumbnail,
-          likes:           item.likes,
-          views:           item.views,
-          originalCaption: item.originalCaption,
-          viral_score:     item.viral_score     || 0,
-          viral_reasons:   item.viral_reasons   || [],
-          ban_risk:        item.ban_risk         || 'baixo',
-          ban_reasons:     item.ban_reasons      || [],
-          copyright_risk:  item.copyright_risk   || 'baixo',
-          copyright_reasons: item.copyright_reasons || [],
-          content_category: item.content_category || 'outro',
-          fit_for_profile: item.fit_for_profile  || 0,
-          headline:        copy.headline,
-          caption:         copy.caption,
-          editStatus:      'idle',
-          editProgress:    0,
-          editOutputPath:  null,
-          editError:       null,
-        });
-        step(
-          Math.round(55 + ((i + 1) / approved.length) * 35),
-          `✍️ Agente 3: Copy ${i + 1}/${approved.length} gerada…`
-        );
-      } catch (e) {
-        console.warn(`[contentFinder] Copy ${i} falhou:`, e.message);
-      }
-    }
-
-    job.results     = results;
-    job.status      = 'done';
-    job.progress    = 100;
-    job.currentStep = `✅ Concluído! ${results.length} vídeo(s) pronto(s) para edição.`;
-  } catch (err) {
-    job.status      = 'error';
-    job.error       = err.message;
-    job.currentStep = `Erro: ${err.message}`;
-    console.error(`[contentFinder] Pipeline erro:`, err.message);
-  }
-}
-
-// ── Routes ────────────────────────────────────────────────────────────────────
-
-// POST /api/content-finder/search
-router.post('/search', async (req, res) => {
-  const { hashtags } = req.body;
-  if (!Array.isArray(hashtags) || hashtags.length === 0) {
-    return res.status(400).json({ error: 'Envie pelo menos uma hashtag' });
-  }
-  if (!process.env.RAPIDAPI_KEY) {
-    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
-  }
-
-  const jobId = crypto.randomUUID();
-  jobs.set(jobId, {
-    status:      'processing',
-    progress:    0,
-    currentStep: 'Iniciando pipeline…',
-    results:     [],
-    createdAt:   Date.now(),
-  });
-
-  runPipeline(jobId, hashtags).catch(err =>
-    console.error('[contentFinder] unhandled pipeline error:', err.message)
-  );
-
-  res.status(202).json({ jobId, status: 'processing' });
-});
-
-// GET /api/content-finder/status/:jobId
-router.get('/status/:jobId', (req, res) => {
-  const job = jobs.get(req.params.jobId);
-  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
-  res.json({
-    status:      job.status,
-    progress:    job.progress,
-    currentStep: job.currentStep,
-    results:     job.results,
-    error:       job.error,
-  });
-});
-
-// POST /api/content-finder/approve/:jobId/:index  — dispara Agent 4
-router.post('/approve/:jobId/:index', (req, res) => {
-  const { jobId } = req.params;
-  const index = parseInt(req.params.index, 10);
-
-  const job = jobs.get(jobId);
-  if (!job)               return res.status(404).json({ error: 'Job não encontrado' });
-  if (!job.results[index]) return res.status(404).json({ error: 'Resultado não encontrado' });
-
-  const result = job.results[index];
-  if (result.editStatus === 'processing') {
-    return res.status(409).json({ error: 'Vídeo já está sendo processado' });
-  }
-
-  // Apply user edits before editing
-  if (req.body?.headline) result.headline = String(req.body.headline).trim();
-  if (req.body?.caption)  result.caption  = String(req.body.caption).trim();
-
-  editVideo(jobId, index).catch(err =>
-    console.error('[contentFinder] editVideo unhandled:', err.message)
-  );
-
-  res.json({ status: 'processing' });
-});
-
-// GET /api/content-finder/download/:jobId/:index
-router.get('/download/:jobId/:index', (req, res) => {
-  const { jobId } = req.params;
-  const index = parseInt(req.params.index, 10);
-
-  const job = jobs.get(jobId);
-  if (!job)                return res.status(404).json({ error: 'Job não encontrado' });
-  const result = job.results?.[index];
-  if (!result)             return res.status(404).json({ error: 'Resultado não encontrado' });
-  if (result.editStatus !== 'done') return res.status(400).json({ error: 'Vídeo ainda não está pronto' });
-  if (!result.editOutputPath || !fs.existsSync(result.editOutputPath)) {
-    return res.status(410).json({ error: 'Arquivo expirado' });
-  }
-
-  const stat = fs.statSync(result.editOutputPath);
-  res.setHeader('Content-Type', 'video/mp4');
-  res.setHeader('Content-Disposition', `attachment; filename="reel_reciclado_${index + 1}.mp4"`);
-  res.setHeader('Content-Length', stat.size);
-
-  const stream = fs.createReadStream(result.editOutputPath);
-  stream.pipe(res);
-  stream.on('error', err => {
-    console.error('Download stream error:', err.message);
-    if (!res.headersSent) res.status(500).json({ error: 'Erro ao enviar arquivo' });
-  });
-  stream.on('end', () => {
-    try { fs.unlinkSync(result.editOutputPath); } catch {}
-    result.editOutputPath = null;
-    result.editStatus     = 'downloaded';
-  });
 });
 
 module.exports = router;
