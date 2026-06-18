@@ -175,38 +175,116 @@ function SearchPhase({ selectedThemes, setSelectedThemes, minViews, setMinViews,
 }
 
 // ─── ResultCard ───────────────────────────────────────────────────────────────
-const TIER_STYLES = {
-  A: 'bg-green-900/50 text-green-300 border-green-700/60',
-  B: 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50',
-  C: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50',
-  D: 'bg-red-900/40 text-red-300 border-red-700/50',
+function VideoPreview({ videoUrl }) {
+  const [blobUrl,    setBlobUrl]    = useState(null)
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState(false)
+  const [playing,    setPlaying]    = useState(false)
+  const videoRef = useRef(null)
+
+  async function loadAndPlay() {
+    if (blobUrl) {
+      // Already loaded — toggle play/pause
+      const vid = videoRef.current
+      if (!vid) return
+      if (vid.paused) { vid.play(); setPlaying(true) }
+      else            { vid.pause(); setPlaying(false) }
+      return
+    }
+    setLoading(true)
+    setError(false)
+    try {
+      const res = await fetch(`${API_BASE}/api/content-finder/preview-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl }),
+      })
+      if (!res.ok) throw new Error('fetch failed')
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      setBlobUrl(url)
+      setPlaying(true)
+      // autoplay after state update
+      setTimeout(() => { if (videoRef.current) videoRef.current.play() }, 50)
+    } catch {
+      setError(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="relative w-full rounded-xl overflow-hidden bg-gray-800" style={{ height: '200px' }}>
+      {blobUrl ? (
+        <video
+          ref={videoRef}
+          src={blobUrl}
+          className="w-full h-full object-cover"
+          playsInline
+          loop
+          onEnded={() => setPlaying(false)}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-gray-800">
+          <span className="text-4xl opacity-30">🎬</span>
+        </div>
+      )}
+
+      {/* Play/pause overlay button */}
+      {!error && (
+        <button
+          onClick={loadAndPlay}
+          className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/30 transition-colors group"
+          title={playing ? 'Pausar' : 'Pré-visualizar vídeo'}
+        >
+          {loading ? (
+            <svg className="w-10 h-10 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+          ) : playing ? (
+            <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+              </svg>
+            </div>
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-black/60 flex items-center justify-center">
+              <svg className="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </div>
+          )}
+        </button>
+      )}
+
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
+          <p className="text-xs text-gray-500">Prévia não disponível</p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function ResultCard({ result, onPrepare }) {
-  const [headline, setHeadline] = useState(result.headline || '')
-  const [caption,  setCaption]  = useState(result.caption  || '')
-  const [showCaption, setShowCaption] = useState(false)
+  const [headline, setHeadline] = useState('')
+  const [caption,  setCaption]  = useState('')
 
-  const tier      = result.quality_tier || 'C'
-  const factual   = result.factual_confidence ?? 50
-  const clickbait = result.headline_clickbait_risk === 'alto'
+  const shortCaption = (result.originalCaption || '').slice(0, 120)
 
   return (
     <div className={`bg-gray-900 border rounded-2xl overflow-hidden
       ${result.already_used ? 'border-gray-700 opacity-60' : 'border-gray-800'}`}>
 
-      {clickbait && (
-        <div className="px-4 py-2 bg-red-900/30 border-b border-red-800/50 flex items-center gap-2">
-          <span className="text-xs text-red-300 font-medium">🚨 Risco de clickbait detectado — revise a headline</span>
-        </div>
-      )}
       {result.already_used && (
         <div className="px-4 py-2 bg-gray-800/60 border-b border-gray-700 flex items-center gap-2">
-          <span className="text-xs text-gray-400">✓ Já usado nesta sessão</span>
+          <span className="text-xs text-gray-400">Ja usado nesta sessao</span>
         </div>
       )}
 
       <div className="p-4 space-y-3">
+        {/* Badges row */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs bg-indigo-900/50 text-indigo-300 border border-indigo-700/60 px-2 py-0.5 rounded-full">
@@ -216,68 +294,59 @@ function ResultCard({ result, onPrepare }) {
               ${result.source === 'tiktok'
                 ? 'bg-pink-900/40 text-pink-300 border-pink-700/50'
                 : 'bg-purple-900/40 text-purple-300 border-purple-700/50'}`}>
-              {result.source === 'tiktok' ? '🎵 TikTok — escrutínio extra' : '📸 Instagram'}
-            </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full border font-bold ${TIER_STYLES[tier] || TIER_STYLES.C}`}>
-              Tier {tier}
+              {result.source === 'tiktok' ? 'TikTok' : 'Instagram'}
             </span>
             <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold
               ${(result.viral_score ?? 0) >= 60
                 ? 'bg-green-900/40 text-green-300 border-green-700/50'
                 : 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50'}`}>
-              ⚡ {result.viral_score ?? 0}
+              Score {result.viral_score ?? 0}
             </span>
-            <span className={`text-xs px-2 py-0.5 rounded-full border
-              ${factual >= 80 ? 'bg-green-900/30 text-green-400 border-green-800/50'
-                : factual >= 40 ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800/50'
-                : 'bg-red-900/30 text-red-400 border-red-800/50'}`}>
-              {factual >= 80 ? '✓' : factual >= 40 ? '⚠' : '✗'} factual {factual}%
-            </span>
+            {result.controversy_flag && (
+              <span className="text-xs px-2 py-0.5 rounded-full border bg-orange-900/40 text-orange-300 border-orange-700/50">
+                Polemico
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
-            {result.views > 0 && <span>👁 {result.views.toLocaleString('pt-BR')}</span>}
-            <span>❤️ {(result.likes || 0).toLocaleString('pt-BR')}</span>
+            {result.views > 0 && <span>{result.views.toLocaleString('pt-BR')} views</span>}
+            <span>{(result.likes || 0).toLocaleString('pt-BR')} likes</span>
           </div>
         </div>
 
+        {/* Original caption preview */}
+        {shortCaption && (
+          <p className="text-xs text-gray-400 leading-relaxed line-clamp-3">{shortCaption}{result.originalCaption?.length > 120 ? '…' : ''}</p>
+        )}
+
+        {/* Inline video preview */}
+        {result.videoUrl && (
+          <VideoPreview videoUrl={result.videoUrl} />
+        )}
+
+        {/* Headline input — empty by default, GPT fills it if left blank */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Headline do vídeo</label>
+          <label className="block text-xs font-medium text-gray-500 mb-1">
+            Headline do vídeo
+            <span className="text-gray-600 ml-1">(deixe vazio para a IA gerar)</span>
+          </label>
           <input
             type="text"
             value={headline}
             onChange={e => setHeadline(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors"
+            placeholder="IA vai gerar uma headline…"
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
           />
         </div>
-
-        <button
-          onClick={() => setShowCaption(o => !o)}
-          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
-        >
-          <svg className={`w-3 h-3 transition-transform ${showCaption ? 'rotate-180' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
-          </svg>
-          {showCaption ? 'Ocultar' : 'Ver / editar'} legenda do post
-        </button>
-
-        {showCaption && (
-          <textarea
-            value={caption}
-            onChange={e => setCaption(e.target.value)}
-            rows={5}
-            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
-          />
-        )}
       </div>
 
       <div className="border-t border-gray-800 px-4 py-3 flex items-center justify-between gap-3">
         <a href={result.url} target="_blank" rel="noopener noreferrer"
           className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
-          Ver original ↗
+          Ver original
         </a>
         {result.already_used ? (
-          <span className="text-xs text-gray-500 px-5 py-2.5">Já usado</span>
+          <span className="text-xs text-gray-500 px-5 py-2.5">Ja usado</span>
         ) : (
           <button
             onClick={() => onPrepare(result, headline, caption)}
@@ -318,11 +387,21 @@ function TaskRow({ icon, title, subtitle, status, extra }) {
   )
 }
 
-function PreparingPhase({ videoStatus, videoError }) {
+function PreparingPhase({ videoStatus, videoError, headlineEmpty }) {
   return (
     <div className="space-y-4 py-4">
       <p className="text-center text-sm font-semibold text-white">Preparando seu Reel…</p>
-      <p className="text-center text-xs text-gray-500">Download + mini-júri rodam em paralelo ⚡</p>
+      <p className="text-center text-xs text-gray-500">Download + mini-júri rodam em paralelo</p>
+
+      {headlineEmpty && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-indigo-900/30 border border-indigo-700/50 rounded-xl">
+          <svg className="w-4 h-4 text-indigo-400 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <p className="text-xs text-indigo-300">Gerando headline + legenda com IA…</p>
+        </div>
+      )}
 
       <TaskRow
         icon="🎬" title="Criando seu Reel"
@@ -416,6 +495,7 @@ export default function ContentFinder() {
   const [miniJuryVerdict, setMiniJuryVerdict] = useState(null)
   const [miniJuryReason,  setMiniJuryReason]  = useState('')
   const [blockedReason,   setBlockedReason]   = useState('')
+  const [headlineWasEmpty, setHeadlineWasEmpty] = useState(false)
   const pollRef = useRef(null)
 
   // Transition to ready (or blocked) when video request finishes
@@ -448,6 +528,8 @@ export default function ContentFinder() {
 
   async function handlePrepare(result, headline, caption) {
     clearInterval(pollRef.current)
+    const headlineEmpty = !headline?.trim()
+    setHeadlineWasEmpty(headlineEmpty)
     setActiveCaption(caption)
     setPhase('preparing')
     setVideoStatus('loading')
@@ -461,10 +543,15 @@ export default function ContentFinder() {
       try {
         const form = new FormData()
         form.append('postUrl',         result.url)
-        if (result.videoUrl) form.append('videoUrl', result.videoUrl)
-        form.append('headline',        headline)
-        form.append('caption',         caption)
+        if (result.videoUrl)      form.append('videoUrl',        result.videoUrl)
+        if (headline?.trim())     form.append('headline',        headline.trim())
+        if (caption?.trim())      form.append('caption',         caption.trim())
         form.append('originalCaption', result.originalCaption || '')
+        form.append('views',           String(result.views    || 0))
+        form.append('likes',           String(result.likes    || 0))
+        form.append('comments',        String(result.comments || 0))
+        form.append('sourceUsername',  result.sourceUsername  || '')
+        form.append('source',          result.source          || 'instagram')
         if (templateFile) form.append('template', templateFile)
 
         const res = await fetch(`${API_BASE}/api/content-finder/approve`, { method: 'POST', body: form })
@@ -543,29 +630,22 @@ export default function ContentFinder() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-green-300">
-              {results.length > 0
-                ? `${results.length} reel(s) viral(is) encontrado(s) ✅`
-                : 'Nenhum reel passou nos critérios ⚠️'}
+              {results.length} reels virais encontrados
             </p>
             <button onClick={() => setPhase('search')}
               className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
-              ← Voltar
+              Voltar
             </button>
           </div>
 
-          {results.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 bg-gray-900 rounded-2xl border border-gray-800">
-              <p className="text-2xl mb-2">🔍</p>
-              <p className="text-sm">Tente outros temas ou reduza os filtros.</p>
-            </div>
-          ) : results.map((result, i) => (
+          {results.map((result, i) => (
             <ResultCard key={i} result={result} onPrepare={handlePrepare} />
           ))}
         </div>
       )}
 
       {phase === 'preparing' && (
-        <PreparingPhase videoStatus={videoStatus} videoError={videoError} />
+        <PreparingPhase videoStatus={videoStatus} videoError={videoError} headlineEmpty={headlineWasEmpty} />
       )}
 
       {phase === 'blocked' && (

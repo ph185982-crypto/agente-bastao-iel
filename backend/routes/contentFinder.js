@@ -566,11 +566,11 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
   const allAccounts = themes.flatMap(t => SEED_ACCOUNTS[t] || []);
   if (allAccounts.length === 0) Object.values(SEED_ACCOUNTS).forEach(a => allAccounts.push(a[0]));
   const uniqueAccounts = [...new Set(allAccounts)];
-  const igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 3);
+  const igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 5);
 
   const allKeywords = themes.flatMap(t => TIKTOK_KEYWORDS[t] || []);
   if (allKeywords.length === 0) Object.values(TIKTOK_KEYWORDS).forEach(k => allKeywords.push(k[0]));
-  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 2);
+  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 4);
 
   console.log(`[A1] Instagram: ${igAccounts.map(u => '@' + u).join(', ')}`);
   console.log(`[A1] TikTok: ${ttKeywords.map(k => '"' + k + '"').join(', ')}`);
@@ -673,98 +673,56 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
     });
   }
 
-  // Ordena por score, desduplicar por URL, limita a 10 para o GPT
+  // Ordena por score, desduplicar por URL, limita a 30 (sem GPT nesta fase)
   candidates.sort((a, b) => b.preScore - a.preScore);
-  const deduped = [...new Map(candidates.map(c => [c.url, c])).values()].slice(0, 10);
-  console.log(`[A1] ${deduped.length} candidatos após pré-filtro → Agente 2`);
+  const deduped = [...new Map(candidates.map(c => [c.url, c])).values()].slice(0, 30);
+  console.log(`[A1] ${deduped.length} candidatos após pré-filtro (sem GPT)`);
 
   if (deduped.length === 0) return [];
 
-  // ── A2+A3: análise + fact-check + copy unificados (1 call por candidato) ──
-  const analyses = await Promise.allSettled(deduped.map(c => analyzeAndGenerate(c)));
-  const analyzed = deduped.map((c, i) => {
-    const a = analyses[i].status === 'fulfilled' ? analyses[i].value : {};
-    const isTikTok = c.source === 'tiktok';
-    // Approval calculated server-side with calibrated thresholds (don't rely solely on GPT's
-    // conservative self-assessment — GPT tends to be overly cautious with "approved" flag)
-    const approved = !!(
-      a.headline &&
-      (a.viral_score ?? 0) >= 45 &&
-      a.ban_risk !== 'alto' &&
-      (a.fit_for_profile ?? 0) >= 35 &&
-      (a.factual_confidence ?? 0) >= (isTikTok ? 45 : 25) &&
-      a.misleading_caption !== true
-    );
-    return { ...c, ...a, approved };
-  });
-  let approved = analyzed.filter(a => a.approved && a.headline);
-  console.log(`[A2] ${approved.length}/${analyzed.length} aprovados`);
-
-  // Fallback: se nada passou, retornar os 3 melhores por viral_score com aviso
-  if (approved.length === 0) {
-    const withHeadline = analyzed.filter(a => a.headline);
-    if (withHeadline.length === 0) return [];
-    approved = withHeadline
-      .sort((a, b) => (b.viral_score ?? 0) - (a.viral_score ?? 0))
-      .slice(0, 3)
-      .map(a => ({ ...a, approved: true, quality_tier: 'D', warnings: [...(a.warnings || []), 'Abaixo do limiar de aprovação — use com cautela'] }));
-    console.log(`[A2] fallback: retornando ${approved.length} candidatos de menor qualidade`);
-  }
-
-  // ── Diversificação: máx 3 por nicho, máx 2 por conta ─────────────────────
-  const byCat = {};
+  // Diversificação leve: máx 6 por conta (sem GPT não temos category ainda)
   const byAcc = {};
   const final = [];
 
-  for (const r of approved) {
-    const cat = r.content_category || 'outro';
-    const acc = r.sourceUsername   || '';
-
-    if ((byCat[cat] || 0) >= 3) {
-      console.log(`[diversify] skip: já 3 do nicho "${cat}"`);
-      continue;
-    }
-    if ((byAcc[acc] || 0) >= 2) {
-      console.log(`[diversify] skip: já 2 da conta @${acc}`);
-      continue;
-    }
-
-    byCat[cat] = (byCat[cat] || 0) + 1;
+  for (const c of deduped) {
+    const acc = c.sourceUsername || '';
+    if ((byAcc[acc] || 0) >= 6) continue;
     byAcc[acc] = (byAcc[acc] || 0) + 1;
 
+    // Derive a rough content_category from the theme that was searched
+    // (best effort — GPT will refine this in the approve step)
+    const capLower = (c.originalCaption || '').toLowerCase();
+    let content_category = 'outro';
+    if (/tecnolog|tech|gadget|inovação|innovation/.test(capLower)) content_category = 'tecnologia';
+    else if (/ciência|science|descoberta|discovery|scientist/.test(capLower)) content_category = 'ciência';
+    else if (/história|history|historical|fato histórico/.test(capLower)) content_category = 'história';
+    else if (/espaço|space|nasa|universe|cosmos/.test(capLower)) content_category = 'espaço';
+    else if (/china|chinês|chinese/.test(capLower)) content_category = 'china';
+    else if (/engenharia|engineering|construção|construction/.test(capLower)) content_category = 'engenharia';
+    else if (/curiosidade|did you know|você sabia|amazing|incrível/.test(capLower)) content_category = 'curiosidades';
+    else if (/invenção|invention|invented|inventor/.test(capLower)) content_category = 'invencoes';
+
     final.push({
-      index:                  final.length,
-      url:                    r.url,
-      videoUrl:               r.videoUrl,
-      thumbnail:              r.thumbnail,
-      likes:                  r.likes,
-      views:                  r.views,
-      originalCaption:        r.originalCaption,
-      viral_score:            r.viral_score            || 0,
-      viral_reasons:          r.viral_reasons          || [],
-      ban_risk:               r.ban_risk               || 'baixo',
-      ban_reasons:            r.ban_reasons            || [],
-      copyright_risk:         r.copyright_risk         || 'baixo',
-      copyright_reasons:      r.copyright_reasons      || [],
-      content_category:       r.content_category       || 'outro',
-      fit_for_profile:        r.fit_for_profile        || 0,
-      factual_confidence:     r.factual_confidence     ?? 50,
-      factual_flags:          r.factual_flags          || [],
-      misleading_caption:     r.misleading_caption     || false,
-      headline_clickbait_risk:r.headline_clickbait_risk || 'baixo',
-      quality_tier:           r.quality_tier           || 'C',
-      warnings:               r.warnings               || [],
-      headline:               r.headline,
-      caption:                r.caption,
-      source:                 r.source                 || 'instagram',
-      controversy_flag:       r.controversy_flag       || false,
-      already_used:           r.already_used           || false,
+      index:           final.length,
+      url:             c.url,
+      videoUrl:        c.videoUrl,
+      thumbnail:       c.thumbnail,
+      likes:           c.likes,
+      views:           c.views,
+      comments:        c.comments,
+      originalCaption: c.originalCaption,
+      viral_score:     c.preScore,
+      content_category,
+      source:          c.source          || 'instagram',
+      sourceUsername:  c.sourceUsername  || '',
+      controversy_flag:c.controversy_flag || false,
+      already_used:    c.already_used    || false,
     });
 
-    if (final.length >= 10) break;
+    if (final.length >= 30) break;
   }
 
-  console.log(`[pipeline] ${final.length} resultados finais`);
+  console.log(`[pipeline] ${final.length} resultados finais (sem GPT)`);
   return final;
 }
 
@@ -795,11 +753,35 @@ router.post('/search', async (req, res) => {
   }
 });
 
+// POST /api/content-finder/preview-video — proxy video stream (bypass CORS)
+router.post('/preview-video', async (req, res) => {
+  const { videoUrl } = req.body;
+  if (!videoUrl) return res.status(400).json({ error: 'videoUrl é obrigatório' });
+
+  try {
+    const response = await axios.get(videoUrl, {
+      responseType: 'stream',
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
+        'Referer': 'https://www.instagram.com/',
+      },
+    });
+    const contentType = response.headers['content-type'] || 'video/mp4';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    response.data.pipe(res);
+    response.data.on('error', () => { if (!res.headersSent) res.status(500).end(); });
+  } catch (e) {
+    console.error('[preview-video] error:', e.message);
+    if (!res.headersSent) res.status(502).json({ error: 'Não foi possível carregar o vídeo' });
+  }
+});
+
 // POST /api/content-finder/approve — Agent 4: edits video, streams MP4 directly
 // Accepts multipart/form-data: fields (videoUrl, postUrl, headline, caption, originalCaption) + file (template)
 router.post('/approve', upload.single('template'), async (req, res) => {
-  const { videoUrl: directUrl, postUrl, headline, caption, originalCaption } = req.body;
-  if (!headline?.trim()) return res.status(400).json({ error: 'headline é obrigatória' });
+  let { videoUrl: directUrl, postUrl, headline, caption, originalCaption } = req.body;
   if (!directUrl && !postUrl) return res.status(400).json({ error: 'videoUrl ou postUrl é obrigatório' });
 
   if (!process.env.RAPIDAPI_KEY && !directUrl) {
@@ -817,6 +799,32 @@ router.post('/approve', upload.single('template'), async (req, res) => {
   });
 
   try {
+    // ── If no headline provided, run GPT analysis first ──────────────────────
+    if (!headline?.trim()) {
+      console.log('[approve] Sem headline — rodando analyzeAndGenerate…');
+      const candidate = {
+        url:             postUrl || directUrl || '',
+        videoUrl:        directUrl || null,
+        views:           Number(req.body.views)    || 0,
+        likes:           Number(req.body.likes)    || 0,
+        comments:        Number(req.body.comments) || 0,
+        originalCaption: originalCaption || '',
+        sourceUsername:  req.body.sourceUsername  || '',
+        source:          req.body.source          || 'instagram',
+        controversy_flag: false,
+        controversy_ratio: 0,
+      };
+      try {
+        const analysis = await analyzeAndGenerate(candidate);
+        headline = analysis.headline || 'Reel incrível';
+        if (!caption?.trim()) caption = analysis.caption || '';
+        console.log(`[approve] headline gerada: "${headline}"`);
+      } catch (e) {
+        console.warn('[approve] analyzeAndGenerate falhou:', e.message);
+        headline = 'Descubra isso agora';
+      }
+    }
+
     const downloadVideo = async () => {
       if (directUrl) {
         try { await streamDownload(directUrl, rawVideo); return; }
