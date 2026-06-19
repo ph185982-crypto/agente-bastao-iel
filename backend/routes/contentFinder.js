@@ -10,6 +10,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const vault = require('../lib/vault');
+const { PERSONAS: JURY_PERSONAS } = require('./headlineJury'); // 100 personas para pré-veto
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -623,6 +624,64 @@ Avalie brevemente. Retorne JSON:
   };
 }
 
+// ── Júri de pré-veto (100 personas, 1 rodada, gpt-4o-mini) ───────────────────
+// Roda no fundo sobre os vídeos do cofre, ANTES do usuário escolher.
+async function runVettingJury(headline, originalCaption) {
+  const results = await Promise.all(
+    JURY_PERSONAS.map(async (persona) => {
+      try {
+        const res = await getOpenAI().chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: `Você é ${persona.name}, ${persona.age} anos. ${persona.desc} Está scrollando Instagram agora.`,
+            },
+            {
+              role: 'user',
+              content: `Headline: "${headline}"
+Conteúdo original: "${(originalCaption || '').slice(0, 300)}"
+
+Você pararia o dedo para assistir? Retorne JSON:
+{ "parou": boolean, "factual_issue": boolean, "problema": "string curta OU null" }`,
+            },
+          ],
+          max_tokens: 80,
+          response_format: { type: 'json_object' },
+          temperature: 0.8,
+        });
+        const r = JSON.parse(res.choices[0].message.content || '{}');
+        return { parou: !!r.parou, factual_issue: !!r.factual_issue, problema: r.problema || null };
+      } catch {
+        return { parou: false, factual_issue: false, problema: null };
+      }
+    })
+  );
+
+  const total       = results.length;
+  const stopped     = results.filter(r => r.parou).length;
+  const factual     = results.filter(r => r.factual_issue && r.problema);
+  const approvalPct = total > 0 ? Math.round((stopped / total) * 100) : 0;
+  const problems    = [...new Set(results.filter(r => r.problema).map(r => r.problema))].slice(0, 3);
+
+  let verdict, reason;
+  if (factual.length >= 5) {
+    verdict = 'REJECTED';
+    reason  = `${factual.length} jurados apontaram problema factual`;
+  } else if (approvalPct >= 55) {
+    verdict = 'APPROVED';
+    reason  = `${approvalPct}% do júri pararia para assistir`;
+  } else if (approvalPct >= 35) {
+    verdict = 'WARN';
+    reason  = `Júri dividido — ${approvalPct}% pararia`;
+  } else {
+    verdict = 'REJECTED';
+    reason  = `Só ${approvalPct}% pararia — engajamento baixo`;
+  }
+
+  return { verdict, reason, approvalPct, stopped, total, factualIssues: factual.length, problems };
+}
+
 // ── Main search pipeline ──────────────────────────────────────────────────────
 async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lang = 'any' }) {
   // ── A1: busca paralela em Instagram (contas-semente) + TikTok (keywords) ──
@@ -849,9 +908,10 @@ router.get('/feed', async (req, res) => {
   try {
     const feed = (await vault.getJSON(VAULT_KEY)) || [];
     const meta = await vault.getJSON(VAULT_META_KEY);
-    // remove os já usados nesta sessão e marca os antigos
+    // remove já-usados e reprovados pelo júri; mantém aprovados/avisos/pendentes
     const results = feed
       .filter(x => !usedVideoUrls.has(x.url))
+      .filter(x => x.vetVerdict !== 'REJECTED')
       .map(x => ({ ...x, already_used: usedVideoUrls.has(x.url) }))
       .slice(0, 30);
     res.json({ results, meta, enabled: true });
@@ -914,6 +974,98 @@ router.get('/mine', async (req, res) => {
     res.json({ ok: true, themes, minedThisRun: mined.length, vaultSize: merged.length });
   } catch (e) {
     console.error('[mine] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+const VET_BATCH = 2; // vídeos vetados por execução (cabe nos 60s do Vercel)
+
+// GET /api/content-finder/vet — pré-veto autônomo: 100 personas analisam os
+// melhores vídeos ainda não vetados do cofre. Chamado por cron a cada ~15min.
+router.get('/vet', async (req, res) => {
+  if (process.env.CRON_SECRET) {
+    const auth = req.headers.authorization || '';
+    if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'não autorizado' });
+    }
+  }
+  if (!vault.enabled()) {
+    return res.status(503).json({ error: 'Cofre (Upstash) não configurado' });
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada' });
+  }
+
+  try {
+    const feed = (await vault.getJSON(VAULT_KEY)) || [];
+    // Pendentes: ainda não vetados, melhores (viral_score) primeiro
+    const pending = feed
+      .map((item, idx) => ({ item, idx }))
+      .filter(x => !x.item.vetted)
+      .sort((a, b) => (b.item.viral_score || 0) - (a.item.viral_score || 0))
+      .slice(0, VET_BATCH);
+
+    if (pending.length === 0) {
+      return res.json({ ok: true, vetted: 0, message: 'Nada pendente — cofre todo vetado' });
+    }
+
+    const startMs = Date.now();
+    let done = 0;
+    for (const { item, idx } of pending) {
+      if (Date.now() - startMs > 45000) break; // guarda de tempo (limite Vercel 60s)
+      try {
+        // 1. Gera headline/legenda + análise (se ainda não houver)
+        let headline = item.headline;
+        let caption  = item.caption;
+        let analysis = null;
+        if (!headline) {
+          analysis = await analyzeAndGenerate({
+            url:             item.url,
+            views:           item.views,
+            likes:           item.likes,
+            comments:        item.comments,
+            originalCaption: item.originalCaption,
+            sourceUsername:  item.sourceUsername,
+            source:          item.source,
+            controversy_flag: item.controversy_flag,
+          });
+          headline = analysis.headline || 'Reel incrível';
+          caption  = analysis.caption || '';
+        }
+
+        // 2. Júri de 100 personas
+        const jury = await runVettingJury(headline, item.originalCaption || '');
+
+        // 3. Grava o veredito de volta no item
+        feed[idx] = {
+          ...item,
+          headline,
+          caption,
+          quality_tier:    analysis?.quality_tier || item.quality_tier || null,
+          vetVerdict:      jury.verdict,
+          juryApprovalPct: jury.approvalPct,
+          juryReason:      jury.reason,
+          juryProblems:    jury.problems,
+          vetted:          true,
+          vettedAt:        Date.now(),
+        };
+        done++;
+        console.log(`[vet] ${item.url}: ${jury.verdict} (${jury.approvalPct}%)`);
+      } catch (e) {
+        const attempts = (item.vetAttempts || 0) + 1;
+        feed[idx] = { ...item, vetAttempts: attempts, vetted: attempts >= 3 };
+        console.warn(`[vet] falha (${attempts}/3) em ${item.url}: ${e.message}`);
+      }
+    }
+
+    await vault.setJSON(VAULT_KEY, feed);
+    const totalVetted = feed.filter(x => x.vetted).length;
+    const prevMeta = (await vault.getJSON(VAULT_META_KEY)) || {};
+    await vault.setJSON(VAULT_META_KEY, { ...prevMeta, vettedCount: totalVetted, lastVetAt: Date.now() });
+
+    res.json({ ok: true, vetted: done, totalVetted, vaultSize: feed.length });
+  } catch (e) {
+    console.error('[vet] erro:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

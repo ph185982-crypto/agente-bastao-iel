@@ -293,11 +293,29 @@ function VideoPreview({ videoUrl }) {
   )
 }
 
-function ResultCard({ result, onPrepare }) {
-  const [headline, setHeadline] = useState('')
-  const [caption,  setCaption]  = useState('')
+function JurySeal({ verdict, pct }) {
+  if (!verdict) {
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full border bg-gray-800 text-gray-400 border-gray-700">
+        ⚖️ aguardando júri…
+      </span>
+    )
+  }
+  const map = {
+    APPROVED: { cls: 'bg-green-900/40 text-green-300 border-green-700/50',   txt: `⚖️ Aprovado · ${pct}%` },
+    WARN:     { cls: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50', txt: `⚖️ Dividido · ${pct}%` },
+    REJECTED: { cls: 'bg-red-900/40 text-red-300 border-red-700/50',          txt: `⚖️ Reprovado · ${pct}%` },
+  }
+  const s = map[verdict] || map.WARN
+  return <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${s.cls}`}>{s.txt}</span>
+}
+
+function ResultCard({ result, onPrepare, showJury }) {
+  const [headline, setHeadline] = useState(result.headline || '')
+  const [caption,  setCaption]  = useState(result.caption  || '')
 
   const shortCaption = (result.originalCaption || '').slice(0, 120)
+  const isVetted = !!result.vetVerdict
 
   return (
     <div className={`bg-gray-900 border rounded-2xl overflow-hidden
@@ -313,6 +331,7 @@ function ResultCard({ result, onPrepare }) {
         {/* Badges row */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap">
+            {showJury && <JurySeal verdict={result.vetVerdict} pct={result.juryApprovalPct} />}
             <span className="text-xs bg-indigo-900/50 text-indigo-300 border border-indigo-700/60 px-2 py-0.5 rounded-full">
               {result.content_category}
             </span>
@@ -350,6 +369,11 @@ function ResultCard({ result, onPrepare }) {
           </div>
         </div>
 
+        {/* Jury reasoning */}
+        {showJury && isVetted && result.juryReason && (
+          <p className="text-xs text-gray-500 italic">⚖️ {result.juryReason}</p>
+        )}
+
         {/* Original caption preview */}
         {shortCaption && (
           <p className="text-xs text-gray-400 leading-relaxed line-clamp-3">{shortCaption}{result.originalCaption?.length > 120 ? '…' : ''}</p>
@@ -364,7 +388,9 @@ function ResultCard({ result, onPrepare }) {
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">
             Headline do vídeo
-            <span className="text-gray-600 ml-1">(deixe vazio para a IA gerar)</span>
+            <span className="text-gray-600 ml-1">
+              {result.headline ? '(gerada pela IA — edite se quiser)' : '(deixe vazio para a IA gerar)'}
+            </span>
           </label>
           <input
             type="text"
@@ -754,7 +780,7 @@ export default function ContentFinder() {
           </div>
 
           {results.map((result, i) => (
-            <ResultCard key={i} result={result} onPrepare={handlePrepare} />
+            <ResultCard key={i} result={result} onPrepare={handlePrepare} showJury={fromVault} />
           ))}
         </div>
       )}

@@ -480,3 +480,6 @@ router.get('/status/:jobId', (req, res) => {
 });
 
 module.exports = router;
+// Exporta as 100 personas para reúso no pré-veto do cofre (Fase 3)
+module.exports.PERSONAS = PERSONAS;
+module.exports.GROUP_NAMES = GROUP_NAMES;
