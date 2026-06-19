@@ -8,6 +8,20 @@ const crypto  = require('crypto');
 const vault   = require('../lib/vault');
 
 const router = express.Router();
+
+const BRAIN_TOKEN = process.env.BRAIN_TOKEN;
+function authBrain(req, res, next) {
+  if (!BRAIN_TOKEN) return next(); // skip if not configured
+  const auth = req.headers.authorization;
+  if (auth === `Bearer ${BRAIN_TOKEN}`) return next();
+  // Allow webhook (Meta calls without our token)
+  if (req.path === '/webhook') return next();
+  // Allow tick (cron calls)
+  if (req.path === '/tick') return next();
+  res.status(401).json({ error: 'não autorizado' });
+}
+router.use(authBrain);
+
 let _openai = null;
 const getOpenAI = () => (_openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
 
@@ -24,7 +38,7 @@ const K = {
 // ── Persistência ──────────────────────────────────────────────────────────────
 const getArr = async k => (await vault.getJSON(k)) || [];
 const setArr = (k, v) => vault.setJSON(k, v);
-const newId  = () => crypto.randomUUID().slice(0, 8);
+const newId  = () => crypto.randomUUID().slice(0, 12);
 
 async function getOwnerPhone() { return (await vault.getJSON(K.phone)) || null; }
 async function setOwnerPhone(p) { if (p) await vault.setJSON(K.phone, p); }
@@ -330,6 +344,7 @@ async function executeTool(name, args) {
       const rem = await getArr(K.reminders);
       const whenTs = Date.parse(args.quando);
       if (!whenTs) return { ok: false, erro: 'data inválida' };
+      if (whenTs < Date.now() - 60000) return { ok: false, erro: 'data no passado — use uma data futura' };
       const item = { id: newId(), texto: args.texto, whenTs, done: false, notified: false, ts: Date.now() };
       rem.push(item);
       await setArr(K.reminders, rem);

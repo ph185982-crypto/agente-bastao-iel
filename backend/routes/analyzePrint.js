@@ -42,6 +42,7 @@ router.post('/', upload.single('image'), async (req, res) => {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       max_tokens: 4096,
+      response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         {
@@ -69,18 +70,13 @@ router.post('/', upload.single('image'), async (req, res) => {
 
 4. LEGENDA (OBRIGATÓRIO EM PORTUGUÊS): Crie uma legenda completa (3 a 5 parágrafos) em português do Brasil no tom do @pedro_destrava — fato surpreendente ou pergunta provocativa no início, aprofundamento intelectual no meio, CTA no final pedindo para salvar ou comentar.
 
-Retorne EXATAMENTE neste formato (sem texto adicional fora dele):
-
-TEXTO_ORIGINAL:
-[texto extraído da imagem]
-
-TEXTO_PT:
-[texto traduzido para português]
-
-HEADLINE: [headline aqui]
-
-LEGENDA:
-[legenda aqui]`,
+Retorne um JSON com exatamente estas chaves (sem texto adicional fora do JSON):
+{
+  "original_text": "[texto extraído da imagem]",
+  "portuguese_text": "[texto traduzido para português]",
+  "headline": "[headline aqui]",
+  "legenda": "[legenda aqui]"
+}`,
             },
           ],
         },
@@ -89,23 +85,22 @@ LEGENDA:
 
     const raw = response.choices[0].message.content || '';
 
-    // Parse the structured response
-    const originalMatch = raw.match(/TEXTO_ORIGINAL:\s*([\s\S]+?)(?=\nTEXTO_PT:)/i);
-    const ptMatch       = raw.match(/TEXTO_PT:\s*([\s\S]+?)(?=\nHEADLINE:)/i);
-    const headlineMatch = raw.match(/HEADLINE:\s*(.+?)(?:\n|$)/i);
-    const legendaMatch  = raw.match(/LEGENDA:\s*([\s\S]+)/i);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (parseErr) {
+      console.warn('analyzePrint: failed to parse JSON response, returning raw text', parseErr.message);
+      parsed = { original_text: '', portuguese_text: '', headline: '', legenda: raw };
+    }
 
-    const headline = headlineMatch ? headlineMatch[1].trim() : '';
-    const legenda  = legendaMatch  ? legendaMatch[1].trim()  : '';
-
-    if (raw && !headline) console.warn('analyzePrint: HEADLINE missing in GPT response');
-    if (raw && !legenda)  console.warn('analyzePrint: LEGENDA missing in GPT response');
+    if (!parsed.headline) console.warn('analyzePrint: HEADLINE missing in GPT response');
+    if (!parsed.legenda)  console.warn('analyzePrint: LEGENDA missing in GPT response');
 
     res.json({
-      original_text:   originalMatch ? originalMatch[1].trim() : '',
-      portuguese_text: ptMatch       ? ptMatch[1].trim()       : '',
-      headline,
-      legenda,
+      original_text:   parsed.original_text   || '',
+      portuguese_text: parsed.portuguese_text || '',
+      headline:        parsed.headline        || '',
+      legenda:         parsed.legenda         || '',
     });
   } catch (error) {
     console.error('Analyze print error:', error);

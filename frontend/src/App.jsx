@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import Header from './components/Header'
-import AutoReel from './components/AutoReel'
-import AgentChat from './components/AgentChat'
 import ContentFinder from './components/ContentFinder'
 import HeadlineJury from './components/HeadlineJury'
 import Brain from './components/Brain'
@@ -9,9 +7,7 @@ import Brain from './components/Brain'
 const TABS = [
   { id: 'brain',  label: '🧠 Cérebro' },
   { id: 'studio', label: '♻️ Studio' },
-  { id: 'reel',   label: 'Criar Reel' },
   { id: 'jury',   label: '⚖️ Júri' },
-  { id: 'agent',  label: 'Agente IA' },
 ]
 
 export default function App() {
@@ -51,29 +47,12 @@ export default function App() {
         </main>
       )}
 
-      {tab === 'reel' && (
-        <main className="max-w-2xl mx-auto w-full px-4 py-10">
-          <div className="mb-8 text-center">
-            <h1 className="text-xl font-bold text-white mb-1">Criar Reel editado</h1>
-            <p className="text-sm text-gray-400">
-              Cole o link + envie o print → receba o MP4 pronto para postar
-            </p>
-          </div>
-          <AutoReel />
-        </main>
-      )}
-
       {tab === 'jury' && (
         <main className="max-w-2xl mx-auto w-full px-4 py-10">
           <HeadlineJury />
         </main>
       )}
 
-      {tab === 'agent' && (
-        <div className="max-w-2xl mx-auto w-full px-4 flex-1 flex flex-col">
-          <AgentChat />
-        </div>
-      )}
     </div>
   )
 }

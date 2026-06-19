@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { API_BASE } from '../utils/api'
+import { API_BASE, brainFetch } from '../utils/api'
 
 const brl = n => `R$ ${Number(n || 0).toFixed(2).replace('.', ',')}`
 
@@ -30,7 +30,7 @@ function ChatPanel({ onDataChanged }) {
     setMessages(m => [...m, { role: 'user', content: msg }])
     setSending(true)
     try {
-      const res = await fetch(`${API_BASE}/api/brain/chat`, {
+      const res = await brainFetch(`${API_BASE}/api/brain/chat`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg }),
       })
@@ -282,7 +282,7 @@ export default function Brain() {
 
   async function loadDash() {
     try {
-      const res = await fetch(`${API_BASE}/api/brain/dashboard`)
+      const res = await brainFetch(`${API_BASE}/api/brain/dashboard`)
       setDash(await res.json())
     } catch { }
     finally { setLoading(false) }
