@@ -336,26 +336,50 @@ const ig120Headers = () => ({
   'x-rapidapi-key': IG120_KEY,
 });
 
-// In-memory session dedup — persists across warm serverless invocations
-const usedVideoUrls = new Set();
+// ── Dedup persistente (Upstash + cache em memória) ────────────────────────────
+const usedVideoUrls = new Set();          // cache rápido (warm lambda)
+const USED_KEY = 'used:urls';
+const USED_MAX = 500;                      // guarda os 500 mais recentes
 
-// ── Aprendizado/descoberta de contas (in-memory, warm lambda) ─────────────────
-// Guarda o melhor preScore já visto por conta, para enriquecer buscas futuras
-// com fontes que historicamente entregam vídeos quentes (Fase 1 — efêmero).
-const accountScores = new Map(); // username -> { best, count, source }
+async function loadUsedSet() {
+  const arr = (await vault.getJSON(USED_KEY)) || [];
+  arr.forEach(u => usedVideoUrls.add(u));  // funde no cache em memória
+  return usedVideoUrls;
+}
 
-function recordAccountPerformance(username, score, source) {
+async function markUsed(url) {
+  if (!url) return;
+  usedVideoUrls.add(url);
+  if (!vault.enabled()) return;
+  const arr = (await vault.getJSON(USED_KEY)) || [];
+  if (!arr.includes(url)) {
+    arr.push(url);
+    await vault.setJSON(USED_KEY, arr.slice(-USED_MAX));
+  }
+}
+
+// ── Aprendizado/descoberta de contas (persistente em Upstash) ─────────────────
+// Acumula o melhor preScore já visto por conta, para enriquecer buscas futuras
+// com fontes que historicamente entregam vídeos quentes. NÃO reseta no cold start.
+const LEARN_KEY = 'learn:accounts';
+
+async function loadLearned() {
+  return (await vault.getJSON(LEARN_KEY)) || {};
+}
+
+function recordIntoMap(map, username, score, source) {
   if (!username) return;
-  const cur = accountScores.get(username) || { best: 0, count: 0, source };
-  cur.best   = Math.max(cur.best, score);
-  cur.count += 1;
-  cur.source = source;
-  accountScores.set(username, cur);
+  const cur = map[username] || { best: 0, count: 0, source };
+  cur.best     = Math.max(cur.best, score);
+  cur.count   += 1;
+  cur.source   = source;
+  cur.lastSeen = Date.now();
+  map[username] = cur;
 }
 
 // Top contas aprendidas de uma fonte que ainda não estão na lista atual
-function topLearnedAccounts(source, exclude, n) {
-  return [...accountScores.entries()]
+function topLearnedAccounts(map, source, exclude, n) {
+  return Object.entries(map)
     .filter(([u, v]) => v.source === source && v.best >= 60 && !exclude.includes(u))
     .sort((a, b) => b[1].best - a[1].best)
     .slice(0, n)
@@ -709,6 +733,9 @@ async function runVettingJury(headline, originalCaption) {
 
 // ── Main search pipeline ──────────────────────────────────────────────────────
 async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lang = 'any' }) {
+  // Carrega estado persistente (dedup + aprendizado) em paralelo
+  const [, learnedMap] = await Promise.all([loadUsedSet(), loadLearned()]);
+
   // ── A1: busca paralela em Instagram (contas-semente) + TikTok (keywords) ──
   const allAccounts = themes.flatMap(t => SEED_ACCOUNTS[t] || []);
   if (allAccounts.length === 0) Object.values(SEED_ACCOUNTS).forEach(a => allAccounts.push(a[0]));
@@ -716,7 +743,7 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
   let igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 7);
 
   // Descoberta: injeta até 2 contas aprendidas (que já entregaram vídeos quentes)
-  const learnedIg = topLearnedAccounts('instagram', igAccounts, 2);
+  const learnedIg = topLearnedAccounts(learnedMap, 'instagram', igAccounts, 2);
   if (learnedIg.length) {
     console.log(`[A1][descoberta] contas aprendidas: ${learnedIg.map(u => '@' + u).join(', ')}`);
     igAccounts = [...igAccounts, ...learnedIg];
@@ -883,12 +910,15 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
     });
 
     // Aprendizado: registra a performance desta conta para buscas futuras
-    recordAccountPerformance(c.sourceUsername, c.preScore, c.source || 'instagram');
+    recordIntoMap(learnedMap, c.sourceUsername, c.preScore, c.source || 'instagram');
 
     if (final.length >= 30) break;
   }
 
-  console.log(`[pipeline] ${final.length} resultados finais (sem GPT) — ${accountScores.size} contas no mapa de aprendizado`);
+  // Persiste o mapa de aprendizado atualizado (não bloqueia o retorno)
+  saveLearned(learnedMap).catch(e => console.warn('[learn] save falhou:', e.message));
+
+  console.log(`[pipeline] ${final.length} resultados finais (sem GPT) — ${Object.keys(learnedMap).length} contas no mapa de aprendizado`);
   return final;
 }
 
@@ -931,13 +961,15 @@ router.get('/feed', async (req, res) => {
     return res.json({ results: [], meta: null, enabled: false });
   }
   try {
-    const feed = (await vault.getJSON(VAULT_KEY)) || [];
-    const meta = await vault.getJSON(VAULT_META_KEY);
+    const [feed, meta, used] = await Promise.all([
+      vault.getJSON(VAULT_KEY).then(v => v || []),
+      vault.getJSON(VAULT_META_KEY),
+      loadUsedSet(),
+    ]);
     // remove já-usados e reprovados pelo júri; mantém aprovados/avisos/pendentes
     const results = feed
-      .filter(x => !usedVideoUrls.has(x.url))
+      .filter(x => !used.has(x.url))
       .filter(x => x.vetVerdict !== 'REJECTED')
-      .map(x => ({ ...x, already_used: usedVideoUrls.has(x.url) }))
       .slice(0, 30);
     res.json({ results, meta, enabled: true });
   } catch (e) {
@@ -981,11 +1013,23 @@ router.get('/mine', async (req, res) => {
       map.set(r.url, { ...r, minedAt: now, themes });
     }
 
-    let merged = [...map.values()]
+    const used = await loadUsedSet();
+    const ranked = [...map.values()]
       .filter(x => (x.minedAt || 0) > now - VAULT_TTL_MS)   // expira itens velhos
-      .filter(x => !usedVideoUrls.has(x.url))                // remove já usados
-      .sort((a, b) => (b.viral_score || 0) - (a.viral_score || 0))
-      .slice(0, VAULT_MAX);
+      .filter(x => !used.has(x.url))                         // remove já usados (persistente)
+      .sort((a, b) => (b.viral_score || 0) - (a.viral_score || 0));
+
+    // Diversidade de fontes: no máx PER_ACCOUNT por conta (evita cofre 90% @natgeo)
+    const PER_ACCOUNT = 5;
+    const perAcc = {};
+    const merged = [];
+    for (const item of ranked) {
+      const acc = item.sourceUsername || '?';
+      if ((perAcc[acc] || 0) >= PER_ACCOUNT) continue;
+      perAcc[acc] = (perAcc[acc] || 0) + 1;
+      merged.push(item);
+      if (merged.length >= VAULT_MAX) break;
+    }
 
     await vault.setJSON(VAULT_KEY, merged);
     await vault.setJSON(VAULT_META_KEY, {
@@ -993,6 +1037,7 @@ router.get('/mine', async (req, res) => {
       lastThemes: themes,
       minedThisRun: mined.length,
       vaultSize: merged.length,
+      distinctAccounts: Object.keys(perAcc).length,
     });
 
     console.log(`[mine] +${mined.length} minerados, cofre agora com ${merged.length} vídeos`);
@@ -1243,9 +1288,9 @@ router.post('/approve', upload.single('template'), async (req, res) => {
       res.setHeader('X-Mini-Jury-Reason', encodeURIComponent(juryResult.reason));
     }
 
-    // Mark this URL as used (dedup for future searches in this session)
+    // Marca URL como usada (dedup persistente — não reaparece em buscas futuras)
     const videoKey = postUrl || directUrl || '';
-    if (videoKey) usedVideoUrls.add(videoKey);
+    if (videoKey) markUsed(videoKey).catch(e => console.warn('[markUsed] falhou:', e.message));
 
     const stream = fs.createReadStream(output);
     stream.pipe(res);

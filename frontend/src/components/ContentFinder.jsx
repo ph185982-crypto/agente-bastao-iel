@@ -719,6 +719,23 @@ export default function ContentFinder() {
   const approvedCount = useMemo(() => results.filter(r => r.vetVerdict === 'APPROVED').length, [results])
   const pendingCount  = useMemo(() => results.filter(r => !r.vetVerdict).length, [results])
 
+  // Auto-refresh do cofre: novos vídeos vetados aparecem sozinhos a cada 50s
+  useEffect(() => {
+    if (phase !== 'results' || !fromVault) return
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/content-finder/feed`)
+        const data = await res.json()
+        if (data.enabled) {
+          setResults(data.results || [])
+          setVaultMeta(data.meta || null)
+          setVaultCount((data.results || []).length)
+        }
+      } catch { /* silencioso */ }
+    }, 50000)
+    return () => clearInterval(id)
+  }, [phase, fromVault])
+
   // Transition to ready (or blocked) when video request finishes
   useEffect(() => {
     if (phase === 'preparing' && (videoStatus === 'done' || videoStatus === 'error')) {
