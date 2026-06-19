@@ -642,8 +642,12 @@ async function runVettingJury(headline, originalCaption) {
               content: `Headline: "${headline}"
 Conteúdo original: "${(originalCaption || '').slice(0, 300)}"
 
-Você pararia o dedo para assistir? Retorne JSON:
-{ "parou": boolean, "factual_issue": boolean, "problema": "string curta OU null" }`,
+Responda em JSON:
+{ "parou": boolean, "factual_issue": boolean, "problema": "string curta OU null" }
+
+REGRAS:
+- "parou": você pararia o dedo para assistir? (engajamento)
+- "factual_issue": TRUE *apenas* se a headline faz afirmação factualmente FALSA, inventada ou claramente enganosa/sensacionalista que distorce o conteúdo original. NÃO marque true só porque achou o conteúdo chato, genérico, comum ou pouco atrativo — isso é "parou": false, não factual_issue.`,
             },
           ],
           max_tokens: 80,
@@ -660,14 +664,17 @@ Você pararia o dedo para assistir? Retorne JSON:
 
   const total       = results.length;
   const stopped     = results.filter(r => r.parou).length;
-  const factual     = results.filter(r => r.factual_issue && r.problema);
+  const factual     = results.filter(r => r.factual_issue);
   const approvalPct = total > 0 ? Math.round((stopped / total) * 100) : 0;
-  const problems    = [...new Set(results.filter(r => r.problema).map(r => r.problema))].slice(0, 3);
+  const factualPct  = total > 0 ? Math.round((factual.length / total) * 100) : 0;
+  // só consideramos "problemas" os de quem realmente marcou factual_issue
+  const problems    = [...new Set(factual.filter(r => r.problema).map(r => r.problema))].slice(0, 3);
 
   let verdict, reason;
-  if (factual.length >= 5) {
+  if (factualPct >= 30) {
+    // reprovação factual exige consenso real (≥30% do júri), não algumas vozes
     verdict = 'REJECTED';
-    reason  = `${factual.length} jurados apontaram problema factual`;
+    reason  = `${factualPct}% do júri apontou problema factual/enganoso`;
   } else if (approvalPct >= 55) {
     verdict = 'APPROVED';
     reason  = `${approvalPct}% do júri pararia para assistir`;
@@ -679,7 +686,7 @@ Você pararia o dedo para assistir? Retorne JSON:
     reason  = `Só ${approvalPct}% pararia — engajamento baixo`;
   }
 
-  return { verdict, reason, approvalPct, stopped, total, factualIssues: factual.length, problems };
+  return { verdict, reason, approvalPct, factualPct, stopped, total, factualIssues: factual.length, problems };
 }
 
 // ── Main search pipeline ──────────────────────────────────────────────────────
