@@ -1330,14 +1330,10 @@ router.post('/approve', upload.single('template'), async (req, res) => {
       runMiniJury(headline.trim(), originalCaption || ''),
     ]);
 
-    // Mini-jury gating
-    if (juryResult.verdict === 'BLOCK') {
-      cleanTmp();
-      console.log(`[miniJury] BLOCK: ${juryResult.reason}`);
-      return res.json({ blocked: true, reason: juryResult.reason, juryResult });
-    }
-    if (juryResult.verdict === 'WARN') {
-      console.log(`[miniJury] WARN: ${juryResult.reason}`);
+    // O vídeo SEMPRE é entregue. A verificação séria (100 agentes) já foi feita
+    // no cofre ANTES da escolha. Aqui o mini-júri é apenas informativo — nunca bloqueia.
+    if (juryResult.verdict !== 'OK') {
+      console.log(`[miniJury] aviso (não bloqueia): ${juryResult.reason}`);
     }
 
     const clipDurNum = Math.min(duration, 20);
@@ -1403,9 +1399,10 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     res.setHeader('X-Captions-Burned',   burnCaptions ? `${captionLines}` : '0');
     res.setHeader('X-Copyright-Risk',    copyrightRisk || 'desconhecido');
     if (copyrightReasons.length) res.setHeader('X-Copyright-Reasons', encodeURIComponent(copyrightReasons.join(' · ')));
-    res.setHeader('X-Mini-Jury-Verdict', juryResult.verdict);
+    // BLOCK vira WARN (apenas aviso) — nunca impede o download
+    res.setHeader('X-Mini-Jury-Verdict', juryResult.verdict === 'BLOCK' ? 'WARN' : juryResult.verdict);
     res.setHeader('X-Mini-Jury-Stopped', `${juryResult.stopped}/${juryResult.total}`);
-    if (juryResult.verdict === 'WARN') {
+    if (juryResult.verdict !== 'OK') {
       res.setHeader('X-Mini-Jury-Reason', encodeURIComponent(juryResult.reason));
     }
 
