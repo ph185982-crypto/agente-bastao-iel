@@ -223,6 +223,20 @@ function calcSpamScore(text) {
   return { score: Math.min(score, 100), tags };
 }
 
+// Idade do post em horas (null se timestamp ausente/inválido)
+function ageHoursOf(takenAt) {
+  if (!takenAt || takenAt <= 0) return null;
+  const ageH = (Date.now() / 1000 - takenAt) / 3600;
+  return ageH > 0 ? ageH : null;
+}
+
+// Velocidade viral: views por hora desde a publicação (null se sem timestamp)
+function velocityOf(post) {
+  const ageH = ageHoursOf(post.takenAt);
+  if (ageH === null || !post.views) return null;
+  return Math.round(post.views / ageH);
+}
+
 function calcViralScore(post) {
   let score = 0;
   const views    = post.views    || 0;
@@ -230,22 +244,44 @@ function calcViralScore(post) {
   const comments = post.comments || 0;
   const duration = post.duration || 0;
 
-  if (views > 1000000)     score += 40;
-  else if (views > 500000) score += 30;
-  else if (views > 100000) score += 20;
-  else if (views > 50000)  score += 10;
+  // ── Sinal absoluto (alcance bruto) ──────────────────────────────────────────
+  if (views > 1000000)     score += 30;
+  else if (views > 500000) score += 22;
+  else if (views > 100000) score += 15;
+  else if (views > 50000)  score += 8;
 
   const ratio = views > 0 ? likes / views : 0;
-  if (ratio > 0.05)      score += 20;
-  else if (ratio > 0.03) score += 15;
-  else if (ratio > 0.01) score += 10;
+  if (ratio > 0.05)      score += 18;
+  else if (ratio > 0.03) score += 13;
+  else if (ratio > 0.01) score += 8;
 
-  if (comments > 1000)     score += 20;
-  else if (comments > 500) score += 15;
-  else if (comments > 100) score += 10;
+  if (comments > 1000)     score += 15;
+  else if (comments > 500) score += 11;
+  else if (comments > 100) score += 7;
 
-  if (duration >= 15 && duration <= 60) score += 20;
-  else if (duration > 0 && duration <= 90) score += 10;
+  if (duration >= 15 && duration <= 60) score += 18;
+  else if (duration > 0 && duration <= 90) score += 9;
+
+  // ── Velocidade viral (views/hora) — o sinal de "está bombando AGORA" ────────
+  const vph = velocityOf(post);
+  if (vph !== null) {
+    if (vph > 20000)      score += 35;   // explodindo
+    else if (vph > 8000)  score += 26;
+    else if (vph > 3000)  score += 18;
+    else if (vph > 1000)  score += 10;
+    else if (vph > 300)   score += 4;
+  }
+
+  // ── Frescor — repostar coisa do momento ─────────────────────────────────────
+  const ageH = ageHoursOf(post.takenAt);
+  if (ageH !== null) {
+    const days = ageH / 24;
+    if (days <= 3)       score += 16;
+    else if (days <= 7)  score += 11;
+    else if (days <= 14) score += 6;
+    else if (days > 90)  score -= 12;    // conteúdo velho, penaliza
+    else if (days > 45)  score -= 5;
+  }
 
   // TikTok needs higher viral signal to compensate for lower trust
   if (post.source === 'tiktok') score -= 10;
@@ -301,6 +337,29 @@ const ig120Headers = () => ({
 // In-memory session dedup — persists across warm serverless invocations
 const usedVideoUrls = new Set();
 
+// ── Aprendizado/descoberta de contas (in-memory, warm lambda) ─────────────────
+// Guarda o melhor preScore já visto por conta, para enriquecer buscas futuras
+// com fontes que historicamente entregam vídeos quentes (Fase 1 — efêmero).
+const accountScores = new Map(); // username -> { best, count, source }
+
+function recordAccountPerformance(username, score, source) {
+  if (!username) return;
+  const cur = accountScores.get(username) || { best: 0, count: 0, source };
+  cur.best   = Math.max(cur.best, score);
+  cur.count += 1;
+  cur.source = source;
+  accountScores.set(username, cur);
+}
+
+// Top contas aprendidas de uma fonte que ainda não estão na lista atual
+function topLearnedAccounts(source, exclude, n) {
+  return [...accountScores.entries()]
+    .filter(([u, v]) => v.source === source && v.best >= 60 && !exclude.includes(u))
+    .sort((a, b) => b[1].best - a[1].best)
+    .slice(0, n)
+    .map(([u]) => u);
+}
+
 // Busca reels de uma conta (retorna play_count mas sem video_versions)
 async function fetchReels(username) {
   console.log(`[A1] Buscando reels de @${username}…`);
@@ -342,6 +401,7 @@ async function fetchPosts(username) {
       duration:  n.video_duration || 0,
       hasAudio:  n.has_audio ?? true,
       is_ad:     n.is_paid_partnership || false,
+      takenAt:   n.taken_at || n.taken_at_timestamp || (typeof cap === 'object' ? cap.created_at : 0) || 0,
     };
   }
   return map;
@@ -369,6 +429,7 @@ async function searchAccount(username) {
       username:  reel.username,
       followers: 0,
       is_ad:     post.is_ad,
+      takenAt:   post.takenAt || 0,
     });
   }
   console.log(`[A1] @${username}: ${reels.length} reels, ${Object.keys(postsMap).length} vídeo-posts, ${merged.length} cruzados`);
@@ -411,6 +472,7 @@ async function searchTikTok(keyword) {
         username:  author.uniqueId || author.nickname || '',
         followers: 0,
         is_ad:     item.isAd || false,
+        takenAt:   item.createTime || 0,
         source:    'tiktok',
       };
     })
@@ -566,11 +628,18 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
   const allAccounts = themes.flatMap(t => SEED_ACCOUNTS[t] || []);
   if (allAccounts.length === 0) Object.values(SEED_ACCOUNTS).forEach(a => allAccounts.push(a[0]));
   const uniqueAccounts = [...new Set(allAccounts)];
-  const igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 5);
+  let igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 7);
+
+  // Descoberta: injeta até 2 contas aprendidas (que já entregaram vídeos quentes)
+  const learnedIg = topLearnedAccounts('instagram', igAccounts, 2);
+  if (learnedIg.length) {
+    console.log(`[A1][descoberta] contas aprendidas: ${learnedIg.map(u => '@' + u).join(', ')}`);
+    igAccounts = [...igAccounts, ...learnedIg];
+  }
 
   const allKeywords = themes.flatMap(t => TIKTOK_KEYWORDS[t] || []);
   if (allKeywords.length === 0) Object.values(TIKTOK_KEYWORDS).forEach(k => allKeywords.push(k[0]));
-  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 4);
+  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 6);
 
   console.log(`[A1] Instagram: ${igAccounts.map(u => '@' + u).join(', ')}`);
   console.log(`[A1] TikTok: ${ttKeywords.map(k => '"' + k + '"').join(', ')}`);
@@ -670,6 +739,9 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       controversy_flag:  controversyFlag,
       controversy_ratio: controversyRatio,
       already_used:      alreadyUsed,
+      takenAt:           post.takenAt || 0,
+      velocity:          velocityOf(post),
+      age_hours:         ageHoursOf(post.takenAt),
     });
   }
 
@@ -702,6 +774,10 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
     else if (/curiosidade|did you know|você sabia|amazing|incrível/.test(capLower)) content_category = 'curiosidades';
     else if (/invenção|invention|invented|inventor/.test(capLower)) content_category = 'invencoes';
 
+    const ageDays = c.age_hours !== null && c.age_hours !== undefined
+      ? Math.round(c.age_hours / 24 * 10) / 10
+      : null;
+
     final.push({
       index:           final.length,
       url:             c.url,
@@ -712,6 +788,8 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       comments:        c.comments,
       originalCaption: c.originalCaption,
       viral_score:     c.preScore,
+      velocity:        c.velocity ?? null,
+      age_days:        ageDays,
       content_category,
       source:          c.source          || 'instagram',
       sourceUsername:  c.sourceUsername  || '',
@@ -719,10 +797,13 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       already_used:    c.already_used    || false,
     });
 
+    // Aprendizado: registra a performance desta conta para buscas futuras
+    recordAccountPerformance(c.sourceUsername, c.preScore, c.source || 'instagram');
+
     if (final.length >= 30) break;
   }
 
-  console.log(`[pipeline] ${final.length} resultados finais (sem GPT)`);
+  console.log(`[pipeline] ${final.length} resultados finais (sem GPT) — ${accountScores.size} contas no mapa de aprendizado`);
   return final;
 }
 

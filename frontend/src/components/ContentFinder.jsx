@@ -23,6 +23,20 @@ const ENGAGEMENT_OPTIONS = [
   { value: 0.05, label: 'Ótimo (>5%)' },
 ]
 
+// Formata velocidade viral (views/hora) — ex: 24500 → "24,5K"
+function formatVelocity(v) {
+  if (v >= 1000000) return `${(v / 1000000).toFixed(1).replace('.', ',')}M`
+  if (v >= 1000)    return `${(v / 1000).toFixed(1).replace('.', ',')}K`
+  return String(v)
+}
+
+// Formata idade do post — ex: 0.5 → "hoje", 1 → "1 dia", 5 → "5 dias"
+function formatAge(days) {
+  if (days < 1)  return 'hoje'
+  const d = Math.round(days)
+  return d === 1 ? '1 dia' : `${d} dias`
+}
+
 // ─── ScoreRing ────────────────────────────────────────────────────────────────
 function ScoreRing({ score, size = 80 }) {
   const r = size / 2 - 6
@@ -302,6 +316,16 @@ function ResultCard({ result, onPrepare }) {
                 : 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50'}`}>
               Score {result.viral_score ?? 0}
             </span>
+            {result.velocity != null && result.velocity >= 1000 && (
+              <span className="text-xs px-2 py-0.5 rounded-full border bg-red-900/40 text-red-300 border-red-700/50 font-semibold">
+                🔥 {formatVelocity(result.velocity)}/h
+              </span>
+            )}
+            {result.age_days != null && result.age_days <= 7 && (
+              <span className="text-xs px-2 py-0.5 rounded-full border bg-emerald-900/40 text-emerald-300 border-emerald-700/50">
+                ✨ {formatAge(result.age_days)}
+              </span>
+            )}
             {result.controversy_flag && (
               <span className="text-xs px-2 py-0.5 rounded-full border bg-orange-900/40 text-orange-300 border-orange-700/50">
                 Polemico
@@ -643,11 +667,16 @@ export default function ContentFinder() {
       {phase === 'results' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-green-300">
-              {results.length} reels virais encontrados
-            </p>
+            <div>
+              <p className="text-sm font-semibold text-green-300">
+                {results.length} reels virais encontrados
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Ranqueados por calor viral 🔥 (velocidade + frescor + engajamento)
+              </p>
+            </div>
             <button onClick={() => setPhase('search')}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors shrink-0">
               Voltar
             </button>
           </div>
