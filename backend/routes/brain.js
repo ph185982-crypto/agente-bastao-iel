@@ -572,6 +572,12 @@ router.post('/chat', async (req, res) => {
   }
 });
 
+// DELETE /api/brain/history — admin: limpa histórico de conversa
+router.delete('/history', async (req, res) => {
+  await setArr(K.history, []);
+  res.json({ ok: true, message: 'histórico limpo' });
+});
+
 // GET /api/brain/dashboard
 router.get('/dashboard', async (req, res) => {
   if (!vault.enabled()) return res.json({ enabled: false });
