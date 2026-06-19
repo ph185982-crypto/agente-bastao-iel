@@ -148,6 +148,11 @@ const TOOLS = [
     description: 'Lista notas salvas',
     parameters: { type: 'object', properties: {} },
   }},
+  { type: 'function', function: {
+    name: 'limpar_historico',
+    description: 'Limpa o histórico de conversa. Use quando o usuário pedir para recomeçar.',
+    parameters: { type: 'object', properties: {} },
+  }},
 ];
 
 // ── Executor de ferramentas ───────────────────────────────────────────────────
@@ -375,6 +380,11 @@ async function executeTool(name, args) {
     case 'listar_notas': {
       const notes = await getArr(K.notes);
       return { notas: notes.slice(-30).reverse() };
+    }
+
+    case 'limpar_historico': {
+      await setArr(K.history, []);
+      return { ok: true, mensagem: 'histórico limpo' };
     }
 
     default:
