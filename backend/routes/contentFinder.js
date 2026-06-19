@@ -140,25 +140,34 @@ async function buildReelFrame(templateBuf, headline, framePath) {
   const totalTextH = lines.length * TXT_LINE_H;
   // Text centered in the headline zone (below the profile area)
   const textTopY   = PROFILE_H + (HEADLINE_H - totalTextH) / 2;
-  const textEls = lines.map((line, i) =>
-    `<text x="${W / 2}" y="${textTopY + (i + 1) * TXT_LINE_H}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
-  ).join('');
-  // SVG is the base layer (white background + headline text)
-  // Template is composited on top — headline text appears BEHIND the template where it overlaps
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-    <rect width="${W}" height="${H}" fill="white"/>
-    ${textEls}
-  </svg>`;
-  // SVG is base layer — template composited on top so headline text appears behind the template photo.
-  // Resize to VIDEO_Y height (not just PROFILE_H) so profile circle at top is never cut.
-  // position: 'left top' preserves the top-left corner where the profile circle sits.
-  const frameBuf = await sharp(Buffer.from(svg))
-    .composite([{
-      input: await sharp(templateBuf)
-        .resize(W, VIDEO_Y, { fit: 'cover', position: 'left top' })
-        .toBuffer(),
-      top: 0, left: 0,
-    }])
+  // Headline text — drawn with a soft white halo (stroke) so it stays readable
+  // on top of ANY template, even where the template has imagery/color.
+  const textEls = lines.map((line, i) => {
+    const y = textTopY + (i + 1) * TXT_LINE_H;
+    return (
+      `<text x="${W / 2}" y="${y}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" stroke="#ffffff" stroke-width="8" paint-order="stroke" text-anchor="middle">${escXml(line)}</text>` +
+      `<text x="${W / 2}" y="${y}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
+    );
+  }).join('');
+
+  // Base: white full frame. Template covers the top zone (profile + headline area).
+  const baseSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="white"/></svg>`;
+  // Headline text is its OWN transparent layer, composited ON TOP of the template
+  // so it is ALWAYS visible above the video — never hidden behind the template photo.
+  const textSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${textEls}</svg>`;
+
+  // Resize template to VIDEO_Y height (profile + headline zone). position 'left top'
+  // preserves the profile circle at the top-left corner.
+  const frameBuf = await sharp(Buffer.from(baseSvg))
+    .composite([
+      {
+        input: await sharp(templateBuf)
+          .resize(W, VIDEO_Y, { fit: 'cover', position: 'left top' })
+          .toBuffer(),
+        top: 0, left: 0,
+      },
+      { input: Buffer.from(textSvg), top: 0, left: 0 },
+    ])
     .png()
     .toBuffer();
   await sharp(frameBuf).toFile(framePath);
@@ -183,6 +192,43 @@ async function transcribeSegments(audioPath) {
     response_format: 'verbose_json',
   });
   return tr.segments || [];
+}
+
+// Traduz os segmentos de legenda para português do Brasil, mantendo a MESMA
+// ordem/quantidade e os timestamps originais. Whisper transcreve no idioma falado
+// (muitas vezes inglês) — esta etapa garante legendas sempre em PT-BR.
+async function translateSegmentsToPt(segments) {
+  const texts = segments.map(s => (s.text || '').trim());
+  // Se já parece português, não gasta tokens à toa
+  const sample = texts.join(' ').toLowerCase();
+  const looksPt = /\b(que|não|você|com|uma|para|isso|ele|mais|como|está|são)\b/.test(sample);
+  if (looksPt && !/\b(the|and|you|this|that|with|have|what|when|they)\b/.test(sample)) {
+    return segments;
+  }
+
+  const numbered = texts.map((t, i) => `${i}: ${t}`).join('\n');
+  const res = await getOpenAI().chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.2,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'Você traduz legendas de vídeo para PORTUGUÊS DO BRASIL. Tom falado, natural e curto. Responda APENAS um JSON {"linhas": ["...", ...]} com a tradução de CADA linha na MESMA ordem e na MESMA quantidade recebida. Não junte nem divida linhas. Se uma linha já estiver em português, mantenha-a.',
+      },
+      {
+        role: 'user',
+        content: `Traduza para português do Brasil estas ${texts.length} legendas (mantenha ordem e quantidade exatas):\n${numbered}`,
+      },
+    ],
+    max_tokens: 1500,
+  });
+
+  const parsed = JSON.parse(res.choices[0].message.content || '{}');
+  const lines = parsed.linhas || parsed.lines || [];
+  // Se a quantidade não bater, descarta a tradução e mantém o original (seguro)
+  if (!Array.isArray(lines) || lines.length !== segments.length) return segments;
+  return segments.map((s, i) => ({ ...s, text: String(lines[i] ?? s.text) }));
 }
 
 function secToAss(t) {
@@ -617,7 +663,7 @@ Analise o candidato e retorne JSON completo com análise, fact-check, copy e ver
   "factual_confidence": 0-100,
   "factual_flags": [],
   "misleading_caption": false,
-  "headline": "máx 8 palavras, impactante",
+  "headline": "máx 8 palavras — gancho viral e POPULAR, linguagem simples que qualquer pessoa entende, gera conexão e vontade de seguir",
   "caption": "legenda completa para postar — começa com fato surpreendente, parágrafos curtos, termina com 'Segue o @pedro_destrava'",
   "headline_matches_source": true,
   "headline_clickbait_risk": "baixo"|"médio"|"alto",
@@ -632,7 +678,8 @@ Regras de aprovação:
 - Seja generoso com conteúdo de ciência, tecnologia, curiosidades, história, engenharia e espaço — esses são os nichos do perfil
 - quality_tier: A (viral_score>80 sem warnings), B (>65), C (>50), D (abaixo)
 - NÃO aprovar: político partidário, violento, sexual, músicas famosas (copyright), vlogs pessoais
-- Headlines style: "O que ninguém te contou sobre…", "A China fez isso e o mundo ignorou"`,
+- HEADLINE (regra mais importante): SEMPRE em português do Brasil. Escreva para uma pessoa SIMPLES e comum, que rola o feed rápido. Use linguagem POPULAR e fácil, frases curtas, gatilho de curiosidade ou choque que faz a pessoa PARAR, se CONECTAR e querer SEGUIR o perfil. Pode usar 1 emoji no fim. Proibido: palavras difíceis, técnicas, acadêmicas ou em inglês.
+- Modelos de headline que viralizam: "Você NÃO vai acreditar nisso", "Ninguém te contou isso 😳", "Olha o que a China fez 🤯", "Isso vai explodir sua mente", "Presta atenção até o final", "Isso é REAL e ninguém fala", "O que acontece aqui é assustador", "Você sabia disso?"`,
       },
       {
         role: 'user',
@@ -1346,8 +1393,15 @@ router.post('/approve', upload.single('template'), async (req, res) => {
         await extractAudio(rawVideo, audioMp3, clipDur);
         const segments = await withTimeout(transcribeSegments(audioMp3), 20000);
         if (segments.length) {
-          captionLines = buildAss(segments, assFile, clipDurNum);
-          console.log(`[approve] legendas: ${captionLines} linhas transcritas`);
+          // Traduz para PT-BR (mantém timestamps). Se falhar, usa o original.
+          let segPt = segments;
+          try {
+            segPt = await withTimeout(translateSegmentsToPt(segments), 12000);
+          } catch (e) {
+            console.warn('[approve] tradução de legendas falhou (mantém original):', e.message);
+          }
+          captionLines = buildAss(segPt, assFile, clipDurNum);
+          console.log(`[approve] legendas: ${captionLines} linhas (PT-BR)`);
         }
       } catch (e) {
         console.warn('[approve] legendas falharam (segue sem):', e.message);
