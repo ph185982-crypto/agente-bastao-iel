@@ -367,6 +367,15 @@ async function loadLearned() {
   return (await vault.getJSON(LEARN_KEY)) || {};
 }
 
+async function saveLearned(map) {
+  if (!vault.enabled()) return;
+  // Mantém o mapa enxuto: top 100 contas por melhor score
+  const trimmed = Object.fromEntries(
+    Object.entries(map).sort((a, b) => (b[1].best || 0) - (a[1].best || 0)).slice(0, 100)
+  );
+  await vault.setJSON(LEARN_KEY, trimmed);
+}
+
 function recordIntoMap(map, username, score, source) {
   if (!username) return;
   const cur = map[username] || { best: 0, count: 0, source };
