@@ -626,20 +626,17 @@ Avalie brevemente. Retorne JSON:
 
 // ── Júri de pré-veto (100 personas, 1 rodada, gpt-4o-mini) ───────────────────
 // Roda no fundo sobre os vídeos do cofre, ANTES do usuário escolher.
-async function runVettingJury(headline, originalCaption) {
-  const results = await Promise.all(
-    JURY_PERSONAS.map(async (persona) => {
-      try {
-        const res = await getOpenAI().chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `Você é ${persona.name}, ${persona.age} anos. ${persona.desc} Está scrollando Instagram agora.`,
-            },
-            {
-              role: 'user',
-              content: `Headline: "${headline}"
+async function askPersona(persona, headline, originalCaption) {
+  const res = await getOpenAI().chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `Você é ${persona.name}, ${persona.age} anos. ${persona.desc} Está scrollando Instagram agora.`,
+      },
+      {
+        role: 'user',
+        content: `Headline: "${headline}"
 Conteúdo original: "${(originalCaption || '').slice(0, 300)}"
 
 Responda em JSON:
@@ -648,23 +645,44 @@ Responda em JSON:
 REGRAS:
 - "parou": você pararia o dedo para assistir? (engajamento)
 - "factual_issue": TRUE *apenas* se a headline faz afirmação factualmente FALSA, inventada ou claramente enganosa/sensacionalista que distorce o conteúdo original. NÃO marque true só porque achou o conteúdo chato, genérico, comum ou pouco atrativo — isso é "parou": false, não factual_issue.`,
-            },
-          ],
-          max_tokens: 80,
-          response_format: { type: 'json_object' },
-          temperature: 0.8,
-        });
-        const r = JSON.parse(res.choices[0].message.content || '{}');
-        return { parou: !!r.parou, factual_issue: !!r.factual_issue, problema: r.problema || null };
-      } catch {
-        return { parou: false, factual_issue: false, problema: null };
-      }
-    })
-  );
+      },
+    ],
+    max_tokens: 80,
+    response_format: { type: 'json_object' },
+    temperature: 0.8,
+  });
+  const r = JSON.parse(res.choices[0].message.content || '{}');
+  return { parou: !!r.parou, factual_issue: !!r.factual_issue, problema: r.problema || null };
+}
 
-  const total       = results.length;
-  const stopped     = results.filter(r => r.parou).length;
-  const factual     = results.filter(r => r.factual_issue);
+async function runVettingJury(headline, originalCaption) {
+  // Concorrência limitada (25 por vez) para não se auto-estrangular no rate limit
+  const CONCURRENCY = 25;
+  const results = [];
+  let errorCount = 0;
+  for (let i = 0; i < JURY_PERSONAS.length; i += CONCURRENCY) {
+    const batch = JURY_PERSONAS.slice(i, i + CONCURRENCY);
+    const settled = await Promise.all(batch.map(async (persona) => {
+      // 1 retry rápido em caso de erro transitório (ex: 429)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try { return await askPersona(persona, headline, originalCaption); }
+        catch { if (attempt === 0) await new Promise(r => setTimeout(r, 400)); }
+      }
+      errorCount++;
+      return { parou: false, factual_issue: false, problema: null, _error: true };
+    }));
+    results.push(...settled);
+  }
+
+  // Se muitas personas falharam, o resultado é não-confiável → aborta para re-tentar
+  if (errorCount > JURY_PERSONAS.length * 0.3) {
+    throw new Error(`júri instável: ${errorCount}/${JURY_PERSONAS.length} falharam (rate limit?)`);
+  }
+
+  const valid       = results.filter(r => !r._error);
+  const total       = valid.length;
+  const stopped     = valid.filter(r => r.parou).length;
+  const factual     = valid.filter(r => r.factual_issue);
   const approvalPct = total > 0 ? Math.round((stopped / total) * 100) : 0;
   const factualPct  = total > 0 ? Math.round((factual.length / total) * 100) : 0;
   // só consideramos "problemas" os de quem realmente marcou factual_issue
