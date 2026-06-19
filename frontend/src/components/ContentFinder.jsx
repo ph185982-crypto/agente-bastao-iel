@@ -395,6 +395,18 @@ function JurySeal({ verdict, pct }) {
   return <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${s.cls}`}>{s.txt}</span>
 }
 
+function CopyrightBadge({ risk }) {
+  if (!risk) return null
+  const map = {
+    baixo: { cls: 'bg-green-900/40 text-green-300 border-green-700/50',   txt: '🛡️ Livre' },
+    médio: { cls: 'bg-yellow-900/40 text-yellow-300 border-yellow-700/50', txt: '⚠️ Direitos?' },
+    alto:  { cls: 'bg-red-900/40 text-red-300 border-red-700/50',          txt: '🚫 Direitos' },
+  }
+  const s = map[risk]
+  if (!s) return null
+  return <span className={`text-xs px-2 py-0.5 rounded-full border ${s.cls}`}>{s.txt}</span>
+}
+
 function ResultCard({ result, onPrepare, showJury }) {
   const [headline, setHeadline] = useState(result.headline || '')
   const [caption,  setCaption]  = useState(result.caption  || '')
@@ -417,6 +429,7 @@ function ResultCard({ result, onPrepare, showJury }) {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             {showJury && <JurySeal verdict={result.vetVerdict} pct={result.juryApprovalPct} />}
+            <CopyrightBadge risk={result.copyright_risk} />
             <span className="text-xs bg-indigo-900/50 text-indigo-300 border border-indigo-700/60 px-2 py-0.5 rounded-full">
               {result.content_category}
             </span>
@@ -571,7 +584,19 @@ function PreparingPhase({ videoStatus, videoError, headlineEmpty, onBackToResult
 }
 
 // ─── ReadyPhase ───────────────────────────────────────────────────────────────
-function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJuryReason, onReset, onBackToResults }) {
+function CopyrightRow({ risk }) {
+  const map = {
+    baixo:        { cls: 'text-green-300',  icon: '🛡️', txt: 'Risco baixo de direitos autorais' },
+    médio:        { cls: 'text-yellow-300', icon: '⚠️', txt: 'Risco médio — revise antes de postar' },
+    alto:         { cls: 'text-red-300',    icon: '🚫', txt: 'Risco ALTO de direitos autorais' },
+    desconhecido: { cls: 'text-gray-400',   icon: '❔', txt: 'Direitos autorais não avaliados' },
+  }
+  const s = map[risk] || map.desconhecido
+  return <p className={`text-xs ${s.cls}`}>{s.icon} {s.txt}</p>
+}
+
+function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJuryReason,
+  appliedHeadline, captionsBurned, copyrightRisk, onReset, onBackToResults }) {
   const [copied, setCopied] = useState(false)
 
   function copyCaption() {
@@ -607,6 +632,12 @@ function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJu
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
         <p className="text-sm font-semibold text-white">🎬 Seu Reel editado</p>
 
+        {/* Prévia do vídeo FINAL — você vê a headline e as legendas no vídeo */}
+        {videoBlobUrl && (
+          <video src={videoBlobUrl} controls playsInline
+            className="w-full rounded-xl bg-black" style={{ maxHeight: '420px' }} />
+        )}
+
         {videoBlobUrl ? (
           <a href={videoBlobUrl} download="reel_pronto.mp4"
             className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors">
@@ -622,6 +653,18 @@ function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJu
           className="w-full py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-semibold rounded-xl transition-colors">
           {copied ? '✅ Legenda copiada!' : '📋 Copiar Legenda do Post'}
         </button>
+      </div>
+
+      {/* Certificação do que foi aplicado no vídeo */}
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-2">
+        <p className="text-xs font-semibold text-gray-400">✔️ Aplicado neste vídeo</p>
+        {appliedHeadline && (
+          <p className="text-xs text-gray-200">🏷️ Headline: <span className="font-semibold text-white">"{appliedHeadline}"</span></p>
+        )}
+        <p className="text-xs text-gray-300">
+          {captionsBurned > 0 ? `💬 Legendas automáticas: ${captionsBurned} trechos no vídeo` : '💬 Legendas: sem fala detectada (sem legenda)'}
+        </p>
+        <CopyrightRow risk={copyrightRisk} />
       </div>
 
       {miniJuryVerdict && (
@@ -657,6 +700,10 @@ export default function ContentFinder() {
   const [miniJuryReason,  setMiniJuryReason]  = useState('')
   const [blockedReason,   setBlockedReason]   = useState('')
   const [headlineWasEmpty, setHeadlineWasEmpty] = useState(false)
+  const [autoCaptions,    setAutoCaptions]    = useState(true)
+  const [appliedHeadline, setAppliedHeadline] = useState('')
+  const [captionsBurned,  setCaptionsBurned]  = useState(0)
+  const [copyrightRisk,   setCopyrightRisk]   = useState('')
   const [vaultMeta,       setVaultMeta]       = useState(null)
   const [vaultCount,      setVaultCount]      = useState(0)
   const [vaultLoading,    setVaultLoading]    = useState(false)
@@ -777,6 +824,9 @@ export default function ContentFinder() {
     setMiniJuryVerdict(null)
     setMiniJuryReason('')
     setBlockedReason('')
+    setAppliedHeadline('')
+    setCaptionsBurned(0)
+    setCopyrightRisk('')
 
     ;(async () => {
       try {
@@ -791,6 +841,9 @@ export default function ContentFinder() {
         form.append('comments',        String(result.comments || 0))
         form.append('sourceUsername',  result.sourceUsername  || '')
         form.append('source',          result.source          || 'instagram')
+        form.append('captions',        autoCaptions ? 'true' : 'false')
+        if (result.copyright_risk)    form.append('copyrightRisk', result.copyright_risk)
+        if (result.copyright_reasons?.length) form.append('copyrightReasons', JSON.stringify(result.copyright_reasons))
         if (templateFile) form.append('template', templateFile)
 
         const res = await fetch(`${API_BASE}/api/content-finder/approve`, { method: 'POST', body: form })
@@ -810,11 +863,17 @@ export default function ContentFinder() {
 
         if (!res.ok) throw new Error(`Erro ${res.status}`)
 
-        // Read mini-jury verdict from headers
-        const verdict = res.headers.get('X-Mini-Jury-Verdict')
-        const reason  = res.headers.get('X-Mini-Jury-Reason')
+        // Read certification headers
+        const verdict     = res.headers.get('X-Mini-Jury-Verdict')
+        const reason      = res.headers.get('X-Mini-Jury-Reason')
+        const appHeadline = res.headers.get('X-Headline')
+        const burned      = res.headers.get('X-Captions-Burned')
+        const copyright   = res.headers.get('X-Copyright-Risk')
         if (verdict) setMiniJuryVerdict(verdict)
         if (reason)  setMiniJuryReason(decodeURIComponent(reason))
+        if (appHeadline) setAppliedHeadline(decodeURIComponent(appHeadline))
+        if (burned)  setCaptionsBurned(parseInt(burned, 10) || 0)
+        if (copyright) setCopyrightRisk(copyright)
 
         const blob = await res.blob()
         setVideoBlobUrl(URL.createObjectURL(blob))
@@ -865,6 +924,19 @@ export default function ContentFinder() {
 
       {!booting && (phase === 'search' || phase === 'results') && (
         <TemplateUpload templateFile={templateFile} onTemplate={setTemplateFile} />
+      )}
+
+      {!booting && (phase === 'search' || phase === 'results') && (
+        <button onClick={() => setAutoCaptions(v => !v)}
+          className="w-full flex items-center justify-between bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 hover:border-gray-700 transition-colors">
+          <div className="text-left">
+            <p className="text-sm font-semibold text-white">💬 Legendas automáticas</p>
+            <p className="text-xs text-gray-500 mt-0.5">Transcreve a fala e queima no vídeo (sobe a retenção)</p>
+          </div>
+          <span className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${autoCaptions ? 'bg-indigo-600' : 'bg-gray-700'}`}>
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${autoCaptions ? 'left-[22px]' : 'left-0.5'}`} />
+          </span>
+        </button>
       )}
 
       {!booting && phase === 'search' && vaultCount > 0 && (
@@ -971,6 +1043,7 @@ export default function ContentFinder() {
           videoBlobUrl={videoBlobUrl} videoError={videoError}
           caption={activeCaption}
           miniJuryVerdict={miniJuryVerdict} miniJuryReason={miniJuryReason}
+          appliedHeadline={appliedHeadline} captionsBurned={captionsBurned} copyrightRisk={copyrightRisk}
           onReset={reset}
           onBackToResults={results.length > 0 ? () => setPhase('results') : null}
         />

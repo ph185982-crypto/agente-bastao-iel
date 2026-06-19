@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({
   origin: true,
   credentials: true,
-  exposedHeaders: ['X-Headline', 'X-Caption', 'X-Mini-Jury-Verdict', 'X-Mini-Jury-Stopped', 'X-Mini-Jury-Reason'],
+  exposedHeaders: ['X-Headline', 'X-Caption', 'X-Captions-Burned', 'X-Copyright-Risk', 'X-Copyright-Reasons', 'X-Mini-Jury-Verdict', 'X-Mini-Jury-Stopped', 'X-Mini-Jury-Reason'],
 }));
 
 app.use(express.json());

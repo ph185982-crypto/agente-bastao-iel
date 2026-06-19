@@ -164,6 +164,80 @@ async function buildReelFrame(templateBuf, headline, framePath) {
   await sharp(frameBuf).toFile(framePath);
 }
 
+// ── Legendas automáticas (Whisper → ASS queimado no vídeo) ────────────────────
+function extractAudio(videoPath, audioPath, durSec) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(videoPath)
+      .inputOptions([`-t ${durSec}`])
+      .outputOptions(['-vn', '-ac 1', '-ar 16000', '-b:a 64k'])
+      .save(audioPath)
+      .on('end', resolve)
+      .on('error', reject);
+  });
+}
+
+async function transcribeSegments(audioPath) {
+  const tr = await getOpenAI().audio.transcriptions.create({
+    file: fs.createReadStream(audioPath),
+    model: 'whisper-1',
+    response_format: 'verbose_json',
+  });
+  return tr.segments || [];
+}
+
+function secToAss(t) {
+  const h  = Math.floor(t / 3600);
+  const m  = Math.floor((t % 3600) / 60);
+  const s  = Math.floor(t % 60);
+  const cs = Math.round((t - Math.floor(t)) * 100);
+  return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+}
+
+function wrapAss(text, max = 22) {
+  const words = text.trim().split(/\s+/);
+  const lines = [];
+  let cur = '';
+  for (const w of words) {
+    const t = cur ? `${cur} ${w}` : w;
+    if (t.length > max && cur) { lines.push(cur); cur = w; }
+    else cur = t;
+  }
+  if (cur) lines.push(cur);
+  return lines.join('\\N');
+}
+
+// Gera arquivo .ass com legendas estilo Reel (branco, contorno preto, base-centro)
+function buildAss(segments, assPath, maxEnd) {
+  const head = `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${W}
+PlayResY: ${H}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cap,DejaVu Sans,58,&H00FFFFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,320,1
+
+[Events]
+Format: Layer, Start, End, Style, Text
+`;
+  const rows = segments
+    .map(s => {
+      const start = Math.max(0, s.start);
+      const end   = Math.min(maxEnd, s.end);
+      const txt   = (s.text || '').trim();
+      if (end <= start || !txt) return null;
+      return `Dialogue: 0,${secToAss(start)},${secToAss(end)},Cap,,0,0,0,,${wrapAss(txt.toUpperCase())}`;
+    })
+    .filter(Boolean);
+  fs.writeFileSync(assPath, head + rows.join('\n') + '\n');
+  return rows.length;
+}
+
+const withTimeout = (p, ms) =>
+  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
 // ── Agent 1 — Buscador por contas-semente ────────────────────────────────────
 
 // Contas Instagram curadas por tema (validadas na instagram120 API)
@@ -1120,8 +1194,10 @@ router.get('/vet', async (req, res) => {
           ...item,
           headline,
           caption,
-          quality_tier:    analysis?.quality_tier || item.quality_tier || null,
-          vetVerdict:      jury.verdict,
+          quality_tier:      analysis?.quality_tier || item.quality_tier || null,
+          copyright_risk:    analysis?.copyright_risk || item.copyright_risk || null,
+          copyright_reasons: analysis?.copyright_reasons || item.copyright_reasons || [],
+          vetVerdict:        jury.verdict,
           juryApprovalPct: jury.approvalPct,
           juryReason:      jury.reason,
           juryProblems:    jury.problems,
@@ -1184,13 +1260,21 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
   }
 
+  // Legendas automáticas (default ON) e risco de direitos autorais (vindo do cofre)
+  const wantCaptions   = req.body.captions !== 'false' && req.body.captions !== '0';
+  let   copyrightRisk  = req.body.copyrightRisk || null;
+  let   copyrightReasons = [];
+  try { if (req.body.copyrightReasons) copyrightReasons = JSON.parse(req.body.copyrightReasons); } catch {}
+
   const templateBuf = req.file?.buffer || null;
   const sid         = crypto.randomUUID();
   const rawVideo    = path.join(os.tmpdir(), `${sid}_raw.mp4`);
   const framePng    = path.join(os.tmpdir(), `${sid}_frame.png`);
+  const audioMp3    = path.join(os.tmpdir(), `${sid}_audio.mp3`);
+  const assFile     = path.join(os.tmpdir(), `${sid}_sub.ass`);
   const output      = path.join(os.tmpdir(), `${sid}_final.mp4`);
 
-  const cleanTmp = () => [rawVideo, framePng].forEach(f => {
+  const cleanTmp = () => [rawVideo, framePng, audioMp3, assFile].forEach(f => {
     try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
   });
 
@@ -1214,7 +1298,9 @@ router.post('/approve', upload.single('template'), async (req, res) => {
         const analysis = await analyzeAndGenerate(candidate);
         headline = analysis.headline || 'Reel incrível';
         if (!caption?.trim()) caption = analysis.caption || '';
-        console.log(`[approve] headline gerada: "${headline}"`);
+        if (!copyrightRisk) copyrightRisk = analysis.copyright_risk || null;
+        if (analysis.copyright_reasons?.length) copyrightReasons = analysis.copyright_reasons;
+        console.log(`[approve] headline gerada: "${headline}" | copyright: ${copyrightRisk}`);
       } catch (e) {
         console.warn('[approve] analyzeAndGenerate falhou:', e.message);
         headline = 'Descubra isso agora';
@@ -1254,21 +1340,44 @@ router.post('/approve', upload.single('template'), async (req, res) => {
       console.log(`[miniJury] WARN: ${juryResult.reason}`);
     }
 
-    const clipDur = Math.min(duration, 20).toFixed(3);
-    let filterGraph;
+    const clipDurNum = Math.min(duration, 20);
+    const clipDur    = clipDurNum.toFixed(3);
 
+    // ── Legendas automáticas: transcreve a fala e gera .ass (resiliente) ───────
+    let captionLines = 0;
+    if (wantCaptions && hasAudio) {
+      try {
+        await extractAudio(rawVideo, audioMp3, clipDur);
+        const segments = await withTimeout(transcribeSegments(audioMp3), 20000);
+        if (segments.length) {
+          captionLines = buildAss(segments, assFile, clipDurNum);
+          console.log(`[approve] legendas: ${captionLines} linhas transcritas`);
+        }
+      } catch (e) {
+        console.warn('[approve] legendas falharam (segue sem):', e.message);
+        captionLines = 0;
+      }
+    }
+    const burnCaptions = captionLines > 0 && fs.existsSync(assFile);
+    const assEsc = assFile.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'");
+
+    let filterGraph;
     if (templateBuf) {
-      filterGraph = [
+      const parts = [
         `[0:v]scale=${W}:-2,crop=${W}:${VIDEO_H}:0:(ih-${VIDEO_H})/2,setpts=PTS-STARTPTS[vid]`,
         `[1:v]loop=loop=-1:size=1:start=0[frame]`,
-        `[frame][vid]overlay=0:${VIDEO_Y}:eof_action=endall[out]`,
-      ].join(';');
+        `[frame][vid]overlay=0:${VIDEO_Y}:eof_action=endall${burnCaptions ? '[comp]' : '[out]'}`,
+      ];
+      if (burnCaptions) parts.push(`[comp]subtitles='${assEsc}'[out]`);
+      filterGraph = parts.join(';');
     } else {
-      filterGraph = [
+      const parts = [
         `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
         `[1:v]loop=loop=-1:size=1:start=0[bar]`,
-        `[scaled][bar]overlay=0:0:eof_action=endall[out]`,
-      ].join(';');
+        `[scaled][bar]overlay=0:0:eof_action=endall${burnCaptions ? '[comp]' : '[out]'}`,
+      ];
+      if (burnCaptions) parts.push(`[comp]subtitles='${assEsc}'[out]`);
+      filterGraph = parts.join(';');
     }
 
     const outputOpts = [
@@ -1291,6 +1400,9 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="reel_reciclado.mp4"');
     res.setHeader('X-Headline',          encodeURIComponent(headline || ''));
     res.setHeader('X-Caption',           encodeURIComponent(caption  || ''));
+    res.setHeader('X-Captions-Burned',   burnCaptions ? `${captionLines}` : '0');
+    res.setHeader('X-Copyright-Risk',    copyrightRisk || 'desconhecido');
+    if (copyrightReasons.length) res.setHeader('X-Copyright-Reasons', encodeURIComponent(copyrightReasons.join(' · ')));
     res.setHeader('X-Mini-Jury-Verdict', juryResult.verdict);
     res.setHeader('X-Mini-Jury-Stopped', `${juryResult.stopped}/${juryResult.total}`);
     if (juryResult.verdict === 'WARN') {
