@@ -435,6 +435,84 @@ function topLearnedAccounts(map, source, exclude, n) {
     .map(([u]) => u);
 }
 
+// Hashtags do Instagram por tema — usadas para descobrir reels de QUALQUER conta
+// no mundo que usou a hashtag, sem depender de lista fixa de perfis.
+// Foco em tags de conteúdo educativo/viral do exterior que ressoa no Brasil.
+const IG_HASHTAGS = {
+  ciencia:      ['sciencefacts', 'natgeo', 'sciencevideo', 'amazingscience', 'didyouknow'],
+  tecnologia:   ['technology', 'techfacts', 'futuretech', 'amazingtechnology', 'inventions'],
+  historia:     ['historyfacts', 'historyvideo', 'ancienthistory', 'historydocumentary', 'worldhistory'],
+  espaco:       ['spacefacts', 'nasa', 'universe', 'astronomy', 'spacediscovery'],
+  china:        ['chinatechnology', 'chinaengineering', 'chinalife', 'chinatech', 'megaproject'],
+  engenharia:   ['engineering', 'megaconstruction', 'amazingengineering', 'constructionvideo', 'engineeringmarvels'],
+  curiosidades: ['factsdaily', 'amazingfacts', 'didyouknow', 'mindblowing', 'funfacts'],
+  invencoes:    ['invention', 'amazinginvention', 'cooltech', 'gadgets', 'geniusinvention'],
+};
+
+// Busca reels por hashtag (descobre qualquer conta que usou a tag)
+async function fetchHashtagReels(hashtag) {
+  console.log(`[A1-tag] Buscando #${hashtag}…`);
+  const { data } = await axios.get(
+    `https://${IG120_HOST}/api/instagram/explore_tag`,
+    {
+      params: { hashtag, maxId: '' },
+      headers: ig120Headers(),
+      timeout: 20000,
+    }
+  );
+  // instagram120 returns sections > layout_content > medias[]
+  const sections = data?.result?.sections || data?.sections || [];
+  const posts = [];
+  for (const sec of sections) {
+    const medias = sec?.layout_content?.medias || sec?.medias || [];
+    for (const m of medias) {
+      const media = m?.media || m;
+      if (!media?.video_versions?.length && !media?.clips_metadata) continue;
+      const cap = media.caption || {};
+      const vid = (media.video_versions || [])[0];
+      if (!vid?.url) continue;
+      posts.push({
+        code:      media.code || media.pk || '',
+        views:     media.play_count || media.view_count || 0,
+        likes:     media.like_count || 0,
+        comments:  media.comment_count || 0,
+        duration:  media.video_duration || 0,
+        caption:   typeof cap === 'object' ? (cap.text || '') : String(cap || ''),
+        videoUrl:  vid.url,
+        username:  media.user?.username || '',
+        followers: media.user?.follower_count || 0,
+        is_ad:     media.is_paid_partnership || false,
+        takenAt:   media.taken_at || 0,
+        source:    'instagram',
+      });
+    }
+  }
+  console.log(`[A1-tag] #${hashtag}: ${posts.length} reels`);
+  return posts;
+}
+
+// Busca contas similares a partir de um perfil conhecido (explore)
+async function fetchSimilarAccounts(username, limit = 5) {
+  try {
+    const { data } = await axios.get(
+      `https://${IG120_HOST}/api/instagram/similar_accounts`,
+      {
+        params: { username },
+        headers: ig120Headers(),
+        timeout: 15000,
+      }
+    );
+    const users = data?.users || data?.result?.users || data?.similar_users || [];
+    return users
+      .map(u => (u.username || u.user?.username || '').toLowerCase())
+      .filter(Boolean)
+      .slice(0, limit);
+  } catch (e) {
+    console.warn(`[A1-similar] @${username} falhou: ${e.message}`);
+    return [];
+  }
+}
+
 // Busca reels de uma conta (retorna play_count mas sem video_versions)
 async function fetchReels(username) {
   console.log(`[A1] Buscando reels de @${username}…`);
@@ -786,37 +864,56 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
   // Carrega estado persistente (dedup + aprendizado) em paralelo
   const [, learnedMap] = await Promise.all([loadUsedSet(), loadLearned()]);
 
-  // ── A1: busca paralela em Instagram (contas-semente) + TikTok (keywords) ──
+  // ── A1: monta lista de contas, hashtags e keywords por tema ──────────────
   const allAccounts = themes.flatMap(t => SEED_ACCOUNTS[t] || []);
   if (allAccounts.length === 0) Object.values(SEED_ACCOUNTS).forEach(a => allAccounts.push(a[0]));
   const uniqueAccounts = [...new Set(allAccounts)];
-  let igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 7);
+  // Sorteia 5 contas-semente (vaga para contas aprendidas e similares)
+  let igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 5);
 
-  // Descoberta: injeta até 2 contas aprendidas (que já entregaram vídeos quentes)
+  // Descoberta 1: injeta até 2 contas aprendidas (que já entregaram vídeos quentes)
   const learnedIg = topLearnedAccounts(learnedMap, 'instagram', igAccounts, 2);
   if (learnedIg.length) {
-    console.log(`[A1][descoberta] contas aprendidas: ${learnedIg.map(u => '@' + u).join(', ')}`);
+    console.log(`[A1][aprendidas] ${learnedIg.map(u => '@' + u).join(', ')}`);
     igAccounts = [...igAccounts, ...learnedIg];
   }
 
+  // Descoberta 2: contas similares — a partir de 1 conta-semente aleatória
+  const similarSeed = igAccounts[Math.floor(Math.random() * Math.min(igAccounts.length, 3))];
+  const similarAccounts = await fetchSimilarAccounts(similarSeed, 3);
+  const newSimilar = similarAccounts.filter(u => !igAccounts.includes(u));
+  if (newSimilar.length) {
+    console.log(`[A1][similares] de @${similarSeed}: ${newSimilar.map(u => '@' + u).join(', ')}`);
+    igAccounts = [...igAccounts, ...newSimilar];
+  }
+
+  // Hashtags: sorteia 4 hashtags dos temas selecionados para varredura aberta
+  const allHashtags = themes.flatMap(t => IG_HASHTAGS[t] || []);
+  const igHashtags = [...new Set(allHashtags)].sort(() => Math.random() - 0.5).slice(0, 4);
+
   const allKeywords = themes.flatMap(t => TIKTOK_KEYWORDS[t] || []);
   if (allKeywords.length === 0) Object.values(TIKTOK_KEYWORDS).forEach(k => allKeywords.push(k[0]));
-  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 6);
+  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 5);
 
-  console.log(`[A1] Instagram: ${igAccounts.map(u => '@' + u).join(', ')}`);
+  console.log(`[A1] Contas IG: ${igAccounts.map(u => '@' + u).join(', ')}`);
+  console.log(`[A1] Hashtags IG: ${igHashtags.map(h => '#' + h).join(', ')}`);
   console.log(`[A1] TikTok: ${ttKeywords.map(k => '"' + k + '"').join(', ')}`);
 
-  // Busca paralela em ambas as plataformas
+  // Busca paralela: contas IG + hashtags IG + TikTok
   const igPromises = igAccounts.map(async u => {
     try { return await searchAccount(u); }
     catch (e) { console.warn(`[A1][skip] @${u}: ${rapidApiError(e).message}`); return []; }
+  });
+  const tagPromises = igHashtags.map(async h => {
+    try { return await fetchHashtagReels(h); }
+    catch (e) { console.warn(`[A1-tag][skip] #${h}: ${e.message}`); return []; }
   });
   const ttPromises = ttKeywords.map(async k => {
     try { return await searchTikTok(k); }
     catch (e) { console.warn(`[A1-TT][skip] "${k}": ${rapidApiError(e).message}`); return []; }
   });
 
-  const allResults = await Promise.allSettled([...igPromises, ...ttPromises]);
+  const allResults = await Promise.allSettled([...igPromises, ...tagPromises, ...ttPromises]);
 
   const rawPosts = [];
   let anyOk = false;
@@ -827,7 +924,7 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
   }
   if (!anyOk && firstError) throw firstError;
   if (!anyOk) throw new Error('Nenhuma fonte retornou resultados. Tente novamente ou selecione outros temas.');
-  console.log(`[A1] Total bruto: ${rawPosts.length} posts (IG + TikTok)`);
+  console.log(`[A1] Total bruto: ${rawPosts.length} posts (contas IG + hashtags IG + TikTok)`);
 
   // ── Pré-filtros (antes do GPT-4o) ────────────────────────────────────────
   const candidates = [];
@@ -882,7 +979,13 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       ? `https://www.tiktok.com/@${post.username}/video/${post.code}`
       : `https://www.instagram.com/reel/${post.code}/`;
 
-    // 8. Dedup check
+    // 8. Descoberta agressiva: conta que entregou vídeo quente entra no pool agora
+    // (não só no próximo ciclo — assim buscas longas se auto-alimentam)
+    if (preScore >= 55 && post.username) {
+      recordIntoMap(learnedMap, post.username, preScore, post.source || 'instagram');
+    }
+
+    // 9. Dedup check
     const alreadyUsed = usedVideoUrls.has(postUrl);
 
     candidates.push({
