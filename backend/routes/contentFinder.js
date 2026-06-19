@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const vault = require('../lib/vault');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -830,6 +831,89 @@ router.post('/search', async (req, res) => {
     res.json({ results });
   } catch (e) {
     console.error('[contentFinder] search error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+const ALL_THEMES = ['ciencia', 'tecnologia', 'historia', 'espaco', 'china', 'engenharia', 'curiosidades', 'invencoes'];
+const VAULT_KEY      = 'vault:feed';
+const VAULT_META_KEY = 'vault:meta';
+const VAULT_MAX      = 60;                 // máximo de itens guardados no cofre
+const VAULT_TTL_MS   = 7 * 24 * 3600 * 1000; // descarta itens minerados há mais de 7 dias
+
+// GET /api/content-finder/feed — frontend lê o cofre pré-minerado
+router.get('/feed', async (req, res) => {
+  if (!vault.enabled()) {
+    return res.json({ results: [], meta: null, enabled: false });
+  }
+  try {
+    const feed = (await vault.getJSON(VAULT_KEY)) || [];
+    const meta = await vault.getJSON(VAULT_META_KEY);
+    // remove os já usados nesta sessão e marca os antigos
+    const results = feed
+      .filter(x => !usedVideoUrls.has(x.url))
+      .map(x => ({ ...x, already_used: usedVideoUrls.has(x.url) }))
+      .slice(0, 30);
+    res.json({ results, meta, enabled: true });
+  } catch (e) {
+    console.error('[feed] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/content-finder/mine — minerador autônomo (chamado pelo Vercel Cron)
+// Protegido por CRON_SECRET se configurado. Minera temas rotativos e enche o cofre.
+router.get('/mine', async (req, res) => {
+  // Autenticação: Vercel Cron envia "Authorization: Bearer <CRON_SECRET>"
+  if (process.env.CRON_SECRET) {
+    const auth = req.headers.authorization || '';
+    if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'não autorizado' });
+    }
+  }
+  if (!vault.enabled()) {
+    return res.status(503).json({ error: 'Cofre (Upstash) não configurado — defina UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN' });
+  }
+  if (!process.env.RAPIDAPI_KEY) {
+    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada' });
+  }
+
+  try {
+    // Temas rotativos: a cada janela de 6h, minera 3 temas diferentes,
+    // cobrindo todos os 8 ao longo do dia.
+    const bucket = Math.floor(Date.now() / (6 * 3600 * 1000));
+    const start  = (bucket * 3) % ALL_THEMES.length;
+    const themes = [0, 1, 2].map(i => ALL_THEMES[(start + i) % ALL_THEMES.length]);
+    console.log(`[mine] ciclo bucket=${bucket}, temas: ${themes.join(', ')}`);
+
+    const mined = await runSearch({ themes, minViews: 50000, minEngagement: 0, lang: 'any' });
+
+    // Mescla com o cofre existente, dedup por URL, mantém o dado mais fresco
+    const existing = (await vault.getJSON(VAULT_KEY)) || [];
+    const map = new Map(existing.map(x => [x.url, x]));
+    const now = Date.now();
+    for (const r of mined) {
+      map.set(r.url, { ...r, minedAt: now, themes });
+    }
+
+    let merged = [...map.values()]
+      .filter(x => (x.minedAt || 0) > now - VAULT_TTL_MS)   // expira itens velhos
+      .filter(x => !usedVideoUrls.has(x.url))                // remove já usados
+      .sort((a, b) => (b.viral_score || 0) - (a.viral_score || 0))
+      .slice(0, VAULT_MAX);
+
+    await vault.setJSON(VAULT_KEY, merged);
+    await vault.setJSON(VAULT_META_KEY, {
+      updatedAt: now,
+      lastThemes: themes,
+      minedThisRun: mined.length,
+      vaultSize: merged.length,
+    });
+
+    console.log(`[mine] +${mined.length} minerados, cofre agora com ${merged.length} vídeos`);
+    res.json({ ok: true, themes, minedThisRun: mined.length, vaultSize: merged.length });
+  } catch (e) {
+    console.error('[mine] erro:', e.message);
     res.status(500).json({ error: e.message });
   }
 });

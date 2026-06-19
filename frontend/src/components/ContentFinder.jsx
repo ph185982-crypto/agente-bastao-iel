@@ -37,6 +37,18 @@ function formatAge(days) {
   return d === 1 ? '1 dia' : `${d} dias`
 }
 
+// Formata "tempo atrás" a partir de um timestamp (ms) — ex: "há 2h", "há 5min"
+function formatAgo(ts) {
+  if (!ts) return ''
+  const mins = Math.floor((Date.now() - ts) / 60000)
+  if (mins < 1)   return 'agora'
+  if (mins < 60)  return `há ${mins}min`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24)   return `há ${hrs}h`
+  const days = Math.floor(hrs / 24)
+  return days === 1 ? 'há 1 dia' : `há ${days} dias`
+}
+
 // ─── ScoreRing ────────────────────────────────────────────────────────────────
 function ScoreRing({ score, size = 80 }) {
   const r = size / 2 - 6
@@ -534,7 +546,43 @@ export default function ContentFinder() {
   const [miniJuryReason,  setMiniJuryReason]  = useState('')
   const [blockedReason,   setBlockedReason]   = useState('')
   const [headlineWasEmpty, setHeadlineWasEmpty] = useState(false)
+  const [vaultMeta,       setVaultMeta]       = useState(null)
+  const [vaultCount,      setVaultCount]      = useState(0)
+  const [vaultLoading,    setVaultLoading]    = useState(false)
+  const [fromVault,       setFromVault]       = useState(false)
   const pollRef = useRef(null)
+
+  // Busca a prévia do cofre (contagem + última atualização) ao montar
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/content-finder/feed`)
+        const data = await res.json()
+        if (!alive || !data.enabled) return
+        setVaultCount((data.results || []).length)
+        setVaultMeta(data.meta || null)
+      } catch { /* cofre indisponível — segue sem ele */ }
+    })()
+    return () => { alive = false }
+  }, [])
+
+  async function loadVault() {
+    setVaultLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/content-finder/feed`)
+      const data = await res.json()
+      setResults(data.results || [])
+      setVaultMeta(data.meta || null)
+      setVaultCount((data.results || []).length)
+      setFromVault(true)
+      setPhase('results')
+    } catch (e) {
+      setSearchError('Não foi possível abrir o cofre')
+    } finally {
+      setVaultLoading(false)
+    }
+  }
 
   // Transition to ready (or blocked) when video request finishes
   useEffect(() => {
@@ -546,6 +594,7 @@ export default function ContentFinder() {
   async function handleSearch() {
     setSearchStatus('loading')
     setSearchError('')
+    setFromVault(false)
     setResults([])
     try {
       const res = await fetch(`${API_BASE}/api/content-finder/search`, {
@@ -638,6 +687,7 @@ export default function ContentFinder() {
     setMiniJuryVerdict(null)
     setMiniJuryReason('')
     setBlockedReason('')
+    setFromVault(false)
   }
 
   return (
@@ -652,6 +702,26 @@ export default function ContentFinder() {
 
       {(phase === 'search' || phase === 'results') && (
         <TemplateUpload templateFile={templateFile} onTemplate={setTemplateFile} />
+      )}
+
+      {phase === 'search' && vaultCount > 0 && (
+        <button onClick={loadVault} disabled={vaultLoading}
+          className="w-full text-left bg-gradient-to-r from-amber-900/40 to-yellow-900/30 border border-amber-700/50 rounded-2xl p-4 hover:border-amber-500/70 transition-colors disabled:opacity-50">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-amber-200 flex items-center gap-2">
+                🏆 {vaultCount} vídeos minerados no cofre
+              </p>
+              <p className="text-xs text-amber-400/70 mt-0.5">
+                O minerador trabalha sozinho · vetados e ranqueados por calor viral
+                {vaultMeta?.updatedAt ? ` · atualizado ${formatAgo(vaultMeta.updatedAt)}` : ''}
+              </p>
+            </div>
+            <span className="text-xs font-semibold text-amber-200 bg-amber-800/40 border border-amber-600/50 rounded-full px-3 py-1.5 shrink-0">
+              {vaultLoading ? '…' : 'Ver cofre →'}
+            </span>
+          </div>
+        </button>
       )}
 
       {phase === 'search' && (
@@ -669,10 +739,12 @@ export default function ContentFinder() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-green-300">
-                {results.length} reels virais encontrados
+                {fromVault ? `🏆 ${results.length} vídeos do cofre` : `${results.length} reels virais encontrados`}
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Ranqueados por calor viral 🔥 (velocidade + frescor + engajamento)
+                {fromVault
+                  ? 'Minerados automaticamente · ranqueados por calor viral 🔥'
+                  : 'Ranqueados por calor viral 🔥 (velocidade + frescor + engajamento)'}
               </p>
             </div>
             <button onClick={() => setPhase('search')}

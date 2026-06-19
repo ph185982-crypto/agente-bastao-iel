@@ -13,5 +13,8 @@
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" }
+  ],
+  "crons": [
+    { "path": "/api/content-finder/mine", "schedule": "0 9 * * *" }
   ]
 }
