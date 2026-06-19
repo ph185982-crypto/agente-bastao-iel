@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { API_BASE } from '../utils/api'
 
 const THEME_OPTIONS = [
@@ -47,6 +47,91 @@ function formatAgo(ts) {
   if (hrs < 24)   return `há ${hrs}h`
   const days = Math.floor(hrs / 24)
   return days === 1 ? 'há 1 dia' : `há ${days} dias`
+}
+
+// ─── Cofre: centro de comando ──────────────────────────────────────────────────
+function StatPill({ icon, label, value }) {
+  return (
+    <div className="flex-1 min-w-0 bg-gray-900/80 border border-gray-800 rounded-xl px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wide text-gray-500 truncate">{icon} {label}</p>
+      <p className="text-sm font-bold text-white truncate">{value}</p>
+    </div>
+  )
+}
+
+function VaultStats({ count, approved, pending, meta, onRefresh, refreshing }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+          </span>
+          <p className="text-xs text-green-300 font-medium">Minerador + Júri ativos · trabalhando sozinhos</p>
+        </div>
+        <button onClick={onRefresh} disabled={refreshing}
+          className="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-50">
+          {refreshing ? '↻ …' : '↻ Atualizar'}
+        </button>
+      </div>
+      <div className="flex gap-2">
+        <StatPill icon="🏆" label="No cofre"    value={count} />
+        <StatPill icon="✅" label="Aprovados"   value={approved} />
+        <StatPill icon="⏳" label="Aguardando"  value={pending} />
+        <StatPill icon="⛏️" label="Minerado"    value={meta?.updatedAt ? formatAgo(meta.updatedAt) : '—'} />
+      </div>
+    </div>
+  )
+}
+
+function FilterSortBar({ filter, setFilter, sort, setSort }) {
+  const filters = [
+    { k: 'all',      label: 'Todos' },
+    { k: 'approved', label: '✅ Aprovados' },
+    { k: 'pending',  label: '⏳ Aguardando' },
+  ]
+  const sorts = [
+    { k: 'velocity', label: '🔥 Velocidade' },
+    { k: 'score',    label: '⭐ Score' },
+    { k: 'fresh',    label: '✨ Recentes' },
+  ]
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1.5 flex-wrap">
+        {filters.map(f => (
+          <button key={f.k} onClick={() => setFilter(f.k)}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors
+              ${filter === f.k ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-1.5 items-center">
+        <span className="text-xs text-gray-600 shrink-0">Ordenar:</span>
+        {sorts.map(s => (
+          <button key={s.k} onClick={() => setSort(s.k)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors
+              ${sort === s.k ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-800/50 border-gray-800 text-gray-500 hover:text-gray-300'}`}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SkeletonCard() {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3 animate-pulse">
+      <div className="flex gap-2">
+        <div className="h-5 w-20 bg-gray-800 rounded-full" />
+        <div className="h-5 w-16 bg-gray-800 rounded-full" />
+      </div>
+      <div className="h-48 bg-gray-800 rounded-xl" />
+      <div className="h-9 bg-gray-800 rounded-xl" />
+    </div>
+  )
 }
 
 // ─── ScoreRing ────────────────────────────────────────────────────────────────
@@ -576,25 +661,34 @@ export default function ContentFinder() {
   const [vaultCount,      setVaultCount]      = useState(0)
   const [vaultLoading,    setVaultLoading]    = useState(false)
   const [fromVault,       setFromVault]       = useState(false)
+  const [booting,         setBooting]         = useState(true)
+  const [vaultFilter,     setVaultFilter]     = useState('all')
+  const [vaultSort,       setVaultSort]       = useState('velocity')
   const pollRef = useRef(null)
 
-  // Busca a prévia do cofre (contagem + última atualização) ao montar
+  // Ao montar: abre direto no cofre se houver vídeos (centro de comando)
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
         const res = await fetch(`${API_BASE}/api/content-finder/feed`)
         const data = await res.json()
-        if (!alive || !data.enabled) return
-        setVaultCount((data.results || []).length)
-        setVaultMeta(data.meta || null)
-      } catch { /* cofre indisponível — segue sem ele */ }
+        if (!alive) return
+        if (data.enabled && (data.results || []).length > 0) {
+          setResults(data.results)
+          setVaultMeta(data.meta || null)
+          setVaultCount(data.results.length)
+          setFromVault(true)
+          setPhase('results')
+        }
+      } catch { /* cofre indisponível — segue para a busca manual */ }
+      finally { if (alive) setBooting(false) }
     })()
     return () => { alive = false }
   }, [])
 
-  async function loadVault() {
-    setVaultLoading(true)
+  async function loadVault(silent = false) {
+    if (!silent) setVaultLoading(true)
     try {
       const res = await fetch(`${API_BASE}/api/content-finder/feed`)
       const data = await res.json()
@@ -609,6 +703,21 @@ export default function ContentFinder() {
       setVaultLoading(false)
     }
   }
+
+  // Lista exibida: aplica filtro + ordenação quando vem do cofre
+  const displayResults = useMemo(() => {
+    if (!fromVault) return results
+    let arr = [...results]
+    if (vaultFilter === 'approved')     arr = arr.filter(r => r.vetVerdict === 'APPROVED')
+    else if (vaultFilter === 'pending') arr = arr.filter(r => !r.vetVerdict)
+    if (vaultSort === 'fresh')      arr.sort((a, b) => (a.age_days ?? 999) - (b.age_days ?? 999))
+    else if (vaultSort === 'score') arr.sort((a, b) => (b.viral_score ?? 0) - (a.viral_score ?? 0))
+    else                            arr.sort((a, b) => (b.velocity ?? 0) - (a.velocity ?? 0))
+    return arr
+  }, [results, fromVault, vaultFilter, vaultSort])
+
+  const approvedCount = useMemo(() => results.filter(r => r.vetVerdict === 'APPROVED').length, [results])
+  const pendingCount  = useMemo(() => results.filter(r => !r.vetVerdict).length, [results])
 
   // Transition to ready (or blocked) when video request finishes
   useEffect(() => {
@@ -722,15 +831,26 @@ export default function ContentFinder() {
       <div className="text-center">
         <h1 className="text-xl font-bold text-white mb-1">♻️ Studio de Reciclagem</h1>
         <p className="text-sm text-gray-400">
-          Busque → escolha um reel → receba o vídeo editado + legenda + veredicto do júri
+          O cofre é abastecido sozinho · você escolhe → recebe o Reel editado + legenda
         </p>
       </div>
 
-      {(phase === 'search' || phase === 'results') && (
+      {booting && (
+        <div className="space-y-4">
+          <div className="h-14 bg-gray-900 border border-gray-800 rounded-2xl animate-pulse" />
+          <div className="flex gap-2">
+            {[0,1,2,3].map(i => <div key={i} className="flex-1 h-12 bg-gray-900 border border-gray-800 rounded-xl animate-pulse" />)}
+          </div>
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      )}
+
+      {!booting && (phase === 'search' || phase === 'results') && (
         <TemplateUpload templateFile={templateFile} onTemplate={setTemplateFile} />
       )}
 
-      {phase === 'search' && vaultCount > 0 && (
+      {!booting && phase === 'search' && vaultCount > 0 && (
         <button onClick={loadVault} disabled={vaultLoading}
           className="w-full text-left bg-gradient-to-r from-amber-900/40 to-yellow-900/30 border border-amber-700/50 rounded-2xl p-4 hover:border-amber-500/70 transition-colors disabled:opacity-50">
           <div className="flex items-center justify-between gap-3">
@@ -750,7 +870,7 @@ export default function ContentFinder() {
         </button>
       )}
 
-      {phase === 'search' && (
+      {!booting && phase === 'search' && (
         <SearchPhase
           selectedThemes={selectedThemes} setSelectedThemes={setSelectedThemes}
           minViews={minViews} setMinViews={setMinViews}
@@ -762,26 +882,47 @@ export default function ContentFinder() {
 
       {phase === 'results' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-green-300">
-                {fromVault ? `🏆 ${results.length} vídeos do cofre` : `${results.length} reels virais encontrados`}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {fromVault
-                  ? 'Minerados automaticamente · ranqueados por calor viral 🔥'
-                  : 'Ranqueados por calor viral 🔥 (velocidade + frescor + engajamento)'}
-              </p>
+          {fromVault ? (
+            <>
+              <VaultStats
+                count={vaultCount} approved={approvedCount} pending={pendingCount}
+                meta={vaultMeta} onRefresh={() => loadVault()} refreshing={vaultLoading}
+              />
+              <FilterSortBar filter={vaultFilter} setFilter={setVaultFilter} sort={vaultSort} setSort={setVaultSort} />
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  {displayResults.length} vídeo{displayResults.length !== 1 ? 's' : ''}
+                  {vaultFilter !== 'all' ? ' (filtrado)' : ''}
+                </p>
+                <button onClick={() => setPhase('search')}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors shrink-0">
+                  🔍 Buscar ao vivo
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-green-300">{results.length} reels virais encontrados</p>
+                <p className="text-xs text-gray-500 mt-0.5">Ranqueados por calor viral 🔥 (velocidade + frescor + engajamento)</p>
+              </div>
+              <button onClick={() => setPhase('search')}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors shrink-0">
+                Voltar
+              </button>
             </div>
-            <button onClick={() => setPhase('search')}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors shrink-0">
-              Voltar
-            </button>
-          </div>
+          )}
 
-          {results.map((result, i) => (
-            <ResultCard key={i} result={result} onPrepare={handlePrepare} showJury={fromVault} />
-          ))}
+          {displayResults.length === 0 ? (
+            <div className="text-center py-10 text-gray-600 text-sm">
+              <p className="text-3xl mb-2">🗂️</p>
+              <p>Nenhum vídeo neste filtro.<br />Os agentes estão minerando — atualize em instantes.</p>
+            </div>
+          ) : (
+            displayResults.map((result, i) => (
+              <ResultCard key={result.url || i} result={result} onPrepare={handlePrepare} showJury={fromVault} />
+            ))
+          )}
         </div>
       )}
 
