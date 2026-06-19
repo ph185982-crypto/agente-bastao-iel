@@ -4,8 +4,10 @@ import AutoReel from './components/AutoReel'
 import AgentChat from './components/AgentChat'
 import ContentFinder from './components/ContentFinder'
 import HeadlineJury from './components/HeadlineJury'
+import Brain from './components/Brain'
 
 const TABS = [
+  { id: 'brain',  label: '🧠 Cérebro' },
   { id: 'studio', label: '♻️ Studio' },
   { id: 'reel',   label: 'Criar Reel' },
   { id: 'jury',   label: '⚖️ Júri' },
@@ -13,7 +15,7 @@ const TABS = [
 ]
 
 export default function App() {
-  const [tab, setTab] = useState('studio')
+  const [tab, setTab] = useState('brain')
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
@@ -36,6 +38,12 @@ export default function App() {
           ))}
         </div>
       </div>
+
+      {tab === 'brain' && (
+        <main className="max-w-2xl mx-auto w-full px-4 py-10">
+          <Brain />
+        </main>
+      )}
 
       {tab === 'studio' && (
         <main className="max-w-2xl mx-auto w-full px-4 py-10">

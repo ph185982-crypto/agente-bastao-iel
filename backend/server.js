@@ -34,6 +34,7 @@ app.use('/api/generate', require('./routes/generate'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/content-finder', require('./routes/contentFinder'));
 app.use('/api/headline-jury', require('./routes/headlineJury'));
+app.use('/api/brain', require('./routes/brain'));
 
 app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
