@@ -124,12 +124,12 @@ async function executeTool(name, args) {
       const item = { id: newId(), texto: args.texto, whenTs, done: false, notified: false, ts: Date.now() };
       rem.push(item);
       await setArr(K.reminders, rem);
-      return { ok: true, lembrete: { ...item, quando: new Date(whenTs).toLocaleString('pt-BR') } };
+      return { ok: true, lembrete: { ...item, quando: new Date(whenTs).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) } };
     }
     case 'listar_lembretes': {
       const rem = await getArr(K.reminders);
       return { lembretes: rem.filter(r => !r.done).sort((a,b) => a.whenTs - b.whenTs)
-        .map(r => ({ id: r.id, texto: r.texto, quando: new Date(r.whenTs).toLocaleString('pt-BR') })) };
+        .map(r => ({ id: r.id, texto: r.texto, quando: new Date(r.whenTs).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) })) };
     }
     case 'concluir_lembrete': {
       const rem = await getArr(K.reminders);
@@ -262,7 +262,7 @@ router.get('/dashboard', async (req, res) => {
       whatsappLinked: !!phone,
       financeiro: { saldo: receitas - despesas, despesas, receitas, por_categoria: byCat },
       lembretes: rem.filter(r => !r.done).sort((a,b) => a.whenTs - b.whenTs)
-        .map(r => ({ id: r.id, texto: r.texto, quando: new Date(r.whenTs).toLocaleString('pt-BR') })).slice(0, 10),
+        .map(r => ({ id: r.id, texto: r.texto, quando: new Date(r.whenTs).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) })).slice(0, 10),
       transacoes: tx.slice(-12).reverse(),
       notas: notes.slice(-10).reverse(),
     });
