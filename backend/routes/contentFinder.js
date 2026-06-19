@@ -173,141 +173,61 @@ async function buildReelFrame(templateBuf, headline, framePath) {
   await sharp(frameBuf).toFile(framePath);
 }
 
-// ── Legendas automáticas (Whisper → ASS queimado no vídeo) ────────────────────
-function extractAudio(videoPath, audioPath, durSec) {
-  return new Promise((resolve, reject) => {
-    ffmpeg(videoPath)
-      .inputOptions([`-t ${durSec}`])
-      .outputOptions(['-vn', '-ac 1', '-ar 16000', '-b:a 64k'])
-      .save(audioPath)
-      .on('end', resolve)
-      .on('error', reject);
-  });
-}
-
-async function transcribeSegments(audioPath) {
-  const tr = await getOpenAI().audio.transcriptions.create({
-    file: fs.createReadStream(audioPath),
-    model: 'whisper-1',
-    response_format: 'verbose_json',
-  });
-  return tr.segments || [];
-}
-
-// Traduz os segmentos de legenda para português do Brasil, mantendo a MESMA
-// ordem/quantidade e os timestamps originais. Whisper transcreve no idioma falado
-// (muitas vezes inglês) — esta etapa garante legendas sempre em PT-BR.
-async function translateSegmentsToPt(segments) {
-  const texts = segments.map(s => (s.text || '').trim());
-  // Se já parece português, não gasta tokens à toa
-  const sample = texts.join(' ').toLowerCase();
-  const looksPt = /\b(que|não|você|com|uma|para|isso|ele|mais|como|está|são)\b/.test(sample);
-  if (looksPt && !/\b(the|and|you|this|that|with|have|what|when|they)\b/.test(sample)) {
-    return segments;
-  }
-
-  const numbered = texts.map((t, i) => `${i}: ${t}`).join('\n');
-  const res = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o-mini',
-    temperature: 0.2,
-    response_format: { type: 'json_object' },
-    messages: [
-      {
-        role: 'system',
-        content: 'Você traduz legendas de vídeo para PORTUGUÊS DO BRASIL. Tom falado, natural e curto. Responda APENAS um JSON {"linhas": ["...", ...]} com a tradução de CADA linha na MESMA ordem e na MESMA quantidade recebida. Não junte nem divida linhas. Se uma linha já estiver em português, mantenha-a.',
-      },
-      {
-        role: 'user',
-        content: `Traduza para português do Brasil estas ${texts.length} legendas (mantenha ordem e quantidade exatas):\n${numbered}`,
-      },
-    ],
-    max_tokens: 1500,
-  });
-
-  const parsed = JSON.parse(res.choices[0].message.content || '{}');
-  const lines = parsed.linhas || parsed.lines || [];
-  // Se a quantidade não bater, descarta a tradução e mantém o original (seguro)
-  if (!Array.isArray(lines) || lines.length !== segments.length) return segments;
-  return segments.map((s, i) => ({ ...s, text: String(lines[i] ?? s.text) }));
-}
-
-function secToAss(t) {
-  const h  = Math.floor(t / 3600);
-  const m  = Math.floor((t % 3600) / 60);
-  const s  = Math.floor(t % 60);
-  const cs = Math.round((t - Math.floor(t)) * 100);
-  return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
-}
-
-function wrapAss(text, max = 22) {
-  const words = text.trim().split(/\s+/);
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    const t = cur ? `${cur} ${w}` : w;
-    if (t.length > max && cur) { lines.push(cur); cur = w; }
-    else cur = t;
-  }
-  if (cur) lines.push(cur);
-  return lines.join('\\N');
-}
-
-// Gera arquivo .ass com legendas estilo Reel (branco, contorno preto, base-centro)
-function buildAss(segments, assPath, maxEnd) {
-  const head = `[Script Info]
-ScriptType: v4.00+
-PlayResX: ${W}
-PlayResY: ${H}
-WrapStyle: 2
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,DejaVu Sans,58,&H00FFFFFF,&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,4,1,2,80,80,320,1
-
-[Events]
-Format: Layer, Start, End, Style, Text
-`;
-  const rows = segments
-    .map(s => {
-      const start = Math.max(0, s.start);
-      const end   = Math.min(maxEnd, s.end);
-      const txt   = (s.text || '').trim();
-      if (end <= start || !txt) return null;
-      return `Dialogue: 0,${secToAss(start)},${secToAss(end)},Cap,,0,0,0,,${wrapAss(txt.toUpperCase())}`;
-    })
-    .filter(Boolean);
-  fs.writeFileSync(assPath, head + rows.join('\n') + '\n');
-  return rows.length;
-}
-
 const withTimeout = (p, ms) =>
   Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
 // ── Agent 1 — Buscador por contas-semente ────────────────────────────────────
 
-// Contas Instagram curadas por tema (validadas na instagram120 API)
+// Contas Instagram curadas por tema — foco em canais internacionais que
+// viralizam no exterior e têm alto potencial de ressonância no Brasil.
+// Prioridade: documentário, ciência, história, tecnologia, espaço, natureza.
 const SEED_ACCOUNTS = {
-  ciencia:      ['natgeo', 'sciencechannel', 'bbcearth', 'discovery', 'smithsonian', 'newscientist'],
-  tecnologia:   ['tecmundo', 'canaltech', 'tech', 'mrwhosetheboss', 'hashem.alghaili'],
-  historia:     ['dw_stories', 'smithsonian', 'natgeo', 'discovery'],
-  espaco:       ['nasa', 'spacex', 'europeanspaceagency'],
-  china:        ['cgtn', 'dw_stories', 'discovery', 'natgeo'],
-  engenharia:   ['interestingengineering', 'hashem.alghaili', 'futurism', 'tech'],
-  curiosidades: ['unilad', 'didyouknowpage', 'discovery', 'natgeo', 'bbcearth'],
-  invencoes:    ['interestingengineering', 'futurism', 'hashem.alghaili', 'tech'],
+  ciencia: [
+    'natgeo', 'natgeovideo', 'bbcearth', 'sciencechannel', 'discovery',
+    'smithsonian', 'newscientist', 'howstuffworks', 'sciencenews', 'popsci',
+  ],
+  tecnologia: [
+    'mrwhosetheboss', 'hashem.alghaili', 'interestingengineering',
+    'futurism', 'tech', 'verge', 'wired', 'techinsider', 'cnet',
+  ],
+  historia: [
+    'natgeo', 'natgeovideo', 'history', 'smithsonian', 'discovery',
+    'dw_stories', 'ancientworld.official', 'historyinpics', 'old_pictures',
+  ],
+  espaco: [
+    'nasa', 'spacex', 'europeanspaceagency', 'hubbletelescope',
+    'natgeospace', 'universetoday', 'jwstfeed', 'astronomyfeed',
+  ],
+  china: [
+    'cgtn', 'natgeo', 'discovery', 'interestingengineering',
+    'techinsider', 'futurism', 'dw_stories',
+  ],
+  engenharia: [
+    'interestingengineering', 'hashem.alghaili', 'futurism',
+    'theawesomer', 'engineeringvideos', 'engineeringexplained', 'simplyexplained',
+  ],
+  curiosidades: [
+    'natgeo', 'bbcearth', 'discovery', 'unilad', 'didyouknowpage',
+    'facts.feed', 'mindblowinguniversefacts', 'todayilearned.ig', 'earthpix',
+  ],
+  invencoes: [
+    'interestingengineering', 'futurism', 'hashem.alghaili',
+    'techinsider', 'gadgetsguru', 'inventionsdaily', 'coolthingsfeed',
+  ],
 };
 
 // Keywords de busca no TikTok por tema
+// Palavras-chave TikTok — foco em conteúdo documental/viral do exterior
+// que já explodiu em views e tem potencial de ressonância no Brasil.
 const TIKTOK_KEYWORDS = {
-  ciencia:      ['ciencia incrivel', 'science facts', 'descoberta cientifica'],
-  tecnologia:   ['technology innovation', 'tech gadgets 2024', 'tecnologia futuro'],
-  historia:     ['history facts', 'curiosidade historica', 'fatos historicos'],
-  espaco:       ['space discovery', 'nasa news', 'universe facts'],
-  china:        ['china technology', 'china innovation', 'made in china'],
-  engenharia:   ['engineering amazing', 'mega construction', 'engenharia impressionante'],
-  curiosidades: ['did you know', 'voce sabia', 'mind blowing facts'],
-  invencoes:    ['invention amazing', 'cool gadgets', 'genius invention'],
+  ciencia:      ['science viral', 'nature documentary', 'science mind blowing', 'wild animal attack', 'incredible science'],
+  tecnologia:   ['technology mind blowing', 'future tech', 'amazing invention 2024', 'tech you wont believe'],
+  historia:     ['history documentary', 'ancient civilizations', 'historical facts', 'history you never knew', 'world war secret'],
+  espaco:       ['space discovery', 'nasa footage', 'universe mind blowing', 'black hole real', 'space documentary'],
+  china:        ['china mega project', 'china technology amazing', 'china you wont believe', 'chinese engineering'],
+  engenharia:   ['mega construction', 'engineering marvels', 'how its made', 'impossible engineering', 'biggest machines'],
+  curiosidades: ['mind blowing facts', 'did you know viral', 'facts that change everything', 'you wont believe this'],
+  invencoes:    ['incredible invention', 'genius gadget', 'invention that changed world', 'amazing technology'],
 };
 
 const TIKTOK_HOST = 'tiktok-api23.p.rapidapi.com';
@@ -1307,8 +1227,6 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
   }
 
-  // Legendas automáticas (default ON) e risco de direitos autorais (vindo do cofre)
-  const wantCaptions   = req.body.captions !== 'false' && req.body.captions !== '0';
   let   copyrightRisk  = req.body.copyrightRisk || null;
   let   copyrightReasons = [];
   try { if (req.body.copyrightReasons) copyrightReasons = JSON.parse(req.body.copyrightReasons); } catch {}
@@ -1317,11 +1235,9 @@ router.post('/approve', upload.single('template'), async (req, res) => {
   const sid         = crypto.randomUUID();
   const rawVideo    = path.join(os.tmpdir(), `${sid}_raw.mp4`);
   const framePng    = path.join(os.tmpdir(), `${sid}_frame.png`);
-  const audioMp3    = path.join(os.tmpdir(), `${sid}_audio.mp3`);
-  const assFile     = path.join(os.tmpdir(), `${sid}_sub.ass`);
   const output      = path.join(os.tmpdir(), `${sid}_final.mp4`);
 
-  const cleanTmp = () => [rawVideo, framePng, audioMp3, assFile].forEach(f => {
+  const cleanTmp = () => [rawVideo, framePng].forEach(f => {
     try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
   });
 
@@ -1386,48 +1302,19 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     const clipDurNum = Math.min(duration, 20);
     const clipDur    = clipDurNum.toFixed(3);
 
-    // ── Legendas automáticas: transcreve a fala e gera .ass (resiliente) ───────
-    let captionLines = 0;
-    if (wantCaptions && hasAudio) {
-      try {
-        await extractAudio(rawVideo, audioMp3, clipDur);
-        const segments = await withTimeout(transcribeSegments(audioMp3), 20000);
-        if (segments.length) {
-          // Traduz para PT-BR (mantém timestamps). Se falhar, usa o original.
-          let segPt = segments;
-          try {
-            segPt = await withTimeout(translateSegmentsToPt(segments), 12000);
-          } catch (e) {
-            console.warn('[approve] tradução de legendas falhou (mantém original):', e.message);
-          }
-          captionLines = buildAss(segPt, assFile, clipDurNum);
-          console.log(`[approve] legendas: ${captionLines} linhas (PT-BR)`);
-        }
-      } catch (e) {
-        console.warn('[approve] legendas falharam (segue sem):', e.message);
-        captionLines = 0;
-      }
-    }
-    const burnCaptions = captionLines > 0 && fs.existsSync(assFile);
-    const assEsc = assFile.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'");
-
     let filterGraph;
     if (templateBuf) {
-      const parts = [
+      filterGraph = [
         `[0:v]scale=${W}:-2,crop=${W}:${VIDEO_H}:0:(ih-${VIDEO_H})/2,setpts=PTS-STARTPTS[vid]`,
         `[1:v]loop=loop=-1:size=1:start=0[frame]`,
-        `[frame][vid]overlay=0:${VIDEO_Y}:eof_action=endall${burnCaptions ? '[comp]' : '[out]'}`,
-      ];
-      if (burnCaptions) parts.push(`[comp]subtitles='${assEsc}'[out]`);
-      filterGraph = parts.join(';');
+        `[frame][vid]overlay=0:${VIDEO_Y}:eof_action=endall[out]`,
+      ].join(';');
     } else {
-      const parts = [
+      filterGraph = [
         `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS[scaled]`,
         `[1:v]loop=loop=-1:size=1:start=0[bar]`,
-        `[scaled][bar]overlay=0:0:eof_action=endall${burnCaptions ? '[comp]' : '[out]'}`,
-      ];
-      if (burnCaptions) parts.push(`[comp]subtitles='${assEsc}'[out]`);
-      filterGraph = parts.join(';');
+        `[scaled][bar]overlay=0:0:eof_action=endall[out]`,
+      ].join(';');
     }
 
     const outputOpts = [
@@ -1450,7 +1337,7 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="reel_reciclado.mp4"');
     res.setHeader('X-Headline',          encodeURIComponent(headline || ''));
     res.setHeader('X-Caption',           encodeURIComponent(caption  || ''));
-    res.setHeader('X-Captions-Burned',   burnCaptions ? `${captionLines}` : '0');
+    res.setHeader('X-Captions-Burned',   '0');
     res.setHeader('X-Copyright-Risk',    copyrightRisk || 'desconhecido');
     if (copyrightReasons.length) res.setHeader('X-Copyright-Reasons', encodeURIComponent(copyrightReasons.join(' · ')));
     // BLOCK vira WARN (apenas aviso) — nunca impede o download

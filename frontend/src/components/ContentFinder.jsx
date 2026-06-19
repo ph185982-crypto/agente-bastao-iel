@@ -596,7 +596,7 @@ function CopyrightRow({ risk }) {
 }
 
 function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJuryReason,
-  appliedHeadline, captionsBurned, copyrightRisk, onReset, onBackToResults }) {
+  appliedHeadline, copyrightRisk, onReset, onBackToResults }) {
   const [copied, setCopied] = useState(false)
 
   function copyCaption() {
@@ -661,9 +661,6 @@ function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJu
         {appliedHeadline && (
           <p className="text-xs text-gray-200">🏷️ Headline: <span className="font-semibold text-white">"{appliedHeadline}"</span></p>
         )}
-        <p className="text-xs text-gray-300">
-          {captionsBurned > 0 ? `💬 Legendas automáticas: ${captionsBurned} trechos no vídeo` : '💬 Legendas: sem fala detectada (sem legenda)'}
-        </p>
         <CopyrightRow risk={copyrightRisk} />
       </div>
 
@@ -700,9 +697,7 @@ export default function ContentFinder() {
   const [miniJuryReason,  setMiniJuryReason]  = useState('')
   const [blockedReason,   setBlockedReason]   = useState('')
   const [headlineWasEmpty, setHeadlineWasEmpty] = useState(false)
-  const [autoCaptions,    setAutoCaptions]    = useState(true)
   const [appliedHeadline, setAppliedHeadline] = useState('')
-  const [captionsBurned,  setCaptionsBurned]  = useState(0)
   const [copyrightRisk,   setCopyrightRisk]   = useState('')
   const [vaultMeta,       setVaultMeta]       = useState(null)
   const [vaultCount,      setVaultCount]      = useState(0)
@@ -825,7 +820,6 @@ export default function ContentFinder() {
     setMiniJuryReason('')
     setBlockedReason('')
     setAppliedHeadline('')
-    setCaptionsBurned(0)
     setCopyrightRisk('')
 
     ;(async () => {
@@ -841,7 +835,6 @@ export default function ContentFinder() {
         form.append('comments',        String(result.comments || 0))
         form.append('sourceUsername',  result.sourceUsername  || '')
         form.append('source',          result.source          || 'instagram')
-        form.append('captions',        autoCaptions ? 'true' : 'false')
         if (result.copyright_risk)    form.append('copyrightRisk', result.copyright_risk)
         if (result.copyright_reasons?.length) form.append('copyrightReasons', JSON.stringify(result.copyright_reasons))
         if (templateFile) form.append('template', templateFile)
@@ -867,12 +860,10 @@ export default function ContentFinder() {
         const verdict     = res.headers.get('X-Mini-Jury-Verdict')
         const reason      = res.headers.get('X-Mini-Jury-Reason')
         const appHeadline = res.headers.get('X-Headline')
-        const burned      = res.headers.get('X-Captions-Burned')
         const copyright   = res.headers.get('X-Copyright-Risk')
         if (verdict) setMiniJuryVerdict(verdict)
         if (reason)  setMiniJuryReason(decodeURIComponent(reason))
         if (appHeadline) setAppliedHeadline(decodeURIComponent(appHeadline))
-        if (burned)  setCaptionsBurned(parseInt(burned, 10) || 0)
         if (copyright) setCopyrightRisk(copyright)
 
         const blob = await res.blob()
@@ -926,18 +917,6 @@ export default function ContentFinder() {
         <TemplateUpload templateFile={templateFile} onTemplate={setTemplateFile} />
       )}
 
-      {!booting && (phase === 'search' || phase === 'results') && (
-        <button onClick={() => setAutoCaptions(v => !v)}
-          className="w-full flex items-center justify-between bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 hover:border-gray-700 transition-colors">
-          <div className="text-left">
-            <p className="text-sm font-semibold text-white">💬 Legendas automáticas</p>
-            <p className="text-xs text-gray-500 mt-0.5">Transcreve a fala e queima no vídeo (sobe a retenção)</p>
-          </div>
-          <span className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${autoCaptions ? 'bg-indigo-600' : 'bg-gray-700'}`}>
-            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all ${autoCaptions ? 'left-[22px]' : 'left-0.5'}`} />
-          </span>
-        </button>
-      )}
 
       {!booting && phase === 'search' && vaultCount > 0 && (
         <button onClick={loadVault} disabled={vaultLoading}
@@ -1043,7 +1022,7 @@ export default function ContentFinder() {
           videoBlobUrl={videoBlobUrl} videoError={videoError}
           caption={activeCaption}
           miniJuryVerdict={miniJuryVerdict} miniJuryReason={miniJuryReason}
-          appliedHeadline={appliedHeadline} captionsBurned={captionsBurned} copyrightRisk={copyrightRisk}
+          appliedHeadline={appliedHeadline} copyrightRisk={copyrightRisk}
           onReset={reset}
           onBackToResults={results.length > 0 ? () => setPhase('results') : null}
         />
