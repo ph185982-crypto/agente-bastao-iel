@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { API_BASE } from '../utils/api'
+import { saveVideoToGallery, saveToGallery } from '../utils/gallery'
 
 /**
  * Parse the RapidAPI response into a normalised list of media items.
@@ -45,14 +46,15 @@ function MediaCard({ item, index }) {
   const ext = isVideo ? 'mp4' : 'jpg'
   const filename = `instagram_${item.type}_${index + 1}.${ext}`
 
-  function handleDownload() {
+  async function handleDownload() {
     const proxyUrl = `${API_BASE}/api/download/proxy?videoUrl=${encodeURIComponent(item.url)}&filename=${encodeURIComponent(filename)}`
-    const a = document.createElement('a')
-    a.href = proxyUrl
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    const blob = await fetch(proxyUrl).then(r => r.blob())
+    if (isVideo) {
+      await saveVideoToGallery(blob, filename)
+    } else {
+      const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob) })
+      await saveToGallery(dataUrl, filename, 'image/jpeg')
+    }
   }
 
   return (

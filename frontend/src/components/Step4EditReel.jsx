@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { API_BASE } from '../utils/api'
+import { saveVideoToGallery } from '../utils/gallery'
 
 const POLL_INTERVAL = 2500 // ms
 
@@ -205,13 +206,12 @@ export default function Step4EditReel({ videoUrl: propVideoUrl, headline: propHe
               </svg>
             </div>
             <p className="text-sm text-green-300 font-medium">Reel pronto!</p>
-            <a
-              href={downloadUrl}
-              download="reel_editado.mp4"
+            <button
+              onClick={async () => { const blob = await fetch(downloadUrl).then(r=>r.blob()); await saveVideoToGallery(blob, 'reel_editado.mp4') }}
               className="px-6 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors"
             >
-              Baixar MP4
-            </a>
+              Salvar na Galeria
+            </button>
             <button
               onClick={() => { setStatus('idle'); setProgress(0); setDownloadUrl(null) }}
               className="text-xs text-gray-500 hover:text-gray-300 transition-colors"

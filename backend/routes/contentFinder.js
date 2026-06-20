@@ -9,6 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const vault = require('../lib/vault');
+const { PERSONAS: JURY_PERSONAS } = require('./headlineJury'); // 100 personas para pré-veto
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -138,54 +140,94 @@ async function buildReelFrame(templateBuf, headline, framePath) {
   const totalTextH = lines.length * TXT_LINE_H;
   // Text centered in the headline zone (below the profile area)
   const textTopY   = PROFILE_H + (HEADLINE_H - totalTextH) / 2;
-  const textEls = lines.map((line, i) =>
-    `<text x="${W / 2}" y="${textTopY + (i + 1) * TXT_LINE_H}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
-  ).join('');
-  // SVG is the base layer (white background + headline text)
-  // Template is composited on top — headline text appears BEHIND the template where it overlaps
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-    <rect width="${W}" height="${H}" fill="white"/>
-    ${textEls}
-  </svg>`;
-  // SVG is base layer — template composited on top so headline text appears behind the template photo.
-  // Resize to VIDEO_Y height (not just PROFILE_H) so profile circle at top is never cut.
-  // position: 'left top' preserves the top-left corner where the profile circle sits.
-  const frameBuf = await sharp(Buffer.from(svg))
-    .composite([{
-      input: await sharp(templateBuf)
-        .resize(W, VIDEO_Y, { fit: 'cover', position: 'left top' })
-        .toBuffer(),
-      top: 0, left: 0,
-    }])
+  // Headline text — drawn with a soft white halo (stroke) so it stays readable
+  // on top of ANY template, even where the template has imagery/color.
+  const textEls = lines.map((line, i) => {
+    const y = textTopY + (i + 1) * TXT_LINE_H;
+    return (
+      `<text x="${W / 2}" y="${y}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" stroke="#ffffff" stroke-width="8" paint-order="stroke" text-anchor="middle">${escXml(line)}</text>` +
+      `<text x="${W / 2}" y="${y}" font-family="${FONT_FAMILY}" font-size="${TXT_FONT_SIZE}" font-weight="bold" fill="#111111" text-anchor="middle">${escXml(line)}</text>`
+    );
+  }).join('');
+
+  // Base: white full frame. Template covers the top zone (profile + headline area).
+  const baseSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="white"/></svg>`;
+  // Headline text is its OWN transparent layer, composited ON TOP of the template
+  // so it is ALWAYS visible above the video — never hidden behind the template photo.
+  const textSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${textEls}</svg>`;
+
+  // Resize template to VIDEO_Y height (profile + headline zone). position 'left top'
+  // preserves the profile circle at the top-left corner.
+  const frameBuf = await sharp(Buffer.from(baseSvg))
+    .composite([
+      {
+        input: await sharp(templateBuf)
+          .resize(W, VIDEO_Y, { fit: 'cover', position: 'left top' })
+          .toBuffer(),
+        top: 0, left: 0,
+      },
+      { input: Buffer.from(textSvg), top: 0, left: 0 },
+    ])
     .png()
     .toBuffer();
   await sharp(frameBuf).toFile(framePath);
 }
 
+const withTimeout = (p, ms) =>
+  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
 // ── Agent 1 — Buscador por contas-semente ────────────────────────────────────
 
-// Contas Instagram curadas por tema (validadas na instagram120 API)
+// Contas Instagram curadas por tema — foco em canais internacionais que
+// viralizam no exterior e têm alto potencial de ressonância no Brasil.
+// Prioridade: documentário, ciência, história, tecnologia, espaço, natureza.
 const SEED_ACCOUNTS = {
-  ciencia:      ['natgeo', 'sciencechannel', 'bbcearth', 'discovery', 'smithsonian', 'newscientist'],
-  tecnologia:   ['tecmundo', 'canaltech', 'tech', 'mrwhosetheboss', 'hashem.alghaili'],
-  historia:     ['dw_stories', 'smithsonian', 'natgeo', 'discovery'],
-  espaco:       ['nasa', 'spacex', 'europeanspaceagency'],
-  china:        ['cgtn', 'dw_stories', 'discovery', 'natgeo'],
-  engenharia:   ['interestingengineering', 'hashem.alghaili', 'futurism', 'tech'],
-  curiosidades: ['unilad', 'didyouknowpage', 'discovery', 'natgeo', 'bbcearth'],
-  invencoes:    ['interestingengineering', 'futurism', 'hashem.alghaili', 'tech'],
+  ciencia: [
+    'natgeo', 'natgeovideo', 'bbcearth', 'sciencechannel', 'discovery',
+    'smithsonian', 'newscientist', 'howstuffworks', 'sciencenews', 'popsci',
+  ],
+  tecnologia: [
+    'mrwhosetheboss', 'hashem.alghaili', 'interestingengineering',
+    'futurism', 'tech', 'verge', 'wired', 'techinsider', 'cnet',
+  ],
+  historia: [
+    'natgeo', 'natgeovideo', 'history', 'smithsonian', 'discovery',
+    'dw_stories', 'ancientworld.official', 'historyinpics', 'old_pictures',
+  ],
+  espaco: [
+    'nasa', 'spacex', 'europeanspaceagency', 'hubbletelescope',
+    'natgeospace', 'universetoday', 'jwstfeed', 'astronomyfeed',
+  ],
+  china: [
+    'cgtn', 'natgeo', 'discovery', 'interestingengineering',
+    'techinsider', 'futurism', 'dw_stories',
+  ],
+  engenharia: [
+    'interestingengineering', 'hashem.alghaili', 'futurism',
+    'theawesomer', 'engineeringvideos', 'engineeringexplained', 'simplyexplained',
+  ],
+  curiosidades: [
+    'natgeo', 'bbcearth', 'discovery', 'unilad', 'didyouknowpage',
+    'facts.feed', 'mindblowinguniversefacts', 'todayilearned.ig', 'earthpix',
+  ],
+  invencoes: [
+    'interestingengineering', 'futurism', 'hashem.alghaili',
+    'techinsider', 'gadgetsguru', 'inventionsdaily', 'coolthingsfeed',
+  ],
 };
 
 // Keywords de busca no TikTok por tema
+// Palavras-chave TikTok — foco em conteúdo documental/viral do exterior
+// que já explodiu em views e tem potencial de ressonância no Brasil.
 const TIKTOK_KEYWORDS = {
-  ciencia:      ['ciencia incrivel', 'science facts', 'descoberta cientifica'],
-  tecnologia:   ['technology innovation', 'tech gadgets 2024', 'tecnologia futuro'],
-  historia:     ['history facts', 'curiosidade historica', 'fatos historicos'],
-  espaco:       ['space discovery', 'nasa news', 'universe facts'],
-  china:        ['china technology', 'china innovation', 'made in china'],
-  engenharia:   ['engineering amazing', 'mega construction', 'engenharia impressionante'],
-  curiosidades: ['did you know', 'voce sabia', 'mind blowing facts'],
-  invencoes:    ['invention amazing', 'cool gadgets', 'genius invention'],
+  ciencia:      ['science viral', 'nature documentary', 'science mind blowing', 'wild animal attack', 'incredible science'],
+  tecnologia:   ['technology mind blowing', 'future tech', 'amazing invention 2024', 'tech you wont believe'],
+  historia:     ['history documentary', 'ancient civilizations', 'historical facts', 'history you never knew', 'world war secret'],
+  espaco:       ['space discovery', 'nasa footage', 'universe mind blowing', 'black hole real', 'space documentary'],
+  china:        ['china mega project', 'china technology amazing', 'china you wont believe', 'chinese engineering'],
+  engenharia:   ['mega construction', 'engineering marvels', 'how its made', 'impossible engineering', 'biggest machines'],
+  curiosidades: ['mind blowing facts', 'did you know viral', 'facts that change everything', 'you wont believe this'],
+  invencoes:    ['incredible invention', 'genius gadget', 'invention that changed world', 'amazing technology'],
 };
 
 const TIKTOK_HOST = 'tiktok-api23.p.rapidapi.com';
@@ -223,6 +265,20 @@ function calcSpamScore(text) {
   return { score: Math.min(score, 100), tags };
 }
 
+// Idade do post em horas (null se timestamp ausente/inválido)
+function ageHoursOf(takenAt) {
+  if (!takenAt || takenAt <= 0) return null;
+  const ageH = (Date.now() / 1000 - takenAt) / 3600;
+  return ageH > 0 ? ageH : null;
+}
+
+// Velocidade viral: views por hora desde a publicação (null se sem timestamp)
+function velocityOf(post) {
+  const ageH = ageHoursOf(post.takenAt);
+  if (ageH === null || !post.views) return null;
+  return Math.round(post.views / ageH);
+}
+
 function calcViralScore(post) {
   let score = 0;
   const views    = post.views    || 0;
@@ -230,22 +286,44 @@ function calcViralScore(post) {
   const comments = post.comments || 0;
   const duration = post.duration || 0;
 
-  if (views > 1000000)     score += 40;
-  else if (views > 500000) score += 30;
-  else if (views > 100000) score += 20;
-  else if (views > 50000)  score += 10;
+  // ── Sinal absoluto (alcance bruto) ──────────────────────────────────────────
+  if (views > 1000000)     score += 30;
+  else if (views > 500000) score += 22;
+  else if (views > 100000) score += 15;
+  else if (views > 50000)  score += 8;
 
   const ratio = views > 0 ? likes / views : 0;
-  if (ratio > 0.05)      score += 20;
-  else if (ratio > 0.03) score += 15;
-  else if (ratio > 0.01) score += 10;
+  if (ratio > 0.05)      score += 18;
+  else if (ratio > 0.03) score += 13;
+  else if (ratio > 0.01) score += 8;
 
-  if (comments > 1000)     score += 20;
-  else if (comments > 500) score += 15;
-  else if (comments > 100) score += 10;
+  if (comments > 1000)     score += 15;
+  else if (comments > 500) score += 11;
+  else if (comments > 100) score += 7;
 
-  if (duration >= 15 && duration <= 60) score += 20;
-  else if (duration > 0 && duration <= 90) score += 10;
+  if (duration >= 15 && duration <= 60) score += 18;
+  else if (duration > 0 && duration <= 90) score += 9;
+
+  // ── Velocidade viral (views/hora) — o sinal de "está bombando AGORA" ────────
+  const vph = velocityOf(post);
+  if (vph !== null) {
+    if (vph > 20000)      score += 35;   // explodindo
+    else if (vph > 8000)  score += 26;
+    else if (vph > 3000)  score += 18;
+    else if (vph > 1000)  score += 10;
+    else if (vph > 300)   score += 4;
+  }
+
+  // ── Frescor — repostar coisa do momento ─────────────────────────────────────
+  const ageH = ageHoursOf(post.takenAt);
+  if (ageH !== null) {
+    const days = ageH / 24;
+    if (days <= 3)       score += 16;
+    else if (days <= 7)  score += 11;
+    else if (days <= 14) score += 6;
+    else if (days > 90)  score -= 12;    // conteúdo velho, penaliza
+    else if (days > 45)  score -= 5;
+  }
 
   // TikTok needs higher viral signal to compensate for lower trust
   if (post.source === 'tiktok') score -= 10;
@@ -298,8 +376,142 @@ const ig120Headers = () => ({
   'x-rapidapi-key': IG120_KEY,
 });
 
-// In-memory session dedup — persists across warm serverless invocations
-const usedVideoUrls = new Set();
+// ── Dedup persistente (Upstash + cache em memória) ────────────────────────────
+const usedVideoUrls = new Set();          // cache rápido (warm lambda)
+const USED_KEY = 'used:urls';
+const USED_MAX = 500;                      // guarda os 500 mais recentes
+
+async function loadUsedSet() {
+  const arr = (await vault.getJSON(USED_KEY)) || [];
+  arr.forEach(u => usedVideoUrls.add(u));  // funde no cache em memória
+  return usedVideoUrls;
+}
+
+async function markUsed(url) {
+  if (!url) return;
+  usedVideoUrls.add(url);
+  if (!vault.enabled()) return;
+  const arr = (await vault.getJSON(USED_KEY)) || [];
+  if (!arr.includes(url)) {
+    arr.push(url);
+    await vault.setJSON(USED_KEY, arr.slice(-USED_MAX));
+  }
+}
+
+// ── Aprendizado/descoberta de contas (persistente em Upstash) ─────────────────
+// Acumula o melhor preScore já visto por conta, para enriquecer buscas futuras
+// com fontes que historicamente entregam vídeos quentes. NÃO reseta no cold start.
+const LEARN_KEY = 'learn:accounts';
+
+async function loadLearned() {
+  return (await vault.getJSON(LEARN_KEY)) || {};
+}
+
+async function saveLearned(map) {
+  if (!vault.enabled()) return;
+  // Mantém o mapa enxuto: top 100 contas por melhor score
+  const trimmed = Object.fromEntries(
+    Object.entries(map).sort((a, b) => (b[1].best || 0) - (a[1].best || 0)).slice(0, 100)
+  );
+  await vault.setJSON(LEARN_KEY, trimmed);
+}
+
+function recordIntoMap(map, username, score, source) {
+  if (!username) return;
+  const cur = map[username] || { best: 0, count: 0, source };
+  cur.best     = Math.max(cur.best, score);
+  cur.count   += 1;
+  cur.source   = source;
+  cur.lastSeen = Date.now();
+  map[username] = cur;
+}
+
+// Top contas aprendidas de uma fonte que ainda não estão na lista atual
+function topLearnedAccounts(map, source, exclude, n) {
+  return Object.entries(map)
+    .filter(([u, v]) => v.source === source && v.best >= 60 && !exclude.includes(u))
+    .sort((a, b) => b[1].best - a[1].best)
+    .slice(0, n)
+    .map(([u]) => u);
+}
+
+// Hashtags do Instagram por tema — usadas para descobrir reels de QUALQUER conta
+// no mundo que usou a hashtag, sem depender de lista fixa de perfis.
+// Foco em tags de conteúdo educativo/viral do exterior que ressoa no Brasil.
+const IG_HASHTAGS = {
+  ciencia:      ['sciencefacts', 'natgeo', 'sciencevideo', 'amazingscience', 'didyouknow'],
+  tecnologia:   ['technology', 'techfacts', 'futuretech', 'amazingtechnology', 'inventions'],
+  historia:     ['historyfacts', 'historyvideo', 'ancienthistory', 'historydocumentary', 'worldhistory'],
+  espaco:       ['spacefacts', 'nasa', 'universe', 'astronomy', 'spacediscovery'],
+  china:        ['chinatechnology', 'chinaengineering', 'chinalife', 'chinatech', 'megaproject'],
+  engenharia:   ['engineering', 'megaconstruction', 'amazingengineering', 'constructionvideo', 'engineeringmarvels'],
+  curiosidades: ['factsdaily', 'amazingfacts', 'didyouknow', 'mindblowing', 'funfacts'],
+  invencoes:    ['invention', 'amazinginvention', 'cooltech', 'gadgets', 'geniusinvention'],
+};
+
+// Busca reels por hashtag (descobre qualquer conta que usou a tag)
+async function fetchHashtagReels(hashtag) {
+  console.log(`[A1-tag] Buscando #${hashtag}…`);
+  const { data } = await axios.get(
+    `https://${IG120_HOST}/api/instagram/explore_tag`,
+    {
+      params: { hashtag, maxId: '' },
+      headers: ig120Headers(),
+      timeout: 20000,
+    }
+  );
+  // instagram120 returns sections > layout_content > medias[]
+  const sections = data?.result?.sections || data?.sections || [];
+  const posts = [];
+  for (const sec of sections) {
+    const medias = sec?.layout_content?.medias || sec?.medias || [];
+    for (const m of medias) {
+      const media = m?.media || m;
+      if (!media?.video_versions?.length && !media?.clips_metadata) continue;
+      const cap = media.caption || {};
+      const vid = (media.video_versions || [])[0];
+      if (!vid?.url) continue;
+      posts.push({
+        code:      media.code || media.pk || '',
+        views:     media.play_count || media.view_count || 0,
+        likes:     media.like_count || 0,
+        comments:  media.comment_count || 0,
+        duration:  media.video_duration || 0,
+        caption:   typeof cap === 'object' ? (cap.text || '') : String(cap || ''),
+        videoUrl:  vid.url,
+        username:  media.user?.username || '',
+        followers: media.user?.follower_count || 0,
+        is_ad:     media.is_paid_partnership || false,
+        takenAt:   media.taken_at || 0,
+        source:    'instagram',
+      });
+    }
+  }
+  console.log(`[A1-tag] #${hashtag}: ${posts.length} reels`);
+  return posts;
+}
+
+// Busca contas similares a partir de um perfil conhecido (explore)
+async function fetchSimilarAccounts(username, limit = 5) {
+  try {
+    const { data } = await axios.get(
+      `https://${IG120_HOST}/api/instagram/similar_accounts`,
+      {
+        params: { username },
+        headers: ig120Headers(),
+        timeout: 15000,
+      }
+    );
+    const users = data?.users || data?.result?.users || data?.similar_users || [];
+    return users
+      .map(u => (u.username || u.user?.username || '').toLowerCase())
+      .filter(Boolean)
+      .slice(0, limit);
+  } catch (e) {
+    console.warn(`[A1-similar] @${username} falhou: ${e.message}`);
+    return [];
+  }
+}
 
 // Busca reels de uma conta (retorna play_count mas sem video_versions)
 async function fetchReels(username) {
@@ -342,6 +554,7 @@ async function fetchPosts(username) {
       duration:  n.video_duration || 0,
       hasAudio:  n.has_audio ?? true,
       is_ad:     n.is_paid_partnership || false,
+      takenAt:   n.taken_at || n.taken_at_timestamp || (typeof cap === 'object' ? cap.created_at : 0) || 0,
     };
   }
   return map;
@@ -369,6 +582,7 @@ async function searchAccount(username) {
       username:  reel.username,
       followers: 0,
       is_ad:     post.is_ad,
+      takenAt:   post.takenAt || 0,
     });
   }
   console.log(`[A1] @${username}: ${reels.length} reels, ${Object.keys(postsMap).length} vídeo-posts, ${merged.length} cruzados`);
@@ -411,6 +625,7 @@ async function searchTikTok(keyword) {
         username:  author.uniqueId || author.nickname || '',
         followers: 0,
         is_ad:     item.isAd || false,
+        takenAt:   item.createTime || 0,
         source:    'tiktok',
       };
     })
@@ -446,7 +661,7 @@ Analise o candidato e retorne JSON completo com análise, fact-check, copy e ver
   "factual_confidence": 0-100,
   "factual_flags": [],
   "misleading_caption": false,
-  "headline": "máx 8 palavras, impactante",
+  "headline": "máx 8 palavras — gancho viral e POPULAR, linguagem simples que qualquer pessoa entende, gera conexão e vontade de seguir",
   "caption": "legenda completa para postar — começa com fato surpreendente, parágrafos curtos, termina com 'Segue o @pedro_destrava'",
   "headline_matches_source": true,
   "headline_clickbait_risk": "baixo"|"médio"|"alto",
@@ -461,7 +676,8 @@ Regras de aprovação:
 - Seja generoso com conteúdo de ciência, tecnologia, curiosidades, história, engenharia e espaço — esses são os nichos do perfil
 - quality_tier: A (viral_score>80 sem warnings), B (>65), C (>50), D (abaixo)
 - NÃO aprovar: político partidário, violento, sexual, músicas famosas (copyright), vlogs pessoais
-- Headlines style: "O que ninguém te contou sobre…", "A China fez isso e o mundo ignorou"`,
+- HEADLINE (regra mais importante): SEMPRE em português do Brasil. Escreva para uma pessoa SIMPLES e comum, que rola o feed rápido. Use linguagem POPULAR e fácil, frases curtas, gatilho de curiosidade ou choque que faz a pessoa PARAR, se CONECTAR e querer SEGUIR o perfil. Pode usar 1 emoji no fim. Proibido: palavras difíceis, técnicas, acadêmicas ou em inglês.
+- Modelos de headline que viralizam: "Você NÃO vai acreditar nisso", "Ninguém te contou isso 😳", "Olha o que a China fez 🤯", "Isso vai explodir sua mente", "Presta atenção até o final", "Isso é REAL e ninguém fala", "O que acontece aqui é assustador", "Você sabia disso?"`,
       },
       {
         role: 'user',
@@ -560,32 +776,144 @@ Avalie brevemente. Retorne JSON:
   };
 }
 
+// ── Júri de pré-veto (100 personas, 1 rodada, gpt-4o-mini) ───────────────────
+// Roda no fundo sobre os vídeos do cofre, ANTES do usuário escolher.
+async function askPersona(persona, headline, originalCaption) {
+  const res = await getOpenAI().chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: `Você é ${persona.name}, ${persona.age} anos. ${persona.desc} Está scrollando Instagram agora.`,
+      },
+      {
+        role: 'user',
+        content: `Headline: "${headline}"
+Conteúdo original: "${(originalCaption || '').slice(0, 300)}"
+
+Responda em JSON:
+{ "parou": boolean, "factual_issue": boolean, "problema": "string curta OU null" }
+
+REGRAS:
+- "parou": você pararia o dedo para assistir? (engajamento)
+- "factual_issue": TRUE *apenas* se a headline faz afirmação factualmente FALSA, inventada ou claramente enganosa/sensacionalista que distorce o conteúdo original. NÃO marque true só porque achou o conteúdo chato, genérico, comum ou pouco atrativo — isso é "parou": false, não factual_issue.`,
+      },
+    ],
+    max_tokens: 80,
+    response_format: { type: 'json_object' },
+    temperature: 0.8,
+  });
+  const r = JSON.parse(res.choices[0].message.content || '{}');
+  return { parou: !!r.parou, factual_issue: !!r.factual_issue, problema: r.problema || null };
+}
+
+async function runVettingJury(headline, originalCaption) {
+  // Concorrência limitada (25 por vez) para não se auto-estrangular no rate limit
+  const CONCURRENCY = 25;
+  const results = [];
+  let errorCount = 0;
+  for (let i = 0; i < JURY_PERSONAS.length; i += CONCURRENCY) {
+    const batch = JURY_PERSONAS.slice(i, i + CONCURRENCY);
+    const settled = await Promise.all(batch.map(async (persona) => {
+      // 1 retry rápido em caso de erro transitório (ex: 429)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try { return await askPersona(persona, headline, originalCaption); }
+        catch { if (attempt === 0) await new Promise(r => setTimeout(r, 400)); }
+      }
+      errorCount++;
+      return { parou: false, factual_issue: false, problema: null, _error: true };
+    }));
+    results.push(...settled);
+  }
+
+  // Se muitas personas falharam, o resultado é não-confiável → aborta para re-tentar
+  if (errorCount > JURY_PERSONAS.length * 0.3) {
+    throw new Error(`júri instável: ${errorCount}/${JURY_PERSONAS.length} falharam (rate limit?)`);
+  }
+
+  const valid       = results.filter(r => !r._error);
+  const total       = valid.length;
+  const stopped     = valid.filter(r => r.parou).length;
+  const factual     = valid.filter(r => r.factual_issue);
+  const approvalPct = total > 0 ? Math.round((stopped / total) * 100) : 0;
+  const factualPct  = total > 0 ? Math.round((factual.length / total) * 100) : 0;
+  // só consideramos "problemas" os de quem realmente marcou factual_issue
+  const problems    = [...new Set(factual.filter(r => r.problema).map(r => r.problema))].slice(0, 3);
+
+  let verdict, reason;
+  if (factualPct >= 30) {
+    // reprovação factual exige consenso real (≥30% do júri), não algumas vozes
+    verdict = 'REJECTED';
+    reason  = `${factualPct}% do júri apontou problema factual/enganoso`;
+  } else if (approvalPct >= 55) {
+    verdict = 'APPROVED';
+    reason  = `${approvalPct}% do júri pararia para assistir`;
+  } else if (approvalPct >= 35) {
+    verdict = 'WARN';
+    reason  = `Júri dividido — ${approvalPct}% pararia`;
+  } else {
+    verdict = 'REJECTED';
+    reason  = `Só ${approvalPct}% pararia — engajamento baixo`;
+  }
+
+  return { verdict, reason, approvalPct, factualPct, stopped, total, factualIssues: factual.length, problems };
+}
+
 // ── Main search pipeline ──────────────────────────────────────────────────────
 async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lang = 'any' }) {
-  // ── A1: busca paralela em Instagram (contas-semente) + TikTok (keywords) ──
+  // Carrega estado persistente (dedup + aprendizado) em paralelo
+  const [, learnedMap] = await Promise.all([loadUsedSet(), loadLearned()]);
+
+  // ── A1: monta lista de contas, hashtags e keywords por tema ──────────────
   const allAccounts = themes.flatMap(t => SEED_ACCOUNTS[t] || []);
   if (allAccounts.length === 0) Object.values(SEED_ACCOUNTS).forEach(a => allAccounts.push(a[0]));
   const uniqueAccounts = [...new Set(allAccounts)];
-  const igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 5);
+  // Sorteia 5 contas-semente (vaga para contas aprendidas e similares)
+  let igAccounts = uniqueAccounts.sort(() => Math.random() - 0.5).slice(0, 5);
+
+  // Descoberta 1: injeta até 2 contas aprendidas (que já entregaram vídeos quentes)
+  const learnedIg = topLearnedAccounts(learnedMap, 'instagram', igAccounts, 2);
+  if (learnedIg.length) {
+    console.log(`[A1][aprendidas] ${learnedIg.map(u => '@' + u).join(', ')}`);
+    igAccounts = [...igAccounts, ...learnedIg];
+  }
+
+  // Descoberta 2: contas similares — a partir de 1 conta-semente aleatória
+  const similarSeed = igAccounts[Math.floor(Math.random() * Math.min(igAccounts.length, 3))];
+  const similarAccounts = await fetchSimilarAccounts(similarSeed, 3);
+  const newSimilar = similarAccounts.filter(u => !igAccounts.includes(u));
+  if (newSimilar.length) {
+    console.log(`[A1][similares] de @${similarSeed}: ${newSimilar.map(u => '@' + u).join(', ')}`);
+    igAccounts = [...igAccounts, ...newSimilar];
+  }
+
+  // Hashtags: sorteia 4 hashtags dos temas selecionados para varredura aberta
+  const allHashtags = themes.flatMap(t => IG_HASHTAGS[t] || []);
+  const igHashtags = [...new Set(allHashtags)].sort(() => Math.random() - 0.5).slice(0, 4);
 
   const allKeywords = themes.flatMap(t => TIKTOK_KEYWORDS[t] || []);
   if (allKeywords.length === 0) Object.values(TIKTOK_KEYWORDS).forEach(k => allKeywords.push(k[0]));
-  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 4);
+  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 5);
 
-  console.log(`[A1] Instagram: ${igAccounts.map(u => '@' + u).join(', ')}`);
+  console.log(`[A1] Contas IG: ${igAccounts.map(u => '@' + u).join(', ')}`);
+  console.log(`[A1] Hashtags IG: ${igHashtags.map(h => '#' + h).join(', ')}`);
   console.log(`[A1] TikTok: ${ttKeywords.map(k => '"' + k + '"').join(', ')}`);
 
-  // Busca paralela em ambas as plataformas
+  // Busca paralela: contas IG + hashtags IG + TikTok
   const igPromises = igAccounts.map(async u => {
     try { return await searchAccount(u); }
     catch (e) { console.warn(`[A1][skip] @${u}: ${rapidApiError(e).message}`); return []; }
+  });
+  const tagPromises = igHashtags.map(async h => {
+    try { return await fetchHashtagReels(h); }
+    catch (e) { console.warn(`[A1-tag][skip] #${h}: ${e.message}`); return []; }
   });
   const ttPromises = ttKeywords.map(async k => {
     try { return await searchTikTok(k); }
     catch (e) { console.warn(`[A1-TT][skip] "${k}": ${rapidApiError(e).message}`); return []; }
   });
 
-  const allResults = await Promise.allSettled([...igPromises, ...ttPromises]);
+  const allResults = await Promise.allSettled([...igPromises, ...tagPromises, ...ttPromises]);
 
   const rawPosts = [];
   let anyOk = false;
@@ -596,7 +924,7 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
   }
   if (!anyOk && firstError) throw firstError;
   if (!anyOk) throw new Error('Nenhuma fonte retornou resultados. Tente novamente ou selecione outros temas.');
-  console.log(`[A1] Total bruto: ${rawPosts.length} posts (IG + TikTok)`);
+  console.log(`[A1] Total bruto: ${rawPosts.length} posts (contas IG + hashtags IG + TikTok)`);
 
   // ── Pré-filtros (antes do GPT-4o) ────────────────────────────────────────
   const candidates = [];
@@ -651,7 +979,13 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       ? `https://www.tiktok.com/@${post.username}/video/${post.code}`
       : `https://www.instagram.com/reel/${post.code}/`;
 
-    // 8. Dedup check
+    // 8. Descoberta agressiva: conta que entregou vídeo quente entra no pool agora
+    // (não só no próximo ciclo — assim buscas longas se auto-alimentam)
+    if (preScore >= 55 && post.username) {
+      recordIntoMap(learnedMap, post.username, preScore, post.source || 'instagram');
+    }
+
+    // 9. Dedup check
     const alreadyUsed = usedVideoUrls.has(postUrl);
 
     candidates.push({
@@ -670,6 +1004,9 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       controversy_flag:  controversyFlag,
       controversy_ratio: controversyRatio,
       already_used:      alreadyUsed,
+      takenAt:           post.takenAt || 0,
+      velocity:          velocityOf(post),
+      age_hours:         ageHoursOf(post.takenAt),
     });
   }
 
@@ -702,6 +1039,10 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
     else if (/curiosidade|did you know|você sabia|amazing|incrível/.test(capLower)) content_category = 'curiosidades';
     else if (/invenção|invention|invented|inventor/.test(capLower)) content_category = 'invencoes';
 
+    const ageDays = c.age_hours !== null && c.age_hours !== undefined
+      ? Math.round(c.age_hours / 24 * 10) / 10
+      : null;
+
     final.push({
       index:           final.length,
       url:             c.url,
@@ -712,6 +1053,8 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       comments:        c.comments,
       originalCaption: c.originalCaption,
       viral_score:     c.preScore,
+      velocity:        c.velocity ?? null,
+      age_days:        ageDays,
       content_category,
       source:          c.source          || 'instagram',
       sourceUsername:  c.sourceUsername  || '',
@@ -719,10 +1062,16 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
       already_used:    c.already_used    || false,
     });
 
+    // Aprendizado: registra a performance desta conta para buscas futuras
+    recordIntoMap(learnedMap, c.sourceUsername, c.preScore, c.source || 'instagram');
+
     if (final.length >= 30) break;
   }
 
-  console.log(`[pipeline] ${final.length} resultados finais (sem GPT)`);
+  // Persiste o mapa de aprendizado atualizado (não bloqueia o retorno)
+  saveLearned(learnedMap).catch(e => console.warn('[learn] save falhou:', e.message));
+
+  console.log(`[pipeline] ${final.length} resultados finais (sem GPT) — ${Object.keys(learnedMap).length} contas no mapa de aprendizado`);
   return final;
 }
 
@@ -749,6 +1098,199 @@ router.post('/search', async (req, res) => {
     res.json({ results });
   } catch (e) {
     console.error('[contentFinder] search error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+const ALL_THEMES = ['ciencia', 'tecnologia', 'historia', 'espaco', 'china', 'engenharia', 'curiosidades', 'invencoes'];
+const VAULT_KEY      = 'vault:feed';
+const VAULT_META_KEY = 'vault:meta';
+const VAULT_MAX      = 60;                 // máximo de itens guardados no cofre
+const VAULT_TTL_MS   = 7 * 24 * 3600 * 1000; // descarta itens minerados há mais de 7 dias
+
+// GET /api/content-finder/feed — frontend lê o cofre pré-minerado
+router.get('/feed', async (req, res) => {
+  if (!vault.enabled()) {
+    return res.json({ results: [], meta: null, enabled: false });
+  }
+  try {
+    const [feed, meta, used] = await Promise.all([
+      vault.getJSON(VAULT_KEY).then(v => v || []),
+      vault.getJSON(VAULT_META_KEY),
+      loadUsedSet(),
+    ]);
+    // remove já-usados e reprovados pelo júri; mantém aprovados/avisos/pendentes
+    const results = feed
+      .filter(x => !used.has(x.url))
+      .filter(x => x.vetVerdict !== 'REJECTED')
+      .slice(0, 30);
+    res.json({ results, meta, enabled: true });
+  } catch (e) {
+    console.error('[feed] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/content-finder/mine — minerador autônomo (chamado pelo Vercel Cron)
+// Protegido por CRON_SECRET se configurado. Minera temas rotativos e enche o cofre.
+router.get('/mine', async (req, res) => {
+  // Autenticação: Vercel Cron envia "Authorization: Bearer <CRON_SECRET>"
+  if (process.env.CRON_SECRET) {
+    const auth = req.headers.authorization || '';
+    if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'não autorizado' });
+    }
+  }
+  if (!vault.enabled()) {
+    return res.status(503).json({ error: 'Cofre (Upstash) não configurado — defina UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN' });
+  }
+  if (!process.env.RAPIDAPI_KEY) {
+    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada' });
+  }
+
+  try {
+    // Temas rotativos: a cada janela de 6h, minera 3 temas diferentes,
+    // cobrindo todos os 8 ao longo do dia.
+    const bucket = Math.floor(Date.now() / (6 * 3600 * 1000));
+    const start  = (bucket * 3) % ALL_THEMES.length;
+    const themes = [0, 1, 2].map(i => ALL_THEMES[(start + i) % ALL_THEMES.length]);
+    console.log(`[mine] ciclo bucket=${bucket}, temas: ${themes.join(', ')}`);
+
+    const mined = await runSearch({ themes, minViews: 50000, minEngagement: 0, lang: 'any' });
+
+    // Mescla com o cofre existente, dedup por URL, mantém o dado mais fresco
+    const existing = (await vault.getJSON(VAULT_KEY)) || [];
+    const map = new Map(existing.map(x => [x.url, x]));
+    const now = Date.now();
+    for (const r of mined) {
+      map.set(r.url, { ...r, minedAt: now, themes });
+    }
+
+    const used = await loadUsedSet();
+    const ranked = [...map.values()]
+      .filter(x => (x.minedAt || 0) > now - VAULT_TTL_MS)   // expira itens velhos
+      .filter(x => !used.has(x.url))                         // remove já usados (persistente)
+      .sort((a, b) => (b.viral_score || 0) - (a.viral_score || 0));
+
+    // Diversidade de fontes: no máx PER_ACCOUNT por conta (evita cofre 90% @natgeo)
+    const PER_ACCOUNT = 5;
+    const perAcc = {};
+    const merged = [];
+    for (const item of ranked) {
+      const acc = item.sourceUsername || '?';
+      if ((perAcc[acc] || 0) >= PER_ACCOUNT) continue;
+      perAcc[acc] = (perAcc[acc] || 0) + 1;
+      merged.push(item);
+      if (merged.length >= VAULT_MAX) break;
+    }
+
+    await vault.setJSON(VAULT_KEY, merged);
+    await vault.setJSON(VAULT_META_KEY, {
+      updatedAt: now,
+      lastThemes: themes,
+      minedThisRun: mined.length,
+      vaultSize: merged.length,
+      distinctAccounts: Object.keys(perAcc).length,
+    });
+
+    console.log(`[mine] +${mined.length} minerados, cofre agora com ${merged.length} vídeos`);
+    res.json({ ok: true, themes, minedThisRun: mined.length, vaultSize: merged.length });
+  } catch (e) {
+    console.error('[mine] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+const VET_BATCH = 2; // vídeos vetados por execução (cabe nos 60s do Vercel)
+
+// GET /api/content-finder/vet — pré-veto autônomo: 100 personas analisam os
+// melhores vídeos ainda não vetados do cofre. Chamado por cron a cada ~15min.
+router.get('/vet', async (req, res) => {
+  if (process.env.CRON_SECRET) {
+    const auth = req.headers.authorization || '';
+    if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'não autorizado' });
+    }
+  }
+  if (!vault.enabled()) {
+    return res.status(503).json({ error: 'Cofre (Upstash) não configurado' });
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada' });
+  }
+
+  try {
+    const feed = (await vault.getJSON(VAULT_KEY)) || [];
+    // Pendentes: ainda não vetados, melhores (viral_score) primeiro
+    const pending = feed
+      .map((item, idx) => ({ item, idx }))
+      .filter(x => !x.item.vetted)
+      .sort((a, b) => (b.item.viral_score || 0) - (a.item.viral_score || 0))
+      .slice(0, VET_BATCH);
+
+    if (pending.length === 0) {
+      return res.json({ ok: true, vetted: 0, message: 'Nada pendente — cofre todo vetado' });
+    }
+
+    const startMs = Date.now();
+    let done = 0;
+    for (const { item, idx } of pending) {
+      if (Date.now() - startMs > 45000) break; // guarda de tempo (limite Vercel 60s)
+      try {
+        // 1. Gera headline/legenda + análise (se ainda não houver)
+        let headline = item.headline;
+        let caption  = item.caption;
+        let analysis = null;
+        if (!headline) {
+          analysis = await analyzeAndGenerate({
+            url:             item.url,
+            views:           item.views,
+            likes:           item.likes,
+            comments:        item.comments,
+            originalCaption: item.originalCaption,
+            sourceUsername:  item.sourceUsername,
+            source:          item.source,
+            controversy_flag: item.controversy_flag,
+          });
+          headline = analysis.headline || 'Reel incrível';
+          caption  = analysis.caption || '';
+        }
+
+        // 2. Júri de 100 personas
+        const jury = await runVettingJury(headline, item.originalCaption || '');
+
+        // 3. Grava o veredito de volta no item
+        feed[idx] = {
+          ...item,
+          headline,
+          caption,
+          quality_tier:      analysis?.quality_tier || item.quality_tier || null,
+          copyright_risk:    analysis?.copyright_risk || item.copyright_risk || null,
+          copyright_reasons: analysis?.copyright_reasons || item.copyright_reasons || [],
+          vetVerdict:        jury.verdict,
+          juryApprovalPct: jury.approvalPct,
+          juryReason:      jury.reason,
+          juryProblems:    jury.problems,
+          vetted:          true,
+          vettedAt:        Date.now(),
+        };
+        done++;
+        console.log(`[vet] ${item.url}: ${jury.verdict} (${jury.approvalPct}%)`);
+      } catch (e) {
+        const attempts = (item.vetAttempts || 0) + 1;
+        feed[idx] = { ...item, vetAttempts: attempts, vetted: attempts >= 3 };
+        console.warn(`[vet] falha (${attempts}/3) em ${item.url}: ${e.message}`);
+      }
+    }
+
+    await vault.setJSON(VAULT_KEY, feed);
+    const totalVetted = feed.filter(x => x.vetted).length;
+    const prevMeta = (await vault.getJSON(VAULT_META_KEY)) || {};
+    await vault.setJSON(VAULT_META_KEY, { ...prevMeta, vettedCount: totalVetted, lastVetAt: Date.now() });
+
+    res.json({ ok: true, vetted: done, totalVetted, vaultSize: feed.length });
+  } catch (e) {
+    console.error('[vet] erro:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -788,6 +1330,10 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
   }
 
+  let   copyrightRisk  = req.body.copyrightRisk || null;
+  let   copyrightReasons = [];
+  try { if (req.body.copyrightReasons) copyrightReasons = JSON.parse(req.body.copyrightReasons); } catch {}
+
   const templateBuf = req.file?.buffer || null;
   const sid         = crypto.randomUUID();
   const rawVideo    = path.join(os.tmpdir(), `${sid}_raw.mp4`);
@@ -818,7 +1364,9 @@ router.post('/approve', upload.single('template'), async (req, res) => {
         const analysis = await analyzeAndGenerate(candidate);
         headline = analysis.headline || 'Reel incrível';
         if (!caption?.trim()) caption = analysis.caption || '';
-        console.log(`[approve] headline gerada: "${headline}"`);
+        if (!copyrightRisk) copyrightRisk = analysis.copyright_risk || null;
+        if (analysis.copyright_reasons?.length) copyrightReasons = analysis.copyright_reasons;
+        console.log(`[approve] headline gerada: "${headline}" | copyright: ${copyrightRisk}`);
       } catch (e) {
         console.warn('[approve] analyzeAndGenerate falhou:', e.message);
         headline = 'Descubra isso agora';
@@ -848,19 +1396,16 @@ router.post('/approve', upload.single('template'), async (req, res) => {
       runMiniJury(headline.trim(), originalCaption || ''),
     ]);
 
-    // Mini-jury gating
-    if (juryResult.verdict === 'BLOCK') {
-      cleanTmp();
-      console.log(`[miniJury] BLOCK: ${juryResult.reason}`);
-      return res.json({ blocked: true, reason: juryResult.reason, juryResult });
-    }
-    if (juryResult.verdict === 'WARN') {
-      console.log(`[miniJury] WARN: ${juryResult.reason}`);
+    // O vídeo SEMPRE é entregue. A verificação séria (100 agentes) já foi feita
+    // no cofre ANTES da escolha. Aqui o mini-júri é apenas informativo — nunca bloqueia.
+    if (juryResult.verdict !== 'OK') {
+      console.log(`[miniJury] aviso (não bloqueia): ${juryResult.reason}`);
     }
 
-    const clipDur = Math.min(duration, 20).toFixed(3);
+    const clipDurNum = Math.min(duration, 20);
+    const clipDur    = clipDurNum.toFixed(3);
+
     let filterGraph;
-
     if (templateBuf) {
       filterGraph = [
         `[0:v]scale=${W}:-2,crop=${W}:${VIDEO_H}:0:(ih-${VIDEO_H})/2,setpts=PTS-STARTPTS[vid]`,
@@ -895,15 +1440,19 @@ router.post('/approve', upload.single('template'), async (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="reel_reciclado.mp4"');
     res.setHeader('X-Headline',          encodeURIComponent(headline || ''));
     res.setHeader('X-Caption',           encodeURIComponent(caption  || ''));
-    res.setHeader('X-Mini-Jury-Verdict', juryResult.verdict);
+    res.setHeader('X-Captions-Burned',   '0');
+    res.setHeader('X-Copyright-Risk',    copyrightRisk || 'desconhecido');
+    if (copyrightReasons.length) res.setHeader('X-Copyright-Reasons', encodeURIComponent(copyrightReasons.join(' · ')));
+    // BLOCK vira WARN (apenas aviso) — nunca impede o download
+    res.setHeader('X-Mini-Jury-Verdict', juryResult.verdict === 'BLOCK' ? 'WARN' : juryResult.verdict);
     res.setHeader('X-Mini-Jury-Stopped', `${juryResult.stopped}/${juryResult.total}`);
-    if (juryResult.verdict === 'WARN') {
+    if (juryResult.verdict !== 'OK') {
       res.setHeader('X-Mini-Jury-Reason', encodeURIComponent(juryResult.reason));
     }
 
-    // Mark this URL as used (dedup for future searches in this session)
+    // Marca URL como usada (dedup persistente — não reaparece em buscas futuras)
     const videoKey = postUrl || directUrl || '';
-    if (videoKey) usedVideoUrls.add(videoKey);
+    if (videoKey) markUsed(videoKey).catch(e => console.warn('[markUsed] falhou:', e.message));
 
     const stream = fs.createReadStream(output);
     stream.pipe(res);

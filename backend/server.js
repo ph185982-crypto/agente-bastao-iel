@@ -17,9 +17,9 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({
-  origin: true,
+  origin: ['https://nexos-paginas.netlify.app', 'http://localhost:5173', 'http://localhost:3000'],
   credentials: true,
-  exposedHeaders: ['X-Headline', 'X-Caption', 'X-Mini-Jury-Verdict', 'X-Mini-Jury-Stopped', 'X-Mini-Jury-Reason'],
+  exposedHeaders: ['X-Headline', 'X-Caption', 'X-Captions-Burned', 'X-Copyright-Risk', 'X-Copyright-Reasons', 'X-Mini-Jury-Verdict', 'X-Mini-Jury-Stopped', 'X-Mini-Jury-Reason'],
 }));
 
 app.use(express.json());
@@ -30,10 +30,11 @@ app.use('/api/ocr', require('./routes/ocr'));
 app.use('/api/analyze-print', require('./routes/analyzePrint'));
 app.use('/api/edit-reel', require('./routes/editReel'));
 app.use('/api/auto-reel', require('./routes/autoReel'));
-app.use('/api/generate', require('./routes/generate'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/content-finder', require('./routes/contentFinder'));
+app.use('/api/carousels', require('./routes/carousels'));
 app.use('/api/headline-jury', require('./routes/headlineJury'));
+app.use('/api/brain', require('./routes/brain'));
 
 app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })

@@ -1,19 +1,19 @@
 import { useState } from 'react'
 import Header from './components/Header'
-import AutoReel from './components/AutoReel'
-import AgentChat from './components/AgentChat'
 import ContentFinder from './components/ContentFinder'
+import Carousels from './components/Carousels'
 import HeadlineJury from './components/HeadlineJury'
+import Brain from './components/Brain'
 
 const TABS = [
-  { id: 'studio', label: '♻️ Studio' },
-  { id: 'reel',   label: 'Criar Reel' },
-  { id: 'jury',   label: '⚖️ Júri' },
-  { id: 'agent',  label: 'Agente IA' },
+  { id: 'brain',     label: '🧠 Cérebro' },
+  { id: 'studio',    label: '♻️ Studio' },
+  { id: 'carousels', label: '🖼️ Carrosséis' },
+  { id: 'jury',      label: '⚖️ Júri' },
 ]
 
 export default function App() {
-  const [tab, setTab] = useState('studio')
+  const [tab, setTab] = useState('brain')
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
@@ -37,21 +37,21 @@ export default function App() {
         </div>
       </div>
 
+      {tab === 'brain' && (
+        <main className="max-w-2xl mx-auto w-full px-4 py-10">
+          <Brain />
+        </main>
+      )}
+
       {tab === 'studio' && (
         <main className="max-w-2xl mx-auto w-full px-4 py-10">
           <ContentFinder />
         </main>
       )}
 
-      {tab === 'reel' && (
+      {tab === 'carousels' && (
         <main className="max-w-2xl mx-auto w-full px-4 py-10">
-          <div className="mb-8 text-center">
-            <h1 className="text-xl font-bold text-white mb-1">Criar Reel editado</h1>
-            <p className="text-sm text-gray-400">
-              Cole o link + envie o print → receba o MP4 pronto para postar
-            </p>
-          </div>
-          <AutoReel />
+          <Carousels />
         </main>
       )}
 
@@ -61,11 +61,6 @@ export default function App() {
         </main>
       )}
 
-      {tab === 'agent' && (
-        <div className="max-w-2xl mx-auto w-full px-4 flex-1 flex flex-col">
-          <AgentChat />
-        </div>
-      )}
     </div>
   )
 }
