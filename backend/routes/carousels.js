@@ -206,18 +206,31 @@ async function downloadPhotoBuffer(url, referer) {
   return Buffer.from(data);
 }
 
-// ── Google Imagens (Programmable Search / Custom Search JSON API) ─────────────
-// Busca FOTOS REAIS do acontecimento. Requer GOOGLE_API_KEY + GOOGLE_CSE_ID.
+// ── Serper.dev — Google Imagens sem billing ───────────────────────────────────
+// Busca FOTOS REAIS do acontecimento. Requer SERPER_API_KEY (grátis em serper.dev).
+async function fetchSerperImageUrls(query, want = 6) {
+  const key = process.env.SERPER_API_KEY;
+  if (!key) return [];
+  try {
+    const { data } = await axios.post('https://google.serper.dev/images',
+      { q: query, num: Math.min(10, want), safe: 'active' },
+      { headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' }, timeout: 10000 }
+    );
+    return (data.images || []).map(it => it.imageUrl).filter(Boolean);
+  } catch (e) {
+    console.warn('[serper-img]', e.response?.data?.message || e.message);
+    return [];
+  }
+}
+
+// ── Google Imagens (Programmable Search — requer billing no GCP) ─────────────
 async function fetchGoogleImageUrls(query, want = 6) {
   const key = process.env.GOOGLE_API_KEY;
   const cx  = process.env.GOOGLE_CSE_ID;
   if (!key || !cx) return [];
   try {
     const { data } = await axios.get('https://www.googleapis.com/customsearch/v1', {
-      params: {
-        key, cx, q: query, searchType: 'image',
-        num: Math.min(10, want), imgSize: 'huge', safe: 'active',
-      },
+      params: { key, cx, q: query, searchType: 'image', num: Math.min(10, want), imgSize: 'huge', safe: 'active' },
       timeout: 10000,
     });
     return (data.items || []).map(it => it.link).filter(Boolean);
@@ -250,10 +263,20 @@ async function collectPhotoBuffers(candidateUrls, n) {
   return out;
 }
 
-// Pega N fotos reais para uma notícia: tenta Google, completa com Pexels, valida tudo.
+// Pega N fotos reais: tenta Serper → Google → Pexels → gradiente.
 async function getStoryPhotos(query, pexelsFallback, n = 2) {
-  const googleUrls = await fetchGoogleImageUrls(query, 8);
-  let buffers = await collectPhotoBuffers(googleUrls, n);
+  // 1. Serper (Google Imagens, grátis sem billing)
+  const serperUrls = await fetchSerperImageUrls(query, 8);
+  let buffers = await collectPhotoBuffers(serperUrls, n);
+
+  // 2. Google CSE (se configurado)
+  if (buffers.length < n) {
+    const googleUrls = await fetchGoogleImageUrls(query, 8);
+    const more = await collectPhotoBuffers(googleUrls, n - buffers.length);
+    buffers = buffers.concat(more);
+  }
+
+  // 3. Pexels (banco de imagens genérico)
   if (buffers.length < n) {
     const px = await fetchPexelsPhoto(pexelsFallback || query);
     if (px) {
@@ -261,6 +284,7 @@ async function getStoryPhotos(query, pexelsFallback, n = 2) {
       buffers = buffers.concat(more);
     }
   }
+
   return buffers;
 }
 
