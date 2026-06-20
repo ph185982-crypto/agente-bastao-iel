@@ -104,6 +104,7 @@ export default function Carousels() {
   const [result,    setResult]    = useState(null)
   const [cloningUrl, setCloningUrl] = useState(null)
   const [copied,    setCopied]    = useState(false)
+  const [dlProgress, setDlProgress] = useState(null) // { current, total }
 
   // Boas Notícias
   const [newsHandle,    setNewsHandle]    = useState('')
@@ -184,12 +185,15 @@ export default function Carousels() {
   }
 
   async function downloadAll() {
+    if (!result?.slides?.length) return
     const items = result.slides.map(s => ({
       dataUrl: s.dataUrl,
       filename: `carrossel_tela_${String(s.index).padStart(2, '0')}.png`,
       mimeType: 'image/png',
     }))
-    await saveMultipleToGallery(items)
+    setDlProgress({ current: 0, total: items.length })
+    await saveMultipleToGallery(items, (current, total) => setDlProgress({ current, total }))
+    setDlProgress(null)
   }
 
   return (
@@ -312,9 +316,13 @@ export default function Carousels() {
 
           <SlideViewer slides={result.slides} />
 
-          <button onClick={downloadAll}
-            className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors">
-            ⬇️ Baixar todas as telas (.png)
+          <button onClick={downloadAll} disabled={!!dlProgress}
+            className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-600 hover:bg-green-500 disabled:opacity-70 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors">
+            {dlProgress && dlProgress.current > 0
+              ? `📥 Salvando ${dlProgress.current} de ${dlProgress.total}… toque em Salvar Imagem`
+              : dlProgress
+              ? '⏳ Preparando imagens…'
+              : '⬇️ Baixar todas as telas (.png)'}
           </button>
 
           <div className="grid grid-cols-4 gap-1.5">
