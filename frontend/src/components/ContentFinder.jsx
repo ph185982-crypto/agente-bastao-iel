@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { API_BASE } from '../utils/api'
+import { saveVideoToGallery } from '../utils/gallery'
 
 const THEME_OPTIONS = [
   { key: 'ciencia',      label: '🔬 Ciência' },
@@ -595,9 +596,15 @@ function CopyrightRow({ risk }) {
   return <p className={`text-xs ${s.cls}`}>{s.icon} {s.txt}</p>
 }
 
-function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJuryReason,
+function ReadyPhase({ videoBlobUrl, videoBlob, videoError, caption, miniJuryVerdict, miniJuryReason,
   appliedHeadline, copyrightRisk, onReset, onBackToResults }) {
   const [copied, setCopied] = useState(false)
+
+  async function handleDownloadVideo() {
+    if (!videoBlob && !videoBlobUrl) return
+    const blob = videoBlob || await fetch(videoBlobUrl).then(r => r.blob())
+    await saveVideoToGallery(blob, 'reel_pronto.mp4')
+  }
 
   function copyCaption() {
     navigator.clipboard.writeText(caption).then(() => {
@@ -639,10 +646,10 @@ function ReadyPhase({ videoBlobUrl, videoError, caption, miniJuryVerdict, miniJu
         )}
 
         {videoBlobUrl ? (
-          <a href={videoBlobUrl} download="reel_pronto.mp4"
+          <button onClick={handleDownloadVideo}
             className="flex items-center justify-center gap-2 w-full py-3.5 bg-green-600 hover:bg-green-500 text-white text-sm font-semibold rounded-xl transition-colors">
-            ⬇️ Baixar Reel (.mp4)
-          </a>
+            ⬇️ Salvar Reel na Galeria
+          </button>
         ) : (
           <p className="text-xs text-center text-red-400 py-2">
             {videoError || 'Erro ao gerar vídeo'}
@@ -691,6 +698,7 @@ export default function ContentFinder() {
 
   const [videoStatus,     setVideoStatus]     = useState('idle')
   const [videoBlobUrl,    setVideoBlobUrl]    = useState(null)
+  const [videoBlob,       setVideoBlob]       = useState(null)
   const [videoError,      setVideoError]      = useState('')
 
   const [miniJuryVerdict, setMiniJuryVerdict] = useState(null)
@@ -867,6 +875,7 @@ export default function ContentFinder() {
         if (copyright) setCopyrightRisk(copyright)
 
         const blob = await res.blob()
+        setVideoBlob(blob)
         setVideoBlobUrl(URL.createObjectURL(blob))
         setVideoStatus('done')
       } catch (e) {
@@ -1019,7 +1028,7 @@ export default function ContentFinder() {
 
       {phase === 'ready' && (
         <ReadyPhase
-          videoBlobUrl={videoBlobUrl} videoError={videoError}
+          videoBlobUrl={videoBlobUrl} videoBlob={videoBlob} videoError={videoError}
           caption={activeCaption}
           miniJuryVerdict={miniJuryVerdict} miniJuryReason={miniJuryReason}
           appliedHeadline={appliedHeadline} copyrightRisk={copyrightRisk}

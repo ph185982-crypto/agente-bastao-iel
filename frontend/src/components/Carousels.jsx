@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { API_BASE } from '../utils/api'
+import { saveToGallery } from '../utils/gallery'
 
 const THEME_OPTIONS = [
   { key: 'ciencia',      label: '🔬 Ciência' },
@@ -178,17 +179,14 @@ export default function Carousels() {
     }).catch(() => {})
   }
 
-  function downloadSlide(slide) {
-    const a = document.createElement('a')
-    a.href = slide.dataUrl
-    a.download = `carrossel_tela_${String(slide.index).padStart(2, '0')}.png`
-    document.body.appendChild(a); a.click(); a.remove()
+  async function downloadSlide(slide) {
+    await saveToGallery(slide.dataUrl, `carrossel_tela_${String(slide.index).padStart(2, '0')}.png`)
   }
 
   async function downloadAll() {
     for (const s of result.slides) {
-      downloadSlide(s)
-      await new Promise(r => setTimeout(r, 350)) // evita o browser bloquear downloads em massa
+      await saveToGallery(s.dataUrl, `carrossel_tela_${String(s.index).padStart(2, '0')}.png`)
+      await new Promise(r => setTimeout(r, 400))
     }
   }
 
