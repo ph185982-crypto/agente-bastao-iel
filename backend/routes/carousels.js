@@ -4,8 +4,10 @@
 // viral/conexão em PT-BR e o backend renderiza cada slide como imagem 1080x1350.
 require('../fontSetup');
 const express = require('express');
-const axios = require('axios');
-const sharp = require('sharp');
+const axios   = require('axios');
+const sharp   = require('sharp');
+const fs      = require('fs');
+const path    = require('path');
 const { OpenAI } = require('openai');
 
 const router = express.Router();
@@ -822,16 +824,27 @@ router.post('/generate-news', async (req, res) => {
       use.map(s => getStoryPhotos(s.photoQuery || s.keywords || s.headline, s.keywords, 2)
         .catch(e => { console.warn('[news photo]', e.message); return []; }))
     );
-    // Fotos da capa e do CTA (única cada)
-    const [coverSet, ctaSet] = await Promise.all([
-      getStoryPhotos('boas notícias mundo esperança pessoas felizes', 'happy hopeful people sunrise', 1).catch(() => []),
-      getStoryPhotos('pessoas felizes comunidade esperança rua', 'community people together happy street', 1).catch(() => []),
+    // Foto da capa — query dramática e chamativa
+    const COVER_QUERIES = [
+      'descoberta científica incrível planeta universo dramático',
+      'planeta terra vista espaço astronauta dramático',
+      'amanhecer montanha névoa dramático natureza impressionante',
+      'aurora boreal noite estrelada céu dramático',
+      'multidão pessoas cidade iluminada aérea dramático',
+    ];
+    const coverQuery = COVER_QUERIES[Math.floor(Math.random() * COVER_QUERIES.length)];
+    const [coverSet] = await Promise.all([
+      getStoryPhotos(coverQuery, 'dramatic earth space universe inspiring', 1).catch(() => []),
     ]);
+
+    // Imagem fixa do CTA (imagem artística salva no servidor)
+    const CTA_IMAGE_PATH = path.join(__dirname, '../assets/cta_image.png');
+    const ctaImageBuf = fs.existsSync(CTA_IMAGE_PATH) ? fs.readFileSync(CTA_IMAGE_PATH) : null;
 
     const COVER_HEADLINE = 'O QUE ACONTECEU DE BOM NO MUNDO E VOCÊ NÃO FICOU SABENDO';
     const CTA_HEADLINE   = `CANSADO DO FLUXO INFINITO DE NOTÍCIAS RUINS? ENTÃO SIGA ${handle}: AQUI VOCÊ ENCONTRARÁ HISTÓRIAS QUE DEVOLVEM A ESPERANÇA NO MUNDO E NAS PESSOAS`;
 
-    // 3. Renderiza: capa (foto única + overlay), notícias (sanduíche), CTA (foto única + overlay)
+    // 3. Renderiza: capa (foto chamativa + overlay), notícias (sanduíche), CTA (imagem fixa + overlay)
     const tasks = [];
     // Capa
     tasks.push(
@@ -858,11 +871,11 @@ router.post('/generate-news', async (req, res) => {
         }))()
       );
     });
-    // CTA
+    // CTA — imagem artística fixa
     tasks.push(
       (async () => {
-        const base = ctaSet[0]
-          ? await sharp(ctaSet[0]).resize(CW, CH, { fit: 'cover', position: 'center' }).grayscale().toBuffer().catch(() => sharp(Buffer.from(buildFallbackBg('humanidade'))).png().toBuffer())
+        const base = ctaImageBuf
+          ? await sharp(ctaImageBuf).resize(CW, CH, { fit: 'cover', position: 'top' }).toBuffer().catch(() => sharp(Buffer.from(buildFallbackBg('humanidade'))).png().toBuffer())
           : await sharp(Buffer.from(buildFallbackBg('humanidade'))).png().toBuffer();
         const overlay = buildNewsOverlay({ headline: CTA_HEADLINE, kind: 'cta', counter: `${total}/${total}`, handle: null });
         return { kind: 'cta', buf: await sharp(base).composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).png().toBuffer() };
