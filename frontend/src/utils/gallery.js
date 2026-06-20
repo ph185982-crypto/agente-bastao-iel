@@ -29,49 +29,38 @@ export async function saveToGallery(dataUrl, filename, mimeType = 'image/png') {
 // Salva VÁRIOS arquivos de uma só vez — iOS mostra "Salvar X Imagens" no Fotos
 export async function saveMultipleToGallery(items) {
   // items: [{ dataUrl, filename, mimeType? }]
+  const files = items.map(({ dataUrl, filename, mimeType = 'image/png' }) =>
+    new File([dataUrlToBlob(dataUrl)], filename, { type: mimeType })
+  )
 
-  // Converte todos para File de forma síncrona (sem fetch) — evita falha silenciosa no Safari
-  const files = items.map(({ dataUrl, filename, mimeType = 'image/png' }) => {
-    const blob = dataUrl.startsWith('data:') ? dataUrlToBlob(dataUrl) : null
-    if (!blob) return null
-    return new File([blob], filename, { type: mimeType })
-  }).filter(Boolean)
-
-  if (files.length === 0) return { success: false, method: 'none' }
-
-  // Tenta compartilhar todos de uma vez (iOS abre "Salvar X Imagens")
-  if (navigator.canShare && navigator.canShare({ files })) {
-    try {
-      await navigator.share({ files, title: 'Nexos Páginas' })
-      return { success: true, method: 'share-all' }
-    } catch (e) {
-      if (e.name === 'AbortError') return { success: true, method: 'share-all' }
-      console.warn('[gallery] share all failed, trying one-by-one:', e.message)
+  if (!navigator.share) {
+    // Desktop: download via <a>
+    for (const { dataUrl, filename } of items) {
+      const a = document.createElement('a')
+      a.href = dataUrl; a.download = filename
+      document.body.appendChild(a); a.click(); a.remove()
+      await new Promise(r => setTimeout(r, 400))
     }
+    return { success: true, method: 'download' }
   }
 
-  // Fallback: compartilhar um por um (iOS ainda salva no Fotos a cada vez)
-  if (navigator.canShare) {
+  // Tenta compartilhar todos de uma vez sem verificar canShare primeiro
+  // (canShare retorna false no iOS para lotes grandes, mas share funciona)
+  try {
+    await navigator.share({ files, title: 'Nexos Páginas' })
+    return { success: true, method: 'share-all' }
+  } catch (e) {
+    if (e.name === 'AbortError') return { success: true, method: 'share-all' }
+    // Lote muito grande — compartilha um por um
     for (const file of files) {
-      if (!navigator.canShare({ files: [file] })) continue
       try {
         await navigator.share({ files: [file], title: file.name })
-      } catch (e) {
-        if (e.name !== 'AbortError') console.warn('[gallery] share one failed:', e.message)
+      } catch (e2) {
+        if (e2.name === 'AbortError') break // usuário cancelou, para o loop
       }
-      await new Promise(r => setTimeout(r, 600))
     }
-    return { success: true, method: 'share-one-by-one' }
+    return { success: true, method: 'share-sequential' }
   }
-
-  // Fallback desktop: download via <a>
-  for (const item of items) {
-    const a = document.createElement('a')
-    a.href = item.dataUrl; a.download = item.filename
-    document.body.appendChild(a); a.click(); a.remove()
-    await new Promise(r => setTimeout(r, 400))
-  }
-  return { success: true, method: 'download' }
 }
 
 // Salva um blob de vídeo na galeria
