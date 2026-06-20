@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { API_BASE } from '../utils/api'
-import { saveToGallery } from '../utils/gallery'
+import { saveToGallery, saveMultipleToGallery } from '../utils/gallery'
 
 const THEME_OPTIONS = [
   { key: 'ciencia',      label: '🔬 Ciência' },
@@ -184,10 +184,12 @@ export default function Carousels() {
   }
 
   async function downloadAll() {
-    for (const s of result.slides) {
-      await saveToGallery(s.dataUrl, `carrossel_tela_${String(s.index).padStart(2, '0')}.png`)
-      await new Promise(r => setTimeout(r, 400))
-    }
+    const items = result.slides.map(s => ({
+      dataUrl: s.dataUrl,
+      filename: `carrossel_tela_${String(s.index).padStart(2, '0')}.png`,
+      mimeType: 'image/png',
+    }))
+    await saveMultipleToGallery(items)
   }
 
   return (
