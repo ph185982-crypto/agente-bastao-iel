@@ -32,6 +32,7 @@ app.use('/api/edit-reel', require('./routes/editReel'));
 app.use('/api/auto-reel', require('./routes/autoReel'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/content-finder', require('./routes/contentFinder'));
+app.use('/api/carousels', require('./routes/carousels'));
 app.use('/api/headline-jury', require('./routes/headlineJury'));
 app.use('/api/brain', require('./routes/brain'));
 

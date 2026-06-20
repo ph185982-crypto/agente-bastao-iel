@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import Header from './components/Header'
 import ContentFinder from './components/ContentFinder'
+import Carousels from './components/Carousels'
 import HeadlineJury from './components/HeadlineJury'
 import Brain from './components/Brain'
 
 const TABS = [
-  { id: 'brain',  label: '🧠 Cérebro' },
-  { id: 'studio', label: '♻️ Studio' },
-  { id: 'jury',   label: '⚖️ Júri' },
+  { id: 'brain',     label: '🧠 Cérebro' },
+  { id: 'studio',    label: '♻️ Studio' },
+  { id: 'carousels', label: '🖼️ Carrosséis' },
+  { id: 'jury',      label: '⚖️ Júri' },
 ]
 
 export default function App() {
