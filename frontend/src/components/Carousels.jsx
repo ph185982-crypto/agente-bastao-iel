@@ -100,9 +100,15 @@ export default function Carousels() {
 
   const [generating, setGenerating] = useState(false)
   const [genErr,    setGenErr]    = useState('')
-  const [result,    setResult]    = useState(null) // { topic, caption, handle, slides }
+  const [result,    setResult]    = useState(null)
   const [cloningUrl, setCloningUrl] = useState(null)
   const [copied,    setCopied]    = useState(false)
+
+  // Boas Notícias
+  const [newsHandle,    setNewsHandle]    = useState('')
+  const [newsGenerating, setNewsGenerating] = useState(false)
+  const [newsErr,       setNewsErr]       = useState('')
+
   const resultRef = useRef(null)
 
   function toggleTheme(k) {
@@ -149,6 +155,22 @@ export default function Carousels() {
     generate({ reference: item.caption, fromUrl: item.url })
   }
 
+  async function handleGenerateNews() {
+    setNewsGenerating(true); setNewsErr(''); setResult(null)
+    try {
+      const h = newsHandle.trim() || '@seuperfil'
+      const res = await fetch(`${API_BASE}/api/carousels/generate-news`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle: h }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erro ao gerar')
+      setResult(data)
+      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    } catch (e) { setNewsErr(e.message) }
+    finally { setNewsGenerating(false) }
+  }
+
   function copyCaption() {
     if (!result?.caption) return
     navigator.clipboard.writeText(result.caption).then(() => {
@@ -177,6 +199,38 @@ export default function Carousels() {
         <p className="text-sm text-gray-400">
           Busca carrosséis que viralizaram · cria os seus prontos para postar
         </p>
+      </div>
+
+      {/* Boas Notícias do Mundo */}
+      <div className="bg-gradient-to-br from-emerald-950/60 to-teal-950/60 border border-emerald-700/50 rounded-2xl p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <span className="text-2xl">🌍</span>
+          <div>
+            <p className="text-sm font-bold text-white">Boas Notícias do Mundo</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              IA busca acontecimentos positivos reais · fotos reais · pronto para viralizar
+            </p>
+          </div>
+        </div>
+        <input
+          type="text" value={newsHandle} onChange={e => setNewsHandle(e.target.value)}
+          placeholder="@seuperfil (para o CTA final)"
+          className="w-full bg-gray-800/80 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500"
+        />
+        <button onClick={handleGenerateNews} disabled={newsGenerating}
+          className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-bold rounded-xl transition-colors">
+          {newsGenerating ? '🔎 Buscando notícias e gerando slides…' : '🌍 Gerar Carrossel de Boas Notícias'}
+        </button>
+        {newsErr && <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{newsErr}</p>}
+        <p className="text-[11px] text-gray-600">
+          💡 Para fotos reais: adicione PEXELS_API_KEY no Vercel (gratuito em pexels.com/api). Sem a chave os slides usam fundo gradiente.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3 text-gray-700">
+        <div className="flex-1 border-t border-gray-800"/>
+        <span className="text-xs">ou crie um carrossel personalizado</span>
+        <div className="flex-1 border-t border-gray-800"/>
       </div>
 
       {/* Temas */}

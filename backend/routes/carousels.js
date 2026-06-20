@@ -172,6 +172,200 @@ async function renderSlide(slide, idx, total, handle) {
   return renderContent(slide, idx, total, handle);
 }
 
+// ── Pexels — fotos reais para slides ─────────────────────────────────────────
+async function fetchPexelsPhoto(query) {
+  const key = process.env.PEXELS_API_KEY;
+  if (!key) return null;
+  try {
+    const { data } = await axios.get('https://api.pexels.com/v1/search', {
+      params: { query, per_page: 8, orientation: 'portrait', size: 'large' },
+      headers: { Authorization: key },
+      timeout: 10000,
+    });
+    const photos = data.photos || [];
+    if (!photos.length) return null;
+    const pick = photos[Math.floor(Math.random() * photos.length)];
+    return pick.src.large2x || pick.src.large || pick.src.medium;
+  } catch (e) {
+    console.warn('[pexels]', e.message);
+    return null;
+  }
+}
+
+async function downloadPhotoBuffer(url) {
+  const { data } = await axios.get(url, {
+    responseType: 'arraybuffer',
+    timeout: 15000,
+    headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://www.pexels.com/' },
+  });
+  return Buffer.from(data);
+}
+
+// Gradiente fallback por categoria (quando não há Pexels)
+const CAT_COLORS = {
+  medicina:   ['#0c2461', '#0e40af'],
+  ciencia:    ['#1e1b4b', '#4338ca'],
+  tecnologia: ['#0c4a6e', '#0284c7'],
+  natureza:   ['#052e16', '#15803d'],
+  humanidade: ['#4a1942', '#7c3aed'],
+  espaco:     ['#1e0a3c', '#4c1d95'],
+  default:    ['#0b1020', '#1b2138'],
+};
+
+function buildFallbackBg(category) {
+  const [c1, c2] = CAT_COLORS[category || 'default'] || CAT_COLORS.default;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+    <defs>
+      <linearGradient id="fbg" x1="0" y1="0" x2="0.3" y2="1">
+        <stop offset="0" stop-color="${c1}"/>
+        <stop offset="1" stop-color="${c2}"/>
+      </linearGradient>
+      <radialGradient id="fgw" cx="0.5" cy="0.35" r="0.6">
+        <stop offset="0" stop-color="white" stop-opacity="0.06"/>
+        <stop offset="1" stop-color="white" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <rect width="${CW}" height="${CH}" fill="url(#fbg)"/>
+    <rect width="${CW}" height="${CH}" fill="url(#fgw)"/>
+  </svg>`;
+}
+
+async function buildPhotoBase(photoUrl, category) {
+  if (photoUrl) {
+    try {
+      const raw = await downloadPhotoBuffer(photoUrl);
+      return sharp(raw).resize(CW, CH, { fit: 'cover', position: 'center' }).toBuffer();
+    } catch (e) {
+      console.warn('[carousel] photo fail:', e.message);
+    }
+  }
+  return sharp(Buffer.from(buildFallbackBg(category))).png().toBuffer();
+}
+
+// SVG overlay: gradiente escuro + texto em CAIXA ALTA (estilo @intrafocun)
+function buildNewsOverlay({ headline, kind, counter, handle }) {
+  const isCover = kind === 'cover';
+  const isCta   = kind === 'cta';
+  const HPAD    = 80;
+  const textW   = CW - HPAD * 2;
+
+  const { fontSize, lines, lineH } = fitText(headline, {
+    maxFont:   isCover ? 88 : 72,
+    minFont:   isCover ? 52 : 42,
+    boxW:      textW,
+    boxH:      isCover ? 560 : 510,
+    charRatio: 0.58,
+    lineRatio: 1.30,
+  });
+
+  const blockH      = lines.length * lineH;
+  const handleSpace = (handle && !isCover) ? 58 : 0;
+  const bottomPad   = isCover ? 195 : 75;
+  const textBottom  = CH - bottomPad - handleSpace;
+  const textTopY    = textBottom - blockH;
+
+  const textEls = lines.map((ln, i) => {
+    const y = textTopY + i * lineH + fontSize * 0.82;
+    return `<text x="${CW / 2}" y="${y}" font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="bold" fill="white" text-anchor="middle" stroke="black" stroke-width="7" paint-order="stroke" letter-spacing="0.5">${escXml(ln)}</text>`;
+  }).join('\n');
+
+  const counterEl = counter
+    ? `<text x="${CW - 48}" y="76" font-family="${FONT_FAMILY}" font-size="38" font-weight="bold" fill="white" text-anchor="end" opacity="0.82">${escXml(counter)}</text>`
+    : '';
+
+  const pillEl = isCover ? (() => {
+    const pillW = 580; const pillH = 68; const rx = 34;
+    const px = (CW - pillW) / 2; const py = CH - 148;
+    return `<rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" rx="${rx}" fill="#6366f1" opacity="0.95"/>
+    <text x="${CW / 2}" y="${py + 47}" font-family="${FONT_FAMILY}" font-size="30" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="2">APENAS ARRASTE PRO LADO  →</text>`;
+  })() : '';
+
+  const handleEl = handle && !isCover
+    ? `<text x="${CW / 2}" y="${CH - 32}" font-family="${FONT_FAMILY}" font-size="30" font-weight="bold" fill="white" text-anchor="middle" opacity="0.55">${escXml(handle)}</text>`
+    : '';
+
+  const gDef = isCta
+    ? `<stop offset="0%" stop-color="black" stop-opacity="0.30"/>
+       <stop offset="50%" stop-color="black" stop-opacity="0.68"/>
+       <stop offset="100%" stop-color="black" stop-opacity="0.94"/>`
+    : isCover
+      ? `<stop offset="0%" stop-color="black" stop-opacity="0"/>
+         <stop offset="38%" stop-color="black" stop-opacity="0"/>
+         <stop offset="60%" stop-color="black" stop-opacity="0.72"/>
+         <stop offset="100%" stop-color="black" stop-opacity="0.95"/>`
+      : `<stop offset="0%" stop-color="black" stop-opacity="0"/>
+         <stop offset="42%" stop-color="black" stop-opacity="0"/>
+         <stop offset="62%" stop-color="black" stop-opacity="0.62"/>
+         <stop offset="100%" stop-color="black" stop-opacity="0.93"/>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+    <defs>
+      <linearGradient id="nov" x1="0" y1="0" x2="0" y2="1">
+        ${gDef}
+      </linearGradient>
+    </defs>
+    <rect width="${CW}" height="${CH}" fill="url(#nov)"/>
+    ${counterEl}
+    ${textEls}
+    ${pillEl}
+    ${handleEl}
+  </svg>`;
+}
+
+async function renderPhotoNewsSlide({ photoUrl, headline, kind, counter, handle, category }) {
+  const base    = await buildPhotoBase(photoUrl, category || 'default');
+  const overlay = buildNewsOverlay({ headline, kind, counter, handle });
+  return sharp(base)
+    .composite([{ input: Buffer.from(overlay), top: 0, left: 0 }])
+    .png()
+    .toBuffer();
+}
+
+// ── Geração de Boas Notícias (GPT) ───────────────────────────────────────────
+const NEWS_SYSTEM_PROMPT = `Você é um curador de BOAS NOTÍCIAS do mundo. Sua missão é apresentar acontecimentos positivos, inspiradores e REAIS — conquistas da humanidade que devolvem esperança.
+
+Foco: medicina, ciência, tecnologia, meio ambiente, animais, natureza, conquistas humanas.
+EVITE: política, guerra, economia, polêmica, fake news.
+
+Regras para manchetes:
+- Em CAIXA ALTA, em português do Brasil
+- Linguagem simples e popular — qualquer pessoa entende
+- Máximo 15 palavras
+- Factual, surpreendente e emocionalmente positiva
+- Formato: "[ACONTECIMENTO/CONQUISTA]: [DETALHE IMPACTANTE]"
+- Exemplos:
+  "UM AVANÇO HISTÓRICO: PRIMEIRA CÓRNEA IMPRESSA EM 3D RESTAUROU A VISÃO DE UM PACIENTE CEGO"
+  "CIENTISTAS DESENVOLVERAM REMÉDIO QUE ELIMINOU O CÂNCER DE SANGUE EM 100% DOS PACIENTES NO TESTE"
+  "BALEIA JUBARTE VOLTOU À COSTA DO BRASIL APÓS 10 ANOS — ESPÉCIE QUE ESTAVA QUASE EXTINTA"
+
+Para keywords (busca de foto no Pexels):
+- 3-4 palavras em INGLÊS descrevendo a cena visual relacionada
+- Específicas e fotogênicas
+- Exemplos: "doctor patient hospital healing", "whale ocean sea nature", "scientist laboratory research"
+
+Responda APENAS JSON:
+{
+  "stories": [
+    { "headline": "MANCHETE EM CAIXA ALTA", "keywords": "english photo search terms", "category": "medicina" },
+    ... 8 histórias de categorias variadas ...
+  ],
+  "caption": "legenda completa do post: 1ª linha gancho com emoji, 2-3 parágrafos curtos inspiradores, 5 hashtags em português no fim"
+}`;
+
+async function generateNewsStories({ handle }) {
+  const res = await getOpenAI().chat.completions.create({
+    model: 'gpt-4o',
+    temperature: 0.75,
+    response_format: { type: 'json_object' },
+    max_tokens: 2000,
+    messages: [
+      { role: 'system', content: NEWS_SYSTEM_PROMPT },
+      { role: 'user',   content: `Gere 8 boas notícias reais e variadas do mundo. O carrossel é do perfil ${handle}. Na caption mencione ${handle} e peça para seguir e salvar.` },
+    ],
+  });
+  return JSON.parse(res.choices[0].message.content || '{}');
+}
+
 // ── IG API (instagram120) ─────────────────────────────────────────────────────
 const IG120_HOST = 'instagram120.p.rapidapi.com';
 const IG120_KEY  = process.env.RAPIDAPI_KEY_IG120 || process.env.RAPIDAPI_KEY;
@@ -442,6 +636,67 @@ router.post('/generate', async (req, res) => {
     res.json({ topic: finalTopic, caption, handle, slides: rendered });
   } catch (e) {
     console.error('[carousels] generate error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/carousels/generate-news — Carrossel "Boas Notícias do Mundo"
+// Foto real (Pexels) + manchetes em CAIXA ALTA + gradiente escuro (estilo @intrafocun)
+router.post('/generate-news', async (req, res) => {
+  const { handle: rawHandle } = req.body || {};
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
+  }
+
+  let handle = (rawHandle || '@seuperfil').trim();
+  if (!handle.startsWith('@')) handle = '@' + handle;
+
+  try {
+    // 1. Gera notícias via GPT
+    const { stories = [], caption = '' } = await generateNewsStories({ handle });
+    const use = stories.slice(0, 8);
+    if (!use.length) throw new Error('IA não retornou notícias');
+
+    const total = use.length + 2; // capa + notícias + CTA
+
+    // 2. Busca fotos no Pexels em paralelo
+    const photoResults = await Promise.all([
+      fetchPexelsPhoto('hope world beautiful people inspiring portrait'),
+      ...use.map(s => fetchPexelsPhoto(s.keywords || 'inspiring people nature')),
+      fetchPexelsPhoto('community people together celebration happy street'),
+    ]);
+    const [coverPhoto, ...rest] = photoResults;
+    const ctaPhoto = rest.pop();
+    const storyPhotos = rest;
+
+    // 3. Monta specs de cada slide
+    const COVER_HEADLINE = 'O QUE ACONTECEU DE BOM NO MUNDO E VOCÊ NÃO FICOU SABENDO';
+    const CTA_HEADLINE   = `CANSADO DO FLUXO INFINITO DE NOTÍCIAS RUINS? ENTÃO SIGA ${handle}: AQUI VOCÊ ENCONTRARÁ HISTÓRIAS QUE DEVOLVEM A ESPERANÇA NO MUNDO E NAS PESSOAS`;
+
+    const specs = [
+      { kind: 'cover', headline: COVER_HEADLINE, photoUrl: coverPhoto, category: 'default', counter: null, handle: null },
+      ...use.map((s, i) => ({
+        kind: 'news', headline: s.headline, photoUrl: storyPhotos[i] || null,
+        category: s.category || 'default', counter: `${i + 2}/${total}`, handle,
+      })),
+      { kind: 'cta', headline: CTA_HEADLINE, photoUrl: ctaPhoto, category: 'humanidade', counter: `${total}/${total}`, handle: null },
+    ];
+
+    // 4. Renderiza todos em paralelo
+    const buffers = await Promise.all(specs.map(sp => renderPhotoNewsSlide(sp)));
+
+    res.json({
+      topic:   'Boas Notícias do Mundo',
+      caption,
+      handle,
+      slides:  specs.map((sp, i) => ({
+        index:   i + 1,
+        kind:    sp.kind,
+        dataUrl: `data:image/png;base64,${buffers[i].toString('base64')}`,
+      })),
+    });
+  } catch (e) {
+    console.error('[carousels] generate-news error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
