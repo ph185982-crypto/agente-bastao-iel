@@ -17,7 +17,13 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({
-  origin: ['https://nexos-paginas.netlify.app', 'http://localhost:5173', 'http://localhost:3000'],
+  origin: [
+    'https://nexos-paginas.netlify.app',
+    'https://nexos-paginas-frontend.vercel.app',
+    /\.vercel\.app$/,
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ],
   credentials: true,
   exposedHeaders: ['X-Headline', 'X-Caption', 'X-Captions-Burned', 'X-Copyright-Risk', 'X-Copyright-Reasons', 'X-Mini-Jury-Verdict', 'X-Mini-Jury-Stopped', 'X-Mini-Jury-Reason'],
 }));
