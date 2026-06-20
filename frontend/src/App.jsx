@@ -49,6 +49,12 @@ export default function App() {
         </main>
       )}
 
+      {tab === 'carousels' && (
+        <main className="max-w-2xl mx-auto w-full px-4 py-10">
+          <Carousels />
+        </main>
+      )}
+
       {tab === 'jury' && (
         <main className="max-w-2xl mx-auto w-full px-4 py-10">
           <HeadlineJury />
