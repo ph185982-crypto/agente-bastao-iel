@@ -192,13 +192,76 @@ async function fetchPexelsPhoto(query) {
   }
 }
 
-async function downloadPhotoBuffer(url) {
+async function downloadPhotoBuffer(url, referer) {
   const { data } = await axios.get(url, {
     responseType: 'arraybuffer',
-    timeout: 15000,
-    headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://www.pexels.com/' },
+    timeout: 12000,
+    maxContentLength: 25 * 1024 * 1024,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+      'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8',
+      ...(referer ? { Referer: referer } : {}),
+    },
   });
   return Buffer.from(data);
+}
+
+// ── Google Imagens (Programmable Search / Custom Search JSON API) ─────────────
+// Busca FOTOS REAIS do acontecimento. Requer GOOGLE_API_KEY + GOOGLE_CSE_ID.
+async function fetchGoogleImageUrls(query, want = 6) {
+  const key = process.env.GOOGLE_API_KEY;
+  const cx  = process.env.GOOGLE_CSE_ID;
+  if (!key || !cx) return [];
+  try {
+    const { data } = await axios.get('https://www.googleapis.com/customsearch/v1', {
+      params: {
+        key, cx, q: query, searchType: 'image',
+        num: Math.min(10, want), imgSize: 'huge', safe: 'active',
+      },
+      timeout: 10000,
+    });
+    return (data.items || []).map(it => it.link).filter(Boolean);
+  } catch (e) {
+    console.warn('[google-img]', e.response?.data?.error?.message || e.message);
+    return [];
+  }
+}
+
+// Valida uma URL: baixa e confirma que o sharp consegue decodificar a imagem.
+async function tryLoadImage(url) {
+  try {
+    const raw = await downloadPhotoBuffer(url);
+    const meta = await sharp(raw).metadata();
+    if (!meta.width || meta.width < 400) return null; // descarta thumbs minúsculas
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+// Retorna até `n` buffers de imagem válidos a partir de uma lista de candidatas.
+async function collectPhotoBuffers(candidateUrls, n) {
+  const out = [];
+  for (const u of candidateUrls) {
+    if (out.length >= n) break;
+    const buf = await tryLoadImage(u);
+    if (buf) out.push(buf);
+  }
+  return out;
+}
+
+// Pega N fotos reais para uma notícia: tenta Google, completa com Pexels, valida tudo.
+async function getStoryPhotos(query, pexelsFallback, n = 2) {
+  const googleUrls = await fetchGoogleImageUrls(query, 8);
+  let buffers = await collectPhotoBuffers(googleUrls, n);
+  if (buffers.length < n) {
+    const px = await fetchPexelsPhoto(pexelsFallback || query);
+    if (px) {
+      const more = await collectPhotoBuffers([px], n - buffers.length);
+      buffers = buffers.concat(more);
+    }
+  }
+  return buffers;
 }
 
 // Gradiente fallback por categoria (quando não há Pexels)
@@ -321,6 +384,71 @@ async function renderPhotoNewsSlide({ photoUrl, headline, kind, counter, handle,
     .toBuffer();
 }
 
+// ── Slide "sanduíche" (estilo @intrafocun) ───────────────────────────────────
+// Foto em cima + FAIXA BRANCA com texto preto em CAIXA ALTA + foto embaixo.
+async function renderSandwichSlide({ photoBuffers = [], headline, counter, handle, category }) {
+  const HMARGIN = 56;
+  const textW   = CW - HMARGIN * 2;
+
+  const fit = fitText((headline || '').toUpperCase(), {
+    maxFont: 56, minFont: 32, boxW: textW, boxH: 440, charRatio: 0.66, lineRatio: 1.18,
+  });
+
+  const bandPadV = 44;
+  const bandH    = Math.round(fit.lines.length * fit.lineH + bandPadV * 2);
+  const bandTop  = Math.max(360, Math.round(680 - bandH / 2)); // levemente acima do centro
+  const topH     = bandTop;
+  const botTop   = bandTop + bandH;
+  const botH     = CH - botTop;
+
+  // Prepara as duas fotos (cobre 1 ou 0 com gradiente da categoria)
+  let topBuf = photoBuffers[0] || null;
+  let botBuf = photoBuffers[1] || photoBuffers[0] || null;
+
+  const fallback = async (h) => sharp(Buffer.from(buildFallbackBg(category || 'default')))
+    .resize(CW, h, { fit: 'cover', position: 'top' }).png().toBuffer();
+
+  const topImg = topBuf
+    ? await sharp(topBuf).resize(CW, topH, { fit: 'cover', position: 'center' }).toBuffer().catch(() => fallback(topH))
+    : await fallback(topH);
+  const botImg = botBuf
+    ? await sharp(botBuf).resize(CW, botH, { fit: 'cover', position: 'center' }).toBuffer().catch(() => fallback(botH))
+    : await fallback(botH);
+
+  const textStartY = bandTop + bandPadV + fit.fontSize * 0.80;
+  const textEls = fit.lines.map((ln, i) =>
+    `<text x="${CW / 2}" y="${textStartY + i * fit.lineH}" font-family="${FONT_FAMILY}" font-size="${fit.fontSize}" font-weight="bold" fill="#0b0b0b" text-anchor="middle">${escXml(ln)}</text>`
+  ).join('\n');
+
+  // Badge contador no canto superior direito da foto de cima
+  const counterEl = counter ? (() => {
+    const r = 40, cx = CW - 60, cy = 64;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="black" opacity="0.55"/>
+    <text x="${cx}" y="${cy + 11}" font-family="${FONT_FAMILY}" font-size="30" font-weight="bold" fill="white" text-anchor="middle">${escXml(counter)}</text>`;
+  })() : '';
+
+  // Marca d'água discreta do handle no canto superior esquerdo
+  const handleEl = handle
+    ? `<text x="36" y="58" font-family="${FONT_FAMILY}" font-size="26" font-weight="bold" fill="white" opacity="0.85">${escXml(handle)}</text>`
+    : '';
+
+  const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+    <rect x="0" y="${bandTop}" width="${CW}" height="${bandH}" fill="#ffffff"/>
+    ${textEls}
+    ${counterEl}
+    ${handleEl}
+  </svg>`;
+
+  return sharp({ create: { width: CW, height: CH, channels: 3, background: '#ffffff' } })
+    .composite([
+      { input: topImg, top: 0, left: 0 },
+      { input: botImg, top: botTop, left: 0 },
+      { input: Buffer.from(overlay), top: 0, left: 0 },
+    ])
+    .png()
+    .toBuffer();
+}
+
 // ── Geração de Boas Notícias (GPT) ───────────────────────────────────────────
 const NEWS_SYSTEM_PROMPT = `Você é um curador de BOAS NOTÍCIAS do mundo. Sua missão é apresentar acontecimentos positivos, inspiradores e REAIS — conquistas da humanidade que devolvem esperança.
 
@@ -338,15 +466,20 @@ Regras para manchetes:
   "CIENTISTAS DESENVOLVERAM REMÉDIO QUE ELIMINOU O CÂNCER DE SANGUE EM 100% DOS PACIENTES NO TESTE"
   "BALEIA JUBARTE VOLTOU À COSTA DO BRASIL APÓS 10 ANOS — ESPÉCIE QUE ESTAVA QUASE EXTINTA"
 
-Para keywords (busca de foto no Pexels):
-- 3-4 palavras em INGLÊS descrevendo a cena visual relacionada
-- Específicas e fotogênicas
-- Exemplos: "doctor patient hospital healing", "whale ocean sea nature", "scientist laboratory research"
+Para "photoQuery" (busca de FOTO REAL do acontecimento no Google Imagens):
+- Termo de busca ESPECÍFICO que encontra a foto real da notícia
+- Pode ser em português ou inglês — use o que melhor acha a imagem real
+- Inclua nomes próprios, instituições, lugares quando houver
+- Exemplos: "3D printed cornea transplant patient", "coração artificial Carmat França", "vacina cocaína crack UFMG laboratório", "baleia jubarte costa Brasil"
+
+Para "keywords" (reserva genérica, caso não ache a foto real — banco de imagens):
+- 3-4 palavras em INGLÊS descrevendo a cena visual
+- Exemplos: "doctor patient hospital", "whale ocean sea", "scientist laboratory research"
 
 Responda APENAS JSON:
 {
   "stories": [
-    { "headline": "MANCHETE EM CAIXA ALTA", "keywords": "english photo search terms", "category": "medicina" },
+    { "headline": "MANCHETE EM CAIXA ALTA", "photoQuery": "busca da foto real", "keywords": "english stock terms", "category": "medicina" },
     ... 8 histórias de categorias variadas ...
   ],
   "caption": "legenda completa do post: 1ª linha gancho com emoji, 2-3 parágrafos curtos inspiradores, 5 hashtags em português no fim"
@@ -641,7 +774,8 @@ router.post('/generate', async (req, res) => {
 });
 
 // POST /api/carousels/generate-news — Carrossel "Boas Notícias do Mundo"
-// Foto real (Pexels) + manchetes em CAIXA ALTA + gradiente escuro (estilo @intrafocun)
+// Estilo @intrafocun: foto real (Google Imagens) em cima + faixa branca com
+// manchete em CAIXA ALTA + foto real embaixo. Capa e CTA são foto única.
 router.post('/generate-news', async (req, res) => {
   const { handle: rawHandle } = req.body || {};
   if (!process.env.OPENAI_API_KEY) {
@@ -659,40 +793,68 @@ router.post('/generate-news', async (req, res) => {
 
     const total = use.length + 2; // capa + notícias + CTA
 
-    // 2. Busca fotos no Pexels em paralelo
-    const photoResults = await Promise.all([
-      fetchPexelsPhoto('hope world beautiful people inspiring portrait'),
-      ...use.map(s => fetchPexelsPhoto(s.keywords || 'inspiring people nature')),
-      fetchPexelsPhoto('community people together celebration happy street'),
+    // 2. Busca 2 fotos REAIS por notícia (Google Imagens → fallback Pexels), em paralelo
+    const storyPhotoSets = await Promise.all(
+      use.map(s => getStoryPhotos(s.photoQuery || s.keywords || s.headline, s.keywords, 2)
+        .catch(e => { console.warn('[news photo]', e.message); return []; }))
+    );
+    // Fotos da capa e do CTA (única cada)
+    const [coverSet, ctaSet] = await Promise.all([
+      getStoryPhotos('boas notícias mundo esperança pessoas felizes', 'happy hopeful people sunrise', 1).catch(() => []),
+      getStoryPhotos('pessoas felizes comunidade esperança rua', 'community people together happy street', 1).catch(() => []),
     ]);
-    const [coverPhoto, ...rest] = photoResults;
-    const ctaPhoto = rest.pop();
-    const storyPhotos = rest;
 
-    // 3. Monta specs de cada slide
     const COVER_HEADLINE = 'O QUE ACONTECEU DE BOM NO MUNDO E VOCÊ NÃO FICOU SABENDO';
     const CTA_HEADLINE   = `CANSADO DO FLUXO INFINITO DE NOTÍCIAS RUINS? ENTÃO SIGA ${handle}: AQUI VOCÊ ENCONTRARÁ HISTÓRIAS QUE DEVOLVEM A ESPERANÇA NO MUNDO E NAS PESSOAS`;
 
-    const specs = [
-      { kind: 'cover', headline: COVER_HEADLINE, photoUrl: coverPhoto, category: 'default', counter: null, handle: null },
-      ...use.map((s, i) => ({
-        kind: 'news', headline: s.headline, photoUrl: storyPhotos[i] || null,
-        category: s.category || 'default', counter: `${i + 2}/${total}`, handle,
-      })),
-      { kind: 'cta', headline: CTA_HEADLINE, photoUrl: ctaPhoto, category: 'humanidade', counter: `${total}/${total}`, handle: null },
-    ];
+    // 3. Renderiza: capa (foto única + overlay), notícias (sanduíche), CTA (foto única + overlay)
+    const tasks = [];
+    // Capa
+    tasks.push(
+      (async () => {
+        const base = coverSet[0]
+          ? await sharp(coverSet[0]).resize(CW, CH, { fit: 'cover', position: 'center' }).toBuffer().catch(() => sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer())
+          : await sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer();
+        const overlay = buildNewsOverlay({ headline: COVER_HEADLINE, kind: 'cover', counter: null, handle: null });
+        return { kind: 'cover', buf: await sharp(base).composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).png().toBuffer() };
+      })()
+    );
+    // Notícias (sanduíche)
+    use.forEach((s, i) => {
+      tasks.push(
+        (async () => ({
+          kind: 'news',
+          buf: await renderSandwichSlide({
+            photoBuffers: storyPhotoSets[i] || [],
+            headline: s.headline,
+            counter: `${i + 2}/${total}`,
+            handle,
+            category: s.category || 'default',
+          }),
+        }))()
+      );
+    });
+    // CTA
+    tasks.push(
+      (async () => {
+        const base = ctaSet[0]
+          ? await sharp(ctaSet[0]).resize(CW, CH, { fit: 'cover', position: 'center' }).grayscale().toBuffer().catch(() => sharp(Buffer.from(buildFallbackBg('humanidade'))).png().toBuffer())
+          : await sharp(Buffer.from(buildFallbackBg('humanidade'))).png().toBuffer();
+        const overlay = buildNewsOverlay({ headline: CTA_HEADLINE, kind: 'cta', counter: `${total}/${total}`, handle: null });
+        return { kind: 'cta', buf: await sharp(base).composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).png().toBuffer() };
+      })()
+    );
 
-    // 4. Renderiza todos em paralelo
-    const buffers = await Promise.all(specs.map(sp => renderPhotoNewsSlide(sp)));
+    const rendered = await Promise.all(tasks);
 
     res.json({
       topic:   'Boas Notícias do Mundo',
       caption,
       handle,
-      slides:  specs.map((sp, i) => ({
+      slides:  rendered.map((r, i) => ({
         index:   i + 1,
-        kind:    sp.kind,
-        dataUrl: `data:image/png;base64,${buffers[i].toString('base64')}`,
+        kind:    r.kind,
+        dataUrl: `data:image/png;base64,${r.buf.toString('base64')}`,
       })),
     });
   } catch (e) {
