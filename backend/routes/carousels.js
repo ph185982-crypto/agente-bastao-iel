@@ -86,38 +86,111 @@ const DEFS = `
     </linearGradient>
   </defs>`;
 
-// ── Renderizadores de slide ───────────────────────────────────────────────────
-async function renderCover(slide, total, handle) {
-  const hook = fitText(slide.title || 'Você precisa ver isso', {
-    maxFont: 104, minFont: 54, boxW: CW - 2 * PAD, boxH: 640,
-  });
-  const blockH = hook.lines.length * hook.lineH;
-  const startY = (CH - blockH) / 2 - 20 + hook.fontSize * 0.8;
+// Cria imagem circular com canal alpha (para overlay "moeda")
+async function makeCircularImage(buf, diameter) {
+  const d = Math.round(diameter);
+  const r = Math.round(d / 2);
+  const mask = Buffer.from(
+    `<svg width="${d}" height="${d}"><circle cx="${r}" cy="${r}" r="${r - 1}" fill="white"/></svg>`
+  );
+  return sharp(buf)
+    .resize(d, d, { fit: 'cover', position: 'center' })
+    .ensureAlpha()
+    .composite([{ input: mask, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+}
 
-  const sub = (slide.subtitle || '').trim();
-  const subEls = sub
-    ? textBlock(wrapText(sub, 40), {
-        x: CW / 2, startY: startY + blockH + 24, lineH: 46, fontSize: 38,
-        fill: C.muted, weight: 'normal', anchor: 'middle',
-      })
+// ── Renderizadores de slide ───────────────────────────────────────────────────
+
+// ── Cover viral: foto de fundo + overlay circular + gradiente + texto ─────────
+async function renderViralCover({ slide, handle, bgBuf, circBuf }) {
+  const HPAD  = 82;
+  const textW = CW - HPAD * 2;
+  const title = String(slide.title || 'VOCÊ PRECISA VER ISSO').toUpperCase();
+
+  const fit = fitText(title, {
+    maxFont: 100, minFont: 56, boxW: textW, boxH: 480,
+    charRatio: 0.54, lineRatio: 1.22,
+  });
+  const blockH = fit.lines.length * fit.lineH;
+
+  // CTA pill at bottom
+  const pillH = 66;
+  const pillW = Math.min(CW - 2 * HPAD, 630);
+  const pillY = CH - 52 - pillH;
+
+  // Headline block just above the pill
+  const textStartY = pillY - 32 - blockH + fit.fontSize * 0.82;
+
+  // Subtitle (optional, above headline)
+  const sub = String(slide.subtitle || '').trim().toUpperCase();
+  const subLines = sub ? wrapText(sub, 52) : [];
+  const subEl = subLines.map((ln, i) =>
+    `<text x="${CW / 2}" y="${textStartY - (subLines.length - i) * 40 - 18}" font-family="${FONT_FAMILY}" font-size="33" font-weight="normal" fill="rgba(255,255,255,0.76)" text-anchor="middle" letter-spacing="0.5">${escXml(ln)}</text>`
+  ).join('');
+
+  const textEls = fit.lines.map((ln, i) =>
+    `<text x="${CW / 2}" y="${textStartY + i * fit.lineH}" font-family="${FONT_FAMILY}" font-size="${fit.fontSize}" font-weight="bold" fill="white" text-anchor="middle" stroke="black" stroke-width="8" paint-order="stroke" letter-spacing="1">${escXml(ln)}</text>`
+  ).join('');
+
+  const handleEl = handle
+    ? `<text x="${HPAD}" y="80" font-family="${FONT_FAMILY}" font-size="34" font-weight="bold" fill="white" opacity="0.90">${escXml(handle)}</text>`
     : '';
 
-  const pillText = 'ARRASTA PARA O LADO  →';
-  const pillW = pillText.length * 19 + 70;
-  const pillX = (CW - pillW) / 2;
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
-    ${DEFS}
-    <rect width="${CW}" height="${CH}" fill="url(#bg)"/>
-    <rect width="${CW}" height="${CH}" fill="url(#glow)"/>
-    <text x="${PAD}" y="110" font-family="${FONT_FAMILY}" font-size="36" font-weight="bold" fill="${C.accLt}">${escXml(handle)}</text>
-    <rect x="${PAD}" y="134" width="130" height="9" rx="4" fill="${C.accent}"/>
-    ${textBlock(hook.lines, { x: CW / 2, startY, lineH: hook.lineH, fontSize: hook.fontSize, fill: C.white, anchor: 'middle' })}
-    ${subEls}
-    <rect x="${pillX}" y="1208" width="${pillW}" height="68" rx="34" fill="${C.accent}"/>
-    <text x="${CW / 2}" y="1252" font-family="${FONT_FAMILY}" font-size="30" font-weight="bold" fill="${C.white}" text-anchor="middle" letter-spacing="1">${escXml(pillText)}</text>
+  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+    <defs>
+      <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"   stop-color="black" stop-opacity="0.10"/>
+        <stop offset="30%"  stop-color="black" stop-opacity="0"/>
+        <stop offset="52%"  stop-color="black" stop-opacity="0.05"/>
+        <stop offset="63%"  stop-color="black" stop-opacity="0.72"/>
+        <stop offset="100%" stop-color="black" stop-opacity="0.97"/>
+      </linearGradient>
+    </defs>
+    <rect width="${CW}" height="${CH}" fill="url(#grad)"/>
+    ${handleEl}
+    ${subEl}
+    ${textEls}
+    <rect x="${(CW - pillW) / 2}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH / 2}" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.55)" stroke-width="2"/>
+    <text x="${CW / 2}" y="${pillY + pillH / 2 + 12}" font-family="${FONT_FAMILY}" font-size="28" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="3">APENAS ARRASTE PRO LADO  →</text>
   </svg>`;
-  return sharp(Buffer.from(svg)).png().toBuffer();
+
+  // Background
+  let base;
+  if (bgBuf) {
+    base = await sharp(bgBuf)
+      .resize(CW, CH, { fit: 'cover', position: 'center' })
+      .toBuffer()
+      .catch(() => sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer());
+  } else {
+    base = await sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer();
+  }
+
+  // Composites: circular photo overlay + gradient+text overlay
+  const composites = [];
+
+  if (circBuf) {
+    try {
+      const CIRC_D = 270;
+      const BORDER = 10;
+      const TOT    = CIRC_D + BORDER * 2;
+      const circImg = await makeCircularImage(circBuf, CIRC_D);
+      const borderSvg = Buffer.from(
+        `<svg width="${TOT}" height="${TOT}"><circle cx="${TOT / 2}" cy="${TOT / 2}" r="${TOT / 2 - 3}" fill="none" stroke="white" stroke-width="${BORDER}"/></svg>`
+      );
+      const cLeft = CW - HPAD - CIRC_D - BORDER;
+      const cTop  = 80;
+      composites.push({ input: circImg,             top: cTop + BORDER, left: cLeft + BORDER });
+      composites.push({ input: borderSvg,           top: cTop,          left: cLeft });
+    } catch (e) {
+      console.warn('[cover] circular img failed:', e.message);
+    }
+  }
+
+  composites.push({ input: Buffer.from(overlaySvg), top: 0, left: 0 });
+
+  return sharp(base).composite(composites).png().toBuffer();
 }
 
 async function renderContent(slide, idx, total, handle) {
@@ -168,9 +241,15 @@ async function renderCta(slide, handle) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-async function renderSlide(slide, idx, total, handle) {
-  if (slide.kind === 'cover') return renderCover(slide, total, handle);
-  if (slide.kind === 'cta')   return renderCta(slide, handle);
+async function renderSlide(slide, idx, total, handle, coverPhotos) {
+  if (slide.kind === 'cover') {
+    return renderViralCover({
+      slide, handle,
+      bgBuf:   (coverPhotos && coverPhotos[0]) || null,
+      circBuf: (coverPhotos && coverPhotos[1]) || null,
+    });
+  }
+  if (slide.kind === 'cta') return renderCta(slide, handle);
   return renderContent(slide, idx, total, handle);
 }
 
@@ -413,7 +492,7 @@ async function renderPhotoNewsSlide({ photoUrl, headline, kind, counter, handle,
 // ── Slide "sanduíche" (estilo @intrafocun) ───────────────────────────────────
 // Foto em cima + FAIXA BRANCA com texto preto em CAIXA ALTA + foto embaixo.
 async function renderSandwichSlide({ photoBuffers = [], headline, counter, handle, category }) {
-  const HMARGIN = 56;
+  const HMARGIN = 76;
   const textW   = CW - HMARGIN * 2;
 
   const fit = fitText((headline || '').toUpperCase(), {
@@ -701,6 +780,33 @@ async function generateCarouselContent({ theme, topic, reference, slideCount = 7
   return { topic: parsed.topic || topic || theme || '', caption: parsed.caption || '', slides };
 }
 
+// ── Revisão de design pela IA ─────────────────────────────────────────────────
+async function reviewCarouselDesign({ slides, topic }) {
+  const content = slides.map((s, i) =>
+    `Tela ${i + 1} (${s.kind}): ${[s.title, s.subtitle, s.body].filter(Boolean).join(' | ')}`
+  ).join('\n');
+
+  try {
+    const res = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+      max_tokens: 500,
+      messages: [
+        {
+          role: 'system',
+          content: `Você é um designer expert em carrosséis virais do Instagram. Analise o conteúdo de um carrossel e avalie seu potencial de engajamento. Seja direto. Responda APENAS JSON:
+{"score":7,"hook":"forte","positives":["ponto 1","ponto 2"],"improvements":["sugestão 1","sugestão 2"],"verdict":"frase curta resumindo o potencial"}`
+        },
+        { role: 'user', content: `Tema: ${topic}\n\n${content}` }
+      ],
+    });
+    return JSON.parse(res.choices[0].message.content || '{}');
+  } catch {
+    return null;
+  }
+}
+
 // ── Rotas ─────────────────────────────────────────────────────────────────────
 
 // POST /api/carousels/search — encontra carrosséis virais (inspiração)
@@ -780,19 +886,26 @@ router.post('/generate', async (req, res) => {
       await generateCarouselContent({ theme, topic, reference, slideCount, handle });
 
     const total = slides.length;
-    // Renderiza todas as telas em paralelo
+    const photoQuery = finalTopic || topic || theme || 'dramatic inspiring nature landscape';
+
+    // Fetch cover photos and run AI review in parallel (non-blocking)
+    const [coverPhotos, review] = await Promise.all([
+      getStoryPhotos(photoQuery, 'dramatic nature landscape inspiring', 2).catch(() => []),
+      reviewCarouselDesign({ slides, topic: finalTopic }).catch(() => null),
+    ]);
+
     const buffers = await Promise.all(
-      slides.map((s, i) => renderSlide(s, i + 1, total, handle))
+      slides.map((s, i) => renderSlide(s, i + 1, total, handle, coverPhotos))
     );
 
     const rendered = slides.map((s, i) => ({
-      index: i + 1,
-      kind:  s.kind,
-      title: s.title || '',
+      index:   i + 1,
+      kind:    s.kind,
+      title:   s.title || '',
       dataUrl: `data:image/png;base64,${buffers[i].toString('base64')}`,
     }));
 
-    res.json({ topic: finalTopic, caption, handle, slides: rendered });
+    res.json({ topic: finalTopic, caption, handle, slides: rendered, review });
   } catch (e) {
     console.error('[carousels] generate error:', e.message);
     res.status(500).json({ error: e.message });
@@ -850,10 +963,32 @@ router.post('/generate-news', async (req, res) => {
     tasks.push(
       (async () => {
         const base = coverSet[0]
-          ? await sharp(coverSet[0]).resize(CW, CH, { fit: 'cover', position: 'center' }).toBuffer().catch(() => sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer())
+          ? await sharp(coverSet[0]).resize(CW, CH, { fit: 'cover', position: 'center' }).toBuffer()
+              .catch(() => sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer())
           : await sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer();
+
         const overlay = buildNewsOverlay({ headline: COVER_HEADLINE, kind: 'cover', counter: null, handle: null });
-        return { kind: 'cover', buf: await sharp(base).composite([{ input: Buffer.from(overlay), top: 0, left: 0 }]).png().toBuffer() };
+        const composites = [{ input: Buffer.from(overlay), top: 0, left: 0 }];
+
+        // Circular overlay from first story photo
+        const firstStoryPhoto = storyPhotoSets[0]?.[0];
+        if (firstStoryPhoto) {
+          try {
+            const CIRC_D = 270; const BORDER = 10; const TOT = CIRC_D + BORDER * 2;
+            const circImg = await makeCircularImage(firstStoryPhoto, CIRC_D);
+            const borderSvg = Buffer.from(
+              `<svg width="${TOT}" height="${TOT}"><circle cx="${TOT/2}" cy="${TOT/2}" r="${TOT/2-3}" fill="none" stroke="white" stroke-width="${BORDER}"/></svg>`
+            );
+            const HPAD = 82;
+            const cLeft = CW - HPAD - CIRC_D - BORDER;
+            const cTop  = 80;
+            composites.unshift({ input: circImg,    top: cTop + BORDER, left: cLeft + BORDER });
+            composites.unshift({ input: borderSvg,  top: cTop,          left: cLeft });
+          } catch (e) { console.warn('[news cover] circular img:', e.message); }
+        }
+
+        const buf = await sharp(base).composite(composites).png().toBuffer();
+        return { kind: 'cover', buf };
       })()
     );
     // Notícias (sanduíche)

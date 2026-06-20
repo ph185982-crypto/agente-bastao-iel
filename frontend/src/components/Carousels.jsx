@@ -346,6 +346,49 @@ export default function Carousels() {
               </button>
             </div>
           )}
+
+          {result.review && (
+            <div className="bg-gray-800/50 border border-indigo-700/30 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-indigo-300">🎨 Designer IA</p>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                    result.review.score >= 8 ? 'bg-green-900/60 text-green-300' :
+                    result.review.score >= 6 ? 'bg-yellow-900/60 text-yellow-300' :
+                    'bg-red-900/60 text-red-300'
+                  }`}>{result.review.score}/10</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                    result.review.hook === 'forte' ? 'border-green-700/60 text-green-400' :
+                    result.review.hook === 'médio' ? 'border-yellow-700/60 text-yellow-400' :
+                    'border-red-700/60 text-red-400'
+                  }`}>gancho {result.review.hook}</span>
+                </div>
+              </div>
+              {result.review.verdict && (
+                <p className="text-xs text-gray-300 italic">"{result.review.verdict}"</p>
+              )}
+              {result.review.positives?.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-semibold text-green-400 mb-1">Pontos fortes</p>
+                  <ul className="space-y-0.5">
+                    {result.review.positives.map((p, i) => (
+                      <li key={i} className="text-[11px] text-gray-400 flex gap-1.5"><span className="text-green-500">✓</span>{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {result.review.improvements?.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-semibold text-yellow-400 mb-1">Sugestões</p>
+                  <ul className="space-y-0.5">
+                    {result.review.improvements.map((p, i) => (
+                      <li key={i} className="text-[11px] text-gray-400 flex gap-1.5"><span className="text-yellow-500">→</span>{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
