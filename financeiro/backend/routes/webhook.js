@@ -15,29 +15,48 @@ router.get('/', (req, res) => {
 
 // Recebe mensagens
 router.post('/', async (req, res) => {
-  res.sendStatus(200); // responde imediatamente para evitar retry do Meta
-
   try {
     const entry = req.body?.entry?.[0];
     const change = entry?.changes?.[0]?.value;
-    if (!change?.messages?.length) return;
+
+    if (!change?.messages?.length) {
+      return res.sendStatus(200);
+    }
 
     const msg = change.messages[0];
     const from = msg.from;
     const msgId = msg.id;
 
-    await markRead(msgId);
-    await ensureUser(from, change.contacts?.[0]?.profile?.name);
+    // Processar antes de responder (Vercel encerra função após res.send)
+    // Timeout de segurança: responde 200 em 18s mesmo que não termine
+    const timeout = setTimeout(() => {
+      if (!res.headersSent) res.sendStatus(200);
+    }, 18000);
 
-    if (msg.type === 'image') {
-      await handleImage(from, msg.image);
-    } else if (msg.type === 'text') {
-      await handleText(from, msg.text.body, msgId);
-    } else {
-      await sendText(from, 'Entendo apenas fotos de comprovantes e mensagens de texto por enquanto. 😊');
+    try {
+      await markRead(msgId);
+      await ensureUser(from, change.contacts?.[0]?.profile?.name);
+
+      if (msg.type === 'image') {
+        await handleImage(from, msg.image);
+      } else if (msg.type === 'text') {
+        await handleText(from, msg.text.body, msgId);
+      } else {
+        await sendText(from, 'Entendo apenas fotos de comprovantes e mensagens de texto. 😊');
+      }
+    } catch (err) {
+      console.error('Webhook processing error:', err?.message || err);
+      try {
+        await sendText(from, 'Tive um problema aqui. Pode tentar novamente? 🙏');
+      } catch (_) {}
+    } finally {
+      clearTimeout(timeout);
     }
+
+    if (!res.headersSent) res.sendStatus(200);
   } catch (err) {
-    console.error('Webhook error:', err);
+    console.error('Webhook fatal error:', err?.message || err);
+    if (!res.headersSent) res.sendStatus(200);
   }
 });
 
