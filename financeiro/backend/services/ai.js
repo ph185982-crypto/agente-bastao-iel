@@ -10,9 +10,9 @@ Use emojis com moderação para facilitar a leitura.`;
 async function extractFromReceipt(imageBuffer, mimeType) {
   const base64 = imageBuffer.toString('base64');
   const resp = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
     response_format: { type: 'json_object' },
-    max_tokens: 500,
+    max_tokens: 400,
     messages: [
       {
         role: 'system',

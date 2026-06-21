@@ -73,37 +73,45 @@ async function getUser(phone) {
 }
 
 async function handleImage(from, image) {
-  // Paralelizar aviso + download para ganhar ~0.5s dentro do limite de 10s do Vercel
-  const [, { buffer, mimeType }] = await Promise.all([
-    sendText(from, '🔍 Lendo seu comprovante...'),
-    downloadMedia(image.id),
-  ]);
-  const extracted = await extractFromReceipt(buffer, mimeType);
+  let step = 'download';
+  try {
+    const [, { buffer, mimeType }] = await Promise.all([
+      sendText(from, '🔍 Lendo seu comprovante...'),
+      downloadMedia(image.id),
+    ]);
 
-  if (extracted.confianca === 'baixa') {
-    await sendText(from, '⚠️ Não consegui ler bem este comprovante. Pode mandar uma foto mais nítida ou me dizer o valor manualmente?');
-    return;
+    step = 'gpt';
+    const extracted = await extractFromReceipt(buffer, mimeType);
+
+    if (extracted.confianca === 'baixa') {
+      await sendText(from, '⚠️ Não consegui ler bem este comprovante. Pode mandar uma foto mais nítida ou me dizer o valor manualmente?');
+      return;
+    }
+
+    step = 'salvar';
+    const user = await getUser(from);
+    const { error } = await supabase.from('transactions').insert({
+      user_id: user.id,
+      tipo: extracted.tipo,
+      valor: extracted.valor,
+      data: extracted.data,
+      descricao: extracted.descricao,
+      categoria: extracted.categoria,
+      origem: 'comprovante',
+    });
+
+    if (error) throw error;
+
+    const emoji = extracted.tipo === 'receita' ? '✅' : '💸';
+    const tipoStr = extracted.tipo === 'receita' ? 'Receita' : 'Despesa';
+    await sendText(
+      from,
+      `${emoji} *${tipoStr} registrada!*\n💰 R$ ${Number(extracted.valor).toFixed(2)}\n📝 ${extracted.descricao}\n🏷️ ${extracted.categoria}\n📅 ${formatDate(extracted.data)}`
+    );
+  } catch (err) {
+    console.error(`handleImage erro em [${step}]:`, err?.message || err);
+    await sendText(from, `❌ Erro ao processar imagem (etapa: ${step}). Tente novamente ou me diga o valor manualmente.`);
   }
-
-  const user = await getUser(from);
-  const { error } = await supabase.from('transactions').insert({
-    user_id: user.id,
-    tipo: extracted.tipo,
-    valor: extracted.valor,
-    data: extracted.data,
-    descricao: extracted.descricao,
-    categoria: extracted.categoria,
-    origem: 'comprovante',
-  });
-
-  if (error) throw error;
-
-  const emoji = extracted.tipo === 'receita' ? '✅' : '💸';
-  const tipoStr = extracted.tipo === 'receita' ? 'Receita' : 'Despesa';
-  await sendText(
-    from,
-    `${emoji} *${tipoStr} registrada!*\n💰 R$ ${Number(extracted.valor).toFixed(2)}\n📝 ${extracted.descricao}\n🏷️ ${extracted.categoria}\n📅 ${formatDate(extracted.data)}`
-  );
 }
 
 async function handleText(from, text, msgId) {
