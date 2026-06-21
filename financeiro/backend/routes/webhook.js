@@ -73,9 +73,11 @@ async function getUser(phone) {
 }
 
 async function handleImage(from, image) {
-  await sendText(from, '🔍 Lendo seu comprovante...');
-
-  const { buffer, mimeType } = await downloadMedia(image.id);
+  // Paralelizar aviso + download para ganhar ~0.5s dentro do limite de 10s do Vercel
+  const [, { buffer, mimeType }] = await Promise.all([
+    sendText(from, '🔍 Lendo seu comprovante...'),
+    downloadMedia(image.id),
+  ]);
   const extracted = await extractFromReceipt(buffer, mimeType);
 
   if (extracted.confianca === 'baixa') {

@@ -12,6 +12,7 @@ async function extractFromReceipt(imageBuffer, mimeType) {
   const resp = await openai.chat.completions.create({
     model: 'gpt-4o',
     response_format: { type: 'json_object' },
+    max_tokens: 500,
     messages: [
       {
         role: 'system',
@@ -33,7 +34,7 @@ Retorne SOMENTE JSON com os campos:
         role: 'user',
         content: [
           { type: 'text', text: 'Extraia os dados financeiros deste comprovante.' },
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' } },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'low' } },
         ],
       },
     ],
