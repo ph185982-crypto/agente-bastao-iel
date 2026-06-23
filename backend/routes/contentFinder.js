@@ -178,83 +178,95 @@ const withTimeout = (p, ms) =>
 
 // ── Agent 1 — Buscador por contas-semente ────────────────────────────────────
 
-// Contas Instagram curadas por tema — foco em canais internacionais que
-// viralizam no exterior e têm alto potencial de ressonância no Brasil.
-// Prioridade: documentário, ciência, história, tecnologia, espaço, natureza.
+// Contas Instagram curadas por tema — foco em empreendedorismo, vendas e marketing digital.
 const SEED_ACCOUNTS = {
-  ciencia: [
-    'natgeo', 'natgeovideo', 'bbcearth', 'sciencechannel', 'discovery',
-    'smithsonian', 'newscientist', 'howstuffworks', 'sciencenews', 'popsci',
+  empreendedorismo: [
+    'sebrae', 'exame', 'revistapegn', 'endeavorbrasil', 'startups',
+    'flavioaugustoo', 'thiago.finch', 'coachdevendas', 'jorgelenilson', 'empreender.se',
   ],
-  tecnologia: [
-    'mrwhosetheboss', 'hashem.alghaili', 'interestingengineering',
-    'futurism', 'tech', 'verge', 'wired', 'techinsider', 'cnet',
+  vendas: [
+    'thiago.finch', 'isaacpilhado', 'ricardoghisleni', 'jordaovendas',
+    'tecnicasdevendas', 'vendamaisoficial', 'mestreasvendas', 'expertodevendas',
   ],
-  historia: [
-    'natgeo', 'natgeovideo', 'history', 'smithsonian', 'discovery',
-    'dw_stories', 'ancientworld.official', 'historyinpics', 'old_pictures',
+  marketing: [
+    'neilpatel', 'rockcontent', 'resultadosdigitais', 'mlabs.com.br',
+    'socialmediaclub', 'hubspot', 'digitalmarketer', 'marketingbrasil',
   ],
-  espaco: [
-    'nasa', 'spacex', 'europeanspaceagency', 'hubbletelescope',
-    'natgeospace', 'universetoday', 'jwstfeed', 'astronomyfeed',
+  mindset: [
+    'brendonburchard', 'tonyrobbinsofficial', 'jairoborzino',
+    'mindsetsucesso', 'motivacaobr', 'mentalidaderica', 'danielpenin',
   ],
-  china: [
-    'cgtn', 'natgeo', 'discovery', 'interestingengineering',
-    'techinsider', 'futurism', 'dw_stories',
+  financeiro: [
+    'meupoderio', 'saldopositivo', 'conteudofinanceiro', 'ynvestidor',
+    'educacaofinanceiraoficial', 'guardadinheiro', 'primeiropasso.fi', 'inversa.org',
   ],
-  engenharia: [
-    'interestingengineering', 'hashem.alghaili', 'futurism',
-    'theawesomer', 'engineeringvideos', 'engineeringexplained', 'simplyexplained',
+  produtividade: [
+    'aliabdaal', 'thomasfrankproject', 'habitos.io',
+    'producaointeligente', 'focoempauta', 'liderancabr', 'produtividadebr',
   ],
-  curiosidades: [
-    'natgeo', 'bbcearth', 'discovery', 'unilad', 'didyouknowpage',
-    'facts.feed', 'mindblowinguniversefacts', 'todayilearned.ig', 'earthpix',
+  negocios: [
+    'sebrae', 'exame', 'revistapegn', 'startups', 'endeavorbrasil',
+    'g1economia', 'meiofio', 'conexaostartupio', 'empreendaaora',
   ],
-  invencoes: [
-    'interestingengineering', 'futurism', 'hashem.alghaili',
-    'techinsider', 'gadgetsguru', 'inventionsdaily', 'coolthingsfeed',
+  lideranca: [
+    'simonsinekbr', 'gestaodelideranca', 'liderancabr',
+    'coachingelideranca', 'paulomesquita.lider', 'marcelloortega.oficial', 'kleberbiehl',
   ],
 };
 
-// Keywords de busca no TikTok por tema
-// Palavras-chave TikTok — foco em conteúdo documental/viral do exterior
-// que já explodiu em views e tem potencial de ressonância no Brasil.
+// Keywords de busca no TikTok por tema — nicho empreendedorismo/vendas/marketing
 const TIKTOK_KEYWORDS = {
-  ciencia:      ['science viral', 'nature documentary', 'science mind blowing', 'wild animal attack', 'incredible science'],
-  tecnologia:   ['technology mind blowing', 'future tech', 'amazing invention 2024', 'tech you wont believe'],
-  historia:     ['history documentary', 'ancient civilizations', 'historical facts', 'history you never knew', 'world war secret'],
-  espaco:       ['space discovery', 'nasa footage', 'universe mind blowing', 'black hole real', 'space documentary'],
-  china:        ['china mega project', 'china technology amazing', 'china you wont believe', 'chinese engineering'],
-  engenharia:   ['mega construction', 'engineering marvels', 'how its made', 'impossible engineering', 'biggest machines'],
-  curiosidades: ['mind blowing facts', 'did you know viral', 'facts that change everything', 'you wont believe this'],
-  invencoes:    ['incredible invention', 'genius gadget', 'invention that changed world', 'amazing technology'],
+  empreendedorismo: ['empreendedorismo dicas', 'como empreender do zero', 'negócio próprio', 'empreendedor sucesso', 'abrir empresa'],
+  vendas:           ['técnica de vendas', 'como vender mais', 'fechamento de vendas', 'script de vendas', 'aumentar vendas'],
+  marketing:        ['marketing digital dicas', 'tráfego pago', 'estratégia instagram', 'copywriting dicas', 'funil de vendas'],
+  mindset:          ['mindset empreendedor', 'mentalidade de sucesso', 'hábitos milionário', 'crescimento pessoal', 'mindset rico'],
+  financeiro:       ['inteligência financeira', 'como ganhar dinheiro', 'renda extra online', 'independência financeira', 'educação financeira'],
+  produtividade:    ['produtividade hacks', 'rotina de sucesso', 'gestão de tempo', 'foco e disciplina', 'hábitos produtivos'],
+  negocios:         ['modelo de negócio', 'como escalar empresa', 'empresa lucrativa', 'negócio online', 'lucro empresarial'],
+  lideranca:        ['liderança empresarial', 'gestão de equipes', 'líderes de sucesso', 'cultura organizacional', 'liderança dicas'],
 };
 
 const TIKTOK_HOST = 'tiktok-api23.p.rapidapi.com';
 const TIKTOK_KEY  = process.env.RAPIDAPI_KEY_TIKTOK || process.env.RAPIDAPI_KEY;
 
-// Palavras que indicam conteúdo educativo/informativo (PT + EN)
+// Palavras que indicam conteúdo de valor no nicho empreendedorismo/vendas/marketing
 const EDUCATION_KEYWORDS = [
-  'você sabia', 'ninguém te contou', 'descoberta', 'incrível', 'impressionante',
-  'a china', 'a nasa', 'a ciência', 'engenharia', 'tecnologia', 'sabia que',
-  'fato', 'história real', 'antes de', 'o segredo', 'pesquisa', 'estudo',
-  'scientist', 'engineer', 'innovation', 'technology', 'history', 'science',
-  'discovery', 'invention', 'amazing', 'incredible', 'never knew', 'did you know',
+  'vendas', 'faturamento', 'lucro', 'cliente', 'negócio', 'empresa', 'empreendedor',
+  'marketing', 'estratégia', 'resultado', 'crescimento', 'renda', 'dinheiro',
+  'capital', 'investimento', 'produto', 'serviço', 'mercado', 'nicho', 'escalar',
+  'conversão', 'lead', 'funil', 'tráfego', 'copy', 'oferta', 'lançamento',
+  'sales', 'revenue', 'profit', 'business', 'entrepreneur', 'strategy', 'growth',
+  'income', 'investment', 'product', 'conversion', 'funnel', 'traffic', 'launch',
+  'branding', 'leadership', 'produtividade', 'mindset', 'mentalidade', 'hábito',
 ];
 
 // Semantic spam patterns (score-based, threshold 60 = exclude)
+// Nota: R$/preços removidos pois são conteúdo legítimo no nicho de empreendedorismo
 const SPAM_PATTERNS = [
   { re: /marque?\s+\d+\s+amigos?/i,                        score: 40, tag: 'engajamento forçado' },
   { re: /coment[ae]\s+sim\b/i,                             score: 30, tag: 'engajamento forçado' },
-  { re: /arrast[ae]?\s+(para\s+cima|pra\s+cima|p[/'`]?cima)/i, score: 25, tag: 'CTA arrasta' },
+  { re: /arrast[ae]?\s+(para\s+cima|pra\s+cima|p[/'`]?cima)/i, score: 20, tag: 'CTA arrasta' },
   { re: /\bwhatsapp\.com\b|\bwa\.me\b/i,                   score: 50, tag: 'WhatsApp redirect' },
-  { re: /link\s+(na|no)\s+bio/i,                           score: 25, tag: 'link externo' },
-  { re: /R\$\s*\d+|\d+\s*reais\b/i,                       score: 60, tag: 'preço/venda' },
   { re: /\b(sorteio|giveaway|concurso)\b/i,                score: 70, tag: 'sorteio/giveaway' },
-  { re: /\b(desconto|promoção|oferta\s+exclusiva)\b/i,     score: 50, tag: 'promoção' },
-  { re: /\b(compre|comprar|compra\s+agora)\b/i,            score: 40, tag: 'venda' },
   { re: /\bfrete\s+gr[aá]tis\b|\bentrega\s+gr[aá]tis\b/i, score: 50, tag: 'e-commerce' },
+  { re: /\b(pirâmide|multinível|mlm)\b/i,                  score: 80, tag: 'pirâmide/MLM' },
 ];
+
+// Conteúdo que nunca deve aparecer independente do score
+const UNSAFE_PATTERNS = [
+  { re: /\b(pirâmide|esquema\s+ponzi|multinível|mlm)\b/i,   reason: 'MLM/pirâmide' },
+  { re: /\b(apostas?\b|bet\s*365|cassino|jogo\s+de\s+azar)\b/i, reason: 'apostas/jogo' },
+  { re: /\b(pornografi|conteúdo\s+adulto|nude|sexo\s+explicit)\b/i, reason: 'conteúdo adulto' },
+  { re: /\b(violência\s+explícita|gore|mutilação)\b/i,      reason: 'violência' },
+];
+
+function isVideoSafe(post) {
+  const text = `${post.caption || ''} ${post.username || ''}`;
+  for (const p of UNSAFE_PATTERNS) {
+    if (p.re.test(text)) return { safe: false, reason: p.reason };
+  }
+  return { safe: true };
+}
 
 function calcSpamScore(text) {
   let score = 0;
@@ -435,18 +447,16 @@ function topLearnedAccounts(map, source, exclude, n) {
     .map(([u]) => u);
 }
 
-// Hashtags do Instagram por tema — usadas para descobrir reels de QUALQUER conta
-// no mundo que usou a hashtag, sem depender de lista fixa de perfis.
-// Foco em tags de conteúdo educativo/viral do exterior que ressoa no Brasil.
+// Hashtags do Instagram por tema — nicho empreendedorismo/vendas/marketing
 const IG_HASHTAGS = {
-  ciencia:      ['sciencefacts', 'natgeo', 'sciencevideo', 'amazingscience', 'didyouknow'],
-  tecnologia:   ['technology', 'techfacts', 'futuretech', 'amazingtechnology', 'inventions'],
-  historia:     ['historyfacts', 'historyvideo', 'ancienthistory', 'historydocumentary', 'worldhistory'],
-  espaco:       ['spacefacts', 'nasa', 'universe', 'astronomy', 'spacediscovery'],
-  china:        ['chinatechnology', 'chinaengineering', 'chinalife', 'chinatech', 'megaproject'],
-  engenharia:   ['engineering', 'megaconstruction', 'amazingengineering', 'constructionvideo', 'engineeringmarvels'],
-  curiosidades: ['factsdaily', 'amazingfacts', 'didyouknow', 'mindblowing', 'funfacts'],
-  invencoes:    ['invention', 'amazinginvention', 'cooltech', 'gadgets', 'geniusinvention'],
+  empreendedorismo: ['empreendedorismo', 'empreendedor', 'negocioproprio', 'empreendedorismodigital', 'comoempreender'],
+  vendas:           ['vendas', 'tecnicasdevendas', 'vendedores', 'comovendermais', 'fechamentodevendas'],
+  marketing:        ['marketingdigital', 'trafegopago', 'copywriting', 'marketingdeconteudo', 'estrategiadigital'],
+  mindset:          ['mindset', 'mentalidadedesucesso', 'desenvolvimentopessoal', 'crescimentopessoal', 'habitosdosucesso'],
+  financeiro:       ['educacaofinanceira', 'inteligenciafinanceira', 'independenciafinanceira', 'rendaextra', 'financaspessoais'],
+  produtividade:    ['produtividade', 'gestaodetempo', 'habitossaudaveis', 'focoempauta', 'rotunadesucesso'],
+  negocios:         ['negocios', 'negociosdigitais', 'abrirempresa', 'empreendaagora', 'empresalucrativa'],
+  lideranca:        ['lideranca', 'liderancaempresarial', 'gestaoequipes', 'liderdesucesso', 'culturaorganizacional'],
 };
 
 // Busca reels por hashtag (descobre qualquer conta que usou a tag)
@@ -646,13 +656,13 @@ async function analyzeAndGenerate(candidate) {
     messages: [
       {
         role: 'system',
-        content: `Você é agente de curadoria para @pedro_destrava (175k seguidores BR, nicho tech/ciência/curiosidades/história).
+        content: `Você é agente de curadoria para um perfil de empreendedorismo, vendas e marketing digital (nicho: negócios, vendas, mindset, finanças, produtividade, liderança).
 
 Analise o candidato e retorne JSON completo com análise, fact-check, copy e veredito:
 {
   "viral_score": 0-100,
   "viral_reasons": ["reason"],
-  "content_category": "tecnologia"|"curiosidade"|"história"|"ciência"|"engenharia"|"espaço"|"negócios"|"outro",
+  "content_category": "empreendedorismo"|"vendas"|"marketing"|"mindset"|"financeiro"|"produtividade"|"negócios"|"liderança"|"outro",
   "fit_for_profile": 0-100,
   "ban_risk": "baixo"|"médio"|"alto",
   "ban_reasons": [],
@@ -661,8 +671,8 @@ Analise o candidato e retorne JSON completo com análise, fact-check, copy e ver
   "factual_confidence": 0-100,
   "factual_flags": [],
   "misleading_caption": false,
-  "headline": "máx 8 palavras — gancho viral e POPULAR, linguagem simples que qualquer pessoa entende, gera conexão e vontade de seguir",
-  "caption": "legenda completa para postar — começa com fato surpreendente, parágrafos curtos, termina com 'Segue o @pedro_destrava'",
+  "headline": "máx 8 palavras — hook viral para empreendedores brasileiros, linguagem direta e impactante",
+  "caption": "legenda completa para postar — abre com insight de negócios, parágrafos curtos com valor prático, termina com CTA e hashtags",
   "headline_matches_source": true,
   "headline_clickbait_risk": "baixo"|"médio"|"alto",
   "approved": true|false,
@@ -673,11 +683,11 @@ Analise o candidato e retorne JSON completo com análise, fact-check, copy e ver
 
 Regras de aprovação:
 - approved = true SE: viral_score >= 50 E ban_risk != "alto" E fit_for_profile >= 40 E factual_confidence >= 30 E misleading_caption = false
-- Seja generoso com conteúdo de ciência, tecnologia, curiosidades, história, engenharia e espaço — esses são os nichos do perfil
+- Seja generoso com conteúdo de empreendedorismo, vendas, marketing digital, mindset, finanças e produtividade — esses são os nichos do perfil
+- NÃO aprovar: político partidário, violento, sexual, esquemas de pirâmide/MLM, apostas, vlogs pessoais sem valor educativo
 - quality_tier: A (viral_score>80 sem warnings), B (>65), C (>50), D (abaixo)
-- NÃO aprovar: político partidário, violento, sexual, músicas famosas (copyright), vlogs pessoais
-- HEADLINE (regra mais importante): SEMPRE em português do Brasil. Escreva para uma pessoa SIMPLES e comum, que rola o feed rápido. Use linguagem POPULAR e fácil, frases curtas, gatilho de curiosidade ou choque que faz a pessoa PARAR, se CONECTAR e querer SEGUIR o perfil. Pode usar 1 emoji no fim. Proibido: palavras difíceis, técnicas, acadêmicas ou em inglês.
-- Modelos de headline que viralizam: "Você NÃO vai acreditar nisso", "Ninguém te contou isso 😳", "Olha o que a China fez 🤯", "Isso vai explodir sua mente", "Presta atenção até o final", "Isso é REAL e ninguém fala", "O que acontece aqui é assustador", "Você sabia disso?"`,
+- HEADLINE (regra mais importante): SEMPRE em português do Brasil. Formatos que viralizam no nicho: pergunta provocativa ("Você ainda faz isso nas vendas?"), dado surpreendente ("Fiz R$50k em 30 dias com isso"), afirmação contraintuitiva ("Trabalhar menos pode dobrar seu faturamento"), revelação ("O segredo que os gurus não te contam"). Use linguagem simples, direta, sem jargões. Pode usar 1 emoji. Proibido: inglês, clichês vazios, exagero sem base.
+- Modelos de headline: "Esse erro mata a maioria das empresas 💀", "Ninguém te conta como funciona de verdade", "Aprendi isso e triplicou meu faturamento", "Por que 90% dos empreendedores desistem?", "Essa técnica de vendas salvou meu negócio", "O que os ricos fazem diferente 🧠"`,
       },
       {
         role: 'user',
@@ -860,7 +870,7 @@ async function runVettingJury(headline, originalCaption) {
 }
 
 // ── Main search pipeline ──────────────────────────────────────────────────────
-async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lang = 'any' }) {
+async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lang = 'any', manualKeyword = '' }) {
   // Carrega estado persistente (dedup + aprendizado) em paralelo
   const [, learnedMap] = await Promise.all([loadUsedSet(), loadLearned()]);
 
@@ -893,7 +903,15 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
 
   const allKeywords = themes.flatMap(t => TIKTOK_KEYWORDS[t] || []);
   if (allKeywords.length === 0) Object.values(TIKTOK_KEYWORDS).forEach(k => allKeywords.push(k[0]));
-  const ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 5);
+  let ttKeywords = [...new Set(allKeywords)].sort(() => Math.random() - 0.5).slice(0, 5);
+
+  // Palavra-chave manual: adiciona no início das buscas TikTok e como hashtag IG
+  if (manualKeyword) {
+    console.log(`[A1][manual] Palavra-chave customizada: "${manualKeyword}"`);
+    ttKeywords = [manualKeyword, ...ttKeywords].slice(0, 6);
+    const hashtagClean = manualKeyword.toLowerCase().replace(/\s+/g, '').replace(/[^a-záéíóúãõâêôç]/gi, '');
+    if (hashtagClean && !igHashtags.includes(hashtagClean)) igHashtags.push(hashtagClean);
+  }
 
   console.log(`[A1] Contas IG: ${igAccounts.map(u => '@' + u).join(', ')}`);
   console.log(`[A1] Hashtags IG: ${igHashtags.map(h => '#' + h).join(', ')}`);
@@ -929,6 +947,13 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
   // ── Pré-filtros (antes do GPT-4o) ────────────────────────────────────────
   const candidates = [];
   for (const post of rawPosts) {
+    // 0. Verificação de segurança do conteúdo
+    const safety = isVideoSafe(post);
+    if (!safety.safe) {
+      console.log(`[A1][unsafe] ${post.code}: ${safety.reason}`);
+      continue;
+    }
+
     // 1. Filtros de exclusão automática
     const excl = shouldExclude(post);
     if (excl) {
@@ -1030,14 +1055,14 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
     // (best effort — GPT will refine this in the approve step)
     const capLower = (c.originalCaption || '').toLowerCase();
     let content_category = 'outro';
-    if (/tecnolog|tech|gadget|inovação|innovation/.test(capLower)) content_category = 'tecnologia';
-    else if (/ciência|science|descoberta|discovery|scientist/.test(capLower)) content_category = 'ciência';
-    else if (/história|history|historical|fato histórico/.test(capLower)) content_category = 'história';
-    else if (/espaço|space|nasa|universe|cosmos/.test(capLower)) content_category = 'espaço';
-    else if (/china|chinês|chinese/.test(capLower)) content_category = 'china';
-    else if (/engenharia|engineering|construção|construction/.test(capLower)) content_category = 'engenharia';
-    else if (/curiosidade|did you know|você sabia|amazing|incrível/.test(capLower)) content_category = 'curiosidades';
-    else if (/invenção|invention|invented|inventor/.test(capLower)) content_category = 'invencoes';
+    if (/vend[ae]|fechamento|script\s+de\s+venda|prospect|cliente|proposta/.test(capLower)) content_category = 'vendas';
+    else if (/marketing|tráfego|trafego|copy|funil|lead|anúncio|anuncio|instagram\s+ads|facebook\s+ads/.test(capLower)) content_category = 'marketing';
+    else if (/mindset|mentalidade|hábito|habito|disciplina|foco|motivação|motivacao/.test(capLower)) content_category = 'mindset';
+    else if (/financ|invest|renda|dinheiro|faturamento|lucro|capital|patrimônio/.test(capLower)) content_category = 'financeiro';
+    else if (/produtividade|gestão\s+de\s+tempo|rotina|eficiência|eficiencia/.test(capLower)) content_category = 'produtividade';
+    else if (/liderança|lideranca|gestão|equipe|cultura|delegação/.test(capLower)) content_category = 'liderança';
+    else if (/empreende|negócio|empresa|startup|escalar|modelo\s+de\s+negócio/.test(capLower)) content_category = 'empreendedorismo';
+    else if (/negócio|business|empresa|corporativo|mercado/.test(capLower)) content_category = 'negócios';
 
     const ageDays = c.age_hours !== null && c.age_hours !== undefined
       ? Math.round(c.age_hours / 24 * 10) / 10
@@ -1079,7 +1104,7 @@ async function runSearch({ themes = [], minViews = 50000, minEngagement = 0, lan
 
 // POST /api/content-finder/search
 router.post('/search', async (req, res) => {
-  const { themes, minViews, minEngagement, lang } = req.body;
+  const { themes, minViews, minEngagement, lang, manualKeyword } = req.body;
 
   if (!Array.isArray(themes) || themes.length === 0) {
     return res.status(400).json({ error: 'Selecione pelo menos um tema' });
@@ -1094,6 +1119,7 @@ router.post('/search', async (req, res) => {
       minViews:      Number(minViews)      || 50000,
       minEngagement: Number(minEngagement) || 0,
       lang:          lang || 'any',
+      manualKeyword: (manualKeyword || '').trim(),
     });
     res.json({ results });
   } catch (e) {
@@ -1102,7 +1128,7 @@ router.post('/search', async (req, res) => {
   }
 });
 
-const ALL_THEMES = ['ciencia', 'tecnologia', 'historia', 'espaco', 'china', 'engenharia', 'curiosidades', 'invencoes'];
+const ALL_THEMES = ['empreendedorismo', 'vendas', 'marketing', 'mindset', 'financeiro', 'produtividade', 'negocios', 'lideranca'];
 const VAULT_KEY      = 'vault:feed';
 const VAULT_META_KEY = 'vault:meta';
 const VAULT_MAX      = 60;                 // máximo de itens guardados no cofre

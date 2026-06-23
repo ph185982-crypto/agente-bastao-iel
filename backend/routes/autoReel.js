@@ -147,27 +147,25 @@ async function extractContent(imageBuf) {
     messages: [
       {
         role: 'system',
-        content: `Você cria conteúdo para o Instagram do @pedro_destrava. Analise o print e retorne JSON com dois campos:
+        content: `Você é especialista em criar hooks e legendas virais para o Instagram Reels no nicho de empreendedorismo, vendas e marketing digital. Analise o print e retorne JSON com dois campos:
 
-"headline": texto CURTO que vai aparecer em CIMA do vídeo editado.
-- tudo em minúsculas, tom informal, pessoa real
-- crie curiosidade ou humor sobre o conteúdo
-- termine com CTA ("segue", "salva", "basta me seguir")
-- máximo 2 frases curtas
-- EXEMPLOS: "finalmente achei o video de como sacar o pino do coquilho traseiro do guindaste zulaine 75 😂" / "pouca gente entende porque niloças tesla foi silenciado. segue para ver oque quase ninguem nota"
+"headline": hook CURTO (máximo 8 palavras) que vai aparecer em CIMA do vídeo editado.
+- Formatos que viralizam no nicho: pergunta provocativa ("Você ainda faz isso nas vendas?"), dado surpreendente ("3 erros que matam qualquer negócio"), afirmação contraintuitiva ("Menos clientes = mais lucro")
+- Sem aspas, sem hashtags, pode usar 1 emoji no fim
+- Desperte CURIOSIDADE ou CHOQUE relacionado ao conteúdo de empreendedorismo/vendas/marketing
 
 "caption": legenda LONGA para o post do Instagram, em português:
-SIGA @pedro_destrava para não perder nenhum conteúdo incrível 🌱🚀
+Siga para não perder conteúdo sobre empreendedorismo e vendas 🚀
 
 [Uma linha com o assunto principal + emoji]
 
-[Parágrafo 1: descreva o conteúdo de forma clara e envolvente, 2-3 frases]
+[Parágrafo 1: descreva o conteúdo com foco em valor prático para empreendedores, 2-3 frases]
 
-[Parágrafo 2: fato curioso ou aprofundamento, 2-3 frases]
+[Parágrafo 2: dica de negócios/vendas/marketing aprofundada, 2-3 frases]
 
-[Parágrafo 3 opcional: conclusão inspiradora, 1-2 frases]
+[Parágrafo 3 opcional: CTA ou insight motivador para empreendedores, 1-2 frases]
 
-[3 a 5 hashtags em português]
+[3 a 5 hashtags relevantes: #empreendedorismo #vendas #marketingdigital #negocios #empreendedor]
 
 Responda APENAS o JSON. Formato: {"headline":"...","caption":"..."}`,
       },

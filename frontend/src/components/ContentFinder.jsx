@@ -3,14 +3,14 @@ import { API_BASE } from '../utils/api'
 import { saveVideoToGallery } from '../utils/gallery'
 
 const THEME_OPTIONS = [
-  { key: 'ciencia',      label: '🔬 Ciência' },
-  { key: 'tecnologia',   label: '🤖 Tecnologia' },
-  { key: 'historia',     label: '🏛️ História' },
-  { key: 'espaco',       label: '🚀 Espaço' },
-  { key: 'china',        label: '🇨🇳 Inovação China' },
-  { key: 'engenharia',   label: '⚙️ Engenharia' },
-  { key: 'curiosidades', label: '🧠 Curiosidades' },
-  { key: 'invencoes',    label: '💡 Invenções' },
+  { key: 'empreendedorismo', label: '🚀 Empreendedorismo' },
+  { key: 'vendas',           label: '💰 Vendas' },
+  { key: 'marketing',        label: '📱 Marketing Digital' },
+  { key: 'mindset',          label: '🧠 Mindset' },
+  { key: 'financeiro',       label: '💵 Financeiro' },
+  { key: 'produtividade',    label: '⚡ Produtividade' },
+  { key: 'negocios',         label: '💼 Negócios' },
+  { key: 'lideranca',        label: '👑 Liderança' },
 ]
 const VIEWS_OPTIONS = [
   { value: 50000,   label: '50K+' },
@@ -191,7 +191,8 @@ function TemplateUpload({ templateFile, onTemplate }) {
 
 // ─── SearchPhase ──────────────────────────────────────────────────────────────
 function SearchPhase({ selectedThemes, setSelectedThemes, minViews, setMinViews,
-  minEngagement, setMinEngagement, lang, setLang, onSearch, searching, error }) {
+  minEngagement, setMinEngagement, lang, setLang, manualKeyword, setManualKeyword,
+  onSearch, searching, error }) {
 
   function toggleTheme(key) {
     setSelectedThemes(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
@@ -201,7 +202,7 @@ function SearchPhase({ selectedThemes, setSelectedThemes, minViews, setMinViews,
     <div className="space-y-5">
       <div>
         <label className="block text-xs font-medium text-gray-400 mb-2">
-          Temas
+          Nichos
           <span className="text-gray-600 ml-1">({selectedThemes.length} selecionado{selectedThemes.length !== 1 ? 's' : ''})</span>
         </label>
         <div className="flex flex-wrap gap-2">
@@ -215,6 +216,23 @@ function SearchPhase({ selectedThemes, setSelectedThemes, minViews, setMinViews,
             </button>
           ))}
         </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-400 mb-1.5">
+          Busca manual <span className="text-gray-600">(opcional — palavra-chave específica)</span>
+        </label>
+        <input
+          type="text"
+          value={manualKeyword}
+          onChange={e => setManualKeyword(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && selectedThemes.length > 0 && !searching && onSearch()}
+          placeholder="Ex: como fechar vendas pelo WhatsApp, rotina de empreendedor..."
+          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+        />
+        {manualKeyword && (
+          <p className="text-xs text-indigo-400 mt-1">✓ Palavra-chave será incluída nas buscas</p>
+        )}
       </div>
 
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
@@ -277,8 +295,8 @@ function SearchPhase({ selectedThemes, setSelectedThemes, minViews, setMinViews,
 
       {!error && (
         <div className="text-center py-4 text-gray-600 text-sm">
-          <p className="text-3xl mb-2">♻️</p>
-          <p>Selecione os temas, ajuste os filtros e clique em buscar.<br />
+          <p className="text-3xl mb-2">🚀</p>
+          <p>Selecione os nichos, ajuste os filtros e clique em buscar.<br />
           Escolha um vídeo e receba o Reel editado + legenda + veredicto do júri.</p>
         </div>
       )}
@@ -684,10 +702,11 @@ function ReadyPhase({ videoBlobUrl, videoBlob, videoError, caption, miniJuryVerd
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function ContentFinder() {
   const [templateFile,    setTemplateFile]    = useState(null)
-  const [selectedThemes,  setSelectedThemes]  = useState(['tecnologia', 'curiosidades', 'ciencia'])
+  const [selectedThemes,  setSelectedThemes]  = useState(['empreendedorismo', 'vendas', 'marketing'])
   const [minViews,        setMinViews]        = useState(100000)
   const [minEngagement,   setMinEngagement]   = useState(0)
   const [lang,            setLang]            = useState('any')
+  const [manualKeyword,   setManualKeyword]   = useState('')
 
   // phases: 'search' | 'results' | 'preparing' | 'ready'
   const [phase,           setPhase]           = useState('search')
@@ -802,7 +821,7 @@ export default function ContentFinder() {
       const res = await fetch(`${API_BASE}/api/content-finder/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ themes: selectedThemes, minViews, minEngagement, lang }),
+        body: JSON.stringify({ themes: selectedThemes, minViews, minEngagement, lang, manualKeyword: manualKeyword.trim() || undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erro')
@@ -953,6 +972,7 @@ export default function ContentFinder() {
           minViews={minViews} setMinViews={setMinViews}
           minEngagement={minEngagement} setMinEngagement={setMinEngagement}
           lang={lang} setLang={setLang}
+          manualKeyword={manualKeyword} setManualKeyword={setManualKeyword}
           onSearch={handleSearch} searching={searchStatus === 'loading'} error={searchError}
         />
       )}
