@@ -414,27 +414,33 @@ async function buildPhotoBase(photoUrl, category) {
 function buildNewsOverlay({ headline, kind, counter, handle }) {
   const isCover = kind === 'cover';
   const isCta   = kind === 'cta';
-  const HPAD    = 80;
+  const HPAD    = isCover ? 108 : 80;   // mais margem na capa para não vazar
   const textW   = CW - HPAD * 2;
 
   const { fontSize, lines, lineH } = fitText(headline, {
-    maxFont:   isCover ? 88 : 72,
-    minFont:   isCover ? 52 : 42,
+    maxFont:   isCover ? 72 : 72,        // era 88 — letras maiúsculas com acento são mais largas
+    minFont:   isCover ? 44 : 42,
     boxW:      textW,
-    boxH:      isCover ? 560 : 510,
-    charRatio: 0.58,
-    lineRatio: 1.30,
+    boxH:      isCover ? 500 : 510,
+    charRatio: isCover ? 0.64 : 0.58,   // estimativa mais conservadora para capa
+    lineRatio: 1.28,
   });
 
   const blockH      = lines.length * lineH;
   const handleSpace = (handle && !isCover) ? 58 : 0;
-  const bottomPad   = isCover ? 195 : 75;
+  const bottomPad   = isCover ? 215 : 75;
   const textBottom  = CH - bottomPad - handleSpace;
   const textTopY    = textBottom - blockH;
 
+  // Linha decorativa acima do texto (só na capa)
+  const accentLineY = textTopY - 28;
+  const accentLine  = isCover
+    ? `<rect x="${(CW - 120) / 2}" y="${accentLineY}" width="120" height="5" rx="2.5" fill="#6366f1" opacity="0.95"/>`
+    : '';
+
   const textEls = lines.map((ln, i) => {
     const y = textTopY + i * lineH + fontSize * 0.82;
-    return `<text x="${CW / 2}" y="${y}" font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="bold" fill="white" text-anchor="middle" stroke="black" stroke-width="7" paint-order="stroke" letter-spacing="0.5">${escXml(ln)}</text>`;
+    return `<text x="${CW / 2}" y="${y}" font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="bold" fill="white" text-anchor="middle" stroke="black" stroke-width="6" paint-order="stroke" letter-spacing="0.5">${escXml(ln)}</text>`;
   }).join('\n');
 
   const counterEl = counter
@@ -442,10 +448,17 @@ function buildNewsOverlay({ headline, kind, counter, handle }) {
     : '';
 
   const pillEl = isCover ? (() => {
-    const pillW = 580; const pillH = 68; const rx = 34;
-    const px = (CW - pillW) / 2; const py = CH - 148;
-    return `<rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" rx="${rx}" fill="#6366f1" opacity="0.95"/>
-    <text x="${CW / 2}" y="${py + 47}" font-family="${FONT_FAMILY}" font-size="30" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="2">APENAS ARRASTE PRO LADO  →</text>`;
+    const pillW = 600; const pillH = 72; const rx = 36;
+    const px = (CW - pillW) / 2; const py = CH - 155;
+    return `<defs>
+      <linearGradient id="pillGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#4f46e5"/>
+        <stop offset="100%" stop-color="#7c3aed"/>
+      </linearGradient>
+    </defs>
+    <rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" rx="${rx}" fill="url(#pillGrad)" opacity="0.97"/>
+    <rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" rx="${rx}" fill="none" stroke="rgba(255,255,255,0.30)" stroke-width="1.5"/>
+    <text x="${CW / 2}" y="${py + 49}" font-family="${FONT_FAMILY}" font-size="28" font-weight="bold" fill="white" text-anchor="middle" letter-spacing="2.5">APENAS ARRASTE PRO LADO  →</text>`;
   })() : '';
 
   const handleEl = handle && !isCover
@@ -457,10 +470,11 @@ function buildNewsOverlay({ headline, kind, counter, handle }) {
        <stop offset="50%" stop-color="black" stop-opacity="0.68"/>
        <stop offset="100%" stop-color="black" stop-opacity="0.94"/>`
     : isCover
-      ? `<stop offset="0%" stop-color="black" stop-opacity="0"/>
-         <stop offset="38%" stop-color="black" stop-opacity="0"/>
-         <stop offset="60%" stop-color="black" stop-opacity="0.72"/>
-         <stop offset="100%" stop-color="black" stop-opacity="0.95"/>`
+      ? `<stop offset="0%"   stop-color="black"   stop-opacity="0"/>
+         <stop offset="35%"  stop-color="black"   stop-opacity="0"/>
+         <stop offset="55%"  stop-color="#0f0720" stop-opacity="0.60"/>
+         <stop offset="78%"  stop-color="#0f0720" stop-opacity="0.88"/>
+         <stop offset="100%" stop-color="#0a0418" stop-opacity="0.97"/>`
       : `<stop offset="0%" stop-color="black" stop-opacity="0"/>
          <stop offset="42%" stop-color="black" stop-opacity="0"/>
          <stop offset="62%" stop-color="black" stop-opacity="0.62"/>
@@ -474,6 +488,7 @@ function buildNewsOverlay({ headline, kind, counter, handle }) {
     </defs>
     <rect width="${CW}" height="${CH}" fill="url(#nov)"/>
     ${counterEl}
+    ${accentLine}
     ${textEls}
     ${pillEl}
     ${handleEl}
