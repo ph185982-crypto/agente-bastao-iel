@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "installCommand": "npm install --production",
-  "buildCommand": "echo build-skipped",
-  "outputDirectory": ".",
+  "installCommand": "npm install --production && cd frontend && npm install",
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.js": {
       "maxDuration": 60,
@@ -12,7 +12,8 @@
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
     { "path": "/api/content-finder/mine", "schedule": "0 9 * * *" }
