@@ -181,7 +181,7 @@ async function submeterShotstack({ blocos, audioUrl, avatarUrl }) {
         asset: { type: 'video', src, volume: 0 },
         start: t,
         length: b.duracao_segundos,
-        position: 'topCenter',
+        position: 'top',
         scale: 0.5,
         offset: { x: 0, y: 0.25 },
       });
@@ -204,7 +204,7 @@ async function submeterShotstack({ blocos, audioUrl, avatarUrl }) {
       },
       start,
       length: b.duracao_segundos,
-      position: 'bottomCenter',
+      position: 'bottom',
       offset: { x: 0, y: 0.12 },
     };
   });
@@ -226,7 +226,7 @@ async function submeterShotstack({ blocos, audioUrl, avatarUrl }) {
   tracks.push({ clips: [{
     asset: { type: 'image', src: avatarUrl },
     start: 0, length: duracaoTotal,
-    position: 'bottomCenter', scale: 0.5,
+    position: 'bottom', scale: 0.5,
     offset: { x: 0, y: -0.25 },
   }] });
 
