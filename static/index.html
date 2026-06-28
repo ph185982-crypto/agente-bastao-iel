@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    @font-face {
+      font-family: 'SF Pro';
+      src: local('SF Pro Display'), local('.SFNSDisplay-Regular'), local('Inter');
+      font-weight: 100 900;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { background: #F2F2F7; font-family: 'SF Pro', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes scaleIn { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes pulseGlow { 0%, 100% { box-shadow: 0 4px 20px rgba(0,122,255,0.3); } 50% { box-shadow: 0 4px 30px rgba(0,122,255,0.5); } }
+    @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  </style>
+</helmet>
+
+<!-- Main Container -->
+<div style="width: 100%; max-width: 430px; margin: 0 auto; height: 100vh; background: #F2F2F7; display: flex; flex-direction: column; position: relative; overflow: hidden">
+
+  <!-- Status Bar -->
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 24px 0; height: 44px; background: #FFFFFF">
+    <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: #1D1D1F">9:41</span>
+    <div style="display: flex; gap: 6px; align-items: center">
+      <svg width="17" height="12" viewBox="0 0 17 12" fill="none"><rect x="0" y="3" width="3" height="9" rx="1" fill="#1D1D1F"/><rect x="4.5" y="2" width="3" height="10" rx="1" fill="#1D1D1F"/><rect x="9" y="0.5" width="3" height="11.5" rx="1" fill="#1D1D1F"/><rect x="13.5" y="0" width="3" height="12" rx="1" fill="#1D1D1F"/></svg>
+      <svg width="15" height="12" viewBox="0 0 15 12" fill="none"><path d="M7.5 3C9.8 3 11.8 4 13.2 5.5L14.5 4C12.7 2.2 10.2 1 7.5 1S2.3 2.2.5 4L1.8 5.5C3.2 4 5.2 3 7.5 3Z" fill="#1D1D1F"/><path d="M7.5 6.5C9 6.5 10.3 7.1 11.3 8L12.6 6.5C11.2 5.2 9.4 4.5 7.5 4.5S3.8 5.2 2.4 6.5L3.7 8C4.7 7.1 6 6.5 7.5 6.5Z" fill="#1D1D1F"/><circle cx="7.5" cy="10.5" r="1.5" fill="#1D1D1F"/></svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0" y="1" width="22" height="10" rx="3" stroke="#1D1D1F" stroke-width="1"/><rect x="23" y="4" width="2" height="4" rx="1" fill="#1D1D1F"/><rect x="1.5" y="2.5" width="17" height="7" rx="2" fill="#34C759"/></svg>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <div style="background: #FFFFFF; padding: 8px 20px 16px; display: flex; flex-direction: column; gap: 12px">
+    <!-- Top Row -->
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #007AFF, #5856D6); display: flex; align-items: center; justify-content: center">
+          <span style="color: white; font-weight: 700; font-size: 14px; letter-spacing: -0.5px">P</span>
+        </div>
+        <span style="font-size: 22px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.5px">PICO</span>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: #F2F2F7; display: flex; align-items: center; justify-content: center; cursor: pointer" style-active="background: #E5E5EA; transform: scale(0.92)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1D1D1F" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        </div>
+        <div style="width: 36px; height: 36px; border-radius: 50%; background: #F2F2F7; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative" style-active="background: #E5E5EA; transform: scale(0.92)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1D1D1F" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <div style="position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #FF3B30; border-radius: 50%; border: 2px solid #FFFFFF"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Segmented Control -->
+    <div style="background: #F2F2F7; border-radius: 10px; padding: 3px; display: flex; position: relative; height: 36px">
+      <div style="position: absolute; top: 3px; left: {{ segmentLeft }}; width: calc(50% - 3px); height: 30px; background: #FFFFFF; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1); z-index: 0"></div>
+      <button onClick="{{ switchToCarousels }}" style="flex: 1; background: none; border: none; font-family: inherit; font-size: 13px; font-weight: 600; color: {{ carouselsColor }}; cursor: pointer; position: relative; z-index: 1; transition: color 0.2s">Carrosséis</button>
+      <button onClick="{{ switchToReels }}" style="flex: 1; background: none; border: none; font-family: inherit; font-size: 13px; font-weight: 600; color: {{ reelsColor }}; cursor: pointer; position: relative; z-index: 1; transition: color 0.2s">Reels Studio</button>
+    </div>
+  </div>
+
+  <!-- Content Area -->
+  <div style="flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch">
+
+    <!-- CARROSSÉIS TAB -->
+    <sc-if value="{{ showCarousels }}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 16px 0 100px; display: flex; flex-direction: column; gap: 20px; animation: fadeUp 0.3s ease-out forwards">
+
+        <!-- Templates Horizontal Scroll -->
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 20px">
+            <span style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">Criar Carrossel</span>
+          </div>
+
+          <div style="display: flex; gap: 12px; overflow-x: auto; padding: 4px 20px 8px; -webkit-overflow-scrolling: touch">
+
+            <!-- Template: Boas Notícias do Mundo -->
+            <div onClick="{{ selectTemplate }}" data-template="boas-noticias-mundo" style="width: 140px; flex-shrink: 0; background: #FFFFFF; border-radius: 20px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s" style-active="transform: scale(0.95)">
+              <div style="width: 100%; height: 100px; background: linear-gradient(145deg, #30D158, #00C7BE); display: flex; align-items: center; justify-content: center; position: relative">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <div style="position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; background: rgba(255,255,255,0.25); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px)">
+                  <span style="font-size: 10px; color: white; font-weight: 700">3</span>
+                </div>
+              </div>
+              <div style="padding: 12px">
+                <div style="font-size: 13px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.2px; line-height: 1.2">Boas Notícias</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 3px; line-height: 1.3">Manchetes positivas do mundo</div>
+              </div>
+            </div>
+
+            <!-- Template: Educativo -->
+            <div onClick="{{ selectTemplate }}" data-template="educativo" style="width: 140px; flex-shrink: 0; background: #FFFFFF; border-radius: 20px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s" style-active="transform: scale(0.95)">
+              <div style="width: 100%; height: 100px; background: linear-gradient(145deg, #FFD60A, #FF9F0A); display: flex; align-items: center; justify-content: center; position: relative">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              </div>
+              <div style="padding: 12px">
+                <div style="font-size: 13px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.2px; line-height: 1.2">Educativo</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 3px; line-height: 1.3">Ciência, espaço, tech</div>
+              </div>
+            </div>
+
+            <!-- Template: Arquivo Secreto -->
+            <div onClick="{{ selectTemplate }}" data-template="arquivo" style="width: 140px; flex-shrink: 0; background: #FFFFFF; border-radius: 20px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s" style-active="transform: scale(0.95)">
+              <div style="width: 100%; height: 100px; background: linear-gradient(145deg, #5E5CE6, #BF5AF2); display: flex; align-items: center; justify-content: center; position: relative">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
+                <div style="position: absolute; bottom: 8px; right: 8px; padding: 3px 7px; background: rgba(255,255,255,0.25); border-radius: 6px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px)">
+                  <span style="font-size: 9px; color: white; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px">Top</span>
+                </div>
+              </div>
+              <div style="padding: 12px">
+                <div style="font-size: 13px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.2px; line-height: 1.2">Arquivo Secreto</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 3px; line-height: 1.3">Lugares proibidos</div>
+              </div>
+            </div>
+
+            <!-- Template: Começou -->
+            <div onClick="{{ selectTemplate }}" data-template="comecou" style="width: 140px; flex-shrink: 0; background: #FFFFFF; border-radius: 20px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s" style-active="transform: scale(0.95)">
+              <div style="width: 100%; height: 100px; background: linear-gradient(145deg, #FF3B30, #FF6961); display: flex; align-items: center; justify-content: center; position: relative">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              </div>
+              <div style="padding: 12px">
+                <div style="font-size: 13px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.2px; line-height: 1.2">Começou</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 3px; line-height: 1.3">Comparativos virais</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div style="display: flex; gap: 10px; padding: 0 20px">
+          <div style="flex: 1; background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+            <div style="font-size: 22px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.5px">24</div>
+            <div style="font-size: 11px; color: #86868B; margin-top: 2px; font-weight: 500">Criados</div>
+          </div>
+          <div style="flex: 1; background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+            <div style="font-size: 22px; font-weight: 700; color: #34C759; letter-spacing: -0.5px">18</div>
+            <div style="font-size: 11px; color: #86868B; margin-top: 2px; font-weight: 500">Publicados</div>
+          </div>
+          <div style="flex: 1; background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+            <div style="font-size: 22px; font-weight: 700; color: #007AFF; letter-spacing: -0.5px">3</div>
+            <div style="font-size: 11px; color: #86868B; margin-top: 2px; font-weight: 500">Em review</div>
+          </div>
+        </div>
+
+        <!-- Recentes Section -->
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 0 20px">
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <span style="font-size: 17px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">Recentes</span>
+            <span style="font-size: 13px; font-weight: 500; color: #007AFF; cursor: pointer">Ver todos</span>
+          </div>
+
+          <!-- Recent Card 1 -->
+          <div style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98); background: #F9F9F9">
+            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #FFD60A, #FF9F0A); display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            </div>
+            <div style="flex: 1; min-width: 0">
+              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px">Por que o céu é azul?</div>
+              <div style="font-size: 12px; color: #86868B; margin-top: 3px">8 slides · Educativo · há 2h</div>
+            </div>
+            <div style="padding: 5px 10px; background: rgba(52,199,89,0.1); border-radius: 8px">
+              <span style="font-size: 11px; font-weight: 600; color: #34C759">Pronto</span>
+            </div>
+          </div>
+
+          <!-- Recent Card 2 -->
+          <div style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98); background: #F9F9F9">
+            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #FF3B30, #FF6961); display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </div>
+            <div style="flex: 1; min-width: 0">
+              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px">Brasil vs Japão: Trens</div>
+              <div style="font-size: 12px; color: #86868B; margin-top: 3px">6 slides · Começou · há 5h</div>
+            </div>
+            <div style="padding: 5px 10px; background: rgba(255,159,10,0.1); border-radius: 8px">
+              <span style="font-size: 11px; font-weight: 600; color: #FF9F0A">Review</span>
+            </div>
+          </div>
+
+          <!-- Recent Card 3 -->
+          <div style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98); background: #F9F9F9">
+            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #5E5CE6, #BF5AF2); display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
+            </div>
+            <div style="flex: 1; min-width: 0">
+              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px">Ilha Proibida no Pacífico</div>
+              <div style="font-size: 12px; color: #86868B; margin-top: 3px">10 slides · Arquivo · ontem</div>
+            </div>
+            <div style="padding: 5px 10px; background: rgba(52,199,89,0.1); border-radius: 8px">
+              <span style="font-size: 11px; font-weight: 600; color: #34C759">Pronto</span>
+            </div>
+          </div>
+
+          <!-- Recent Card 4 -->
+          <div style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98); background: #F9F9F9">
+            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #30D158, #00C7BE); display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+            <div style="flex: 1; min-width: 0">
+              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px">Cidade sem carros na Europa</div>
+              <div style="font-size: 12px; color: #86868B; margin-top: 3px">5 slides · Boas Notícias · 2d</div>
+            </div>
+            <div style="padding: 5px 10px; background: rgba(52,199,89,0.1); border-radius: 8px">
+              <span style="font-size: 11px; font-weight: 600; color: #34C759">Pronto</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </sc-if>
+
+    <!-- REELS STUDIO TAB -->
+    <sc-if value="{{ showReels }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px 20px 100px; display: flex; flex-direction: column; gap: 16px; animation: fadeUp 0.3s ease-out forwards">
+
+        <!-- Search Bar -->
+        <div style="background: #FFFFFF; border-radius: 14px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#86868B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <span style="font-size: 15px; color: #C7C7CC">Buscar vídeos virais...</span>
+        </div>
+
+        <!-- Platform Filter -->
+        <div style="display: flex; gap: 8px">
+          <div style="padding: 8px 16px; background: #007AFF; border-radius: 20px; display: flex; align-items: center; gap: 6px; cursor: pointer" style-active="opacity: 0.85">
+            <span style="font-size: 13px; font-weight: 600; color: #FFFFFF">Todos</span>
+          </div>
+          <div style="padding: 8px 16px; background: #FFFFFF; border-radius: 20px; display: flex; align-items: center; gap: 6px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04)" style-active="background: #F2F2F7">
+            <span style="font-size: 13px; font-weight: 500; color: #1D1D1F">Instagram</span>
+          </div>
+          <div style="padding: 8px 16px; background: #FFFFFF; border-radius: 20px; display: flex; align-items: center; gap: 6px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04)" style-active="background: #F2F2F7">
+            <span style="font-size: 13px; font-weight: 500; color: #1D1D1F">TikTok</span>
+          </div>
+          <div style="padding: 8px 16px; background: #FFFFFF; border-radius: 20px; display: flex; align-items: center; gap: 6px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04)" style-active="background: #F2F2F7">
+            <span style="font-size: 13px; font-weight: 500; color: #1D1D1F">YouTube</span>
+          </div>
+        </div>
+
+        <!-- Trending Section -->
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px">
+            <span style="font-size: 13px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Em Alta</span>
+            <span style="font-size: 13px; font-weight: 500; color: #007AFF; cursor: pointer">Atualizar</span>
+          </div>
+
+          <!-- Video Cards Grid -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+
+            <!-- Video Card 1 -->
+            <div style="background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.96)">
+              <div style="width: 100%; aspect-ratio: 9/12; background: linear-gradient(135deg, #1D1D1F 0%, #3A3A3C 100%); position: relative; display: flex; align-items: center; justify-content: center">
+                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <div style="position: absolute; bottom: 8px; left: 8px; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 6px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px)">
+                  <span style="font-size: 11px; font-weight: 600; color: white">2.4M</span>
+                </div>
+                <div style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; background: rgba(0,122,255,0.9); border-radius: 6px">
+                  <span style="font-size: 10px; font-weight: 700; color: white">IG</span>
+                </div>
+              </div>
+              <div style="padding: 10px 12px">
+                <div style="font-size: 12px; font-weight: 600; color: #1D1D1F; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3">Como fazer $10k/mês com IA</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 4px">@techguru · 12h</div>
+              </div>
+            </div>
+
+            <!-- Video Card 2 -->
+            <div style="background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.96)">
+              <div style="width: 100%; aspect-ratio: 9/12; background: linear-gradient(135deg, #2C2C2E 0%, #48484A 100%); position: relative; display: flex; align-items: center; justify-content: center">
+                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <div style="position: absolute; bottom: 8px; left: 8px; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 6px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px)">
+                  <span style="font-size: 11px; font-weight: 600; color: white">5.1M</span>
+                </div>
+                <div style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; background: rgba(0,0,0,0.85); border-radius: 6px">
+                  <span style="font-size: 10px; font-weight: 700; color: white">TT</span>
+                </div>
+              </div>
+              <div style="padding: 10px 12px">
+                <div style="font-size: 12px; font-weight: 600; color: #1D1D1F; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3">Esse truque ninguém te conta</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 4px">@viralhacks · 6h</div>
+              </div>
+            </div>
+
+            <!-- Video Card 3 -->
+            <div style="background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.96)">
+              <div style="width: 100%; aspect-ratio: 9/12; background: linear-gradient(135deg, #3A3A3C 0%, #1D1D1F 100%); position: relative; display: flex; align-items: center; justify-content: center">
+                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <div style="position: absolute; bottom: 8px; left: 8px; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 6px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px)">
+                  <span style="font-size: 11px; font-weight: 600; color: white">890K</span>
+                </div>
+                <div style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; background: rgba(0,122,255,0.9); border-radius: 6px">
+                  <span style="font-size: 10px; font-weight: 700; color: white">IG</span>
+                </div>
+              </div>
+              <div style="padding: 10px 12px">
+                <div style="font-size: 12px; font-weight: 600; color: #1D1D1F; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3">3 apps que mudaram minha vida</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 4px">@produtivo · 1d</div>
+              </div>
+            </div>
+
+            <!-- Video Card 4 -->
+            <div style="background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.96)">
+              <div style="width: 100%; aspect-ratio: 9/12; background: linear-gradient(135deg, #48484A 0%, #2C2C2E 100%); position: relative; display: flex; align-items: center; justify-content: center">
+                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <div style="position: absolute; bottom: 8px; left: 8px; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 6px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px)">
+                  <span style="font-size: 11px; font-weight: 600; color: white">1.7M</span>
+                </div>
+                <div style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; background: rgba(0,0,0,0.85); border-radius: 6px">
+                  <span style="font-size: 10px; font-weight: 700; color: white">TT</span>
+                </div>
+              </div>
+              <div style="padding: 10px 12px">
+                <div style="font-size: 12px; font-weight: 600; color: #1D1D1F; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3">Rotina das 5h da manhã</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 4px">@mindset · 3h</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Vault Section -->
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px">
+            <span style="font-size: 13px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Meu Vault</span>
+            <span style="font-size: 13px; font-weight: 500; color: #007AFF; cursor: pointer">12 salvos</span>
+          </div>
+
+          <!-- Vault Horizontal Scroll -->
+          <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch">
+            <div style="width: 100px; flex-shrink: 0; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="width: 100%; aspect-ratio: 9/14; background: linear-gradient(135deg, #FF6961 0%, #FF3B30 100%); display: flex; align-items: center; justify-content: center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <div style="padding: 6px 8px">
+                <div style="font-size: 10px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Hook viral</div>
+              </div>
+            </div>
+            <div style="width: 100px; flex-shrink: 0; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="width: 100%; aspect-ratio: 9/14; background: linear-gradient(135deg, #5E5CE6 0%, #BF5AF2 100%); display: flex; align-items: center; justify-content: center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <div style="padding: 6px 8px">
+                <div style="font-size: 10px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Transição top</div>
+              </div>
+            </div>
+            <div style="width: 100px; flex-shrink: 0; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="width: 100%; aspect-ratio: 9/14; background: linear-gradient(135deg, #30D158 0%, #00C7BE 100%); display: flex; align-items: center; justify-content: center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <div style="padding: 6px 8px">
+                <div style="font-size: 10px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Storytelling</div>
+              </div>
+            </div>
+            <div style="width: 100px; flex-shrink: 0; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="width: 100%; aspect-ratio: 9/14; background: linear-gradient(135deg, #FF9F0A 0%, #FFD60A 100%); display: flex; align-items: center; justify-content: center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <div style="padding: 6px 8px">
+                <div style="font-size: 10px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">CTA forte</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Generation Card -->
+        <div style="background: linear-gradient(135deg, #007AFF, #5856D6); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 16px rgba(0,122,255,0.2)">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 16px; font-weight: 700; color: #FFFFFF">Gerador IA de Reels</div>
+              <div style="font-size: 12px; color: rgba(255,255,255,0.8)">Crie reels editados automaticamente</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <div style="flex: 1; padding: 10px 14px; background: rgba(255,255,255,0.2); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; text-align: center" style-active="background: rgba(255,255,255,0.3)">
+              <span style="font-size: 13px; font-weight: 600; color: white">Com headline</span>
+            </div>
+            <div style="flex: 1; padding: 10px 14px; background: rgba(255,255,255,0.2); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; text-align: center" style-active="background: rgba(255,255,255,0.3)">
+              <span style="font-size: 13px; font-weight: 600; color: white">Com legenda</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </sc-if>
+
+  </div>
+
+  <!-- Floating Action Button -->
+  <div onClick="{{ fabAction }}" style="position: absolute; bottom: 32px; right: 20px; width: 56px; height: 56px; background: linear-gradient(135deg, #007AFF, #5856D6); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(0,122,255,0.35); cursor: pointer; z-index: 10; transition: all 0.2s; animation: pulseGlow 3s ease-in-out infinite" style-active="transform: scale(0.9); box-shadow: 0 2px 10px rgba(0,122,255,0.4)">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </div>
+
+  <!-- Home Indicator -->
+  <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); width: 134px; height: 5px; background: #1D1D1F; border-radius: 3px; opacity: 0.2"></div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:430,&quot;height&quot;:932},&quot;activeTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;carousels&quot;,&quot;reels&quot;],&quot;default&quot;:&quot;carousels&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#FF6B35&quot;,&quot;options&quot;:[&quot;#007AFF&quot;,&quot;#5856D6&quot;,&quot;#FF6B35&quot;,&quot;#34C759&quot;]}}">
+class Component extends DCLogic {
+  state = {
+    activeTab: 'carousels'
+  };
+
+  renderVals() {
+    const isCarousels = this.state.activeTab === 'carousels';
+
+    return {
+      showCarousels: isCarousels,
+      showReels: !isCarousels,
+      segmentLeft: isCarousels ? '3px' : 'calc(50%)',
+      carouselsColor: isCarousels ? '#007AFF' : '#86868B',
+      reelsColor: !isCarousels ? '#007AFF' : '#86868B',
+
+      switchToCarousels: () => {
+        this.setState({ activeTab: 'carousels' });
+      },
+      switchToReels: () => {
+        this.setState({ activeTab: 'reels' });
+      },
+
+      selectTemplate: (e) => {
+        const template = e.currentTarget.getAttribute('data-template');
+        console.log('Selected template:', template);
+      },
+
+      fabAction: () => {
+        const tab = this.state.activeTab;
+        console.log('Create new:', tab === 'carousels' ? 'carousel' : 'reel');
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>
