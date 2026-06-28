@@ -1110,8 +1110,8 @@ router.get('/vet', async (req, res) => {
   if (!vault.enabled()) {
     return res.status(503).json({ error: 'Cofre (Upstash) não configurado' });
   }
-  if (!process.env.GOOGLE_API_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
+  if (!process.env.GROQ_API_KEY) {
+    return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
   }
 
   try {

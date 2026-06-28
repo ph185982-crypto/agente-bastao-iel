@@ -18,8 +18,8 @@ const upload = multer({
 router.post('/', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
 
-  if (!process.env.GOOGLE_API_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada no servidor' });
+  if (!process.env.GROQ_API_KEY) {
+    return res.status(500).json({ error: 'GROQ_API_KEY não configurada no servidor' });
   }
 
   try {

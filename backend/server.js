@@ -6,7 +6,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // Warn on missing env vars at startup so misconfigured deploys are obvious in logs
-['GOOGLE_API_KEY', 'RAPIDAPI_KEY'].forEach(key => {
+['GROQ_API_KEY', 'RAPIDAPI_KEY'].forEach(key => {
   if (!process.env[key]) console.warn(`WARNING: ${key} is not set — dependent features will fail`);
 });
 

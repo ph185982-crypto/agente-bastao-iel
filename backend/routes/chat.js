@@ -67,8 +67,8 @@ router.post('/', upload.array('files', 10), async (req, res) => {
 
   if (!message?.trim()) return res.status(400).json({ error: 'Mensagem é obrigatória' });
 
-  if (!process.env.GOOGLE_API_KEY) {
-    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada no servidor' });
+  if (!process.env.GROQ_API_KEY) {
+    return res.status(500).json({ error: 'GROQ_API_KEY não configurada no servidor' });
   }
 
   const filePaths = (req.files || []).map((f) => f.path);

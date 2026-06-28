@@ -561,7 +561,7 @@ async function sendWhatsApp(to, text) {
 router.post('/chat', async (req, res) => {
   const { message } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: 'mensagem vazia' });
-  if (!process.env.GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
+  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
   if (!vault.enabled()) return res.status(503).json({ error: 'Memória não configurada' });
   try {
     const { reply, executed } = await runBrain(message.trim());

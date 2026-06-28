@@ -447,8 +447,8 @@ router.post('/analyze', (req, res) => {
   const { headline, description, videoUrl, context } = req.body;
   if (!headline?.trim())    return res.status(400).json({ error: 'headline é obrigatória' });
   if (!description?.trim()) return res.status(400).json({ error: 'descrição é obrigatória' });
-  if (!process.env.GOOGLE_API_KEY)
-    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
+  if (!process.env.GROQ_API_KEY)
+    return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
 
   const jobId = crypto.randomUUID();
   const job   = createJob(jobId);
