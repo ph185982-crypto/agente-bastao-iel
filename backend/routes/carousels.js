@@ -274,12 +274,15 @@ async function fetchPexelsPhoto(query) {
 }
 
 async function downloadPhotoBuffer(url, referer) {
+  const isWikimedia = url.includes('wikimedia.org') || url.includes('wikipedia.org');
   const { data } = await axios.get(url, {
     responseType: 'arraybuffer',
     timeout: 12000,
     maxContentLength: 25 * 1024 * 1024,
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+      'User-Agent': isWikimedia
+        ? 'NexosPaginas/1.0 (contact: ph185982@gmail.com)'
+        : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
       'Accept': 'image/avif,image/webp,image/*,*/*;q=0.8',
       ...(referer ? { Referer: referer } : {}),
     },
@@ -287,50 +290,53 @@ async function downloadPhotoBuffer(url, referer) {
   return Buffer.from(data);
 }
 
-// ── RapidAPI Image Search — usa a RAPIDAPI_KEY já configurada ────────────────
-async function fetchRapidAPIImages(query, want = 6) {
-  const key = process.env.RAPIDAPI_KEY;
-  if (!key) return [];
-  const apis = [
-    {
-      host: 'real-time-image-search.p.rapidapi.com',
-      path: '/search',
-      params: { query, num: Math.min(12, want) },
-      extract: (d) => (d.data || []).map(it => it.url || it.original_url).filter(Boolean),
-    },
-    {
-      host: 'bing-image-search1.p.rapidapi.com',
-      path: '/images/search',
-      params: { q: query, count: Math.min(10, want), safeSearch: 'Moderate' },
-      extract: (d) => (d.value || []).map(it => it.contentUrl).filter(Boolean),
-    },
-    {
-      host: 'google-api31.p.rapidapi.com',
-      path: '/imagesearch',
-      params: { q: query, num: Math.min(10, want) },
-      extract: (d) => (d.items || d.result || []).map(it => it.link || it.original || it.url).filter(Boolean),
-    },
-    {
-      host: 'contextualwebsearch-websearch-v1.p.rapidapi.com',
-      path: '/api/Search/ImageSearchAPI',
-      params: { q: query, pageNumber: 1, pageSize: Math.min(10, want), autoCorrect: true, safeSearch: true },
-      extract: (d) => (d.value || []).map(it => it.url).filter(Boolean),
-    },
-  ];
-  for (const api of apis) {
-    try {
-      const { data } = await axios.get(`https://${api.host}${api.path}`, {
-        params: api.params,
-        headers: { 'x-rapidapi-key': key, 'x-rapidapi-host': api.host },
-        timeout: 12000,
-      });
-      const urls = api.extract(data);
-      if (urls.length > 0) return urls.slice(0, want);
-    } catch (e) {
-      console.warn(`[rapidapi-img:${api.host}]`, e.response?.status, e.message);
-    }
+// ── Wikimedia Commons — sem API key, fotos livres de alta qualidade ──────────
+async function fetchWikimediaImages(query, want = 6) {
+  try {
+    const { data } = await axios.get('https://commons.wikimedia.org/w/api.php', {
+      params: {
+        action: 'query', format: 'json',
+        generator: 'search', gsrsearch: `${query} photograph`, gsrnamespace: 6,
+        gsrlimit: Math.min(20, want * 3),
+        prop: 'imageinfo', iiprop: 'url|size|mime', iiurlwidth: 1200,
+      },
+      timeout: 10000,
+      headers: { 'User-Agent': 'NexosPaginas/1.0 (contact: ph185982@gmail.com)' },
+    });
+    const pages = Object.values(data.query?.pages || {});
+    return pages
+      .map(p => p.imageinfo?.[0])
+      .filter(ii => ii && ii.width >= 600 && (ii.mime || '').startsWith('image/'))
+      .map(ii => ii.thumburl || ii.url)
+      .filter(Boolean)
+      .slice(0, want);
+  } catch (e) {
+    console.warn('[wikimedia-img]', e.message);
+    return [];
   }
-  return [];
+}
+
+// ── Wikipedia — busca imagem principal do artigo por título ──────────────────
+async function fetchWikipediaImages(query, want = 4) {
+  try {
+    const { data } = await axios.get('https://en.wikipedia.org/w/api.php', {
+      params: {
+        action: 'query', format: 'json',
+        generator: 'search', gsrsearch: query, gsrlimit: Math.min(10, want * 2),
+        prop: 'pageimages', piprop: 'original', pilimit: Math.min(10, want * 2),
+      },
+      timeout: 10000,
+      headers: { 'User-Agent': 'NexosPaginas/1.0 (contact: ph185982@gmail.com)' },
+    });
+    const pages = Object.values(data.query?.pages || {});
+    return pages
+      .map(p => p.original?.source)
+      .filter(Boolean)
+      .slice(0, want);
+  } catch (e) {
+    console.warn('[wikipedia-img]', e.message);
+    return [];
+  }
 }
 
 // ── Serper.dev — Google Imagens sem billing ───────────────────────────────────
@@ -390,35 +396,24 @@ async function collectPhotoBuffers(candidateUrls, n) {
   return out;
 }
 
-// Pega N fotos reais: tenta RapidAPI → Serper → Google → Pexels.
+// Pega N fotos reais: Wikimedia → Wikipedia → Serper → Google CSE → Pexels.
 async function getStoryPhotos(query, pexelsFallback, n = 2) {
-  // 1. RapidAPI Image Search (usa RAPIDAPI_KEY já configurada)
-  const rapidUrls = await fetchRapidAPIImages(query, 8);
-  let buffers = await collectPhotoBuffers(rapidUrls, n);
-
-  // 2. Serper (Google Imagens, grátis sem billing)
-  if (buffers.length < n) {
-    const serperUrls = await fetchSerperImageUrls(query, 8);
-    const more = await collectPhotoBuffers(serperUrls, n - buffers.length);
-    buffers = buffers.concat(more);
-  }
-
-  // 3. Google CSE (se configurado)
-  if (buffers.length < n) {
-    const googleUrls = await fetchGoogleImageUrls(query, 8);
-    const more = await collectPhotoBuffers(googleUrls, n - buffers.length);
-    buffers = buffers.concat(more);
-  }
-
-  // 4. Pexels (banco de imagens genérico)
-  if (buffers.length < n) {
-    const px = await fetchPexelsPhoto(pexelsFallback || query);
-    if (px) {
-      const more = await collectPhotoBuffers([px], n - buffers.length);
+  const sources = [
+    () => fetchWikimediaImages(query, 8),
+    () => fetchWikipediaImages(query, 6),
+    () => fetchSerperImageUrls(query, 8),
+    () => fetchGoogleImageUrls(query, 8),
+    () => fetchPexelsPhoto(pexelsFallback || query).then(u => u ? [u] : []),
+  ];
+  let buffers = [];
+  for (const src of sources) {
+    if (buffers.length >= n) break;
+    const urls = await src().catch(() => []);
+    if (urls.length) {
+      const more = await collectPhotoBuffers(urls, n - buffers.length);
       buffers = buffers.concat(more);
     }
   }
-
   return buffers;
 }
 
