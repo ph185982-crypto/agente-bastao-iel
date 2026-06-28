@@ -1,9 +1,8 @@
 'use strict';
 const express = require('express');
 const router  = express.Router();
+const { createCompatClient } = require('../lib/llm');
 
-// In-memory audio store — áudio fica disponível para o Shotstack baixar
-// (funciona para baixo tráfego; para produção de alta escala usar Vercel Blob)
 const audioStore = new Map();
 
 const isSandbox      = process.env.NODE_ENV !== 'production';
@@ -14,26 +13,21 @@ const SHOTSTACK_BASE = isSandbox
   ? 'https://api.shotstack.io/stage/render'
   : 'https://api.shotstack.io/v1/render';
 
-// ── Grok (xAI) ────────────────────────────────────────────────────────────────
-async function chamarGrok(prompt) {
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'grok-3',
-      messages: [{ role: 'user', content: prompt }],
-      response_format: { type: 'json_object' },
-      temperature: 0.8,
-    }),
+let _llm = null;
+const getLLM = () => (_llm ??= createCompatClient());
+
+async function chamarLLM(prompt) {
+  const resp = await getLLM().chat.completions.create({
+    model: 'gpt-4o',
+    messages: [{ role: 'user', content: prompt }],
+    response_format: { type: 'json_object' },
+    temperature: 0.8,
   });
-  const data = await res.json();
-  if (!data.choices?.[0]?.message?.content) {
-    throw new Error('Grok resposta inválida: ' + JSON.stringify(data).slice(0, 300));
+  const content = resp.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('LLM resposta inválida: ' + JSON.stringify(resp).slice(0, 300));
   }
-  return JSON.parse(data.choices[0].message.content);
+  return JSON.parse(content);
 }
 
 // ── Agente 1 — Pesquisador ────────────────────────────────────────────────────
@@ -271,14 +265,14 @@ router.post('/generate', async (req, res) => {
 
   try {
     // Agente 1 — Pesquisador
-    const pesquisa = await chamarGrok(promptPesquisador(tema, duracaoSeg));
+    const pesquisa = await chamarLLM(promptPesquisador(tema, duracaoSeg));
     const melhorAngulo = pesquisa.angulos[pesquisa.melhor_angulo_index ?? 0];
 
     // Agente 2 — Roteirista
-    const roteiro = await chamarGrok(promptRoteirista(melhorAngulo, duracaoSeg, maxPalavras));
+    const roteiro = await chamarLLM(promptRoteirista(melhorAngulo, duracaoSeg, maxPalavras));
 
     // Agente 3 — Revisor
-    const revisao = await chamarGrok(promptRevisor(roteiro.roteiro_completo));
+    const revisao = await chamarLLM(promptRevisor(roteiro.roteiro_completo));
     const blocosFinals = revisao.blocos_finais?.length ? revisao.blocos_finais : roteiro.blocos;
     const roteiroFinal = revisao.roteiro_final || roteiro.roteiro_completo;
 
