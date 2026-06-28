@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="960" viewBox="0 0 1080 960">
+  <rect width="1080" height="960" fill="#1a1a2e"/>
+  <circle cx="540" cy="320" r="140" fill="#e94560"/>
+  <rect x="340" y="500" width="400" height="280" rx="40" fill="#e94560"/>
+  <text x="540" y="870" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="52" font-weight="900" fill="#ffffff">PEDRO DESTRAVA</text>
+  <text x="540" y="930" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" fill="#cccccc">@pedro_destrava</text>
+</svg>

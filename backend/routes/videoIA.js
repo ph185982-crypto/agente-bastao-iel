@@ -16,6 +16,7 @@ const SHOTSTACK_BASE = isSandbox
 let _llm = null;
 const getLLM = () => (_llm ??= createCompatClient());
 
+// ── LLM (Groq via OpenAI compat) ────────────────────────────────────────────
 async function chamarLLM(prompt) {
   const resp = await getLLM().chat.completions.create({
     model: 'gpt-4o',
@@ -24,13 +25,11 @@ async function chamarLLM(prompt) {
     temperature: 0.8,
   });
   const content = resp.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error('LLM resposta inválida: ' + JSON.stringify(resp).slice(0, 300));
-  }
+  if (!content) throw new Error('LLM resposta vazia');
   return JSON.parse(content);
 }
 
-// ── Agente 1 — Pesquisador ────────────────────────────────────────────────────
+// ── Agente 1 — Pesquisador ───────────────────────────────────────────────────
 function promptPesquisador(tema, duracaoSeg) {
   return `Você é um pesquisador de conteúdo viral para redes sociais brasileiras.
 
@@ -53,7 +52,7 @@ Retorne APENAS JSON válido:
 }`;
 }
 
-// ── Agente 2 — Roteirista ─────────────────────────────────────────────────────
+// ── Agente 2 — Roteirista ────────────────────────────────────────────────────
 function promptRoteirista(melhorAngulo, duracaoSeg, maxPalavras) {
   return `Você é um roteirista especialista em Reels virais de empreendedorismo,
 marketing digital e vendas online para o público brasileiro.
@@ -81,7 +80,7 @@ Retorne APENAS JSON válido:
 }`;
 }
 
-// ── Agente 3 — Revisor de Engajamento ────────────────────────────────────────
+// ── Agente 3 — Revisor de Engajamento ───────────────────────────────────────
 function promptRevisor(roteiro_completo) {
   return `Você é um especialista em engajamento de Reels no Instagram brasileiro.
 Analise este roteiro e dê uma nota de 0 a 10 em cada critério.
@@ -108,30 +107,49 @@ Retorne APENAS JSON válido:
 }`;
 }
 
-// ── Google Text-to-Speech ─────────────────────────────────────────────────────
-async function gerarTTS(texto) {
-  const res = await fetch(
-    `https://texttospeech.googleapis.com/v1/text:synthesize?key=${process.env.GOOGLE_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        input: { text: texto },
-        voice: { languageCode: 'pt-BR', name: 'pt-BR-Neural2-B', ssmlGender: 'MALE' },
-        audioConfig: { audioEncoding: 'MP3', speakingRate: 1.1, pitch: 0.0, volumeGainDb: 2.0 },
-      }),
+// ── TTS — Google Translate (gratuito, sem chave, pt-BR) ─────────────────────
+function splitSentences(text, maxLen = 180) {
+  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+  const chunks = [];
+  let cur = '';
+  for (const s of sentences) {
+    const trimmed = s.trim();
+    if (!trimmed) continue;
+    if ((cur + ' ' + trimmed).trim().length > maxLen && cur) {
+      chunks.push(cur.trim());
+      cur = trimmed;
+    } else {
+      cur = (cur + ' ' + trimmed).trim();
     }
-  );
-  const data = await res.json();
-  if (!data.audioContent) {
-    throw new Error('TTS falhou: ' + JSON.stringify(data).slice(0, 200));
   }
-  return data.audioContent; // base64 MP3
+  if (cur) chunks.push(cur.trim());
+  return chunks;
 }
 
-// ── Pexels Videos ─────────────────────────────────────────────────────────────
+async function gerarTTS(texto) {
+  const chunks = splitSentences(texto);
+  const audioBuffers = [];
+
+  for (const chunk of chunks) {
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=pt-BR&q=${encodeURIComponent(chunk)}`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    });
+    if (!res.ok) {
+      throw new Error(`TTS falhou (${res.status}) para chunk: "${chunk.slice(0, 40)}..."`);
+    }
+    const arrayBuf = await res.arrayBuffer();
+    audioBuffers.push(Buffer.from(arrayBuf));
+  }
+
+  const combined = Buffer.concat(audioBuffers);
+  return combined.toString('base64');
+}
+
+// ── Pexels Videos ────────────────────────────────────────────────────────────
 async function buscarBroll(query, duracaoSeg) {
   try {
+    if (!process.env.PEXELS_API_KEY) return null;
     const res = await fetch(
       `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=5&orientation=portrait`,
       { headers: { Authorization: process.env.PEXELS_API_KEY } }
@@ -148,11 +166,12 @@ async function buscarBroll(query, duracaoSeg) {
   }
 }
 
-// ── Shotstack ─────────────────────────────────────────────────────────────────
+// ── Shotstack ────────────────────────────────────────────────────────────────
 async function submeterShotstack({ blocos, audioUrl, avatarUrl }) {
+  if (!SHOTSTACK_KEY) throw new Error('SHOTSTACK key não configurada');
+
   const duracaoTotal = blocos.reduce((s, b) => s + b.duracao_segundos, 0);
 
-  // B-roll clips (top 50%)
   const brollClips = [];
   let t = 0;
   for (const b of blocos) {
@@ -170,15 +189,15 @@ async function submeterShotstack({ blocos, audioUrl, avatarUrl }) {
     t += b.duracao_segundos;
   }
 
-  // Legenda animada (bottom 50%)
   let ct = 0;
   const legendaClips = blocos.map(b => {
     const start = ct;
     ct += b.duracao_segundos;
+    const safeText = b.texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     return {
       asset: {
         type: 'html',
-        html: `<p style="font-family:Arial Black,sans-serif;font-size:38px;font-weight:900;color:#FFFFFF;text-align:center;text-shadow:2px 2px 8px rgba(0,0,0,.9);padding:0 40px;line-height:1.2">${b.texto}</p>`,
+        html: `<p style="font-family:Arial Black,sans-serif;font-size:38px;font-weight:900;color:#FFFFFF;text-align:center;text-shadow:2px 2px 8px rgba(0,0,0,.9);padding:0 40px;line-height:1.2">${safeText}</p>`,
         width: 1080,
         height: 220,
         background: 'transparent',
@@ -190,32 +209,34 @@ async function submeterShotstack({ blocos, audioUrl, avatarUrl }) {
     };
   });
 
+  const tracks = [
+    { clips: legendaClips },
+    { clips: [{
+      asset: {
+        type: 'html',
+        html: '<div style="width:1080px;height:4px;background:#FF0000"></div>',
+        width: 1080, height: 4, background: 'transparent',
+      },
+      start: 0, length: duracaoTotal, position: 'center',
+    }] },
+  ];
+
+  if (brollClips.length) tracks.push({ clips: brollClips });
+
+  tracks.push({ clips: [{
+    asset: { type: 'image', src: avatarUrl },
+    start: 0, length: duracaoTotal,
+    position: 'bottomCenter', scale: 0.5,
+    offset: { x: 0, y: -0.25 },
+  }] });
+
+  tracks.push({ clips: [{
+    asset: { type: 'audio', src: audioUrl },
+    start: 0, length: duracaoTotal,
+  }] });
+
   const payload = {
-    timeline: {
-      background: '#000000',
-      tracks: [
-        { clips: legendaClips },
-        { clips: [{
-          asset: {
-            type: 'html',
-            html: '<div style="width:1080px;height:4px;background:#FF0000"></div>',
-            width: 1080, height: 4, background: 'transparent',
-          },
-          start: 0, length: duracaoTotal, position: 'center',
-        }] },
-        ...(brollClips.length ? [{ clips: brollClips }] : []),
-        { clips: [{
-          asset: { type: 'image', src: avatarUrl },
-          start: 0, length: duracaoTotal,
-          position: 'bottomCenter', scale: 0.5,
-          offset: { x: 0, y: -0.25 },
-        }] },
-        { clips: [{
-          asset: { type: 'audio', src: audioUrl },
-          start: 0, length: duracaoTotal,
-        }] },
-      ],
-    },
+    timeline: { background: '#000000', tracks },
     output: { format: 'mp4', resolution: 'hd', aspectRatio: '9:16', fps: 30 },
   };
 
@@ -231,18 +252,17 @@ async function submeterShotstack({ blocos, audioUrl, avatarUrl }) {
   return data.response.id;
 }
 
-// ── Route: servir áudio temporariamente ──────────────────────────────────────
+// ── Route: servir áudio temporariamente ─────────────────────────────────────
 router.get('/audio/:id', (req, res) => {
   const b64 = audioStore.get(req.params.id);
-  if (!b64) return res.status(404).json({ error: 'áudio não encontrado ou expirado' });
+  if (!b64) return res.status(404).json({ error: 'áudio expirado' });
   const buf = Buffer.from(b64, 'base64');
   res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length });
   res.send(buf);
-  // Limpar após 15 min (Shotstack já deve ter baixado)
   setTimeout(() => audioStore.delete(req.params.id), 15 * 60 * 1000);
 });
 
-// ── Route: polling do status do render ───────────────────────────────────────
+// ── Route: polling do status do render ──────────────────────────────────────
 router.get('/status/:renderId', async (req, res) => {
   try {
     const r = await fetch(`${SHOTSTACK_BASE}/${req.params.renderId}`, {
@@ -255,7 +275,7 @@ router.get('/status/:renderId', async (req, res) => {
   }
 });
 
-// ── Route: gerar vídeo completo ───────────────────────────────────────────────
+// ── Route: gerar vídeo completo ─────────────────────────────────────────────
 router.post('/generate', async (req, res) => {
   const { tema, duracao = '30s' } = req.body;
   if (!tema?.trim()) return res.status(400).json({ error: 'tema é obrigatório' });
@@ -264,22 +284,17 @@ router.post('/generate', async (req, res) => {
   const maxPalavras = duracao === '60s' ? 150 : 80;
 
   try {
-    // Agente 1 — Pesquisador
     const pesquisa = await chamarLLM(promptPesquisador(tema, duracaoSeg));
     const melhorAngulo = pesquisa.angulos[pesquisa.melhor_angulo_index ?? 0];
 
-    // Agente 2 — Roteirista
     const roteiro = await chamarLLM(promptRoteirista(melhorAngulo, duracaoSeg, maxPalavras));
 
-    // Agente 3 — Revisor
     const revisao = await chamarLLM(promptRevisor(roteiro.roteiro_completo));
     const blocosFinals = revisao.blocos_finais?.length ? revisao.blocos_finais : roteiro.blocos;
     const roteiroFinal = revisao.roteiro_final || roteiro.roteiro_completo;
 
-    // Google TTS
     const audioBase64 = await gerarTTS(roteiroFinal);
 
-    // Guardar áudio em memória com UUID
     const audioId = Date.now().toString(36) + Math.random().toString(36).slice(2);
     audioStore.set(audioId, audioBase64);
 
@@ -288,9 +303,8 @@ router.post('/generate', async (req, res) => {
     const baseUrl = process.env.BASE_URL || `${proto}://${host}`;
 
     const audioUrl  = `${baseUrl}/api/video/audio/${audioId}`;
-    const avatarUrl = `${baseUrl}/pedro-avatar.jpg`;
+    const avatarUrl = `${baseUrl}/pedro-avatar.svg`;
 
-    // Submeter render ao Shotstack (busca b-roll do Pexels internamente)
     const renderId = await submeterShotstack({ blocos: blocosFinals, audioUrl, avatarUrl });
 
     res.json({
