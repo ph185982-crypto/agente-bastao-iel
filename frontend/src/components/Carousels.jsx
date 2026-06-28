@@ -13,6 +13,19 @@ const THEME_OPTIONS = [
   { key: 'invencoes',    label: '💡 Invenções' },
 ]
 
+const TEMPLATE_OPTIONS = [
+  { key: 'educativo',    label: '✨ Educativo',        desc: 'Ciência, tecnologia e curiosidades' },
+  { key: 'arquivo',      label: '📁 Arquivo Secreto',  desc: 'Lugares proibidos e fatos ocultos' },
+  { key: 'boasnoticias', label: '📰 Boas Notícias',    desc: 'Manchetes positivas com fotos reais' },
+  { key: 'comecou',      label: '🔥 Começou',           desc: 'Comparativos e contrastes virais' },
+]
+
+const TEMPLATE_PLACEHOLDER = {
+  arquivo:      'Ex: bunkers secretos, lugares proibidos, arquivos da NASA…',
+  boasnoticias: 'Ex: avanços da medicina 2024, descobertas científicas…',
+  comecou:      'Ex: diferenças culturais Brasil x Japão, antes vs. depois…',
+}
+
 function fmtNum(n) {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1).replace('.', ',')}M`
   if (n >= 1000)    return `${(n / 1000).toFixed(1).replace('.', ',')}K`
@@ -106,10 +119,15 @@ export default function Carousels() {
   const [copied,    setCopied]    = useState(false)
   const [dlProgress, setDlProgress] = useState(null) // { current, total }
 
-  // Boas Notícias
+  // Boas Notícias (existente)
   const [newsHandle,    setNewsHandle]    = useState('')
   const [newsGenerating, setNewsGenerating] = useState(false)
   const [newsErr,       setNewsErr]       = useState('')
+
+  // Novos templates
+  const [templateType, setTemplateType] = useState('educativo')
+  const [tplTopic,     setTplTopic]     = useState('')
+  const [tplHandle,    setTplHandle]    = useState('')
 
   const resultRef = useRef(null)
 
@@ -171,6 +189,30 @@ export default function Carousels() {
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
     } catch (e) { setNewsErr(e.message) }
     finally { setNewsGenerating(false) }
+  }
+
+  async function handleGenerateTemplate() {
+    const endpoint = templateType === 'arquivo' ? 'generate-arquivo'
+      : templateType === 'boasnoticias' ? 'generate-boasnoticias'
+      : templateType === 'comecou'      ? 'generate-comecou'
+      : null
+    if (!endpoint) { handleGenerateFromTheme(); return }
+
+    setGenerating(true); setGenErr(''); setResult(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/carousels/${endpoint}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic:  tplTopic.trim() || undefined,
+          handle: tplHandle.trim() || '@seuperfil',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Erro ao gerar')
+      setResult(data)
+      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    } catch (e) { setGenErr(e.message) }
+    finally { setGenerating(false) }
   }
 
   function copyCaption() {
@@ -237,53 +279,97 @@ export default function Carousels() {
         <div className="flex-1 border-t border-gray-800"/>
       </div>
 
-      {/* Temas */}
+      {/* Seletor de template */}
       <div>
-        <label className="block text-xs font-medium text-gray-400 mb-2">
-          Temas <span className="text-gray-600">({themes.length})</span>
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {THEME_OPTIONS.map(({ key, label }) => (
-            <button key={key} onClick={() => toggleTheme(key)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
-                ${themes.includes(key)
-                  ? 'bg-indigo-600 border-indigo-500 text-white'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
-              {label}
+        <label className="block text-xs font-medium text-gray-400 mb-2">Tipo de carrossel</label>
+        <div className="grid grid-cols-2 gap-2">
+          {TEMPLATE_OPTIONS.map(t => (
+            <button key={t.key} onClick={() => setTemplateType(t.key)}
+              className={`p-3 rounded-xl text-left border transition-colors ${
+                templateType === t.key
+                  ? 'bg-indigo-900/50 border-indigo-500 text-white'
+                  : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-gray-600'
+              }`}>
+              <div className="text-sm font-semibold">{t.label}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{t.desc}</div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Criar do zero */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
-        <p className="text-sm font-semibold text-white">✨ Criar carrossel novo</p>
-        <input
-          type="text" value={topic} onChange={e => setTopic(e.target.value)}
-          placeholder="Assunto (opcional) — ex: buracos negros, a Muralha da China…"
-          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
-        />
-        <div className="flex items-center gap-3">
-          <label className="text-xs text-gray-500">Telas:</label>
-          <div className="flex gap-1">
-            {[5, 6, 7, 8, 9, 10].map(n => (
-              <button key={n} onClick={() => setSlideCount(n)}
-                className={`w-8 h-8 rounded-lg text-xs font-semibold border transition-colors
-                  ${slideCount === n ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
-                {n}
-              </button>
-            ))}
+      {/* Formulário: Educativo */}
+      {templateType === 'educativo' && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-2">
+              Temas <span className="text-gray-600">({themes.length})</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {THEME_OPTIONS.map(({ key, label }) => (
+                <button key={key} onClick={() => toggleTheme(key)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors
+                    ${themes.includes(key)
+                      ? 'bg-indigo-600 border-indigo-500 text-white'
+                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
+            <input
+              type="text" value={topic} onChange={e => setTopic(e.target.value)}
+              placeholder="Assunto (opcional) — ex: buracos negros, a Muralha da China…"
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+            />
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-gray-500">Telas:</label>
+              <div className="flex gap-1">
+                {[5, 6, 7, 8, 9, 10].map(n => (
+                  <button key={n} onClick={() => setSlideCount(n)}
+                    className={`w-8 h-8 rounded-lg text-xs font-semibold border transition-colors
+                      ${slideCount === n ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button onClick={handleGenerateFromTheme} disabled={generating || themes.length === 0}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors">
+              {generating && !cloningUrl ? 'Gerando carrossel…' : '✨ Gerar carrossel pronto'}
+            </button>
+            {genErr && <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{genErr}</p>}
           </div>
         </div>
-        <button onClick={handleGenerateFromTheme} disabled={generating || themes.length === 0}
-          className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors">
-          {generating && !cloningUrl ? 'Gerando carrossel…' : '✨ Gerar carrossel pronto'}
-        </button>
-        {genErr && <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{genErr}</p>}
-      </div>
+      )}
 
-      {/* Buscar inspiração viral */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
+      {/* Formulário: Arquivo / Boas Notícias / Começou */}
+      {templateType !== 'educativo' && (
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
+          <input
+            type="text" value={tplTopic} onChange={e => setTplTopic(e.target.value)}
+            placeholder={TEMPLATE_PLACEHOLDER[templateType] || 'Assunto (opcional)'}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+          />
+          <input
+            type="text" value={tplHandle} onChange={e => setTplHandle(e.target.value)}
+            placeholder="@seuperfil (para o CTA final)"
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+          />
+          <button onClick={handleGenerateTemplate} disabled={generating}
+            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors">
+            {generating
+              ? 'Gerando carrossel…'
+              : templateType === 'arquivo'      ? '📁 Gerar Arquivo Secreto'
+              : templateType === 'boasnoticias' ? '📰 Gerar Boas Notícias'
+              : '🔥 Gerar Começou'}
+          </button>
+          {genErr && <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{genErr}</p>}
+        </div>
+      )}
+
+      {/* Buscar inspiração viral — só para Educativo */}
+      {templateType === 'educativo' && <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-white">🔥 Inspiração: carrosséis virais</p>
           <button onClick={handleSearch} disabled={searching || themes.length === 0}
@@ -303,7 +389,7 @@ export default function Carousels() {
         {!searching && viral.length === 0 && !searchErr && (
           <p className="text-xs text-gray-600">Busca carrosséis com muitas curtidas para usar de base.</p>
         )}
-      </div>
+      </div>}
 
       {/* Resultado */}
       {result && (

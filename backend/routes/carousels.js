@@ -1050,4 +1050,444 @@ router.post('/generate-news', async (req, res) => {
   }
 });
 
+// ── Template "Arquivo Secreto" ─────────────────────────────────────────────────
+async function renderArquivoSlide(slide, photoBuf) {
+  const {
+    factTitle = '', factDescription = '',
+    label = 'ARQUIVO SECRETO', footer = 'DESLIZE PARA MAIS >>>',
+  } = slide;
+
+  const base = await sharp({
+    create: { width: CW, height: CH, channels: 3, background: '#000000' },
+  }).png().toBuffer();
+
+  const composites = [];
+
+  if (photoBuf) {
+    const photoResized = await sharp(photoBuf)
+      .resize(CW, 780, { fit: 'cover', position: 'center' }).toBuffer();
+    composites.push({ input: photoResized, top: 0, left: 0 });
+
+    const gradSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="780">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="black" stop-opacity="0"/>
+          <stop offset="55%" stop-color="black" stop-opacity="0"/>
+          <stop offset="100%" stop-color="black" stop-opacity="1"/>
+        </linearGradient>
+      </defs>
+      <rect width="${CW}" height="780" fill="url(#g)"/>
+    </svg>`;
+    composites.push({ input: Buffer.from(gradSvg), top: 0, left: 0 });
+  }
+
+  const titleFit = fitText((factTitle || '').toUpperCase(), {
+    maxFont: 68, minFont: 36, boxW: CW - 160, boxH: 210, charRatio: 0.56, lineRatio: 1.25,
+  });
+  const titleBlockH = titleFit.lines.length * titleFit.lineH;
+
+  const descFit = fitText(factDescription || '', {
+    maxFont: 42, minFont: 26, boxW: CW - 160, boxH: 310, charRatio: 0.56, lineRatio: 1.38,
+  });
+
+  const titleY0 = 860;
+  const descY0  = titleY0 + titleBlockH + 30;
+
+  const titleEls = titleFit.lines.map((ln, i) =>
+    `<text x="${CW / 2}" y="${titleY0 + i * titleFit.lineH + titleFit.fontSize * 0.82}" font-family="${FONT_FAMILY}" font-size="${titleFit.fontSize}" font-weight="bold" fill="#FFD700" text-anchor="middle">${escXml(ln)}</text>`
+  ).join('');
+
+  const descEls = descFit.lines.map((ln, i) =>
+    `<text x="${CW / 2}" y="${descY0 + i * descFit.lineH + descFit.fontSize * 0.82}" font-family="${FONT_FAMILY}" font-size="${descFit.fontSize}" font-weight="normal" fill="rgba(255,255,255,0.88)" text-anchor="middle">${escXml(ln)}</text>`
+  ).join('');
+
+  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+    <text x="${CW / 2}" y="750" font-family="${FONT_FAMILY}" font-size="22" font-weight="bold"
+      fill="rgba(255,215,0,0.65)" text-anchor="middle" letter-spacing="6">${escXml(label)}</text>
+    <line x1="120" y1="782" x2="456" y2="782" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
+    <circle cx="540" cy="782" r="24" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
+    <line x1="624" y1="782" x2="960" y2="782" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
+    ${titleEls}
+    ${descEls}
+    <text x="${CW / 2}" y="1294" font-family="${FONT_FAMILY}" font-size="24" font-weight="bold"
+      fill="rgba(255,215,0,0.55)" text-anchor="middle" letter-spacing="4">${escXml(footer)}</text>
+  </svg>`;
+  composites.push({ input: Buffer.from(overlaySvg), top: 0, left: 0 });
+
+  return sharp(base).composite(composites).png().toBuffer();
+}
+
+// ── Template "Boas Notícias" sandwich fixo 580/770 ───────────────────────────
+async function renderBoasNoticiasSlide({ headline, topBuf, botBuf, counter, handle, category }) {
+  const HMARGIN  = 76;
+  const BAND_TOP = 580;
+  const BAND_BOT = 770;
+  const BAND_H   = BAND_BOT - BAND_TOP;
+  const BOT_H    = CH - BAND_BOT;
+
+  const fit = fitText((headline || '').toUpperCase(), {
+    maxFont: 54, minFont: 28, boxW: CW - HMARGIN * 2, boxH: BAND_H - 56, charRatio: 0.66, lineRatio: 1.18,
+  });
+
+  const fallback = async (w, h) =>
+    sharp(Buffer.from(buildFallbackBg(category || 'default')))
+      .resize(w, h, { fit: 'cover', position: 'top' }).png().toBuffer();
+
+  const topImg = topBuf
+    ? await sharp(topBuf).resize(CW, BAND_TOP, { fit: 'cover', position: 'center' }).toBuffer().catch(() => fallback(CW, BAND_TOP))
+    : await fallback(CW, BAND_TOP);
+
+  const botImg = botBuf
+    ? await sharp(botBuf).resize(CW, BOT_H, { fit: 'cover', position: 'center' }).toBuffer().catch(() => fallback(CW, BOT_H))
+    : await fallback(CW, BOT_H);
+
+  const textStartY = BAND_TOP + (BAND_H - fit.lines.length * fit.lineH) / 2 + fit.fontSize * 0.80;
+  const textEls = fit.lines.map((ln, i) =>
+    `<text x="${CW / 2}" y="${textStartY + i * fit.lineH}" font-family="${FONT_FAMILY}" font-size="${fit.fontSize}" font-weight="bold" fill="#0b0b0b" text-anchor="middle">${escXml(ln)}</text>`
+  ).join('\n');
+
+  const counterEl = counter ? (() => {
+    const cx = CW - 60, cy = 64;
+    return `<circle cx="${cx}" cy="${cy}" r="40" fill="black" opacity="0.55"/>
+    <text x="${cx}" y="${cy + 11}" font-family="${FONT_FAMILY}" font-size="30" font-weight="bold" fill="white" text-anchor="middle">${escXml(counter)}</text>`;
+  })() : '';
+
+  const handleEl = handle
+    ? `<text x="36" y="58" font-family="${FONT_FAMILY}" font-size="26" font-weight="bold" fill="white" opacity="0.85">${escXml(handle)}</text>`
+    : '';
+
+  const overlay = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+    <rect x="0" y="${BAND_TOP}" width="${CW}" height="${BAND_H}" fill="#ffffff"/>
+    ${textEls}
+    ${counterEl}
+    ${handleEl}
+  </svg>`;
+
+  return sharp({ create: { width: CW, height: CH, channels: 3, background: '#ffffff' } })
+    .composite([
+      { input: topImg,             top: 0,        left: 0 },
+      { input: botImg,             top: BAND_BOT, left: 0 },
+      { input: Buffer.from(overlay), top: 0,      left: 0 },
+    ])
+    .png()
+    .toBuffer();
+}
+
+// ── Template "Começou" ────────────────────────────────────────────────────────
+async function renderComecouSlide(slide, photoBuf) {
+  const {
+    tag = '', category = '', body = '', footer = 'DESLIZE PARA MAIS >>>',
+  } = slide;
+
+  const base = await sharp({
+    create: { width: CW, height: CH, channels: 3, background: '#0a0a0a' },
+  }).png().toBuffer();
+
+  const composites = [];
+
+  if (photoBuf) {
+    const photoResized = await sharp(photoBuf)
+      .resize(CW, 740, { fit: 'cover', position: 'center' }).toBuffer();
+    composites.push({ input: photoResized, top: 0, left: 0 });
+
+    const gradSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="740">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="black" stop-opacity="0"/>
+          <stop offset="58%" stop-color="black" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#0a0a0a" stop-opacity="1"/>
+        </linearGradient>
+      </defs>
+      <rect width="${CW}" height="740" fill="url(#g)"/>
+    </svg>`;
+    composites.push({ input: Buffer.from(gradSvg), top: 0, left: 0 });
+  }
+
+  const catFit = fitText((category || '').toUpperCase(), {
+    maxFont: 64, minFont: 32, boxW: CW - 160, boxH: 180, charRatio: 0.56, lineRatio: 1.22,
+  });
+  const catBlockH = catFit.lines.length * catFit.lineH;
+
+  const bodyFit = fitText(body || '', {
+    maxFont: 44, minFont: 26, boxW: CW - 160, boxH: 360, charRatio: 0.56, lineRatio: 1.38,
+  });
+
+  const catY0  = 820;
+  const bodyY0 = catY0 + catBlockH + 30;
+
+  const catEls = catFit.lines.map((ln, i) =>
+    `<text x="${CW / 2}" y="${catY0 + i * catFit.lineH + catFit.fontSize * 0.82}" font-family="${FONT_FAMILY}" font-size="${catFit.fontSize}" font-weight="bold" fill="white" text-anchor="middle">${escXml(ln)}</text>`
+  ).join('');
+
+  const bodyEls = bodyFit.lines.map((ln, i) =>
+    `<text x="${CW / 2}" y="${bodyY0 + i * bodyFit.lineH + bodyFit.fontSize * 0.82}" font-family="${FONT_FAMILY}" font-size="${bodyFit.fontSize}" font-weight="normal" fill="#F5C518" text-anchor="middle">${escXml(ln)}</text>`
+  ).join('');
+
+  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+    <text x="${CW / 2}" y="720" font-family="${FONT_FAMILY}" font-size="22" font-weight="bold"
+      fill="rgba(245,197,24,0.70)" text-anchor="middle" letter-spacing="5">${escXml((tag || '').toUpperCase())}</text>
+    <line x1="80" y1="755" x2="460" y2="755" stroke="rgba(255,255,255,0.50)" stroke-width="2"/>
+    <circle cx="540" cy="755" r="30" fill="none" stroke="rgba(255,255,255,0.50)" stroke-width="2"/>
+    <line x1="620" y1="755" x2="1000" y2="755" stroke="rgba(255,255,255,0.50)" stroke-width="2"/>
+    ${catEls}
+    ${bodyEls}
+    <text x="${CW / 2}" y="1305" font-family="${FONT_FAMILY}" font-size="24" font-weight="bold"
+      fill="rgba(255,255,255,0.40)" text-anchor="middle" letter-spacing="4">${escXml(footer)}</text>
+  </svg>`;
+  composites.push({ input: Buffer.from(overlaySvg), top: 0, left: 0 });
+
+  return sharp(base).composite(composites).png().toBuffer();
+}
+
+// POST /api/carousels/generate-arquivo
+router.post('/generate-arquivo', async (req, res) => {
+  const { topic, handle: rawHandle } = req.body || {};
+  if (!process.env.GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
+
+  let handle = (rawHandle || '@seuperfil').trim();
+  if (!handle.startsWith('@')) handle = '@' + handle;
+
+  try {
+    const ai = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.82,
+      response_format: { type: 'json_object' },
+      max_tokens: 2200,
+      messages: [{
+        role: 'user',
+        content: `Você é especialista em conteúdo viral sobre lugares secretos, história oculta e fatos classificados.
+
+Gere um carrossel "Arquivo Secreto" para Instagram com 8 slides sobre: ${topic || 'lugares proibidos e fatos ocultos do mundo'}.
+
+Regras:
+- factTitle: título impactante em CAIXA ALTA, máximo 8 palavras, sem emojis
+- factDescription: 2 frases curtas revelando o fato/segredo de forma impactante, em português
+- label: rótulo variado — "ARQUIVO SECRETO", "LUGAR PROIBIDO", "HISTÓRIA OCULTA", "CLASSIFICADO", "SEGREDO REVELADO"
+- photoQuery: busca em inglês para foto real do local/fato
+- caption: legenda completa para Instagram (gancho com emoji, 2 parágrafos, 5 hashtags em português)
+
+Responda APENAS JSON:
+{"slides":[{"factTitle":"TÍTULO","factDescription":"Duas frases.","label":"ARQUIVO SECRETO","photoQuery":"english search"}],"caption":"legenda"}`,
+      }],
+    });
+
+    const data = JSON.parse(ai.choices[0].message.content || '{}');
+    const slides = (data.slides || []).slice(0, 8);
+    if (!slides.length) throw new Error('IA não retornou slides');
+
+    const photoBuffers = await Promise.all(
+      slides.map(s =>
+        getStoryPhotos(s.photoQuery || s.factTitle, 'secret history mystery dark', 1)
+          .then(b => b[0] || null).catch(() => null)
+      )
+    );
+
+    const slideBufs = await Promise.all(
+      slides.map((s, i) => renderArquivoSlide(
+        { ...s, footer: i < slides.length - 1 ? 'DESLIZE PARA MAIS >>>' : 'SALVA E COMPARTILHA' },
+        photoBuffers[i]
+      ))
+    );
+
+    const ctaBuf = await sharp(Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+        <rect width="${CW}" height="${CH}" fill="#000000"/>
+        <text x="${CW / 2}" y="520" font-family="${FONT_FAMILY}" font-size="28" font-weight="bold" fill="rgba(255,215,0,0.5)" text-anchor="middle" letter-spacing="8">ARQUIVO SECRETO</text>
+        <line x1="120" y1="580" x2="456" y2="580" stroke="rgba(255,255,255,0.25)" stroke-width="1.5"/>
+        <circle cx="540" cy="580" r="24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.5"/>
+        <line x1="624" y1="580" x2="960" y2="580" stroke="rgba(255,255,255,0.25)" stroke-width="1.5"/>
+        <text x="${CW / 2}" y="730" font-family="${FONT_FAMILY}" font-size="84" font-weight="bold" fill="#FFD700" text-anchor="middle">GOSTOU?</text>
+        <text x="${CW / 2}" y="840" font-family="${FONT_FAMILY}" font-size="46" font-weight="bold" fill="white" text-anchor="middle">Segue e salva</text>
+        <text x="${CW / 2}" y="910" font-family="${FONT_FAMILY}" font-size="46" font-weight="bold" fill="white" text-anchor="middle">para mais segredos</text>
+        <text x="${CW / 2}" y="1060" font-family="${FONT_FAMILY}" font-size="56" font-weight="bold" fill="#FFD700" text-anchor="middle">${escXml(handle)}</text>
+      </svg>`
+    )).png().toBuffer();
+
+    res.json({
+      topic: topic || 'Arquivo Secreto',
+      caption: data.caption || '',
+      handle,
+      slides: [...slideBufs, ctaBuf].map((buf, i) => ({
+        index: i + 1,
+        kind: i === slideBufs.length ? 'cta' : 'content',
+        dataUrl: `data:image/png;base64,${buf.toString('base64')}`,
+      })),
+    });
+  } catch (e) {
+    console.error('[carousels] generate-arquivo error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/carousels/generate-boasnoticias
+router.post('/generate-boasnoticias', async (req, res) => {
+  const { topic, handle: rawHandle } = req.body || {};
+  if (!process.env.GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
+
+  let handle = (rawHandle || '@seuperfil').trim();
+  if (!handle.startsWith('@')) handle = '@' + handle;
+
+  try {
+    const ai = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.78,
+      response_format: { type: 'json_object' },
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: `Você é curador de boas notícias do mundo. Gere 8 manchetes positivas e reais sobre: ${topic || 'conquistas da ciência, tecnologia e humanidade'}.
+
+Regras:
+- headline: manchete em CAIXA ALTA, máximo 14 palavras
+- photoQuery1: busca em inglês/português para foto de cima (a notícia em si)
+- photoQuery2: busca em inglês/português para foto de baixo (contexto ou resultado)
+- category: categoria (medicina, ciencia, natureza, tecnologia, etc.)
+- caption: legenda completa para Instagram (gancho com emoji, 2-3 parágrafos, 5 hashtags em português)
+
+Responda APENAS JSON:
+{"stories":[{"headline":"MANCHETE","photoQuery1":"foto topo","photoQuery2":"foto rodapé","category":"medicina"}],"caption":"legenda"}`,
+      }],
+    });
+
+    const data = JSON.parse(ai.choices[0].message.content || '{}');
+    const stories = (data.stories || []).slice(0, 8);
+    if (!stories.length) throw new Error('IA não retornou notícias');
+
+    const total = stories.length + 2;
+
+    const photoPairs = await Promise.all(
+      stories.map(s => Promise.all([
+        getStoryPhotos(s.photoQuery1 || s.headline, s.category || 'default', 1).then(b => b[0] || null).catch(() => null),
+        getStoryPhotos(s.photoQuery2 || s.headline, s.category || 'default', 1).then(b => b[0] || null).catch(() => null),
+      ]))
+    );
+
+    const coverBufs = await getStoryPhotos('aurora boreal planeta terra cosmos inspirador', 'nature inspiring hope', 1).catch(() => []);
+    const coverBase = coverBufs[0]
+      ? await sharp(coverBufs[0]).resize(CW, CH, { fit: 'cover', position: 'center' }).toBuffer()
+          .catch(() => sharp(Buffer.from(buildFallbackBg('humanidade'))).png().toBuffer())
+      : await sharp(Buffer.from(buildFallbackBg('humanidade'))).png().toBuffer();
+
+    const COVER_HEADLINE = 'O QUE ACONTECEU DE BOM NO MUNDO E VOCÊ NÃO FICOU SABENDO';
+    const coverOverlay = buildNewsOverlay({ headline: COVER_HEADLINE, kind: 'cover', counter: null, handle: null });
+    const coverBuf = await sharp(coverBase)
+      .composite([{ input: Buffer.from(coverOverlay), top: 0, left: 0 }]).png().toBuffer();
+
+    const storyBufs = await Promise.all(
+      stories.map((s, i) => renderBoasNoticiasSlide({
+        headline: s.headline,
+        topBuf:   photoPairs[i][0],
+        botBuf:   photoPairs[i][1],
+        counter:  `${i + 2}/${total}`,
+        handle,
+        category: s.category || 'default',
+      }))
+    );
+
+    const ctaHeadline = `CANSADO DE NOTICIAS RUINS? SIGA ${handle} E ENCONTRE HISTORIAS QUE DEVOLVEM ESPERANCA`;
+    const ctaBuf = await renderBoasNoticiasSlide({
+      headline: ctaHeadline,
+      topBuf:   null,
+      botBuf:   coverBufs[0] || null,
+      counter:  `${total}/${total}`,
+      handle,
+      category: 'humanidade',
+    });
+
+    res.json({
+      topic: topic || 'Boas Notícias do Mundo',
+      caption: data.caption || '',
+      handle,
+      slides: [coverBuf, ...storyBufs, ctaBuf].map((buf, i) => ({
+        index: i + 1,
+        kind: i === 0 ? 'cover' : i === storyBufs.length + 1 ? 'cta' : 'news',
+        dataUrl: `data:image/png;base64,${buf.toString('base64')}`,
+      })),
+    });
+  } catch (e) {
+    console.error('[carousels] generate-boasnoticias error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/carousels/generate-comecou
+router.post('/generate-comecou', async (req, res) => {
+  const { topic, handle: rawHandle } = req.body || {};
+  if (!process.env.GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
+
+  let handle = (rawHandle || '@seuperfil').trim();
+  if (!handle.startsWith('@')) handle = '@' + handle;
+
+  try {
+    const ai = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.85,
+      response_format: { type: 'json_object' },
+      max_tokens: 2200,
+      messages: [{
+        role: 'user',
+        content: `Você é especialista em conteúdo cultural e comparativo viral para o Instagram brasileiro.
+
+Gere um carrossel "Começou" com 8 slides comparativos sobre: ${topic || 'diferenças culturais entre países e comportamentos virais'}.
+
+Regras:
+- tag: etiqueta curta em CAIXA ALTA, máximo 3 palavras (ex: "CULTURALMENTE", "HISTORICAMENTE", "NA PRATICA")
+- category: título comparativo impactante, máximo 6 palavras (ex: "BRASIL VS. JAPAO", "ANTES VS. DEPOIS")
+- body: 2-3 frases curtas e impactantes sobre o contraste, em português, sem emojis
+- photoQuery: busca em inglês para foto representativa do tema
+- caption: legenda completa para Instagram (gancho com emoji, 2-3 parágrafos, 5 hashtags em português)
+
+Responda APENAS JSON:
+{"slides":[{"tag":"CULTURALMENTE","category":"BRASIL VS. JAPAO","body":"Frases sobre o contraste.","photoQuery":"japan brazil culture"}],"caption":"legenda"}`,
+      }],
+    });
+
+    const data = JSON.parse(ai.choices[0].message.content || '{}');
+    const slides = (data.slides || []).slice(0, 8);
+    if (!slides.length) throw new Error('IA não retornou slides');
+
+    const photoBuffers = await Promise.all(
+      slides.map(s =>
+        getStoryPhotos(s.photoQuery || s.category, 'culture people comparison lifestyle', 1)
+          .then(b => b[0] || null).catch(() => null)
+      )
+    );
+
+    const slideBufs = await Promise.all(
+      slides.map((s, i) => renderComecouSlide(
+        { ...s, footer: i < slides.length - 1 ? 'DESLIZE PARA MAIS >>>' : 'SALVA E COMPARTILHA' },
+        photoBuffers[i]
+      ))
+    );
+
+    const ctaBuf = await sharp(Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+        <rect width="${CW}" height="${CH}" fill="#0a0a0a"/>
+        <text x="${CW / 2}" y="530" font-family="${FONT_FAMILY}" font-size="28" font-weight="bold" fill="rgba(245,197,24,0.55)" text-anchor="middle" letter-spacing="6">COMECOU</text>
+        <line x1="80" y1="590" x2="460" y2="590" stroke="rgba(255,255,255,0.22)" stroke-width="2"/>
+        <circle cx="540" cy="590" r="30" fill="none" stroke="rgba(255,255,255,0.22)" stroke-width="2"/>
+        <line x1="620" y1="590" x2="1000" y2="590" stroke="rgba(255,255,255,0.22)" stroke-width="2"/>
+        <text x="${CW / 2}" y="750" font-family="${FONT_FAMILY}" font-size="84" font-weight="bold" fill="white" text-anchor="middle">CURTIU?</text>
+        <text x="${CW / 2}" y="860" font-family="${FONT_FAMILY}" font-size="46" font-weight="bold" fill="#F5C518" text-anchor="middle">Segue e salva</text>
+        <text x="${CW / 2}" y="930" font-family="${FONT_FAMILY}" font-size="46" font-weight="bold" fill="#F5C518" text-anchor="middle">para mais conteudo</text>
+        <text x="${CW / 2}" y="1070" font-family="${FONT_FAMILY}" font-size="56" font-weight="bold" fill="white" text-anchor="middle">${escXml(handle)}</text>
+      </svg>`
+    )).png().toBuffer();
+
+    res.json({
+      topic: topic || 'Começou',
+      caption: data.caption || '',
+      handle,
+      slides: [...slideBufs, ctaBuf].map((buf, i) => ({
+        index: i + 1,
+        kind: i === slideBufs.length ? 'cta' : 'content',
+        dataUrl: `data:image/png;base64,${buf.toString('base64')}`,
+      })),
+    });
+  } catch (e) {
+    console.error('[carousels] generate-comecou error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
