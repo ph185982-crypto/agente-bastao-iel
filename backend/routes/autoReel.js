@@ -4,7 +4,7 @@ const axios = require('axios');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
-const { OpenAI } = require('openai');
+const { createCompatClient } = require('../lib/llm');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -14,7 +14,7 @@ const crypto = require('crypto');
 ffmpeg.setFfmpegPath(ffmpegStatic);
 ffmpeg.setFfprobePath(require('ffprobe-static').path);
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = createCompatClient();
 
 const router = express.Router();
 const upload = multer({ dest: '/tmp/', limits: { fileSize: 50 * 1024 * 1024 } });
@@ -181,12 +181,12 @@ Responda APENAS o JSON. Formato: {"headline":"...","caption":"..."}`,
     response_format: { type: 'json_object' },
   });
   const raw = res.choices[0].message.content;
-  if (!raw) throw new Error('OpenAI não retornou conteúdo');
+  if (!raw) throw new Error('LLM não retornou conteúdo');
   const parsed = JSON.parse(raw);
   const headline = (parsed.headline || '').trim().replace(/^["'""'']+|["'""'']+$/g, '');
   const caption  = (parsed.caption  || '').trim();
-  if (!headline) throw new Error('OpenAI não gerou headline');
-  if (!caption)  throw new Error('OpenAI não gerou caption');
+  if (!headline) throw new Error('LLM não gerou headline');
+  if (!caption)  throw new Error('LLM não gerou caption');
   return { headline, caption };
 }
 

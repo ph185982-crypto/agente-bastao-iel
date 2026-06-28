@@ -3,7 +3,7 @@
 // Memória: Upstash Redis. Agente: GPT-4o function-calling.
 const express = require('express');
 const axios   = require('axios');
-const { OpenAI } = require('openai');
+const { createCompatClient } = require('../lib/llm');
 const crypto  = require('crypto');
 const vault   = require('../lib/vault');
 
@@ -22,8 +22,8 @@ function authBrain(req, res, next) {
 }
 router.use(authBrain);
 
-let _openai = null;
-const getOpenAI = () => (_openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
+let _llm = null;
+const getOpenAI = () => (_llm ??= createCompatClient());
 
 const NS = 'brain:owner';
 const K = {
@@ -561,7 +561,7 @@ async function sendWhatsApp(to, text) {
 router.post('/chat', async (req, res) => {
   const { message } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: 'mensagem vazia' });
-  if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OPENAI_API_KEY não configurada' });
+  if (!process.env.GOOGLE_API_KEY) return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
   if (!vault.enabled()) return res.status(503).json({ error: 'Memória não configurada' });
   try {
     const { reply, executed } = await runBrain(message.trim());

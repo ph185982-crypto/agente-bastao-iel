@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const OpenAI = require('openai');
+const { createCompatClient } = require('../lib/llm');
 const fs = require('fs');
 
 const router = express.Router();
@@ -67,14 +67,14 @@ router.post('/', upload.array('files', 10), async (req, res) => {
 
   if (!message?.trim()) return res.status(400).json({ error: 'Mensagem é obrigatória' });
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
+  if (!process.env.GOOGLE_API_KEY) {
+    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada no servidor' });
   }
 
   const filePaths = (req.files || []).map((f) => f.path);
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = createCompatClient();
 
     // Parse previous turns (role: user | assistant, content: string)
     let parsedHistory = [];

@@ -4,7 +4,7 @@ const axios = require('axios');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
-const { OpenAI } = require('openai');
+const { createCompatClient } = require('../lib/llm');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -16,8 +16,8 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 ffmpeg.setFfprobePath(require('ffprobe-static').path);
-let _openai = null;
-const getOpenAI = () => (_openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
+let _llm = null;
+const getOpenAI = () => (_llm ??= createCompatClient());
 const router = express.Router();
 
 // ── Layout constants ──────────────────────────────────────────────────────────
@@ -1110,8 +1110,8 @@ router.get('/vet', async (req, res) => {
   if (!vault.enabled()) {
     return res.status(503).json({ error: 'Cofre (Upstash) não configurado' });
   }
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada' });
+  if (!process.env.GOOGLE_API_KEY) {
+    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
   }
 
   try {

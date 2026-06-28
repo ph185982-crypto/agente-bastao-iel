@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const OpenAI = require('openai');
+const { createCompatClient } = require('../lib/llm');
 const fs = require('fs');
 
 const router = express.Router();
@@ -28,12 +28,12 @@ Sempre traga ângulos intelectuais, curiosos ou contraintuitivos.`;
 router.post('/', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
+  if (!process.env.GOOGLE_API_KEY) {
+    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada no servidor' });
   }
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = createCompatClient();
 
     const imageBuffer = fs.readFileSync(req.file.path);
     const base64Image = imageBuffer.toString('base64');

@@ -1,9 +1,9 @@
 const express = require('express');
-const { OpenAI } = require('openai');
+const { createCompatClient } = require('../lib/llm');
 const crypto = require('crypto');
 
-let _openai = null;
-const getOpenAI = () => (_openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
+let _llm = null;
+const getOpenAI = () => (_llm ??= createCompatClient());
 const router = express.Router();
 
 // ── Job store (in-memory, 30min TTL) ──────────────────────────────────────────
@@ -447,8 +447,8 @@ router.post('/analyze', (req, res) => {
   const { headline, description, videoUrl, context } = req.body;
   if (!headline?.trim())    return res.status(400).json({ error: 'headline é obrigatória' });
   if (!description?.trim()) return res.status(400).json({ error: 'descrição é obrigatória' });
-  if (!process.env.OPENAI_API_KEY)
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada' });
+  if (!process.env.GOOGLE_API_KEY)
+    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada' });
 
   const jobId = crypto.randomUUID();
   const job   = createJob(jobId);

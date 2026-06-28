@@ -8,11 +8,11 @@ const axios   = require('axios');
 const sharp   = require('sharp');
 const fs      = require('fs');
 const path    = require('path');
-const { OpenAI } = require('openai');
+const { createCompatClient } = require('../lib/llm');
 
 const router = express.Router();
-let _openai = null;
-const getOpenAI = () => (_openai ??= new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
+let _llm = null;
+const getOpenAI = () => (_llm ??= createCompatClient());
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 const CW = 1080;            // largura do slide
@@ -890,8 +890,8 @@ router.get('/cover', async (req, res) => {
 // POST /api/carousels/generate — gera um carrossel pronto para postar
 router.post('/generate', async (req, res) => {
   const { theme, topic, reference, slideCount, handle: rawHandle } = req.body || {};
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
+  if (!process.env.GOOGLE_API_KEY) {
+    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada no servidor' });
   }
   let handle = (rawHandle || '@pedro_destrava').trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -932,8 +932,8 @@ router.post('/generate', async (req, res) => {
 // manchete em CAIXA ALTA + foto real embaixo. Capa e CTA são foto única.
 router.post('/generate-news', async (req, res) => {
   const { handle: rawHandle } = req.body || {};
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY não configurada no servidor' });
+  if (!process.env.GOOGLE_API_KEY) {
+    return res.status(500).json({ error: 'GOOGLE_API_KEY não configurada no servidor' });
   }
 
   let handle = (rawHandle || '@seuperfil').trim();
