@@ -287,6 +287,52 @@ async function downloadPhotoBuffer(url, referer) {
   return Buffer.from(data);
 }
 
+// ── RapidAPI Image Search — usa a RAPIDAPI_KEY já configurada ────────────────
+async function fetchRapidAPIImages(query, want = 6) {
+  const key = process.env.RAPIDAPI_KEY;
+  if (!key) return [];
+  const apis = [
+    {
+      host: 'real-time-image-search.p.rapidapi.com',
+      path: '/search',
+      params: { query, num: Math.min(12, want) },
+      extract: (d) => (d.data || []).map(it => it.url || it.original_url).filter(Boolean),
+    },
+    {
+      host: 'bing-image-search1.p.rapidapi.com',
+      path: '/images/search',
+      params: { q: query, count: Math.min(10, want), safeSearch: 'Moderate' },
+      extract: (d) => (d.value || []).map(it => it.contentUrl).filter(Boolean),
+    },
+    {
+      host: 'google-api31.p.rapidapi.com',
+      path: '/imagesearch',
+      params: { q: query, num: Math.min(10, want) },
+      extract: (d) => (d.items || d.result || []).map(it => it.link || it.original || it.url).filter(Boolean),
+    },
+    {
+      host: 'contextualwebsearch-websearch-v1.p.rapidapi.com',
+      path: '/api/Search/ImageSearchAPI',
+      params: { q: query, pageNumber: 1, pageSize: Math.min(10, want), autoCorrect: true, safeSearch: true },
+      extract: (d) => (d.value || []).map(it => it.url).filter(Boolean),
+    },
+  ];
+  for (const api of apis) {
+    try {
+      const { data } = await axios.get(`https://${api.host}${api.path}`, {
+        params: api.params,
+        headers: { 'x-rapidapi-key': key, 'x-rapidapi-host': api.host },
+        timeout: 12000,
+      });
+      const urls = api.extract(data);
+      if (urls.length > 0) return urls.slice(0, want);
+    } catch (e) {
+      console.warn(`[rapidapi-img:${api.host}]`, e.response?.status, e.message);
+    }
+  }
+  return [];
+}
+
 // ── Serper.dev — Google Imagens sem billing ───────────────────────────────────
 // Busca FOTOS REAIS do acontecimento. Requer SERPER_API_KEY (grátis em serper.dev).
 async function fetchSerperImageUrls(query, want = 6) {
@@ -344,20 +390,27 @@ async function collectPhotoBuffers(candidateUrls, n) {
   return out;
 }
 
-// Pega N fotos reais: tenta Serper → Google → Pexels → gradiente.
+// Pega N fotos reais: tenta RapidAPI → Serper → Google → Pexels.
 async function getStoryPhotos(query, pexelsFallback, n = 2) {
-  // 1. Serper (Google Imagens, grátis sem billing)
-  const serperUrls = await fetchSerperImageUrls(query, 8);
-  let buffers = await collectPhotoBuffers(serperUrls, n);
+  // 1. RapidAPI Image Search (usa RAPIDAPI_KEY já configurada)
+  const rapidUrls = await fetchRapidAPIImages(query, 8);
+  let buffers = await collectPhotoBuffers(rapidUrls, n);
 
-  // 2. Google CSE (se configurado)
+  // 2. Serper (Google Imagens, grátis sem billing)
+  if (buffers.length < n) {
+    const serperUrls = await fetchSerperImageUrls(query, 8);
+    const more = await collectPhotoBuffers(serperUrls, n - buffers.length);
+    buffers = buffers.concat(more);
+  }
+
+  // 3. Google CSE (se configurado)
   if (buffers.length < n) {
     const googleUrls = await fetchGoogleImageUrls(query, 8);
     const more = await collectPhotoBuffers(googleUrls, n - buffers.length);
     buffers = buffers.concat(more);
   }
 
-  // 3. Pexels (banco de imagens genérico)
+  // 4. Pexels (banco de imagens genérico)
   if (buffers.length < n) {
     const px = await fetchPexelsPhoto(pexelsFallback || query);
     if (px) {
