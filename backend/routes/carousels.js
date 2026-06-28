@@ -396,24 +396,151 @@ async function collectPhotoBuffers(candidateUrls, n) {
   return out;
 }
 
-// Pega N fotos reais: Wikimedia → Wikipedia → Serper → Google CSE → Pexels.
-async function getStoryPhotos(query, pexelsFallback, n = 2) {
-  const sources = [
-    () => fetchWikimediaImages(query, 8),
-    () => fetchWikipediaImages(query, 6),
-    () => fetchSerperImageUrls(query, 8),
-    () => fetchGoogleImageUrls(query, 8),
-    () => fetchPexelsPhoto(pexelsFallback || query).then(u => u ? [u] : []),
-  ];
-  let buffers = [];
-  for (const src of sources) {
-    if (buffers.length >= n) break;
-    const urls = await src().catch(() => []);
-    if (urls.length) {
-      const more = await collectPhotoBuffers(urls, n - buffers.length);
-      buffers = buffers.concat(more);
+// ══════════════════════════════════════════════════════════════════════════════
+// PIPELINE MULTI-AGENTE DE IMAGENS
+// Agente 1 (Buscador): LLM gera queries otimizadas EN + PT
+// Agente 2 (Coletor):  busca em todas as fontes com todas as queries
+// Agente 3 (Curador):  LLM escolhe as melhores fotos por impacto visual
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Agente 1 — Buscador: gera queries de busca otimizadas via LLM
+async function agentSearchQueryGenerator(slideTopic) {
+  try {
+    const res = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+      max_tokens: 400,
+      messages: [{
+        role: 'user',
+        content: `Generate image search queries for this topic: "${slideTopic}"
+
+Return ONLY JSON with 5 diverse queries — mix English and Portuguese, specific and generic:
+{"queries":["specific english query","query portugues especifico","broader topic english","nome proprio lugar pessoa","generic visual scene english"]}
+
+Rules:
+- Include proper nouns (places, people, institutions) when relevant
+- Mix specific (the exact event/place) with broader (the visual scene)
+- Prefer terms that find PHOTOGRAPHS, not illustrations
+- At least 2 in English, at least 1 in Portuguese`,
+      }],
+    });
+    const data = JSON.parse(res.choices[0].message.content || '{}');
+    return (data.queries || []).filter(q => typeof q === 'string' && q.trim());
+  } catch (e) {
+    console.warn('[agent-search]', e.message);
+    return [slideTopic];
+  }
+}
+
+// Agente 2 — Coletor: busca em todas as fontes com múltiplas queries
+async function agentPhotoCollector(queries) {
+  const allUrls = [];
+  const seen = new Set();
+
+  const searchOneSrc = async (fn, q) => {
+    const urls = await fn(q).catch(() => []);
+    for (const u of urls) {
+      if (!seen.has(u)) { seen.add(u); allUrls.push(u); }
+    }
+  };
+
+  // Busca em paralelo: todas as queries x todas as fontes
+  const tasks = [];
+  for (const q of queries.slice(0, 5)) {
+    tasks.push(searchOneSrc(fetchWikimediaImages, q));
+    tasks.push(searchOneSrc(fetchWikipediaImages, q));
+    tasks.push(searchOneSrc(fetchSerperImageUrls, q));
+    tasks.push(searchOneSrc(fetchGoogleImageUrls, q));
+  }
+  await Promise.all(tasks);
+
+  // Pexels como último recurso
+  if (allUrls.length < 4) {
+    for (const q of queries.slice(0, 2)) {
+      const px = await fetchPexelsPhoto(q).catch(() => null);
+      if (px && !seen.has(px)) { seen.add(px); allUrls.push(px); }
     }
   }
+
+  return allUrls;
+}
+
+// Agente 3 — Curador: LLM ranqueia URLs por relevância e impacto
+async function agentPhotoCurator(topic, candidateUrls, want) {
+  if (candidateUrls.length <= want) return candidateUrls;
+
+  try {
+    const urlList = candidateUrls.slice(0, 20).map((u, i) => {
+      const filename = decodeURIComponent(u.split('/').pop() || '').replace(/\.\w+$/, '').replace(/[_-]/g, ' ').slice(0, 80);
+      return `${i + 1}. ${filename}`;
+    }).join('\n');
+
+    const res = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `You are a visual content curator for Instagram carousels.
+
+Topic: "${topic}"
+
+Pick the ${want} BEST images by filename/description. Prefer:
+- Real photographs (not illustrations, maps, logos, diagrams)
+- Dramatic, emotional, visually striking scenes
+- Directly related to the topic
+- High retention potential (would make someone stop scrolling)
+
+Candidates:
+${urlList}
+
+Return ONLY JSON: {"picks":[3,1,7]} (the numbers of your top ${want} picks in order of preference)`,
+      }],
+    });
+    const data = JSON.parse(res.choices[0].message.content || '{}');
+    const picks = (data.picks || [])
+      .filter(p => typeof p === 'number' && p >= 1 && p <= candidateUrls.length)
+      .map(p => candidateUrls[p - 1]);
+    if (picks.length >= want) return picks.slice(0, want);
+    // fill remaining from unselected
+    const pickSet = new Set(picks);
+    for (const u of candidateUrls) {
+      if (picks.length >= want) break;
+      if (!pickSet.has(u)) picks.push(u);
+    }
+    return picks.slice(0, want);
+  } catch (e) {
+    console.warn('[agent-curator]', e.message);
+    return candidateUrls.slice(0, want);
+  }
+}
+
+// Pipeline completo: Buscador → Coletor → Curador → Download + Validação
+async function getStoryPhotos(query, pexelsFallback, n = 2) {
+  // Agente 1: gera queries otimizadas
+  const queries = await agentSearchQueryGenerator(query);
+  if (!queries.length) queries.push(query);
+  if (pexelsFallback && !queries.includes(pexelsFallback)) queries.push(pexelsFallback);
+
+  // Agente 2: coleta URLs de todas as fontes
+  const allUrls = await agentPhotoCollector(queries);
+  if (!allUrls.length) return [];
+
+  // Agente 3: curadoria — seleciona as melhores
+  const curated = await agentPhotoCurator(query, allUrls, Math.min(n * 3, 8));
+
+  // Download + validação técnica
+  const buffers = await collectPhotoBuffers(curated, n);
+
+  // Se curadoria não achou suficiente, tenta o resto
+  if (buffers.length < n) {
+    const remaining = allUrls.filter(u => !curated.includes(u));
+    const more = await collectPhotoBuffers(remaining, n - buffers.length);
+    buffers.push(...more);
+  }
+
   return buffers;
 }
 
@@ -1404,13 +1531,17 @@ Responda APENAS JSON:
     const total = stories.length + 2;
 
     const photoPairs = await Promise.all(
-      stories.map(s => Promise.all([
-        getStoryPhotos(s.photoQuery1 || s.headline, s.category || 'default', 1).then(b => b[0] || null).catch(() => null),
-        getStoryPhotos(s.photoQuery2 || s.headline, s.category || 'default', 1).then(b => b[0] || null).catch(() => null),
-      ]))
+      stories.map(s =>
+        getStoryPhotos(
+          s.photoQuery1 || s.headline,
+          s.photoQuery2 || s.category || 'default',
+          2
+        ).then(bufs => [bufs[0] || null, bufs[1] || null])
+         .catch(() => [null, null])
+      )
     );
 
-    const coverBufs = await getStoryPhotos('aurora boreal planeta terra cosmos inspirador', 'nature inspiring hope', 1).catch(() => []);
+    const coverBufs = await getStoryPhotos('planet earth dramatic space cosmos beautiful', 'nature inspiring hope', 1).catch(() => []);
     const coverBase = coverBufs[0]
       ? await sharp(coverBufs[0]).resize(CW, CH, { fit: 'cover', position: 'center' }).toBuffer()
           .catch(() => sharp(Buffer.from(buildFallbackBg('humanidade'))).png().toBuffer())
