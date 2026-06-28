@@ -8,8 +8,8 @@ const audioStore = new Map();
 
 const isSandbox      = process.env.NODE_ENV !== 'production';
 const SHOTSTACK_KEY  = isSandbox
-  ? 'irrf4QpZP1FcGmoJIivIZDHWA08bPOzcNn1F63vS'
-  : 'HUhS8OO1qMnEaHVh7Rss1Fv9ETcxRPNHR7Zh34mZ';
+  ? process.env.SHOTSTACK_SANDBOX_KEY
+  : process.env.SHOTSTACK_PROD_KEY;
 const SHOTSTACK_BASE = isSandbox
   ? 'https://api.shotstack.io/stage/render'
   : 'https://api.shotstack.io/v1/render';
