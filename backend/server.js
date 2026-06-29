@@ -38,6 +38,7 @@ app.use('/api/content-finder', require('./routes/contentFinder'));
 app.use('/api/carousels', require('./routes/carousels'));
 app.use('/api/headline-jury', require('./routes/headlineJury'));
 app.use('/api/brain', require('./routes/brain'));
+app.use('/api/video', require('./routes/videoIA'));
 
 app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
