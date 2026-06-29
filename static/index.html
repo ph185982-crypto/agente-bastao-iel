@@ -482,6 +482,8 @@ class Component extends DCLogic {
   state = {
     activeTab:        'carousels',
     duracao:          '30s',
+    hasAvatar:        false,
+    avatarPreviewUrl: null,
     videoStep:        'idle',
     videoCurrentStep: 0,
     videoRenderId:    null,
@@ -494,13 +496,22 @@ class Component extends DCLogic {
   };
 
   _progressTimer = null;
+  _avatarListenerAdded = false;
 
   renderVals() {
     const {
-      activeTab, duracao,
+      activeTab, duracao, hasAvatar, avatarPreviewUrl,
       videoStep, videoCurrentStep,
       videoLegenda, videoTitulo, videoMedia, videoError,
     } = this.state;
+
+    if (!this._avatarListenerAdded) {
+      this._avatarListenerAdded = true;
+      setTimeout(() => {
+        const fileInput = document.getElementById('avatarFileInput');
+        if (fileInput) fileInput.addEventListener('change', (e) => this._handleAvatarUpload(e));
+      }, 100);
+    }
 
     const isC = activeTab === 'carousels';
     const isR = activeTab === 'reels';
@@ -523,6 +534,12 @@ class Component extends DCLogic {
       switchToCarousels: () => this.setState({ activeTab: 'carousels' }),
       switchToReels:     () => this.setState({ activeTab: 'reels' }),
       switchToVideo:     () => this.setState({ activeTab: 'video' }),
+
+      avatarBg:      hasAvatar ? 'transparent' : '#F2F2F7',
+      hasAvatar:     hasAvatar,
+      noAvatar:      !hasAvatar,
+      avatarBtnText: hasAvatar ? 'Trocar' : 'Enviar',
+      uploadAvatar:  () => document.getElementById('avatarFileInput')?.click(),
 
       duracao30Border: duracao === '30s' ? '#007AFF' : '#E5E5EA',
       duracao30Bg:     duracao === '30s' ? 'rgba(0,122,255,0.06)' : '#FFFFFF',
@@ -571,6 +588,27 @@ class Component extends DCLogic {
 
       selectTemplate: (e) => console.log('template:', e.currentTarget.getAttribute('data-template')),
     };
+  }
+
+  async _handleAvatarUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    this.setState({ hasAvatar: true, avatarPreviewUrl: previewUrl });
+    setTimeout(() => {
+      const img = document.getElementById('avatarImg');
+      if (img) img.src = previewUrl;
+    }, 50);
+    try {
+      const buf = await file.arrayBuffer();
+      await fetch('/api/video/avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'image/jpeg' },
+        body: buf,
+      });
+    } catch (err) {
+      console.error('Avatar upload failed:', err);
+    }
   }
 
   async _iniciarGeracao(tema) {

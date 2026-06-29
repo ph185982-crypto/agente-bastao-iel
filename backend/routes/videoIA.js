@@ -4,6 +4,7 @@ const router  = express.Router();
 const { createCompatClient } = require('../lib/llm');
 
 const audioStore = new Map();
+const avatarStore = { data: null };
 
 const isSandbox      = process.env.NODE_ENV !== 'production';
 const SHOTSTACK_KEY  = isSandbox
@@ -252,6 +253,21 @@ async function submeterShotstack({ blocos, audioUrl, avatarUrl }) {
   return data.response.id;
 }
 
+// ── Route: upload avatar (foto do apresentador) ────────────────────────────
+router.post('/avatar', express.raw({ type: '*/*', limit: '5mb' }), (req, res) => {
+  const b64 = req.body.toString('base64');
+  const ct  = req.headers['content-type'] || 'image/jpeg';
+  avatarStore.data = { b64, ct };
+  res.json({ ok: true, size: req.body.length });
+});
+
+router.get('/avatar', (req, res) => {
+  if (!avatarStore.data) return res.status(404).json({ error: 'avatar não configurado' });
+  const buf = Buffer.from(avatarStore.data.b64, 'base64');
+  res.set({ 'Content-Type': avatarStore.data.ct, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=86400' });
+  res.send(buf);
+});
+
 // ── Route: servir áudio temporariamente ─────────────────────────────────────
 router.get('/audio/:id', (req, res) => {
   const b64 = audioStore.get(req.params.id);
@@ -303,7 +319,9 @@ router.post('/generate', async (req, res) => {
     const baseUrl = process.env.BASE_URL || `${proto}://${host}`;
 
     const audioUrl  = `${baseUrl}/api/video/audio/${audioId}`;
-    const avatarUrl = `${baseUrl}/pedro-avatar.svg`;
+    const avatarUrl = avatarStore.data
+      ? `${baseUrl}/api/video/avatar`
+      : `${baseUrl}/pedro-avatar.svg`;
 
     const renderId = await submeterShotstack({ blocos: blocosFinals, audioUrl, avatarUrl });
 
