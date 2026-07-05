@@ -1065,8 +1065,8 @@ router.get('/cover', async (req, res) => {
 // POST /api/carousels/generate — gera um carrossel pronto para postar
 router.post('/generate', async (req, res) => {
   const { theme, topic, reference, slideCount, handle: rawHandle } = req.body || {};
-  if (!process.env.GROQ_API_KEY) {
-    return res.status(500).json({ error: 'GROQ_API_KEY não configurada no servidor' });
+  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
+    return res.status(500).json({ error: 'Nenhuma API key de LLM configurada (OPENAI_API_KEY ou GROQ_API_KEY)' });
   }
   let handle = (rawHandle || '@pedro_destrava').trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1107,8 +1107,8 @@ router.post('/generate', async (req, res) => {
 // manchete em CAIXA ALTA + foto real embaixo. Capa e CTA são foto única.
 router.post('/generate-news', async (req, res) => {
   const { handle: rawHandle } = req.body || {};
-  if (!process.env.GROQ_API_KEY) {
-    return res.status(500).json({ error: 'GROQ_API_KEY não configurada no servidor' });
+  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
+    return res.status(500).json({ error: 'Nenhuma API key de LLM configurada (OPENAI_API_KEY ou GROQ_API_KEY)' });
   }
 
   let handle = (rawHandle || '@seuperfil').trim();
@@ -1417,7 +1417,7 @@ async function renderComecouSlide(slide, photoBuf) {
 // POST /api/carousels/generate-arquivo
 router.post('/generate-arquivo', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
-  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
+  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
 
   let handle = (rawHandle || '@seuperfil').trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1497,7 +1497,7 @@ Responda APENAS JSON:
 // POST /api/carousels/generate-boasnoticias
 router.post('/generate-boasnoticias', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
-  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
+  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
 
   let handle = (rawHandle || '@seuperfil').trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1592,7 +1592,7 @@ Responda APENAS JSON:
 // POST /api/carousels/generate-comecou
 router.post('/generate-comecou', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
-  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
+  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
 
   let handle = (rawHandle || '@seuperfil').trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
