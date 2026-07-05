@@ -68,6 +68,9 @@
 
     <!-- CARROSSÉIS TAB -->
     <sc-if value="{{ showCarousels }}" hint-placeholder-val="{{ true }}">
+
+      <!-- IDLE: Template cards + stats + recentes -->
+      <sc-if value="{{ carouselShowIdle }}" hint-placeholder-val="{{ true }}">
       <div style="padding: 16px 0 20px; display: flex; flex-direction: column; gap: 20px; animation: fadeUp 0.3s ease-out forwards">
 
         <div style="display: flex; flex-direction: column; gap: 10px">
@@ -180,6 +183,176 @@
         </div>
 
       </div>
+      </sc-if>
+
+      <!-- FORM: Topic + Handle input -->
+      <sc-if value="{{ carouselShowForm }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 16px; animation: fadeUp 0.3s ease-out forwards">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <div onClick="{{ voltarTemplates }}" style="width: 36px; height: 36px; border-radius: 50%; background: #F2F2F7; display: flex; align-items: center; justify-content: center; cursor: pointer" style-active="background: #E5E5EA">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1D1D1F" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">{{ carouselTemplateName }}</div>
+              <div style="font-size: 12px; color: #86868B">Carrossel gerado por IA</div>
+            </div>
+          </div>
+
+          <div style="background: #FFFFFF; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 14px">
+            <div>
+              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Tema / Assunto</div>
+              <input id="carouselTopicInput" type="text" placeholder="{{ carouselTopicPlaceholder }}" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none" />
+            </div>
+            <div>
+              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Seu @ do Instagram</div>
+              <input id="carouselHandleInput" type="text" value="@seuperfil" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none" />
+            </div>
+          </div>
+
+          <div onClick="{{ gerarCarrossel }}" style="background: linear-gradient(135deg, #007AFF, #5856D6); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(0,122,255,0.25); transition: all 0.2s" style-active="opacity: 0.85; transform: scale(0.98)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <span style="font-size: 16px; font-weight: 700; color: white">Gerar Carrossel</span>
+          </div>
+
+          <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+            <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px">Pipeline IA</div>
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: center; gap: 10px">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(0,122,255,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #007AFF">1</span></div>
+                <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Conteudo IA</div><div style="font-size: 11px; color: #86868B">GPT-4o gera headlines e textos virais</div></div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(88,86,214,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #5856D6">2</span></div>
+                <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Fotos Reais</div><div style="font-size: 11px; color: #86868B">Busca em 5 fontes (Wikimedia, Pexels...)</div></div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #34C759">3</span></div>
+                <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Render + Review</div><div style="font-size: 11px; color: #86868B">Renderiza slides 1080x1350 + nota de engajamento</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- GENERATING: Progress pipeline -->
+      <sc-if value="{{ carouselGenerating }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 16px; animation: fadeUp 0.3s ease-out forwards">
+          <div style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">Gerando Carrossel...</div>
+          <div style="background: #FFFFFF; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 14px">
+            <div style="display: flex; flex-direction: column; gap: 12px">
+
+              <div style="display: flex; align-items: center; gap: 12px">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: {{ cStep0Bg }}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.4s">
+                  <sc-if value="{{ cStep0Done }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
+                  <sc-if value="{{ cStep0Active }}"><div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div></sc-if>
+                </div>
+                <span style="font-size: 14px; color: {{ cStep0TextColor }}; font-weight: {{ cStep0Weight }}">Gerando conteudo com IA...</span>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 12px">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: {{ cStep1Bg }}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.4s">
+                  <sc-if value="{{ cStep1Done }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
+                  <sc-if value="{{ cStep1Active }}"><div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div></sc-if>
+                </div>
+                <span style="font-size: 14px; color: {{ cStep1TextColor }}; font-weight: {{ cStep1Weight }}">Buscando fotos reais...</span>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 12px">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: {{ cStep2Bg }}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.4s">
+                  <sc-if value="{{ cStep2Done }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
+                  <sc-if value="{{ cStep2Active }}"><div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div></sc-if>
+                </div>
+                <span style="font-size: 14px; color: {{ cStep2TextColor }}; font-weight: {{ cStep2Weight }}">Renderizando slides...</span>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 12px">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: {{ cStep3Bg }}; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.4s">
+                  <sc-if value="{{ cStep3Done }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
+                  <sc-if value="{{ cStep3Active }}"><div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div></sc-if>
+                </div>
+                <span style="font-size: 14px; color: {{ cStep3TextColor }}; font-weight: {{ cStep3Weight }}">Revisando engajamento...</span>
+              </div>
+
+            </div>
+          </div>
+          <div style="font-size: 12px; color: #86868B; text-align: center">Pode levar 30-60 segundos. A IA esta criando conteudo viral com fotos reais.</div>
+        </div>
+      </sc-if>
+
+      <!-- DONE: Carousel viewer -->
+      <sc-if value="{{ carouselShowResult }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 14px; animation: fadeUp 0.3s ease-out forwards">
+
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <div style="font-size: 18px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">Carrossel Pronto!</div>
+            <sc-if value="{{ carouselHasScore }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 6px 12px; background: linear-gradient(135deg, #34C759, #00C7BE); border-radius: 20px">
+                <span style="font-size: 13px; font-weight: 700; color: white">{{ carouselScoreText }} engaj.</span>
+              </div>
+            </sc-if>
+          </div>
+
+          <div id="carouselViewer" style="position: relative; background: #000; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15); aspect-ratio: 4/5">
+            <img id="carouselSlideImg" style="width: 100%; height: 100%; object-fit: cover" />
+            <div onClick="{{ prevSlide }}" style="position: absolute; left: 0; top: 0; bottom: 0; width: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; background: linear-gradient(90deg, rgba(0,0,0,0.2), transparent)" style-active="background: linear-gradient(90deg, rgba(0,0,0,0.4), transparent)">
+              <sc-if value="{{ carouselHasPrev }}" hint-placeholder-val="{{ false }}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </sc-if>
+            </div>
+            <div onClick="{{ nextSlide }}" style="position: absolute; right: 0; top: 0; bottom: 0; width: 50px; display: flex; align-items: center; justify-content: center; cursor: pointer; background: linear-gradient(270deg, rgba(0,0,0,0.2), transparent)" style-active="background: linear-gradient(270deg, rgba(0,0,0,0.4), transparent)">
+              <sc-if value="{{ carouselHasNext }}" hint-placeholder-val="{{ false }}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+              </sc-if>
+            </div>
+            <div style="position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); border-radius: 12px; padding: 4px 10px; backdrop-filter: blur(8px)">
+              <span style="font-size: 12px; font-weight: 600; color: white">{{ carouselSlideCounter }}</span>
+            </div>
+          </div>
+
+          <div id="carouselDots" style="display: flex; gap: 6px; justify-content: center; padding: 4px 0"></div>
+
+          <div style="display: flex; gap: 8px">
+            <div onClick="{{ downloadSlide }}" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; background: #1D1D1F; border-radius: 12px; padding: 14px; cursor: pointer; text-decoration: none" style-active="opacity: 0.85">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span style="font-size: 14px; font-weight: 600; color: white">Este slide</span>
+            </div>
+            <div onClick="{{ downloadAll }}" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #007AFF, #5856D6); border-radius: 12px; padding: 14px; cursor: pointer" style-active="opacity: 0.85">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span style="font-size: 14px; font-weight: 600; color: white">Todos</span>
+            </div>
+          </div>
+
+          <sc-if value="{{ carouselHasCaption }}" hint-placeholder-val="{{ false }}">
+            <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
+                <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Legenda do Post</span>
+                <div onClick="{{ copiarCaption }}" style="padding: 5px 10px; background: rgba(0,122,255,0.1); border-radius: 8px; cursor: pointer" style-active="background: rgba(0,122,255,0.2)">
+                  <span style="font-size: 12px; font-weight: 600; color: #007AFF">Copiar</span>
+                </div>
+              </div>
+              <div id="carouselCaptionText" style="font-size: 13px; color: #3C3C43; line-height: 1.5">{{ carouselCaptionText }}</div>
+            </div>
+          </sc-if>
+
+          <div onClick="{{ reiniciarCarrossel }}" style="padding: 14px; border-radius: 12px; border: 1.5px solid #E5E5EA; text-align: center; cursor: pointer; transition: all 0.2s" style-active="background: #F2F2F7">
+            <span style="font-size: 15px; font-weight: 600; color: #007AFF">Gerar outro carrossel</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ERROR -->
+      <sc-if value="{{ carouselShowError }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 16px 20px 20px; animation: fadeUp 0.3s ease-out forwards">
+          <div style="background: rgba(255,59,48,0.06); border: 1px solid rgba(255,59,48,0.2); border-radius: 14px; padding: 16px">
+            <div style="font-size: 14px; font-weight: 600; color: #FF3B30; margin-bottom: 6px">Erro na geracao</div>
+            <div style="font-size: 13px; color: #3C3C43; line-height: 1.4">{{ carouselErrorMsg }}</div>
+            <div onClick="{{ reiniciarCarrossel }}" style="margin-top: 12px; padding: 10px; background: #FF3B30; border-radius: 10px; text-align: center; cursor: pointer" style-active="opacity: 0.85">
+              <span style="font-size: 14px; font-weight: 600; color: white">Tentar novamente</span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
     </sc-if>
 
     <!-- REELS STUDIO TAB -->
@@ -515,6 +688,14 @@ class Component extends DCLogic {
     videoNotas:       null,
     videoMedia:       null,
     videoError:       null,
+    carouselStep:        'idle',
+    carouselTemplate:    null,
+    carouselCurrentStep: 0,
+    carouselSlides:      [],
+    carouselCaption:     null,
+    carouselReview:      null,
+    carouselError:       null,
+    carouselViewIndex:   0,
     reelsState:       'idle',
     reelsResults:     [],
     reelsError:       null,
@@ -535,6 +716,8 @@ class Component extends DCLogic {
       videoLegenda, videoTitulo, videoMedia, videoError,
       reelsState, reelsResults, reelsError, reelsSelectedThemes,
       reelsPreview, recycledUrl, recycledHeadline, recycledCaption,
+      carouselStep, carouselTemplate, carouselCurrentStep, carouselSlides,
+      carouselCaption, carouselReview, carouselError, carouselViewIndex,
     } = this.state;
 
     if (!this._avatarListenerAdded) {
@@ -566,6 +749,76 @@ class Component extends DCLogic {
       switchToCarousels: () => this.setState({ activeTab: 'carousels' }),
       switchToReels:     () => this.setState({ activeTab: 'reels' }),
       switchToVideo:     () => this.setState({ activeTab: 'video' }),
+
+      // ── Carousel state ───────────────────────────────────────────────────
+      carouselShowIdle:   carouselStep === 'idle',
+      carouselShowForm:   carouselStep === 'form',
+      carouselGenerating: carouselStep === 'generating',
+      carouselShowResult: carouselStep === 'done',
+      carouselShowError:  carouselStep === 'error',
+
+      carouselTemplateName: { 'educativo': 'Educativo', 'boas-noticias-mundo': 'Boas Noticias', 'arquivo': 'Arquivo Secreto', 'comecou': 'Comecou' }[carouselTemplate] || '',
+      carouselTopicPlaceholder: this._carouselPlaceholder(carouselTemplate),
+
+      cStep0Done: carouselCurrentStep > 0, cStep0Active: carouselCurrentStep === 0,
+      cStep0Bg: carouselCurrentStep > 0 ? '#34C759' : carouselCurrentStep === 0 ? '#007AFF' : '#E5E5EA',
+      cStep0TextColor: carouselCurrentStep >= 0 ? '#1D1D1F' : '#C7C7CC', cStep0Weight: '600',
+      cStep1Done: carouselCurrentStep > 1, cStep1Active: carouselCurrentStep === 1,
+      cStep1Bg: carouselCurrentStep > 1 ? '#34C759' : carouselCurrentStep === 1 ? '#007AFF' : '#E5E5EA',
+      cStep1TextColor: carouselCurrentStep >= 1 ? '#1D1D1F' : '#C7C7CC', cStep1Weight: carouselCurrentStep >= 1 ? '600' : '400',
+      cStep2Done: carouselCurrentStep > 2, cStep2Active: carouselCurrentStep === 2,
+      cStep2Bg: carouselCurrentStep > 2 ? '#34C759' : carouselCurrentStep === 2 ? '#007AFF' : '#E5E5EA',
+      cStep2TextColor: carouselCurrentStep >= 2 ? '#1D1D1F' : '#C7C7CC', cStep2Weight: carouselCurrentStep >= 2 ? '600' : '400',
+      cStep3Done: carouselCurrentStep > 3, cStep3Active: carouselCurrentStep === 3,
+      cStep3Bg: carouselCurrentStep > 3 ? '#34C759' : carouselCurrentStep === 3 ? '#007AFF' : '#E5E5EA',
+      cStep3TextColor: carouselCurrentStep >= 3 ? '#1D1D1F' : '#C7C7CC', cStep3Weight: carouselCurrentStep >= 3 ? '600' : '400',
+
+      carouselSlideCounter: carouselSlides.length > 0 ? `${carouselViewIndex + 1}/${carouselSlides.length}` : '0/0',
+      carouselHasPrev:  carouselViewIndex > 0,
+      carouselHasNext:  carouselViewIndex < carouselSlides.length - 1,
+      carouselHasScore: !!(carouselReview?.score),
+      carouselScoreText: carouselReview?.score ? `${carouselReview.score}/10` : '',
+      carouselHasCaption: !!carouselCaption,
+      carouselCaptionText: carouselCaption || '',
+      carouselErrorMsg:   carouselError || 'Erro desconhecido',
+
+      selectTemplate: (e) => {
+        const template = e.currentTarget.getAttribute('data-template');
+        this.setState({ carouselStep: 'form', carouselTemplate: template, carouselSlides: [], carouselError: null, carouselReview: null });
+      },
+      voltarTemplates: () => this.setState({ carouselStep: 'idle', carouselTemplate: null }),
+      gerarCarrossel: () => {
+        const topic  = document.getElementById('carouselTopicInput')?.value?.trim() || '';
+        const handle = document.getElementById('carouselHandleInput')?.value?.trim() || '@seuperfil';
+        if (this.state.carouselStep === 'generating') return;
+        this._gerarCarrossel(topic, handle).catch(e =>
+          this.setState({ carouselStep: 'error', carouselError: e.message })
+        );
+      },
+      prevSlide: () => {
+        const idx = Math.max(0, this.state.carouselViewIndex - 1);
+        this.setState({ carouselViewIndex: idx });
+        this._updateSlideView(idx);
+      },
+      nextSlide: () => {
+        const idx = Math.min(this.state.carouselSlides.length - 1, this.state.carouselViewIndex + 1);
+        this.setState({ carouselViewIndex: idx });
+        this._updateSlideView(idx);
+      },
+      downloadSlide: () => this._downloadCurrentSlide(),
+      downloadAll:   () => this._downloadAllSlides(),
+      copiarCaption: () => {
+        const txt = this.state.carouselCaption || document.getElementById('carouselCaptionText')?.innerText || '';
+        navigator.clipboard?.writeText(txt).catch(() => {});
+      },
+      reiniciarCarrossel: () => {
+        this._swipeInitialized = false;
+        this.setState({
+          carouselStep: 'idle', carouselTemplate: null, carouselSlides: [],
+          carouselCurrentStep: 0, carouselError: null, carouselReview: null,
+          carouselCaption: null, carouselViewIndex: 0,
+        });
+      },
 
       avatarBg:      hasAvatar ? 'transparent' : '#F2F2F7',
       hasAvatar:     hasAvatar,
@@ -622,6 +875,144 @@ class Component extends DCLogic {
 
       selectTemplate: (e) => console.log('template:', e.currentTarget.getAttribute('data-template')),
     };
+  }
+
+  _TEMPLATE_ENDPOINTS = {
+    'educativo':           '/api/carousels/generate',
+    'boas-noticias-mundo': '/api/carousels/generate-boasnoticias',
+    'arquivo':             '/api/carousels/generate-arquivo',
+    'comecou':             '/api/carousels/generate-comecou',
+  };
+
+  _carouselProgressTimer = null;
+  _swipeInitialized = false;
+
+  _carouselPlaceholder(template) {
+    const map = {
+      'educativo':           'Ex: Por que o ceu e azul?',
+      'boas-noticias-mundo': 'Tema opcional (ex: medicina, natureza)',
+      'arquivo':             'Ex: Ilha proibida no Pacifico',
+      'comecou':             'Ex: Brasil vs Japao trens',
+    };
+    return map[template] || 'Digite o tema do carrossel';
+  }
+
+  async _gerarCarrossel(topic, handle) {
+    this.setState({ carouselStep: 'generating', carouselCurrentStep: 0, carouselSlides: [], carouselError: null });
+
+    let step = 0;
+    this._carouselProgressTimer = setInterval(() => {
+      step = Math.min(step + 1, 2);
+      this.setState({ carouselCurrentStep: step });
+    }, 12000);
+
+    try {
+      const endpoint = this._TEMPLATE_ENDPOINTS[this.state.carouselTemplate] || '/api/carousels/generate';
+      const body = { handle };
+      if (topic) body.topic = topic;
+      if (this.state.carouselTemplate === 'educativo') body.slideCount = 7;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      clearInterval(this._carouselProgressTimer);
+      this._carouselProgressTimer = null;
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ' + res.status);
+      }
+
+      const data = await res.json();
+      this.setState({
+        carouselStep: 'done',
+        carouselCurrentStep: 3,
+        carouselSlides: data.slides || [],
+        carouselCaption: data.caption || '',
+        carouselReview: data.review || null,
+        carouselViewIndex: 0,
+      });
+
+      setTimeout(() => {
+        this._updateSlideView(0);
+        this._buildDots(data.slides?.length || 0);
+        this._initSwipe();
+      }, 80);
+
+    } catch (e) {
+      clearInterval(this._carouselProgressTimer);
+      this._carouselProgressTimer = null;
+      throw e;
+    }
+  }
+
+  _updateSlideView(idx) {
+    const img = document.getElementById('carouselSlideImg');
+    const slide = this.state.carouselSlides[idx];
+    if (img && slide) img.src = slide.dataUrl;
+    // update dot colors
+    const dots = document.querySelectorAll('.carousel-dot');
+    dots.forEach((d, i) => { d.style.background = i === idx ? '#007AFF' : 'rgba(255,255,255,0.5)'; });
+  }
+
+  _buildDots(count) {
+    const container = document.getElementById('carouselDots');
+    if (!container) return;
+    container.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+      const d = document.createElement('div');
+      d.className = 'carousel-dot';
+      d.style.cssText = `width:6px;height:6px;border-radius:50%;background:${i === 0 ? '#007AFF' : '#C7C7CC'};transition:background 0.2s;cursor:pointer`;
+      const idx = i;
+      d.addEventListener('click', () => {
+        this.setState({ carouselViewIndex: idx });
+        this._updateSlideView(idx);
+      });
+      container.appendChild(d);
+    }
+  }
+
+  _initSwipe() {
+    if (this._swipeInitialized) return;
+    const viewer = document.getElementById('carouselViewer');
+    if (!viewer) return;
+    this._swipeInitialized = true;
+    let startX = 0;
+    viewer.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, { passive: true });
+    viewer.addEventListener('touchend', (e) => {
+      const diff = startX - e.changedTouches[0].clientX;
+      if (Math.abs(diff) > 50) {
+        const max = this.state.carouselSlides.length - 1;
+        const idx = diff > 0
+          ? Math.min(this.state.carouselViewIndex + 1, max)
+          : Math.max(this.state.carouselViewIndex - 1, 0);
+        this.setState({ carouselViewIndex: idx });
+        this._updateSlideView(idx);
+      }
+    }, { passive: true });
+  }
+
+  _downloadCurrentSlide() {
+    const slide = this.state.carouselSlides[this.state.carouselViewIndex];
+    if (!slide) return;
+    const a = document.createElement('a');
+    a.href = slide.dataUrl;
+    a.download = `slide-${slide.index || this.state.carouselViewIndex + 1}.png`;
+    a.click();
+  }
+
+  _downloadAllSlides() {
+    this.state.carouselSlides.forEach((slide, i) => {
+      setTimeout(() => {
+        const a = document.createElement('a');
+        a.href = slide.dataUrl;
+        a.download = `slide-${slide.index || i + 1}.png`;
+        a.click();
+      }, i * 400);
+    });
   }
 
   _reelsVals(state, results, error, themes, preview, recycledUrl, headline, caption) {
