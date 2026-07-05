@@ -186,104 +186,126 @@
     <sc-if value="{{ showReels }}" hint-placeholder-val="{{ false }}">
       <div style="padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 16px; animation: fadeUp 0.3s ease-out forwards">
 
-        <div style="background: #FFFFFF; border-radius: 14px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#86868B" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-          <span style="font-size: 15px; color: #C7C7CC">Buscar vídeos virais...</span>
-        </div>
-
-        <div style="display: flex; gap: 8px">
-          <div style="padding: 8px 16px; background: #007AFF; border-radius: 20px; cursor: pointer" style-active="opacity: 0.85"><span style="font-size: 13px; font-weight: 600; color: #FFFFFF">Todos</span></div>
-          <div style="padding: 8px 16px; background: #FFFFFF; border-radius: 20px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04)" style-active="background: #F2F2F7"><span style="font-size: 13px; font-weight: 500; color: #1D1D1F">Instagram</span></div>
-          <div style="padding: 8px 16px; background: #FFFFFF; border-radius: 20px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04)" style-active="background: #F2F2F7"><span style="font-size: 13px; font-weight: 500; color: #1D1D1F">TikTok</span></div>
-          <div style="padding: 8px 16px; background: #FFFFFF; border-radius: 20px; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.04)" style-active="background: #F2F2F7"><span style="font-size: 13px; font-weight: 500; color: #1D1D1F">YouTube</span></div>
-        </div>
-
+        <!-- Buscar por tema -->
         <div style="display: flex; flex-direction: column; gap: 10px">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px">
-            <span style="font-size: 13px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Em Alta</span>
-            <span style="font-size: 13px; font-weight: 500; color: #007AFF; cursor: pointer">Atualizar</span>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
-
-            <div style="background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.96)">
-              <div style="width: 100%; aspect-ratio: 9/12; background: linear-gradient(135deg, #1D1D1F, #3A3A3C); position: relative; display: flex; align-items: center; justify-content: center">
-                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
-                <div style="position: absolute; bottom: 8px; left: 8px; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 6px"><span style="font-size: 11px; font-weight: 600; color: white">2.4M</span></div>
-                <div style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; background: rgba(0,122,255,0.9); border-radius: 6px"><span style="font-size: 10px; font-weight: 700; color: white">IG</span></div>
-              </div>
-              <div style="padding: 10px 12px">
-                <div style="font-size: 12px; font-weight: 600; color: #1D1D1F; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3">Como fazer $10k/mês com IA</div>
-                <div style="font-size: 11px; color: #86868B; margin-top: 4px">@techguru · 12h</div>
-              </div>
-            </div>
-
-            <div style="background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.96)">
-              <div style="width: 100%; aspect-ratio: 9/12; background: linear-gradient(135deg, #2C2C2E, #48484A); position: relative; display: flex; align-items: center; justify-content: center">
-                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
-                <div style="position: absolute; bottom: 8px; left: 8px; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 6px"><span style="font-size: 11px; font-weight: 600; color: white">5.1M</span></div>
-                <div style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; background: rgba(0,0,0,0.85); border-radius: 6px"><span style="font-size: 10px; font-weight: 700; color: white">TT</span></div>
-              </div>
-              <div style="padding: 10px 12px">
-                <div style="font-size: 12px; font-weight: 600; color: #1D1D1F; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3">Esse truque ninguém te conta</div>
-                <div style="font-size: 11px; color: #86868B; margin-top: 4px">@viralhacks · 6h</div>
-              </div>
-            </div>
-
-            <div style="background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.96)">
-              <div style="width: 100%; aspect-ratio: 9/12; background: linear-gradient(135deg, #3A3A3C, #1D1D1F); position: relative; display: flex; align-items: center; justify-content: center">
-                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
-                <div style="position: absolute; bottom: 8px; left: 8px; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 6px"><span style="font-size: 11px; font-weight: 600; color: white">890K</span></div>
-                <div style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; background: rgba(0,122,255,0.9); border-radius: 6px"><span style="font-size: 10px; font-weight: 700; color: white">IG</span></div>
-              </div>
-              <div style="padding: 10px 12px">
-                <div style="font-size: 12px; font-weight: 600; color: #1D1D1F; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3">3 apps que mudaram minha vida</div>
-                <div style="font-size: 11px; color: #86868B; margin-top: 4px">@produtivo · 1d</div>
-              </div>
-            </div>
-
-            <div style="background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.96)">
-              <div style="width: 100%; aspect-ratio: 9/12; background: linear-gradient(135deg, #48484A, #2C2C2E); position: relative; display: flex; align-items: center; justify-content: center">
-                <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
-                <div style="position: absolute; bottom: 8px; left: 8px; padding: 4px 8px; background: rgba(0,0,0,0.6); border-radius: 6px"><span style="font-size: 11px; font-weight: 600; color: white">1.7M</span></div>
-                <div style="position: absolute; top: 8px; right: 8px; padding: 4px 8px; background: rgba(0,0,0,0.85); border-radius: 6px"><span style="font-size: 10px; font-weight: 700; color: white">TT</span></div>
-              </div>
-              <div style="padding: 10px 12px">
-                <div style="font-size: 12px; font-weight: 600; color: #1D1D1F; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.3">Rotina das 5h da manhã</div>
-                <div style="font-size: 11px; color: #86868B; margin-top: 4px">@mindset · 3h</div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <div style="display: flex; flex-direction: column; gap: 10px">
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 4px">
-            <span style="font-size: 13px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Meu Vault</span>
-            <span style="font-size: 13px; font-weight: 500; color: #007AFF; cursor: pointer">12 salvos</span>
-          </div>
-          <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch">
-            <div style="width: 100px; flex-shrink: 0; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04)"><div style="width: 100%; aspect-ratio: 9/14; background: linear-gradient(135deg, #FF6961, #FF3B30); display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div><div style="padding: 6px 8px"><div style="font-size: 10px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Hook viral</div></div></div>
-            <div style="width: 100px; flex-shrink: 0; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04)"><div style="width: 100%; aspect-ratio: 9/14; background: linear-gradient(135deg, #5E5CE6, #BF5AF2); display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div><div style="padding: 6px 8px"><div style="font-size: 10px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Transição top</div></div></div>
-            <div style="width: 100px; flex-shrink: 0; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04)"><div style="width: 100%; aspect-ratio: 9/14; background: linear-gradient(135deg, #30D158, #00C7BE); display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div><div style="padding: 6px 8px"><div style="font-size: 10px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Storytelling</div></div></div>
-            <div style="width: 100px; flex-shrink: 0; background: #FFFFFF; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04)"><div style="width: 100%; aspect-ratio: 9/14; background: linear-gradient(135deg, #FF9F0A, #FFD60A); display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg></div><div style="padding: 6px 8px"><div style="font-size: 10px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">CTA forte</div></div></div>
-          </div>
-        </div>
-
-        <div style="background: linear-gradient(135deg, #007AFF, #5856D6); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 16px rgba(0,122,255,0.2)">
-          <div style="display: flex; align-items: center; gap: 10px">
-            <div style="width: 40px; height: 40px; background: rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px)">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-            </div>
-            <div>
-              <div style="font-size: 16px; font-weight: 700; color: #FFFFFF">Gerador IA de Reels</div>
-              <div style="font-size: 12px; color: rgba(255,255,255,0.8)">Crie reels editados automaticamente</div>
-            </div>
-          </div>
+          <div style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">Reciclar Conteudo</div>
           <div style="display: flex; gap: 8px">
-            <div style="flex: 1; padding: 10px 14px; background: rgba(255,255,255,0.2); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; text-align: center" style-active="background: rgba(255,255,255,0.3)"><span style="font-size: 13px; font-weight: 600; color: white">Com headline</span></div>
-            <div style="flex: 1; padding: 10px 14px; background: rgba(255,255,255,0.2); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); cursor: pointer; text-align: center" style-active="background: rgba(255,255,255,0.3)"><span style="font-size: 13px; font-weight: 600; color: white">Com legenda</span></div>
+            <input id="reelsSearchInput" type="text" placeholder="Palavra-chave (ex: vendas, mindset)" style="flex: 1; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #FFFFFF; outline: none" />
+            <div onClick="{{ buscarReels }}" style="padding: 12px 16px; background: #007AFF; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0" style-active="opacity: 0.85">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch">
+            <div onClick="{{ searchTheme }}" data-theme="empreendedorismo" style="padding: 6px 14px; background: {{ themeEmpreendBg }}; border-radius: 20px; cursor: pointer; flex-shrink: 0; border: 1px solid {{ themeEmpreendBorder }}" style-active="opacity: 0.8"><span style="font-size: 12px; font-weight: 600; color: {{ themeEmpreendColor }}">Empreendedorismo</span></div>
+            <div onClick="{{ searchTheme }}" data-theme="vendas" style="padding: 6px 14px; background: {{ themeVendasBg }}; border-radius: 20px; cursor: pointer; flex-shrink: 0; border: 1px solid {{ themeVendasBorder }}" style-active="opacity: 0.8"><span style="font-size: 12px; font-weight: 600; color: {{ themeVendasColor }}">Vendas</span></div>
+            <div onClick="{{ searchTheme }}" data-theme="marketing" style="padding: 6px 14px; background: {{ themeMarketingBg }}; border-radius: 20px; cursor: pointer; flex-shrink: 0; border: 1px solid {{ themeMarketingBorder }}" style-active="opacity: 0.8"><span style="font-size: 12px; font-weight: 600; color: {{ themeMarketingColor }}">Marketing</span></div>
+            <div onClick="{{ searchTheme }}" data-theme="mindset" style="padding: 6px 14px; background: {{ themeMindsetBg }}; border-radius: 20px; cursor: pointer; flex-shrink: 0; border: 1px solid {{ themeMindsetBorder }}" style-active="opacity: 0.8"><span style="font-size: 12px; font-weight: 600; color: {{ themeMindsetColor }}">Mindset</span></div>
+            <div onClick="{{ searchTheme }}" data-theme="financeiro" style="padding: 6px 14px; background: {{ themeFinancBg }}; border-radius: 20px; cursor: pointer; flex-shrink: 0; border: 1px solid {{ themeFinancBorder }}" style-active="opacity: 0.8"><span style="font-size: 12px; font-weight: 600; color: {{ themeFinancColor }}">Financeiro</span></div>
           </div>
         </div>
+
+        <!-- Loading -->
+        <sc-if value="{{ reelsLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0">
+            <div style="width: 32px; height: 32px; border: 3px solid #E5E5EA; border-top-color: #007AFF; border-radius: 50%; animation: spin 0.8s linear infinite"></div>
+            <span style="font-size: 14px; color: #86868B">Buscando videos virais...</span>
+          </div>
+        </sc-if>
+
+        <!-- Erro busca -->
+        <sc-if value="{{ reelsSearchError }}" hint-placeholder-val="{{ false }}">
+          <div style="background: rgba(255,59,48,0.06); border: 1px solid rgba(255,59,48,0.2); border-radius: 14px; padding: 14px">
+            <div style="font-size: 13px; color: #FF3B30; font-weight: 600">{{ reelsErrorMsg }}</div>
+          </div>
+        </sc-if>
+
+        <!-- Resultados -->
+        <sc-if value="{{ reelsHasResults }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span style="font-size: 13px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">{{ reelsResultCount }} videos encontrados</span>
+            </div>
+            <div id="reelsResultsGrid" style="display: flex; flex-direction: column; gap: 12px"></div>
+          </div>
+        </sc-if>
+
+        <!-- Vazio -->
+        <sc-if value="{{ reelsEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 0">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <span style="font-size: 14px; color: #86868B; text-align: center">Busque por tema ou palavra-chave para encontrar videos virais para reciclar</span>
+          </div>
+        </sc-if>
+
+        <!-- Preview Modal -->
+        <sc-if value="{{ reelsShowPreview }}" hint-placeholder-val="{{ false }}">
+          <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 999; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px">
+            <div style="width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px">
+              <div style="display: flex; justify-content: space-between; align-items: center">
+                <span style="font-size: 16px; font-weight: 700; color: white">{{ previewUsername }}</span>
+                <div onClick="{{ closePreview }}" style="width: 32px; height: 32px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer" style-active="background: rgba(255,255,255,0.3)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                </div>
+              </div>
+              <div style="background: #000; border-radius: 16px; overflow: hidden; aspect-ratio: 9/16">
+                <video id="reelsPreviewPlayer" style="width: 100%; height: 100%; object-fit: cover" controls playsinline autoplay></video>
+              </div>
+              <div style="display: flex; gap: 8px">
+                <div onClick="{{ reciclarVideo }}" style="flex: 1; padding: 14px; background: linear-gradient(135deg, #34C759, #00C7BE); border-radius: 12px; text-align: center; cursor: pointer" style-active="opacity: 0.85">
+                  <span style="font-size: 15px; font-weight: 700; color: white">Reciclar</span>
+                </div>
+                <div onClick="{{ closePreview }}" style="padding: 14px 20px; background: rgba(255,255,255,0.15); border-radius: 12px; cursor: pointer" style-active="background: rgba(255,255,255,0.25)">
+                  <span style="font-size: 15px; font-weight: 600; color: white">Fechar</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- Reciclando... -->
+        <sc-if value="{{ reelsRecycling }}" hint-placeholder-val="{{ false }}">
+          <div style="background: #FFFFFF; border-radius: 16px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; align-items: center; gap: 14px">
+            <div style="width: 40px; height: 40px; border: 3px solid #E5E5EA; border-top-color: #34C759; border-radius: 50%; animation: spin 0.8s linear infinite"></div>
+            <div style="font-size: 15px; font-weight: 600; color: #1D1D1F">Reciclando video...</div>
+            <div style="font-size: 12px; color: #86868B; text-align: center">IA gerando headline + editando video com overlay. Pode levar 30-60 segundos.</div>
+          </div>
+        </sc-if>
+
+        <!-- Download pronto -->
+        <sc-if value="{{ reelsDownloadReady }}" hint-placeholder-val="{{ false }}">
+          <div style="background: #FFFFFF; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 14px; animation: fadeUp 0.3s ease-out">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <div style="width: 32px; height: 32px; background: rgba(52,199,89,0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34C759" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+              <div>
+                <div style="font-size: 15px; font-weight: 700; color: #1D1D1F">Video reciclado!</div>
+                <div style="font-size: 12px; color: #86868B">{{ recycledHeadline }}</div>
+              </div>
+            </div>
+            <div style="background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 9/16">
+              <video id="recycledPlayer" style="width: 100%; height: 100%; object-fit: cover" controls playsinline></video>
+            </div>
+            <a id="recycledDownloadBtn" download="reel-reciclado.mp4" style="display: flex; align-items: center; justify-content: center; gap: 8px; background: #1D1D1F; border-radius: 12px; padding: 14px; cursor: pointer; text-decoration: none" style-active="opacity: 0.85">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span style="font-size: 15px; font-weight: 600; color: white">Baixar .mp4</span>
+            </a>
+            <sc-if value="{{ recycledCaption }}" hint-placeholder-val="{{ false }}">
+              <div style="background: #F2F2F7; border-radius: 10px; padding: 12px">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px">
+                  <span style="font-size: 11px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Legenda sugerida</span>
+                  <div onClick="{{ copiarLegendaReels }}" style="padding: 4px 8px; background: rgba(0,122,255,0.1); border-radius: 6px; cursor: pointer" style-active="background: rgba(0,122,255,0.2)">
+                    <span style="font-size: 11px; font-weight: 600; color: #007AFF">Copiar</span>
+                  </div>
+                </div>
+                <div id="recycledCaptionText" style="font-size: 12px; color: #3C3C43; line-height: 1.4">{{ recycledCaptionText }}</div>
+              </div>
+            </sc-if>
+            <div onClick="{{ voltarBusca }}" style="padding: 12px; border-radius: 10px; border: 1.5px solid #E5E5EA; text-align: center; cursor: pointer" style-active="background: #F2F2F7">
+              <span style="font-size: 14px; font-weight: 600; color: #007AFF">Buscar mais videos</span>
+            </div>
+          </div>
+        </sc-if>
 
       </div>
     </sc-if>
@@ -493,6 +515,14 @@ class Component extends DCLogic {
     videoNotas:       null,
     videoMedia:       null,
     videoError:       null,
+    reelsState:       'idle',
+    reelsResults:     [],
+    reelsError:       null,
+    reelsSelectedThemes: [],
+    reelsPreview:     null,
+    recycledUrl:      null,
+    recycledHeadline: null,
+    recycledCaption:  null,
   };
 
   _progressTimer = null;
@@ -503,6 +533,8 @@ class Component extends DCLogic {
       activeTab, duracao, hasAvatar, avatarPreviewUrl,
       videoStep, videoCurrentStep,
       videoLegenda, videoTitulo, videoMedia, videoError,
+      reelsState, reelsResults, reelsError, reelsSelectedThemes,
+      reelsPreview, recycledUrl, recycledHeadline, recycledCaption,
     } = this.state;
 
     if (!this._avatarListenerAdded) {
@@ -540,6 +572,8 @@ class Component extends DCLogic {
       noAvatar:      !hasAvatar,
       avatarBtnText: hasAvatar ? 'Trocar' : 'Enviar',
       uploadAvatar:  () => document.getElementById('avatarFileInput')?.click(),
+
+      ...this._reelsVals(reelsState, reelsResults, reelsError, reelsSelectedThemes, reelsPreview, recycledUrl, recycledHeadline, recycledCaption),
 
       duracao30Border: duracao === '30s' ? '#007AFF' : '#E5E5EA',
       duracao30Bg:     duracao === '30s' ? 'rgba(0,122,255,0.06)' : '#FFFFFF',
@@ -588,6 +622,213 @@ class Component extends DCLogic {
 
       selectTemplate: (e) => console.log('template:', e.currentTarget.getAttribute('data-template')),
     };
+  }
+
+  _reelsVals(state, results, error, themes, preview, recycledUrl, headline, caption) {
+    const themeChip = (chipName, themeKey) => {
+      const active = themes.includes(themeKey);
+      return {
+        [`theme${chipName}Bg`]: active ? 'rgba(0,122,255,0.1)' : '#FFFFFF',
+        [`theme${chipName}Border`]: active ? '#007AFF' : '#E5E5EA',
+        [`theme${chipName}Color`]: active ? '#007AFF' : '#1D1D1F',
+      };
+    };
+    return {
+      ...themeChip('Empreend', 'empreendedorismo'),
+      ...themeChip('Vendas', 'vendas'),
+      ...themeChip('Marketing', 'marketing'),
+      ...themeChip('Mindset', 'mindset'),
+      ...themeChip('Financ', 'financeiro'),
+      reelsLoading:       state === 'loading',
+      reelsSearchError:   state === 'error',
+      reelsErrorMsg:      error || 'Erro na busca',
+      reelsHasResults:    state === 'results' && results.length > 0,
+      reelsResultCount:   results.length,
+      reelsEmpty:         state === 'idle' || (state === 'results' && results.length === 0),
+      reelsShowPreview:   !!preview,
+      reelsRecycling:     state === 'recycling',
+      reelsDownloadReady: state === 'recycled',
+      previewUsername:    preview ? `@${preview.sourceUsername || 'video'}` : '',
+      recycledHeadline:  headline || '',
+      recycledCaption:   !!caption,
+      recycledCaptionText: caption || '',
+
+      searchTheme: (e) => {
+        const theme = e.currentTarget.getAttribute('data-theme');
+        const themeMap = { empreendedorismo: 'empreendedorismo', vendas: 'vendas', marketing: 'marketing', mindset: 'mindset', financeiro: 'financeiro' };
+        const t = themeMap[theme] || theme;
+        let updated;
+        if (themes.includes(t)) updated = themes.filter(x => x !== t);
+        else updated = [...themes, t];
+        this.setState({ reelsSelectedThemes: updated });
+      },
+
+      buscarReels: () => {
+        const keyword = document.getElementById('reelsSearchInput')?.value?.trim() || '';
+        const searchThemes = this.state.reelsSelectedThemes.length > 0
+          ? this.state.reelsSelectedThemes
+          : ['empreendedorismo', 'vendas', 'marketing'];
+        this._buscarReels(searchThemes, keyword);
+      },
+
+      closePreview: () => {
+        const player = document.getElementById('reelsPreviewPlayer');
+        if (player) { player.pause(); player.src = ''; }
+        this.setState({ reelsPreview: null });
+      },
+
+      reciclarVideo: () => {
+        if (!preview) return;
+        this.setState({ reelsPreview: null, reelsState: 'recycling' });
+        const player = document.getElementById('reelsPreviewPlayer');
+        if (player) { player.pause(); player.src = ''; }
+        this._reciclarVideo(preview);
+      },
+
+      copiarLegendaReels: () => {
+        const txt = caption || document.getElementById('recycledCaptionText')?.innerText || '';
+        navigator.clipboard?.writeText(txt).catch(() => {});
+      },
+
+      voltarBusca: () => this.setState({
+        reelsState: 'results', recycledUrl: null, recycledHeadline: null, recycledCaption: null,
+      }),
+    };
+  }
+
+  _formatViews(n) {
+    if (!n) return '0';
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
+    return String(n);
+  }
+
+  _renderReelsCards(results) {
+    const grid = document.getElementById('reelsResultsGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    results.forEach((r, i) => {
+      const card = document.createElement('div');
+      card.style.cssText = 'background:#FFFFFF;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);cursor:pointer;display:flex;gap:12px;padding:12px;align-items:center';
+      const src = r.source === 'tiktok' ? 'TT' : 'IG';
+      const srcBg = r.source === 'tiktok' ? 'rgba(0,0,0,0.85)' : 'rgba(0,122,255,0.9)';
+      card.innerHTML = `
+        <div style="width:70px;height:94px;border-radius:10px;background:linear-gradient(135deg,#1D1D1F,#3A3A3C);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;overflow:hidden">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="rgba(255,255,255,0.7)"><path d="M8 5v14l11-7z"/></svg>
+          <div style="position:absolute;top:4px;right:4px;padding:2px 5px;background:${srcBg};border-radius:4px"><span style="font-size:9px;font-weight:700;color:white">${src}</span></div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:#1D1D1F;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3">${(r.originalCaption || '').replace(/<[^>]*>/g,'').slice(0,80) || 'Video viral'}</div>
+          <div style="font-size:11px;color:#86868B;margin-top:4px">@${r.sourceUsername || '?'} · ${this._formatViews(r.views)} views</div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <span style="font-size:10px;color:#86868B;background:#F2F2F7;padding:2px 6px;border-radius:4px">${this._formatViews(r.likes)} likes</span>
+            <span style="font-size:10px;color:#34C759;background:rgba(52,199,89,0.1);padding:2px 6px;border-radius:4px">score ${r.preScore || '?'}</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+          <div data-action="preview" style="padding:8px 12px;background:rgba(0,122,255,0.1);border-radius:8px;cursor:pointer;text-align:center"><span style="font-size:12px;font-weight:600;color:#007AFF">Ver</span></div>
+          <div data-action="recycle" style="padding:8px 12px;background:rgba(52,199,89,0.1);border-radius:8px;cursor:pointer;text-align:center"><span style="font-size:12px;font-weight:600;color:#34C759">Reciclar</span></div>
+        </div>
+      `;
+      card.querySelector('[data-action="preview"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._previewVideo(r);
+      });
+      card.querySelector('[data-action="recycle"]').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.setState({ reelsState: 'recycling' });
+        this._reciclarVideo(r);
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  async _buscarReels(themes, keyword) {
+    this.setState({ reelsState: 'loading', reelsResults: [], reelsError: null });
+    try {
+      const body = { themes, minViews: 50000 };
+      if (keyword) body.manualKeyword = keyword;
+      const res = await fetch('/api/content-finder/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ' + res.status);
+      }
+      const data = await res.json();
+      const results = data.results || [];
+      this.setState({ reelsState: 'results', reelsResults: results });
+      setTimeout(() => this._renderReelsCards(results), 50);
+    } catch (e) {
+      this.setState({ reelsState: 'error', reelsError: e.message });
+    }
+  }
+
+  async _previewVideo(item) {
+    this.setState({ reelsPreview: item });
+    const videoUrl = item.videoUrl || item.url;
+    try {
+      const res = await fetch('/api/content-finder/preview-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl }),
+      });
+      if (!res.ok) throw new Error('Erro ao carregar preview');
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      setTimeout(() => {
+        const player = document.getElementById('reelsPreviewPlayer');
+        if (player) player.src = blobUrl;
+      }, 50);
+    } catch (e) {
+      console.error('Preview failed:', e);
+      this.setState({ reelsPreview: null, reelsState: 'error', reelsError: 'Não foi possível carregar o vídeo' });
+    }
+  }
+
+  async _reciclarVideo(item) {
+    try {
+      const formData = new FormData();
+      if (item.videoUrl) formData.append('videoUrl', item.videoUrl);
+      if (item.url) formData.append('postUrl', item.url);
+      if (item.originalCaption) formData.append('originalCaption', item.originalCaption);
+      if (item.sourceUsername) formData.append('sourceUsername', item.sourceUsername);
+      if (item.views) formData.append('views', String(item.views));
+      if (item.likes) formData.append('likes', String(item.likes));
+
+      const res = await fetch('/api/content-finder/approve', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao reciclar');
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const headline = res.headers.get('X-Headline') || 'Reel reciclado';
+      const caption = res.headers.get('X-Caption') || '';
+
+      this.setState({
+        reelsState: 'recycled',
+        recycledUrl: url,
+        recycledHeadline: headline,
+        recycledCaption: caption,
+      });
+
+      setTimeout(() => {
+        const player = document.getElementById('recycledPlayer');
+        const btn = document.getElementById('recycledDownloadBtn');
+        if (player) player.src = url;
+        if (btn) btn.href = url;
+      }, 100);
+    } catch (e) {
+      this.setState({ reelsState: 'error', reelsError: 'Erro ao reciclar: ' + e.message });
+    }
   }
 
   async _handleAvatarUpload(e) {
