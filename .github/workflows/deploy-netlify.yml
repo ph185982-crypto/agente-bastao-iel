@@ -1,6 +1,8 @@
-name: Deploy to Vercel (manual)
+name: Deploy to Vercel
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
