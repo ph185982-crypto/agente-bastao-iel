@@ -219,6 +219,75 @@ async function renderContent(slide, idx, total, handle) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+// ── Slide de conteudo com FOTO de fundo (trending carousels) ─────────────────
+// Foto full-bleed + gradiente escuro na metade inferior + titulo e body grandes
+// com stroke para legibilidade maxima. Estilo jornalistico visual.
+async function renderPhotoContent(slide, photoBuf, idx, total, handle) {
+  const num = String(slide.number || idx).padStart(2, '0');
+
+  let base;
+  if (photoBuf) {
+    base = await sharp(photoBuf)
+      .resize(CW, CH, { fit: 'cover', position: 'center' })
+      .toBuffer()
+      .catch(() => sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer());
+  } else {
+    base = await sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer();
+  }
+
+  const HPAD = 82;
+  const textW = CW - HPAD * 2;
+
+  const title = fitText(String(slide.title || '').toUpperCase(), {
+    maxFont: 72, minFont: 52, boxW: textW, boxH: 250,
+    charRatio: 0.58, lineRatio: 1.24,
+  });
+
+  const body = fitText(String(slide.body || ''), {
+    maxFont: 56, minFont: 44, boxW: textW, boxH: 300,
+    charRatio: 0.54, lineRatio: 1.32,
+  });
+
+  const titleBlockH = title.lines.length * title.lineH;
+  const bodyBlockH = body.lines.length * body.lineH;
+  const totalTextH = titleBlockH + 30 + bodyBlockH;
+  const textTopY = CH - 100 - totalTextH;
+
+  const titleEls = title.lines.map((ln, i) => {
+    const y = textTopY + i * title.lineH + title.fontSize * 0.82;
+    return `<text x="${HPAD}" y="${y}" font-family="${FONT_FAMILY}" font-size="${title.fontSize}" font-weight="bold" fill="white" stroke="black" stroke-width="6" paint-order="stroke" letter-spacing="0.5">${escXml(ln)}</text>`;
+  }).join('\n');
+
+  const bodyStartY = textTopY + titleBlockH + 30;
+  const bodyEls = body.lines.map((ln, i) => {
+    const y = bodyStartY + i * body.lineH + body.fontSize * 0.82;
+    return `<text x="${HPAD}" y="${y}" font-family="${FONT_FAMILY}" font-size="${body.fontSize}" font-weight="normal" fill="rgba(255,255,255,0.92)" stroke="black" stroke-width="4" paint-order="stroke">${escXml(ln)}</text>`;
+  }).join('\n');
+
+  const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
+    <defs>
+      <linearGradient id="pcg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"  stop-color="black" stop-opacity="0.05"/>
+        <stop offset="35%" stop-color="black" stop-opacity="0"/>
+        <stop offset="50%" stop-color="black" stop-opacity="0.35"/>
+        <stop offset="70%" stop-color="black" stop-opacity="0.78"/>
+        <stop offset="100%" stop-color="black" stop-opacity="0.95"/>
+      </linearGradient>
+    </defs>
+    <rect width="${CW}" height="${CH}" fill="url(#pcg)"/>
+    <text x="${HPAD}" y="120" font-family="${FONT_FAMILY}" font-size="130" font-weight="bold" fill="white" opacity="0.08">${num}</text>
+    ${titleEls}
+    ${bodyEls}
+    <text x="${HPAD}" y="${CH - 40}" font-family="${FONT_FAMILY}" font-size="28" font-weight="bold" fill="white" opacity="0.5">${escXml(handle)}</text>
+    <text x="${CW - HPAD}" y="${CH - 40}" font-family="${FONT_FAMILY}" font-size="28" font-weight="bold" fill="white" opacity="0.5" text-anchor="end">${idx}/${total}</text>
+  </svg>`;
+
+  return sharp(base)
+    .composite([{ input: Buffer.from(overlaySvg), top: 0, left: 0 }])
+    .png()
+    .toBuffer();
+}
+
 async function renderCta(slide, handle) {
   const title = fitText(slide.title || 'Gostou disso?', {
     maxFont: 92, minFont: 52, boxW: CW - 2 * PAD, boxH: 320,
@@ -1665,6 +1734,269 @@ Responda APENAS JSON:
     });
   } catch (e) {
     console.error('[carousels] generate-comecou error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Readability enforcement (programmatic check) ────────────────────────────
+function enforceReadability(slides) {
+  const issues = [];
+  for (const s of slides) {
+    if (s.kind === 'cover' || s.kind === 'cta') continue;
+    const titleWords = String(s.title || '').split(/\s+/).filter(Boolean).length;
+    const bodyWords = String(s.body || '').split(/\s+/).filter(Boolean).length;
+    if (titleWords > 8)
+      issues.push({ slide: s.position || s.number, field: 'title', words: titleWords, max: 8, text: s.title });
+    if (bodyWords > 15)
+      issues.push({ slide: s.position || s.number, field: 'body', words: bodyWords, max: 15, text: s.body });
+  }
+  return issues;
+}
+
+// ── POST /api/carousels/generate-trending ────────────────────────────────────
+// 4-agent pipeline: Estrategista → Redator Viral → Foto → Revisor
+router.post('/generate-trending', async (req, res) => {
+  const { topic, handle: rawHandle } = req.body || {};
+  if (!topic || !topic.title) return res.status(400).json({ error: 'Topic obrigatorio' });
+  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY)
+    return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
+
+  let handle = (rawHandle || '@seuperfil').trim();
+  if (!handle.startsWith('@')) handle = '@' + handle;
+
+  try {
+    // ── Agent 1: Estrategista de Conteudo ──────────────────────────────────
+    const stratRes = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+      max_tokens: 1500,
+      messages: [{
+        role: 'system',
+        content: `Voce e um estrategista de conteudo para Instagram. Crie a ESTRUTURA de um carrossel informativo sobre o topico fornecido.
+
+Retorne APENAS JSON:
+{
+  "slideCount": 7-10,
+  "hookStrategy": "como o gancho do carrossel prende o leitor (max 20 palavras)",
+  "coverHeadline": "titulo do cover (max 8 palavras, IMPACTANTE)",
+  "structure": [
+    {
+      "position": 1,
+      "purpose": "cover - gancho visual",
+      "photoQuery": "busca em ingles para foto de fundo (paisagem ou retrato dramatico)"
+    },
+    {
+      "position": 2,
+      "purpose": "contexto - o que aconteceu",
+      "photoQuery": "busca em ingles para foto de fundo"
+    }
+  ]
+}
+
+Regras:
+- Primeiro slide e SEMPRE cover (gancho forte)
+- Ultimo slide e SEMPRE CTA (seguir/salvar)
+- photoQuery deve ser em INGLES, descritivo, para buscar fotos reais
+- Cada slide deve ter um proposito claro na narrativa
+- Narrativa em arco: gancho → contexto → desenvolvimento → surpresa → CTA`,
+      },
+      {
+        role: 'user',
+        content: `Topico: ${topic.title}\nCategoria: ${topic.category || 'geral'}\nDescricao: ${topic.description || ''}\nAngulo: ${topic.carouselAngle || ''}\nSlides sugeridos: ${topic.suggestedSlideCount || 8}`,
+      }],
+    });
+
+    const blueprint = JSON.parse(stratRes.choices[0].message.content || '{}');
+    const slideCount = Math.min(Math.max(blueprint.slideCount || 8, 6), 10);
+    const structure = Array.isArray(blueprint.structure) ? blueprint.structure : [];
+
+    console.log(`[trending] Agent 1 (Estrategista): ${slideCount} slides, hook="${blueprint.hookStrategy}"`);
+
+    // ── Agent 2: Redator Viral ────────────────────────────────────────────
+    const writeRes = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.8,
+      response_format: { type: 'json_object' },
+      max_tokens: 2000,
+      messages: [{
+        role: 'system',
+        content: `Voce e um redator viral de Instagram. Escreva o TEXTO de cada slide de um carrossel.
+
+Regras RIGIDAS:
+- title: MAXIMO 8 palavras. Curto, impactante, em CAIXA ALTA implicita.
+- body: MAXIMO 15 palavras. Linguagem SIMPLES. Uma crianca de 12 anos entende.
+- NAO use jargao, palavras dificeis, ou frases longas.
+- NAO use emojis no texto dos slides.
+- Cada slide deve fazer a pessoa querer deslizar pro proximo.
+- O cover so tem title (sem body).
+- O CTA tem title + body pedindo pra seguir/salvar/compartilhar.
+
+Retorne APENAS JSON:
+{
+  "slides": [
+    { "position": 1, "kind": "cover", "title": "TITULO DO COVER" },
+    { "position": 2, "kind": "content", "title": "TITULO", "body": "texto explicativo curto" },
+    { "position": N, "kind": "cta", "title": "GOSTOU?", "body": "Segue e salva pra mais" }
+  ],
+  "caption": "legenda completa pro Instagram (com gancho, 2 paragrafos, 5 hashtags)"
+}`,
+      },
+      {
+        role: 'user',
+        content: `Topico: ${topic.title}\nCategoria: ${topic.category || 'geral'}\nDescricao: ${topic.description || ''}\nAngulo: ${topic.carouselAngle || ''}\n\nEstrutura do estrategista:\n${JSON.stringify(structure, null, 2)}\n\nEscreva ${slideCount} slides.`,
+      }],
+    });
+
+    let writeData = JSON.parse(writeRes.choices[0].message.content || '{}');
+    let slides = Array.isArray(writeData.slides) ? writeData.slides : [];
+    let caption = writeData.caption || '';
+
+    console.log(`[trending] Agent 2 (Redator): ${slides.length} slides written`);
+
+    // ── Programmatic readability check ────────────────────────────────────
+    let readabilityIssues = enforceReadability(slides);
+    if (readabilityIssues.length > 0) {
+      console.log(`[trending] readability issues: ${readabilityIssues.length}, rewriting...`);
+      const fixRes = await getOpenAI().chat.completions.create({
+        model: 'gpt-4o',
+        temperature: 0.6,
+        response_format: { type: 'json_object' },
+        max_tokens: 2000,
+        messages: [{
+          role: 'system',
+          content: `Voce e um editor. Os slides abaixo TEM PROBLEMAS de legibilidade. ENCURTE os textos.
+
+REGRAS ABSOLUTAS:
+- title: MAXIMO 8 palavras
+- body: MAXIMO 15 palavras
+- Mantenha o sentido original, apenas encurte
+- Retorne o MESMO JSON com slides corrigidos`,
+        },
+        {
+          role: 'user',
+          content: `Slides com problemas:\n${JSON.stringify(readabilityIssues, null, 2)}\n\nTodos os slides:\n${JSON.stringify(slides, null, 2)}\n\nRetorne JSON: { "slides": [...], "caption": "..." }`,
+        }],
+      });
+      const fixed = JSON.parse(fixRes.choices[0].message.content || '{}');
+      if (Array.isArray(fixed.slides) && fixed.slides.length > 0) {
+        slides = fixed.slides;
+        if (fixed.caption) caption = fixed.caption;
+      }
+    }
+
+    // ── Agent 3: Photo pipeline (parallel) ────────────────────────────────
+    const photoQueries = slides.map((s, i) => {
+      const structSlide = structure.find(st => st.position === s.position) || structure[i] || {};
+      return structSlide.photoQuery || topic.title;
+    });
+
+    const photoBuffers = await Promise.all(
+      photoQueries.map((q, i) =>
+        slides[i]?.kind === 'cta'
+          ? Promise.resolve(null)
+          : getStoryPhotos(q, topic.category || 'inspiring', 1)
+              .then(bufs => bufs[0] || null)
+              .catch(() => null)
+      )
+    );
+
+    console.log(`[trending] Agent 3 (Foto): ${photoBuffers.filter(Boolean).length}/${slides.length} photos fetched`);
+
+    // ── Agent 4: Revisor de Retencao ──────────────────────────────────────
+    const reviewRes = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o',
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+      max_tokens: 800,
+      messages: [{
+        role: 'system',
+        content: `Voce e um revisor de retencao de carrosseis de Instagram. Avalie se o carrossel vai RETER a atencao do leitor ate o final.
+
+Retorne JSON:
+{
+  "score": 1-10,
+  "hookStrength": "forte|medio|fraco",
+  "readabilityPass": true/false,
+  "improvements": ["sugestao 1", "sugestao 2"],
+  "verdict": "aprovado|melhorar"
+}`,
+      },
+      {
+        role: 'user',
+        content: `Topico: ${topic.title}\nSlides:\n${JSON.stringify(slides, null, 2)}`,
+      }],
+    });
+
+    const review = JSON.parse(reviewRes.choices[0].message.content || '{}');
+    console.log(`[trending] Agent 4 (Revisor): score=${review.score}, verdict="${review.verdict}"`);
+
+    // If score < 6, do one more rewrite with feedback
+    if ((review.score || 0) < 6 && Array.isArray(review.improvements) && review.improvements.length > 0) {
+      console.log('[trending] score < 6, rewriting with reviewer feedback...');
+      const rewriteRes = await getOpenAI().chat.completions.create({
+        model: 'gpt-4o',
+        temperature: 0.7,
+        response_format: { type: 'json_object' },
+        max_tokens: 2000,
+        messages: [{
+          role: 'system',
+          content: `Voce e um redator viral. Reescreva os slides incorporando o feedback do revisor.
+
+REGRAS: title max 8 palavras, body max 15 palavras, linguagem SIMPLES.
+Retorne JSON: { "slides": [...], "caption": "..." }`,
+        },
+        {
+          role: 'user',
+          content: `Feedback do revisor:\n${review.improvements.join('\n')}\n\nSlides atuais:\n${JSON.stringify(slides, null, 2)}\n\nReescreva mantendo as regras de legibilidade.`,
+        }],
+      });
+      const rewritten = JSON.parse(rewriteRes.choices[0].message.content || '{}');
+      if (Array.isArray(rewritten.slides) && rewritten.slides.length > 0) {
+        slides = rewritten.slides;
+        if (rewritten.caption) caption = rewritten.caption;
+      }
+    }
+
+    // ── Render all slides ─────────────────────────────────────────────────
+    const total = slides.length;
+    const renderedBufs = await Promise.all(
+      slides.map(async (s, i) => {
+        const num = i + 1;
+        if (s.kind === 'cover') {
+          return renderViralCover({
+            slide: { ...s, number: num },
+            handle,
+            bgBuf: photoBuffers[i] || null,
+            circBuf: null,
+          });
+        }
+        if (s.kind === 'cta') {
+          return renderCta({ ...s, number: num }, handle);
+        }
+        return renderPhotoContent(
+          { ...s, number: num },
+          photoBuffers[i] || null,
+          num,
+          total,
+          handle
+        );
+      })
+    );
+
+    res.json({
+      topic: topic.title,
+      caption,
+      handle,
+      review: { score: review.score, verdict: review.verdict },
+      slides: renderedBufs.map((buf, i) => ({
+        index: i + 1,
+        kind: slides[i]?.kind || 'content',
+        dataUrl: `data:image/png;base64,${buf.toString('base64')}`,
+      })),
+    });
+  } catch (e) {
+    console.error('[carousels] generate-trending error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
