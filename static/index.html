@@ -69,116 +69,55 @@
     <!-- CARROSSÉIS TAB -->
     <sc-if value="{{ showCarousels }}" hint-placeholder-val="{{ true }}">
 
-      <!-- IDLE: Template cards + stats + recentes -->
+      <!-- IDLE: Trending topics + Boas Noticias template -->
       <sc-if value="{{ carouselShowIdle }}" hint-placeholder-val="{{ true }}">
       <div style="padding: 16px 0 20px; display: flex; flex-direction: column; gap: 20px; animation: fadeUp 0.3s ease-out forwards">
 
         <div style="display: flex; flex-direction: column; gap: 10px">
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 20px">
-            <span style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">Criar Carrossel</span>
+            <div>
+              <span style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">Em Alta Agora</span>
+              <sc-if value="{{ trendingAgeText }}" hint-placeholder-val="{{ true }}">
+                <div style="font-size: 11px; color: #86868B; margin-top: 2px">{{ trendingAgeText }}</div>
+              </sc-if>
+            </div>
+            <div onClick="{{ refreshTrending }}" style="width: 36px; height: 36px; border-radius: 50%; background: #F2F2F7; display: flex; align-items: center; justify-content: center; cursor: pointer" style-active="background: #E5E5EA; transform: scale(0.92)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#007AFF" stroke-width="2.5" stroke-linecap="round" style="{{ trendingRefreshSpin }}"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            </div>
           </div>
-          <div style="display: flex; gap: 12px; overflow-x: auto; padding: 4px 20px 8px; -webkit-overflow-scrolling: touch">
 
-            <div onClick="{{ selectTemplate }}" data-template="boas-noticias-mundo" style="width: 140px; flex-shrink: 0; background: #FFFFFF; border-radius: 20px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s" style-active="transform: scale(0.95)">
-              <div style="width: 100%; height: 100px; background: linear-gradient(145deg, #30D158, #00C7BE); display: flex; align-items: center; justify-content: center; position: relative">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                <div style="position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; background: rgba(255,255,255,0.25); border-radius: 50%; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px)"><span style="font-size: 10px; color: white; font-weight: 700">3</span></div>
-              </div>
-              <div style="padding: 12px">
-                <div style="font-size: 13px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.2px; line-height: 1.2">Boas Notícias</div>
-                <div style="font-size: 11px; color: #86868B; margin-top: 3px; line-height: 1.3">Manchetes positivas do mundo</div>
+          <sc-if value="{{ trendingLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 0 20px">
+              <div style="height: 80px; background: linear-gradient(90deg, #E5E5EA 25%, #F2F2F7 50%, #E5E5EA 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 14px"></div>
+              <div style="height: 80px; background: linear-gradient(90deg, #E5E5EA 25%, #F2F2F7 50%, #E5E5EA 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite 0.2s; border-radius: 14px"></div>
+              <div style="height: 80px; background: linear-gradient(90deg, #E5E5EA 25%, #F2F2F7 50%, #E5E5EA 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite 0.4s; border-radius: 14px"></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ trendingHasError }}" hint-placeholder-val="{{ false }}">
+            <div style="padding: 0 20px">
+              <div style="background: rgba(255,59,48,0.06); border: 1px solid rgba(255,59,48,0.2); border-radius: 14px; padding: 14px">
+                <div style="font-size: 13px; color: #FF3B30; font-weight: 600">{{ trendingError }}</div>
               </div>
             </div>
+          </sc-if>
 
-            <div onClick="{{ selectTemplate }}" data-template="educativo" style="width: 140px; flex-shrink: 0; background: #FFFFFF; border-radius: 20px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s" style-active="transform: scale(0.95)">
-              <div style="width: 100%; height: 100px; background: linear-gradient(145deg, #FFD60A, #FF9F0A); display: flex; align-items: center; justify-content: center">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              </div>
-              <div style="padding: 12px">
-                <div style="font-size: 13px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.2px; line-height: 1.2">Educativo</div>
-                <div style="font-size: 11px; color: #86868B; margin-top: 3px; line-height: 1.3">Ciência, espaço, tech</div>
-              </div>
-            </div>
-
-            <div onClick="{{ selectTemplate }}" data-template="arquivo" style="width: 140px; flex-shrink: 0; background: #FFFFFF; border-radius: 20px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s" style-active="transform: scale(0.95)">
-              <div style="width: 100%; height: 100px; background: linear-gradient(145deg, #5E5CE6, #BF5AF2); display: flex; align-items: center; justify-content: center; position: relative">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
-                <div style="position: absolute; bottom: 8px; right: 8px; padding: 3px 7px; background: rgba(255,255,255,0.25); border-radius: 6px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px)"><span style="font-size: 9px; color: white; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px">Top</span></div>
-              </div>
-              <div style="padding: 12px">
-                <div style="font-size: 13px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.2px; line-height: 1.2">Arquivo Secreto</div>
-                <div style="font-size: 11px; color: #86868B; margin-top: 3px; line-height: 1.3">Lugares proibidos</div>
-              </div>
-            </div>
-
-            <div onClick="{{ selectTemplate }}" data-template="comecou" style="width: 140px; flex-shrink: 0; background: #FFFFFF; border-radius: 20px; overflow: hidden; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: all 0.2s" style-active="transform: scale(0.95)">
-              <div style="width: 100%; height: 100px; background: linear-gradient(145deg, #FF3B30, #FF6961); display: flex; align-items: center; justify-content: center">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-              </div>
-              <div style="padding: 12px">
-                <div style="font-size: 13px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.2px; line-height: 1.2">Começou</div>
-                <div style="font-size: 11px; color: #86868B; margin-top: 3px; line-height: 1.3">Comparativos virais</div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-
-        <div style="display: flex; gap: 10px; padding: 0 20px">
-          <div style="flex: 1; background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-            <div style="font-size: 22px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.5px">24</div>
-            <div style="font-size: 11px; color: #86868B; margin-top: 2px; font-weight: 500">Criados</div>
-          </div>
-          <div style="flex: 1; background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-            <div style="font-size: 22px; font-weight: 700; color: #34C759; letter-spacing: -0.5px">18</div>
-            <div style="font-size: 11px; color: #86868B; margin-top: 2px; font-weight: 500">Publicados</div>
-          </div>
-          <div style="flex: 1; background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-            <div style="font-size: 22px; font-weight: 700; color: #007AFF; letter-spacing: -0.5px">3</div>
-            <div style="font-size: 11px; color: #86868B; margin-top: 2px; font-weight: 500">Em review</div>
-          </div>
+          <sc-if value="{{ trendingHasTopics }}" hint-placeholder-val="{{ true }}">
+            <div id="trendingCardsContainer" style="display: flex; flex-direction: column; gap: 10px; padding: 0 20px"></div>
+          </sc-if>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 10px; padding: 0 20px">
-          <div style="display: flex; justify-content: space-between; align-items: center">
-            <span style="font-size: 17px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">Recentes</span>
-            <span style="font-size: 13px; font-weight: 500; color: #007AFF; cursor: pointer">Ver todos</span>
-          </div>
-
-          <div style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98)">
-            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #FFD60A, #FF9F0A); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div>
-            <div style="flex: 1; min-width: 0">
-              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px">Por que o céu é azul?</div>
-              <div style="font-size: 12px; color: #86868B; margin-top: 3px">8 slides · Educativo · há 2h</div>
+          <span style="font-size: 14px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Template Classico</span>
+          <div onClick="{{ selectTemplate }}" data-template="boas-noticias-mundo" style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98)">
+            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #30D158, #00C7BE); display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             </div>
-            <div style="padding: 5px 10px; background: rgba(52,199,89,0.1); border-radius: 8px"><span style="font-size: 11px; font-weight: 600; color: #34C759">Pronto</span></div>
-          </div>
-
-          <div style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98)">
-            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #FF3B30, #FF6961); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
             <div style="flex: 1; min-width: 0">
-              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px">Brasil vs Japão: Trens</div>
-              <div style="font-size: 12px; color: #86868B; margin-top: 3px">6 slides · Começou · há 5h</div>
+              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; letter-spacing: -0.2px">Boas Noticias do Mundo</div>
+              <div style="font-size: 12px; color: #86868B; margin-top: 3px">Manchetes positivas com fotos reais</div>
             </div>
-            <div style="padding: 5px 10px; background: rgba(255,159,10,0.1); border-radius: 8px"><span style="font-size: 11px; font-weight: 600; color: #FF9F0A">Review</span></div>
-          </div>
-
-          <div style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98)">
-            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #5E5CE6, #BF5AF2); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg></div>
-            <div style="flex: 1; min-width: 0">
-              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px">Ilha Proibida no Pacífico</div>
-              <div style="font-size: 12px; color: #86868B; margin-top: 3px">10 slides · Arquivo · ontem</div>
-            </div>
-            <div style="padding: 5px 10px; background: rgba(52,199,89,0.1); border-radius: 8px"><span style="font-size: 11px; font-weight: 600; color: #34C759">Pronto</span></div>
-          </div>
-
-          <div style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98)">
-            <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #30D158, #00C7BE); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
-            <div style="flex: 1; min-width: 0">
-              <div style="font-size: 15px; font-weight: 600; color: #1D1D1F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.2px">Cidade sem carros na Europa</div>
-              <div style="font-size: 12px; color: #86868B; margin-top: 3px">5 slides · Boas Notícias · 2d</div>
-            </div>
-            <div style="padding: 5px 10px; background: rgba(52,199,89,0.1); border-radius: 8px"><span style="font-size: 11px; font-weight: 600; color: #34C759">Pronto</span></div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
           </div>
         </div>
 
@@ -215,19 +154,23 @@
           </div>
 
           <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-            <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px">Pipeline IA</div>
+            <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px">Pipeline Multi-Agente</div>
             <div style="display: flex; flex-direction: column; gap: 8px">
               <div style="display: flex; align-items: center; gap: 10px">
                 <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(0,122,255,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #007AFF">1</span></div>
-                <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Conteudo IA</div><div style="font-size: 11px; color: #86868B">GPT-4o gera headlines e textos virais</div></div>
+                <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Estrategista</div><div style="font-size: 11px; color: #86868B">Planeja a estrutura e narrativa do carrossel</div></div>
               </div>
               <div style="display: flex; align-items: center; gap: 10px">
-                <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(88,86,214,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #5856D6">2</span></div>
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(255,159,10,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #FF9F0A">2</span></div>
+                <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Redator Viral</div><div style="font-size: 11px; color: #86868B">Textos curtos e impactantes (max 8 palavras)</div></div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px">
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(88,86,214,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #5856D6">3</span></div>
                 <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Fotos Reais</div><div style="font-size: 11px; color: #86868B">Busca em 5 fontes (Wikimedia, Pexels...)</div></div>
               </div>
               <div style="display: flex; align-items: center; gap: 10px">
-                <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #34C759">3</span></div>
-                <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Render + Review</div><div style="font-size: 11px; color: #86868B">Renderiza slides 1080x1350 + nota de engajamento</div></div>
+                <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #34C759">4</span></div>
+                <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Revisor de Retencao</div><div style="font-size: 11px; color: #86868B">Nota de engajamento + melhoria automatica</div></div>
               </div>
             </div>
           </div>
@@ -246,7 +189,7 @@
                   <sc-if value="{{ cStep0Done }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
                   <sc-if value="{{ cStep0Active }}"><div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div></sc-if>
                 </div>
-                <span style="font-size: 14px; color: {{ cStep0TextColor }}; font-weight: {{ cStep0Weight }}">Gerando conteudo com IA...</span>
+                <span style="font-size: 14px; color: {{ cStep0TextColor }}; font-weight: {{ cStep0Weight }}">Estrategista planejando...</span>
               </div>
 
               <div style="display: flex; align-items: center; gap: 12px">
@@ -254,7 +197,7 @@
                   <sc-if value="{{ cStep1Done }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
                   <sc-if value="{{ cStep1Active }}"><div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div></sc-if>
                 </div>
-                <span style="font-size: 14px; color: {{ cStep1TextColor }}; font-weight: {{ cStep1Weight }}">Buscando fotos reais...</span>
+                <span style="font-size: 14px; color: {{ cStep1TextColor }}; font-weight: {{ cStep1Weight }}">Redator escrevendo textos...</span>
               </div>
 
               <div style="display: flex; align-items: center; gap: 12px">
@@ -262,7 +205,7 @@
                   <sc-if value="{{ cStep2Done }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
                   <sc-if value="{{ cStep2Active }}"><div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div></sc-if>
                 </div>
-                <span style="font-size: 14px; color: {{ cStep2TextColor }}; font-weight: {{ cStep2Weight }}">Renderizando slides...</span>
+                <span style="font-size: 14px; color: {{ cStep2TextColor }}; font-weight: {{ cStep2Weight }}">Buscando fotos reais...</span>
               </div>
 
               <div style="display: flex; align-items: center; gap: 12px">
@@ -270,7 +213,7 @@
                   <sc-if value="{{ cStep3Done }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg></sc-if>
                   <sc-if value="{{ cStep3Active }}"><div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div></sc-if>
                 </div>
-                <span style="font-size: 14px; color: {{ cStep3TextColor }}; font-weight: {{ cStep3Weight }}">Revisando engajamento...</span>
+                <span style="font-size: 14px; color: {{ cStep3TextColor }}; font-weight: {{ cStep3Weight }}">Revisor checando retencao...</span>
               </div>
 
             </div>
@@ -696,6 +639,11 @@ class Component extends DCLogic {
     carouselReview:      null,
     carouselError:       null,
     carouselViewIndex:   0,
+    trendingTopics:      [],
+    trendingMeta:        null,
+    trendingLoading:     false,
+    trendingError:       null,
+    selectedTrendingTopic: null,
     reelsState:       'idle',
     reelsResults:     [],
     reelsError:       null,
@@ -718,6 +666,7 @@ class Component extends DCLogic {
       reelsPreview, recycledUrl, recycledHeadline, recycledCaption,
       carouselStep, carouselTemplate, carouselCurrentStep, carouselSlides,
       carouselCaption, carouselReview, carouselError, carouselViewIndex,
+      trendingTopics, trendingLoading,
     } = this.state;
 
     if (!this._avatarListenerAdded) {
@@ -726,6 +675,11 @@ class Component extends DCLogic {
         const fileInput = document.getElementById('avatarFileInput');
         if (fileInput) fileInput.addEventListener('change', (e) => this._handleAvatarUpload(e));
       }, 100);
+    }
+
+    if (!this._trendingFetched && activeTab === 'carousels') {
+      this._trendingFetched = true;
+      setTimeout(() => this._fetchTrending(false), 200);
     }
 
     const isC = activeTab === 'carousels';
@@ -746,7 +700,10 @@ class Component extends DCLogic {
       reelsFill:      isR ? '#007AFF' : 'none',
       videoColor:     isV ? '#FF3B30' : '#8E8E93',
 
-      switchToCarousels: () => this.setState({ activeTab: 'carousels' }),
+      switchToCarousels: () => {
+        this.setState({ activeTab: 'carousels' });
+        if (this.state.trendingTopics.length === 0 && !this.state.trendingLoading) this._fetchTrending(false);
+      },
       switchToReels:     () => this.setState({ activeTab: 'reels' }),
       switchToVideo:     () => this.setState({ activeTab: 'video' }),
 
@@ -757,8 +714,18 @@ class Component extends DCLogic {
       carouselShowResult: carouselStep === 'done',
       carouselShowError:  carouselStep === 'error',
 
-      carouselTemplateName: { 'educativo': 'Educativo', 'boas-noticias-mundo': 'Boas Noticias', 'arquivo': 'Arquivo Secreto', 'comecou': 'Comecou' }[carouselTemplate] || '',
+      carouselTemplateName: carouselTemplate === 'trending'
+        ? (this.state.selectedTrendingTopic?.title || 'Em Alta')
+        : { 'boas-noticias-mundo': 'Boas Noticias' }[carouselTemplate] || '',
       carouselTopicPlaceholder: this._carouselPlaceholder(carouselTemplate),
+
+      trendingLoading:    this.state.trendingLoading,
+      trendingHasError:   !!this.state.trendingError && !this.state.trendingLoading,
+      trendingError:      this.state.trendingError || '',
+      trendingHasTopics:  this.state.trendingTopics.length > 0 && !this.state.trendingLoading,
+      trendingAgeText:    this._formatTrendingAge(this.state.trendingMeta?.updatedAt),
+      trendingRefreshSpin: this.state.trendingLoading ? 'animation: spin 1s linear infinite' : '',
+      refreshTrending:    () => this._fetchTrending(true),
 
       cStep0Done: carouselCurrentStep > 0, cStep0Active: carouselCurrentStep === 0,
       cStep0Bg: carouselCurrentStep > 0 ? '#34C759' : carouselCurrentStep === 0 ? '#007AFF' : '#E5E5EA',
@@ -784,7 +751,13 @@ class Component extends DCLogic {
 
       selectTemplate: (e) => {
         const template = e.currentTarget.getAttribute('data-template');
-        this.setState({ carouselStep: 'form', carouselTemplate: template, carouselSlides: [], carouselError: null, carouselReview: null });
+        this.setState({ carouselStep: 'form', carouselTemplate: template, carouselSlides: [], carouselError: null, carouselReview: null, selectedTrendingTopic: null });
+      },
+      selectTrendingTopic: (e) => {
+        const idx = parseInt(e.currentTarget.getAttribute('data-topic-idx'), 10);
+        const topic = this.state.trendingTopics[idx];
+        if (!topic) return;
+        this.setState({ carouselStep: 'form', carouselTemplate: 'trending', selectedTrendingTopic: topic, carouselSlides: [], carouselError: null, carouselReview: null });
       },
       voltarTemplates: () => this.setState({ carouselStep: 'idle', carouselTemplate: null }),
       gerarCarrossel: () => {
@@ -816,7 +789,7 @@ class Component extends DCLogic {
         this.setState({
           carouselStep: 'idle', carouselTemplate: null, carouselSlides: [],
           carouselCurrentStep: 0, carouselError: null, carouselReview: null,
-          carouselCaption: null, carouselViewIndex: 0,
+          carouselCaption: null, carouselViewIndex: 0, selectedTrendingTopic: null,
         });
       },
 
@@ -877,21 +850,17 @@ class Component extends DCLogic {
   }
 
   _TEMPLATE_ENDPOINTS = {
-    'educativo':           '/api/carousels/generate',
     'boas-noticias-mundo': '/api/carousels/generate-boasnoticias',
-    'arquivo':             '/api/carousels/generate-arquivo',
-    'comecou':             '/api/carousels/generate-comecou',
+    'trending':            '/api/carousels/generate-trending',
   };
 
   _carouselProgressTimer = null;
   _swipeInitialized = false;
 
   _carouselPlaceholder(template) {
+    if (template === 'trending') return this.state.selectedTrendingTopic?.carouselAngle || 'Tema sera o topico em alta selecionado';
     const map = {
-      'educativo':           'Ex: Por que o ceu e azul?',
       'boas-noticias-mundo': 'Tema opcional (ex: medicina, natureza)',
-      'arquivo':             'Ex: Ilha proibida no Pacifico',
-      'comecou':             'Ex: Brasil vs Japao trens',
     };
     return map[template] || 'Digite o tema do carrossel';
   }
@@ -908,8 +877,11 @@ class Component extends DCLogic {
     try {
       const endpoint = this._TEMPLATE_ENDPOINTS[this.state.carouselTemplate] || '/api/carousels/generate';
       const body = { handle };
-      if (topic) body.topic = topic;
-      if (this.state.carouselTemplate === 'educativo') body.slideCount = 7;
+      if (this.state.carouselTemplate === 'trending' && this.state.selectedTrendingTopic) {
+        body.topic = this.state.selectedTrendingTopic;
+      } else if (topic) {
+        body.topic = topic;
+      }
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -1011,6 +983,76 @@ class Component extends DCLogic {
         a.download = `slide-${slide.index || i + 1}.png`;
         a.click();
       }, i * 400);
+    });
+  }
+
+  async _fetchTrending(forceRefresh) {
+    this.setState({ trendingLoading: true, trendingError: null });
+    try {
+      const url = forceRefresh ? '/api/trending/refresh' : '/api/trending/feed';
+      const opts = forceRefresh ? { method: 'POST', headers: { 'Content-Type': 'application/json' } } : {};
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error('Erro ' + res.status);
+      const data = await res.json();
+      this.setState({
+        trendingTopics: data.topics || [],
+        trendingMeta: data.meta || null,
+        trendingLoading: false,
+      });
+      setTimeout(() => this._renderTrendingCards(data.topics || []), 60);
+    } catch (e) {
+      this.setState({ trendingLoading: false, trendingError: e.message });
+    }
+  }
+
+  _formatTrendingAge(ts) {
+    if (!ts) return '';
+    const diff = Date.now() - ts;
+    const hrs = Math.floor(diff / 3600000);
+    if (hrs < 1) return 'Atualizado agora';
+    if (hrs < 24) return `Atualizado ha ${hrs}h`;
+    return `Atualizado ha ${Math.floor(hrs / 24)}d`;
+  }
+
+  _TRENDING_CATEGORY_COLORS = {
+    ciencia: '#4338CA', tecnologia: '#0284C7', saude: '#059669',
+    cultura: '#D97706', curiosidade: '#7C3AED', esporte: '#DC2626',
+    natureza: '#15803D', viral: '#E11D48', historia: '#92400E', economia: '#0369A1',
+  };
+
+  _renderTrendingCards(topics) {
+    const container = document.getElementById('trendingCardsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    topics.forEach((t, i) => {
+      const color = this._TRENDING_CATEGORY_COLORS[t.category] || '#6366F1';
+      const engagement = Math.min(10, Math.max(0, t.engagementPotential || 5));
+      const card = document.createElement('div');
+      card.setAttribute('data-topic-idx', i);
+      card.style.cssText = 'background:#FFFFFF;border-radius:16px;padding:14px;display:flex;gap:14px;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,0.04);cursor:pointer;transition:all 0.2s;animation:fadeUp 0.3s ease-out forwards';
+      card.style.animationDelay = `${i * 0.05}s`;
+      card.style.opacity = '0';
+      card.addEventListener('click', (e) => {
+        const idx = parseInt(e.currentTarget.getAttribute('data-topic-idx'), 10);
+        const topic = this.state.trendingTopics[idx];
+        if (!topic) return;
+        this.setState({ carouselStep: 'form', carouselTemplate: 'trending', selectedTrendingTopic: topic, carouselSlides: [], carouselError: null, carouselReview: null });
+      });
+      const catLabel = (t.category || 'geral').charAt(0).toUpperCase() + (t.category || 'geral').slice(1);
+      card.innerHTML = `
+        <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(145deg,${color},${color}88);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <span style="font-size:20px;font-weight:800;color:white">${engagement}</span>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:600;color:#1D1D1F;letter-spacing:-0.2px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${t.title || ''}</div>
+          <div style="font-size:12px;color:#86868B;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.description || ''}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
+            <div style="padding:2px 8px;background:${color}15;border-radius:6px"><span style="font-size:10px;font-weight:600;color:${color};text-transform:uppercase;letter-spacing:0.3px">${catLabel}</span></div>
+            <div style="flex:1;height:3px;background:#E5E5EA;border-radius:2px;max-width:80px"><div style="height:100%;width:${engagement * 10}%;background:${color};border-radius:2px"></div></div>
+          </div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C7C7CC" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>`;
+      container.appendChild(card);
     });
   }
 
