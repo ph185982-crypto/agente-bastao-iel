@@ -17,6 +17,6 @@
   ],
   "crons": [
     { "path": "/api/content-finder/mine", "schedule": "0 9 * * *" },
-    { "path": "/api/trending/mine", "schedule": "0 3,15 * * *" }
+    { "path": "/api/trending/mine", "schedule": "0 12 * * *" }
   ]
 }
