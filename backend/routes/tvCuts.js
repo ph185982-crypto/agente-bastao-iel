@@ -361,7 +361,7 @@ Para CADA momento retorne:
 - "score": potencial viral de 0 a 10 (10 = altíssimo)
 - "reason": por que esse trecho viraliza (1 frase)
 
-Inclua TODOS os momentos com score >= 6. Se o programa for rico, retorne muitos cortes.
+IMPORTANTE: seja generoso! Inclua TODOS os momentos com score >= 4. Para cada 5 minutos de transcrição deve haver pelo menos 1 corte. Prefira cortes de 30-60 segundos (não muito curtos). Se o programa for rico, retorne MUITOS cortes — 5 a 10 cortes é o ideal para um programa de 30 min.
 Responda APENAS JSON válido: {"moments":[{...},{...}]}`;
 
 function formatSegments(segs) {
@@ -388,7 +388,7 @@ function normalizeMoments(raw) {
     }))
     .filter(m => m.endSec > m.startSec && m.hook)
     .map(m => ({ ...m, endSec: Math.min(m.endSec, m.startSec + MAX_CLIP_SEC) }))
-    .filter(m => m.endSec - m.startSec >= 12);
+    .filter(m => m.endSec - m.startSec >= 8);
 }
 
 function deduplicateMoments(moments) {
@@ -463,33 +463,58 @@ function extractFrame(directUrl, atSec, framePath) {
   });
 }
 
-// GPT-4o vision: centro horizontal do rosto de quem fala (para o crop 9:16)
+// Centro horizontal do rosto de quem fala (para o crop 9:16).
+// Usa GPT-4o vision quando disponível; senão tenta detecção por
+// brilho/contraste no frame (heurística que favorece rostos em estúdio).
 async function detectFaceCenter(directUrl, atSec, sid) {
   const framePath = path.join(os.tmpdir(), `${sid}_frame.jpg`);
   try {
     await extractFrame(directUrl, atSec, framePath);
-    const base64 = fs.readFileSync(framePath).toString('base64');
-    const r = await llm.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: 'This is a frame from a TV show. Find the main speaker (the person talking or most prominent face). Return JSON {"centerPct": n} where n (integer 0-100) is the HORIZONTAL position of that person\'s face center, measured from the left edge. If unsure, return 50.',
-        },
-        {
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'low' } },
-            { type: 'text', text: 'Where is the main speaker?' },
+
+    // Groq/llama não aceita imagem — só tenta vision se OpenAI estiver ativa
+    if (process.env.OPENAI_API_KEY && !_forceGroqWhisper) {
+      try {
+        const base64 = fs.readFileSync(framePath).toString('base64');
+        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const r = await client.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'This is a frame from a TV show. Find the main speaker (the person talking or most prominent face). Return JSON {"centerPct": n} where n (integer 0-100) is the HORIZONTAL position of that person\'s face center, measured from the left edge. If unsure, return 50.',
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'low' } },
+                { type: 'text', text: 'Where is the main speaker?' },
+              ],
+            },
           ],
-        },
-      ],
-      max_tokens: 40,
-      response_format: { type: 'json_object' },
-    });
-    const parsed = JSON.parse(r.choices[0].message.content || '{}');
-    const pct = parseInt(parsed.centerPct);
-    return Number.isFinite(pct) ? Math.min(100, Math.max(0, pct)) : 50;
+          max_tokens: 40,
+          response_format: { type: 'json_object' },
+        });
+        const parsed = JSON.parse(r.choices[0].message.content || '{}');
+        const pct = parseInt(parsed.centerPct);
+        if (Number.isFinite(pct)) return Math.min(100, Math.max(0, pct));
+      } catch (e) {
+        console.warn('[tvCuts] vision failed:', e.message?.slice(0, 100));
+      }
+    }
+
+    // Fallback: análise de brilho por sharp — região mais clara costuma ser o rosto
+    const { data, info } = await sharp(framePath)
+      .greyscale().resize(80, null).raw().toBuffer({ resolveWithObject: true });
+    const cols = info.width;
+    const thirds = [0, 0, 0];
+    for (let i = 0; i < data.length; i++) {
+      const col = i % cols;
+      if (col < cols / 3) thirds[0] += data[i];
+      else if (col < 2 * cols / 3) thirds[1] += data[i];
+      else thirds[2] += data[i];
+    }
+    const maxThird = thirds.indexOf(Math.max(...thirds));
+    return [25, 50, 75][maxThird];
   } catch (e) {
     console.warn('[tvCuts] face detect failed, using center:', e.message);
     return 50;
@@ -619,11 +644,17 @@ router.post('/render-clip', async (req, res) => {
     const vw = Number(srcWidth) || 1920;
     const vh = Number(srcHeight) || 1080;
 
-    // 1. Vision: onde está o rosto de quem fala (para centrar o crop 9:16)
+    // 1. Vision/heurística: onde está o rosto de quem fala
     const centerPct = await detectFaceCenter(directUrl, start + dur / 2, sid);
 
-    const cropW = Math.min(vw, 2 * Math.round(vh * 9 / 32)); // vh*9/16, arredondado para par
-    const cropX = Math.min(vw - cropW, Math.max(0, Math.round(vw * centerPct / 100 - cropW / 2)));
+    // Crop inteligente: se fonte já é quase 9:16 ou mais estreita, não faz crop
+    // horizontal (apenas escala). Se fonte é widescreen, recorta centralizado no rosto.
+    const idealCropW = 2 * Math.round(vh * 9 / 32);
+    const needsCrop = idealCropW < vw * 0.95;
+    const cropW = needsCrop ? Math.min(vw, idealCropW) : vw;
+    const cropX = needsCrop
+      ? Math.min(vw - cropW, Math.max(0, Math.round(vw * centerPct / 100 - cropW / 2)))
+      : 0;
 
     // 2. Overlays: gancho no topo + blocos de legenda
     const hookPng = path.join(os.tmpdir(), `${sid}_hook.png`);
@@ -652,8 +683,12 @@ router.post('/render-clip', async (req, res) => {
 
     // Acabamento de editor: leve color grade + nitidez sutil + fade in/out
     const fadeOutStart = Math.max(0, dur - 0.35).toFixed(2);
+    // Se não precisa crop (fonte já é estreita), faz scale-to-fit com padding preto
+    const scaleStep = needsCrop
+      ? `crop=${cropW}:${vh}:${cropX}:0,scale=${W}:${H},setpts=PTS-STARTPTS`
+      : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS`;
     const filters = [
-      `[0:v]crop=${cropW}:${vh}:${cropX}:0,scale=${W}:${H},setpts=PTS-STARTPTS,` +
+      `[0:v]${scaleStep},` +
         `eq=contrast=1.06:saturation=1.15,unsharp=5:5:0.4,` +
         `fade=t=in:d=0.3,fade=t=out:st=${fadeOutStart}:d=0.3[v0]`,
       `[v0][1:v]overlay=0:0[v1]`,
