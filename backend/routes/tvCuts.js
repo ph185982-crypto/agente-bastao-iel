@@ -4,11 +4,14 @@
 //
 // Pipeline stateless orquestrado pelo cliente (cada etapa cabe nos 60s da Vercel):
 //   POST /probe        { sourceUrl }                          → { directUrl, durationSec, width, height }
-//   POST /transcribe   { directUrl, offsetSec, windowSec }    → { segments, words }
+//   POST /transcribe   { sourceUrl, offsetSec, windowSec }    → { segments, words }
 //   POST /find-moments { segments, durationSec }              → { moments }
-//   POST /render-clip  { directUrl, startSec, endSec, hook, caption, words } → video/mp4 stream
+//   POST /render-clip  { sourceUrl, startSec, endSec, hook, caption, words } → video/mp4 stream
+// transcribe/render-clip re-resolvem sourceUrl a cada invocação (URLs do
+// googlevideo são IP-locked); directUrl segue aceito como fallback.
 const express = require('express');
 const axios = require('axios');
+const ytdl = require('@distube/ytdl-core');
 const OpenAI = require('openai');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
@@ -131,27 +134,85 @@ function extractYouTubeId(url) {
   return null;
 }
 
-async function resolveYouTubeUrl(sourceUrl) {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error('Links do YouTube precisam de RAPIDAPI_KEY. Use um link do Google Drive.');
-  }
-  const vid = extractYouTubeId(sourceUrl);
-  if (!vid) throw new Error('Não consegui extrair o ID do vídeo do YouTube');
+async function ytViaRapidApi(vid) {
+  if (!process.env.RAPIDAPI_KEY) throw new Error('RAPIDAPI_KEY não configurada');
   const { data } = await axios.get('https://youtube-media-downloader.p.rapidapi.com/v2/video/details', {
     params: { videoId: vid },
     headers: {
       'x-rapidapi-host': 'youtube-media-downloader.p.rapidapi.com',
       'x-rapidapi-key': process.env.RAPIDAPI_KEY,
     },
-    timeout: 25000,
+    timeout: 20000,
   });
   const items = data?.videos?.items || [];
   // Preferir mp4 com áudio, maior resolução ≤1080
   const best = items
     .filter(v => v.url && (v.hasAudio !== false) && String(v.extension || v.mimeType || '').includes('mp4'))
     .sort((a, b) => (b.height || 0) - (a.height || 0))[0] || items.find(v => v.url);
-  if (!best?.url) throw new Error('Não consegui obter o vídeo do YouTube. Tente um link do Google Drive.');
+  if (!best?.url) throw new Error('sem formatos disponíveis');
   return best.url;
+}
+
+async function ytViaYtdlCore(vid) {
+  const info = await ytdl.getInfo(vid, { requestOptions: { headers: { 'User-Agent': UA } } });
+  const formats = (info.formats || []).filter(f =>
+    f.url && f.hasAudio && f.hasVideo && String(f.mimeType || f.container || '').includes('mp4'));
+  const best = formats
+    .filter(f => (f.height || 0) <= 1080)
+    .sort((a, b) => (b.height || 0) - (a.height || 0))[0] || formats[0];
+  if (!best?.url) throw new Error('sem formato mp4 com áudio');
+  return best.url;
+}
+
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.adminforge.de',
+  'https://api.piped.private.coffee',
+];
+
+async function ytViaPiped(vid) {
+  let lastErr;
+  for (const base of PIPED_INSTANCES) {
+    try {
+      const { data } = await axios.get(`${base}/streams/${vid}`, {
+        timeout: 12000,
+        headers: { 'User-Agent': UA },
+      });
+      const streams = (data?.videoStreams || []).filter(s =>
+        s.url && s.videoOnly === false && String(s.mimeType || '').includes('mp4'));
+      const best = streams.sort((a, b) => (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0))[0];
+      if (best?.url) return best.url;
+      lastErr = new Error(`${base}: sem formatos com áudio`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('todas as instâncias Piped falharam');
+}
+
+// Cadeia de fallbacks: RapidAPI (quando a cota permite) → ytdl-core (sem chave)
+// → Piped (instâncias públicas). URLs do googlevideo são presas ao IP que as
+// resolveu, por isso transcribe/render-clip re-resolvem a cada invocação.
+async function resolveYouTubeUrl(sourceUrl) {
+  const vid = extractYouTubeId(sourceUrl);
+  if (!vid) throw new Error('Não consegui extrair o ID do vídeo do YouTube');
+  const strategies = [
+    ['rapidapi', ytViaRapidApi],
+    ['ytdl-core', ytViaYtdlCore],
+    ['piped', ytViaPiped],
+  ];
+  const errors = [];
+  for (const [name, fn] of strategies) {
+    try {
+      const url = await fn(vid);
+      console.log(`[tvCuts] YouTube resolvido via ${name}`);
+      return url;
+    } catch (e) {
+      errors.push(`${name}: ${String(e.message).slice(0, 90)}`);
+      console.warn(`[tvCuts] YouTube via ${name} falhou:`, String(e.message).slice(0, 140));
+    }
+  }
+  throw new Error(`Não consegui baixar esse vídeo do YouTube agora (${errors.join(' | ')}). Alternativa garantida: suba o vídeo no Google Drive com acesso "Qualquer pessoa com o link" e cole o link aqui.`);
 }
 
 async function resolveSourceUrl(sourceUrl) {
@@ -160,6 +221,19 @@ async function resolveSourceUrl(sourceUrl) {
   if (/youtube\.com|youtu\.be/.test(url)) return resolveYouTubeUrl(url);
   if (/^https?:\/\//.test(url)) return url;
   throw new Error('Link inválido. Envie um link do Google Drive, YouTube ou uma URL direta de vídeo.');
+}
+
+// URLs do YouTube expiram e são IP-locked → cache curto por invocação/container
+const _resolveCache = new Map();
+async function resolveForRequest(body) {
+  const src = String(body?.sourceUrl || '').trim();
+  if (!src) return body?.directUrl;
+  const hit = _resolveCache.get(src);
+  if (hit && Date.now() - hit.ts < 90000) return hit.url;
+  const url = await resolveSourceUrl(src);
+  _resolveCache.set(src, { url, ts: Date.now() });
+  if (_resolveCache.size > 20) _resolveCache.delete(_resolveCache.keys().next().value);
+  return url;
 }
 
 function probeRemote(url) {
@@ -234,8 +308,9 @@ router.post('/transcribe', async (req, res) => {
   const sid = crypto.randomUUID();
   const audioPath = path.join(os.tmpdir(), `${sid}_audio.mp3`);
   try {
-    const { directUrl, offsetSec = 0, windowSec = 300 } = req.body || {};
-    if (!directUrl) return res.status(400).json({ error: 'directUrl é obrigatório' });
+    const { offsetSec = 0, windowSec = 300 } = req.body || {};
+    const directUrl = await resolveForRequest(req.body);
+    if (!directUrl) return res.status(400).json({ error: 'sourceUrl ou directUrl é obrigatório' });
     const offset = Math.max(0, Number(offsetSec) || 0);
     const window = Math.min(600, Math.max(60, Number(windowSec) || 300));
 
@@ -395,21 +470,28 @@ async function detectFaceCenter(directUrl, atSec, sid) {
 }
 
 async function buildHookPng(hook, outPath) {
-  const lines = wrapText(hook, 22).slice(0, 3);
-  const fontSize = 44;
-  const lineH = 58;
-  const padY = 26;
+  const lines = wrapText(hook, 20).slice(0, 3);
+  const fontSize = 48;
+  const lineH = 62;
+  const padY = 30;
   const boxH = padY * 2 + lines.length * lineH;
   const boxY = 84;
   const fontFamily = "'DejaVu Sans', sans-serif";
 
   const textEls = lines.map((line, i) => {
-    const y = boxY + padY + (i + 1) * lineH - 14;
+    const y = boxY + padY + (i + 1) * lineH - 16;
     return `<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="${fontFamily}" font-size="${fontSize}" font-weight="bold" fill="#FFFFFF">${escXml(line)}</text>`;
   }).join('');
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-    <rect x="24" y="${boxY}" width="${W - 48}" height="${boxH}" rx="18" fill="rgba(0,0,0,0.62)"/>
+    <defs>
+      <linearGradient id="hookGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="rgba(8,8,14,0.92)"/>
+        <stop offset="1" stop-color="rgba(8,8,14,0.70)"/>
+      </linearGradient>
+    </defs>
+    <rect x="22" y="${boxY + 4}" width="${W - 44}" height="${boxH}" rx="20" fill="rgba(0,0,0,0.45)"/>
+    <rect x="24" y="${boxY}" width="${W - 48}" height="${boxH}" rx="20" fill="url(#hookGrad)" stroke="rgba(255,255,255,0.16)" stroke-width="2"/>
     ${textEls}
   </svg>`;
 
@@ -448,16 +530,25 @@ function groupCaptionChunks(words, clipStart, clipDur) {
 }
 
 async function buildCaptionPng(text, outPath) {
-  const lines = wrapText(text, 16).slice(0, 2);
-  const fontSize = 54;
-  const lineH = 68;
+  const lines = wrapText(text, 14).slice(0, 2);
+  const fontSize = 62;
+  const lineH = 76;
   const fontFamily = "'DejaVu Sans', sans-serif";
-  const totalH = 160;
+  const totalH = 190;
   const baseY = totalH / 2 - ((lines.length - 1) * lineH) / 2 + fontSize / 3;
+
+  // Palavra mais longa do bloco em amarelo (estilo CapCut/Opus Clip)
+  const highlight = String(text).split(' ').reduce((a, b) => (b.length > a.length ? b : a), '');
 
   const textEls = lines.map((line, i) => {
     const y = baseY + i * lineH;
-    return `<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="${fontFamily}" font-size="${fontSize}" font-weight="bold" fill="#FFFFFF" stroke="#000000" stroke-width="10" paint-order="stroke" stroke-linejoin="round">${escXml(line)}</text>`;
+    const parts = line.split(' ');
+    const tspans = parts.map((w, j) => {
+      const fill = w === highlight ? '#FFE14D' : '#FFFFFF';
+      const chunk = j < parts.length - 1 ? `${w} ` : w;
+      return `<tspan fill="${fill}">${escXml(chunk)}</tspan>`;
+    }).join('');
+    return `<text x="${W / 2}" y="${y}" xml:space="preserve" text-anchor="middle" font-family="${fontFamily}" font-size="${fontSize}" font-weight="bold" stroke="#000000" stroke-width="13" paint-order="stroke" stroke-linejoin="round">${tspans}</text>`;
   }).join('');
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${totalH}">${textEls}</svg>`;
@@ -487,9 +578,10 @@ router.post('/render-clip', async (req, res) => {
   const tmpFiles = [];
   const output = path.join(os.tmpdir(), `${sid}_reel.mp4`);
   try {
-    const { directUrl, startSec, endSec, hook, caption, words = [], srcWidth, srcHeight } = req.body || {};
+    const { startSec, endSec, hook, caption, words = [], srcWidth, srcHeight } = req.body || {};
+    const directUrl = await resolveForRequest(req.body);
     if (!directUrl || startSec == null || endSec == null || !hook) {
-      return res.status(400).json({ error: 'directUrl, startSec, endSec e hook são obrigatórios' });
+      return res.status(400).json({ error: 'sourceUrl/directUrl, startSec, endSec e hook são obrigatórios' });
     }
     const start = Math.max(0, Number(startSec));
     const dur = Math.min(MAX_CLIP_SEC, Number(endSec) - start);
@@ -529,22 +621,29 @@ router.post('/render-clip', async (req, res) => {
       .input(hookPng);
     chunks.forEach(c => cmd.input(c.png));
 
+    // Acabamento de editor: leve color grade + nitidez sutil + fade in/out
+    const fadeOutStart = Math.max(0, dur - 0.35).toFixed(2);
     const filters = [
-      `[0:v]crop=${cropW}:${vh}:${cropX}:0,scale=${W}:${H},setpts=PTS-STARTPTS[v0]`,
+      `[0:v]crop=${cropW}:${vh}:${cropX}:0,scale=${W}:${H},setpts=PTS-STARTPTS,` +
+        `eq=contrast=1.06:saturation=1.15,unsharp=5:5:0.4,` +
+        `fade=t=in:d=0.3,fade=t=out:st=${fadeOutStart}:d=0.3[v0]`,
       `[v0][1:v]overlay=0:0[v1]`,
     ];
     let last = 'v1';
     chunks.forEach((c, i) => {
       const next = `v${i + 2}`;
-      filters.push(`[${last}][${i + 2}:v]overlay=0:${H - 400}:enable='between(t,${c.start.toFixed(2)},${c.end.toFixed(2)})'[${next}]`);
+      filters.push(`[${last}][${i + 2}:v]overlay=0:${H - 420}:enable='between(t,${c.start.toFixed(2)},${c.end.toFixed(2)})'[${next}]`);
       last = next;
     });
+
+    // Áudio: normalização broadcast (loudnorm) + fades — volume consistente de Reels
+    const audioChain = `loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=in:d=0.25,afade=t=out:st=${fadeOutStart}:d=0.3`;
 
     cmd.complexFilter(filters.join(';'))
       .outputOptions([
         `-map [${last}]`, '-map 0:a?',
-        '-c:v libx264', '-preset ultrafast', '-crf 28', '-r 30', '-pix_fmt yuv420p',
-        '-c:a aac', '-b:a 128k',
+        '-c:v libx264', '-preset ultrafast', '-crf 27', '-r 30', '-pix_fmt yuv420p',
+        '-c:a aac', '-b:a 128k', '-af', audioChain,
         '-movflags +faststart',
       ]);
 
