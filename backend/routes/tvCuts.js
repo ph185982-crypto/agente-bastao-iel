@@ -50,18 +50,36 @@ function wrapText(text, maxCharsPerLine) {
   return lines;
 }
 
-// ── Cliente de transcrição (OpenAI whisper-1; fallback Groq whisper-large-v3) ──
-function getTranscriptionClient() {
-  if (process.env.OPENAI_API_KEY) {
-    return { client: new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), model: 'whisper-1' };
+// ── Transcrição (OpenAI whisper-1; fallback Groq whisper-large-v3, inclusive
+//     quando a chave OpenAI está inválida) ──────────────────────────────────────
+let _forceGroqWhisper = false;
+
+async function transcribeAudio(audioPath) {
+  const groqAvailable = !!process.env.GROQ_API_KEY;
+  const useOpenAI = process.env.OPENAI_API_KEY && !_forceGroqWhisper;
+
+  const attempt = (client, model) => client.audio.transcriptions.create({
+    file: fs.createReadStream(audioPath),
+    model,
+    language: 'pt',
+    response_format: 'verbose_json',
+    timestamp_granularities: ['word', 'segment'],
+  });
+
+  if (useOpenAI) {
+    try {
+      return await attempt(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), 'whisper-1');
+    } catch (err) {
+      if (!groqAvailable || !(err?.status === 401 || err?.status === 403)) throw err;
+      console.warn('[tvCuts] OpenAI auth failed, using Groq whisper:', err.message?.slice(0, 120));
+      _forceGroqWhisper = true;
+    }
   }
-  if (process.env.GROQ_API_KEY) {
-    return {
-      client: new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' }),
-      model: 'whisper-large-v3',
-    };
-  }
-  throw new Error('Nenhuma chave de transcrição configurada (OPENAI_API_KEY ou GROQ_API_KEY)');
+  if (!groqAvailable) throw new Error('Nenhuma chave de transcrição válida (OPENAI_API_KEY ou GROQ_API_KEY)');
+  return attempt(
+    new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' }),
+    'whisper-large-v3'
+  );
 }
 
 // ── Resolução de links ────────────────────────────────────────────────────────
@@ -134,9 +152,12 @@ async function resolveSourceUrl(sourceUrl) {
 function probeRemote(url) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Timeout ao ler o vídeo (30s). Verifique o link.')), 30000);
-    ffmpeg.ffprobe(url, (err, meta) => {
+    ffmpeg.ffprobe(url, ['-user_agent', UA], (err, meta) => {
       clearTimeout(timer);
-      if (err) return reject(new Error(`Não consegui ler o vídeo: ${err.message.slice(0, 200)}`));
+      if (err) {
+        const tail = String(err.message).split('\n').slice(-6).join(' | ');
+        return reject(new Error(`Não consegui ler o vídeo: ${tail.slice(0, 600)}`));
+      }
       const v = (meta.streams || []).find(s => s.codec_type === 'video');
       resolve({
         durationSec: Math.round(parseFloat(meta.format?.duration) || 0),
@@ -183,8 +204,14 @@ function extractAudioWindow(directUrl, offsetSec, windowSec, outPath, timeoutMs)
     }, timeoutMs);
     proc.on('close', code => {
       clearTimeout(timer);
-      if (code === 0 && fs.existsSync(outPath) && fs.statSync(outPath).size > 1000) resolve();
-      else reject(new Error(`Falha ao extrair áudio (exit ${code}): ${errLines.slice(-4).join(' | ').slice(0, 300)}`));
+      if (code === 0 && fs.existsSync(outPath) && fs.statSync(outPath).size > 1000) return resolve();
+      const stderr = errLines.join('');
+      if (/does not contain any stream|Stream map .* matches no streams/i.test(stderr)) {
+        const err = new Error('no_audio');
+        err.noAudio = true;
+        return reject(err);
+      }
+      reject(new Error(`Falha ao extrair áudio (exit ${code}): ${stderr.split('\n').filter(l => l.trim()).slice(-5).join(' | ').slice(0, 400)}`));
     });
     proc.on('error', err => { clearTimeout(timer); reject(err); });
   });
@@ -199,16 +226,14 @@ router.post('/transcribe', async (req, res) => {
     const offset = Math.max(0, Number(offsetSec) || 0);
     const window = Math.min(600, Math.max(60, Number(windowSec) || 300));
 
-    await extractAudioWindow(directUrl, offset, window, audioPath, 38000);
+    try {
+      await extractAudioWindow(directUrl, offset, window, audioPath, 38000);
+    } catch (err) {
+      if (err.noAudio) return res.json({ segments: [], words: [] });
+      throw err;
+    }
 
-    const { client, model } = getTranscriptionClient();
-    const tr = await client.audio.transcriptions.create({
-      file: fs.createReadStream(audioPath),
-      model,
-      language: 'pt',
-      response_format: 'verbose_json',
-      timestamp_granularities: ['word', 'segment'],
-    });
+    const tr = await transcribeAudio(audioPath);
 
     const segments = (tr.segments || []).map(s => ({
       start: Math.round((s.start + offset) * 100) / 100,
@@ -484,9 +509,10 @@ router.post('/render-clip', async (req, res) => {
     }
 
     // 3. ffmpeg: corte remoto (input-seek) + crop + overlays num único passe
+    // Tokens separados: fluent-ffmpeg não divide corretamente valores com espaços
     const cmd = ffmpeg()
       .input(directUrl)
-      .inputOptions([`-ss ${start}`, `-t ${dur.toFixed(2)}`, `-user_agent ${UA}`])
+      .inputOptions(['-ss', String(start), '-t', dur.toFixed(2), '-user_agent', UA])
       .input(hookPng);
     chunks.forEach(c => cmd.input(c.png));
 
