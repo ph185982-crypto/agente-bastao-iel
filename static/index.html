@@ -25,6 +25,9 @@
     @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
     @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .tvSwitch::before { position: absolute; content: ""; height: 22px; width: 22px; left: 2px; bottom: 2px; background: white; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    input:checked + .tvSwitch { background: #AF52DE; }
+    input:checked + .tvSwitch::before { transform: translateX(18px); }
     input[type=text] { box-sizing: border-box; -webkit-appearance: none; appearance: none; }
   </style>
 </helmet>
@@ -653,6 +656,22 @@
               <div style="font-size: 18px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">{{ tvResultsTitle }}</div>
               <div style="padding: 6px 12px; background: linear-gradient(135deg, #AF52DE, #5856D6); border-radius: 20px">
                 <span style="font-size: 13px; font-weight: 700; color: white">{{ tvDoneCounter }}</span>
+              </div>
+            </div>
+            <div style="background: #FFFFFF; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 10px">
+              <div style="display: flex; align-items: center; justify-content: space-between">
+                <span style="font-size: 13px; font-weight: 600; color: #1D1D1F">Gancho (headline)</span>
+                <label style="position: relative; display: inline-block; width: 44px; height: 26px">
+                  <input id="tvToggleHook" type="checkbox" checked style="opacity: 0; width: 0; height: 0" />
+                  <span class="tvSwitch" style="position: absolute; cursor: pointer; inset: 0; background: #E5E5EA; border-radius: 26px; transition: 0.2s"></span>
+                </label>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between">
+                <span style="font-size: 13px; font-weight: 600; color: #1D1D1F">Legendas</span>
+                <label style="position: relative; display: inline-block; width: 44px; height: 26px">
+                  <input id="tvToggleCaptions" type="checkbox" checked style="opacity: 0; width: 0; height: 0" />
+                  <span class="tvSwitch" style="position: absolute; cursor: pointer; inset: 0; background: #E5E5EA; border-radius: 26px; transition: 0.2s"></span>
+                </label>
               </div>
             </div>
             <div id="tvMomentsContainer" style="display: flex; flex-direction: column; gap: 12px"></div>
@@ -1619,6 +1638,8 @@ class Component extends DCLogic {
     this._fillTvCard(i);
     try {
       const clipWords = (this._tvWords || []).filter(w => w.s >= m.startSec - 1 && w.s <= m.endSec + 1);
+      const showHook = document.getElementById('tvToggleHook')?.checked !== false;
+      const showCaptions = document.getElementById('tvToggleCaptions')?.checked !== false;
       const res = await fetch('/api/tv-cuts/render-clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1628,6 +1649,7 @@ class Component extends DCLogic {
           hook: m.hook, caption: m.caption,
           words: clipWords,
           srcWidth: src.width, srcHeight: src.height,
+          showHook, showCaptions,
         }),
       });
       if (!res.ok) {
