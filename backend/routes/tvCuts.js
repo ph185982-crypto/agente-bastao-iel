@@ -632,10 +632,10 @@ router.post('/render-clip', async (req, res) => {
   const tmpFiles = [];
   const output = path.join(os.tmpdir(), `${sid}_reel.mp4`);
   try {
-    const { startSec, endSec, hook, caption, words = [], srcWidth, srcHeight } = req.body || {};
+    const { startSec, endSec, hook, caption, words = [], srcWidth, srcHeight, showHook = true, showCaptions = true } = req.body || {};
     const directUrl = await resolveForRequest(req.body);
-    if (!directUrl || startSec == null || endSec == null || !hook) {
-      return res.status(400).json({ error: 'sourceUrl/directUrl, startSec, endSec e hook são obrigatórios' });
+    if (!directUrl || startSec == null || endSec == null) {
+      return res.status(400).json({ error: 'sourceUrl/directUrl, startSec e endSec são obrigatórios' });
     }
     const start = Math.max(0, Number(startSec));
     const dur = Math.min(MAX_CLIP_SEC, Number(endSec) - start);
@@ -647,60 +647,83 @@ router.post('/render-clip', async (req, res) => {
     // 1. Vision/heurística: onde está o rosto de quem fala
     const centerPct = await detectFaceCenter(directUrl, start + dur / 2, sid);
 
-    // Crop inteligente: se fonte já é quase 9:16 ou mais estreita, não faz crop
-    // horizontal (apenas escala). Se fonte é widescreen, recorta centralizado no rosto.
+    // Composição 9:16: fundo desfocado (blur do próprio vídeo) + vídeo
+    // centralizado no rosto por cima. Estilo profissional de cortes de podcast.
+    const srcAR = vw / vh;
+    const outAR = W / H; // 9/16 = 0.5625
+    // Se fonte é mais larga que 9:16 (widescreen), crop centrado no rosto
     const idealCropW = 2 * Math.round(vh * 9 / 32);
-    const needsCrop = idealCropW < vw * 0.95;
-    const cropW = needsCrop ? Math.min(vw, idealCropW) : vw;
-    const cropX = needsCrop
-      ? Math.min(vw - cropW, Math.max(0, Math.round(vw * centerPct / 100 - cropW / 2)))
-      : 0;
+    const canCropClean = idealCropW <= vw && srcAR > 1.0;
 
-    // 2. Overlays: gancho no topo + blocos de legenda
-    const hookPng = path.join(os.tmpdir(), `${sid}_hook.png`);
-    tmpFiles.push(hookPng);
-    await buildHookPng(hook, hookPng);
-
-    const clipWords = words
-      .filter(w => w && w.w && Number.isFinite(Number(w.s)) && Number(w.s) >= start - 0.5 && Number(w.s) <= start + dur)
-      .map(w => ({ w: String(w.w), s: Number(w.s), e: Number(w.e) || Number(w.s) + 0.4 }));
-    const chunks = groupCaptionChunks(clipWords, start, dur);
-
-    for (let i = 0; i < chunks.length; i++) {
-      const p = path.join(os.tmpdir(), `${sid}_cap${i}.png`);
-      tmpFiles.push(p);
-      await buildCaptionPng(chunks[i].text, p);
-      chunks[i].png = p;
+    // 2. Overlays condicionais: gancho + legendas
+    let hookPng = null;
+    if (showHook && hook) {
+      hookPng = path.join(os.tmpdir(), `${sid}_hook.png`);
+      tmpFiles.push(hookPng);
+      await buildHookPng(hook, hookPng);
     }
 
-    // 3. ffmpeg: corte remoto (input-seek) + crop + overlays num único passe
-    // Tokens separados: fluent-ffmpeg não divide corretamente valores com espaços
+    const chunks = [];
+    if (showCaptions) {
+      const clipWords = words
+        .filter(w => w && w.w && Number.isFinite(Number(w.s)) && Number(w.s) >= start - 0.5 && Number(w.s) <= start + dur)
+        .map(w => ({ w: String(w.w), s: Number(w.s), e: Number(w.e) || Number(w.s) + 0.4 }));
+      chunks.push(...groupCaptionChunks(clipWords, start, dur));
+      for (let i = 0; i < chunks.length; i++) {
+        const p = path.join(os.tmpdir(), `${sid}_cap${i}.png`);
+        tmpFiles.push(p);
+        await buildCaptionPng(chunks[i].text, p);
+        chunks[i].png = p;
+      }
+    }
+
+    // 3. ffmpeg: corte remoto (input-seek) + composição 9:16 + overlays
     const cmd = ffmpeg()
       .input(directUrl)
-      .inputOptions(['-ss', String(start), '-t', dur.toFixed(2), '-user_agent', UA])
-      .input(hookPng);
+      .inputOptions(['-ss', String(start), '-t', dur.toFixed(2), '-user_agent', UA]);
+    if (hookPng) cmd.input(hookPng);
     chunks.forEach(c => cmd.input(c.png));
 
-    // Acabamento de editor: leve color grade + nitidez sutil + fade in/out
     const fadeOutStart = Math.max(0, dur - 0.35).toFixed(2);
-    // Se não precisa crop (fonte já é estreita), faz scale-to-fit com padding preto
-    const scaleStep = needsCrop
-      ? `crop=${cropW}:${vh}:${cropX}:0,scale=${W}:${H},setpts=PTS-STARTPTS`
-      : `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black,setpts=PTS-STARTPTS`;
-    const filters = [
-      `[0:v]${scaleStep},` +
-        `eq=contrast=1.06:saturation=1.15,unsharp=5:5:0.4,` +
-        `fade=t=in:d=0.3,fade=t=out:st=${fadeOutStart}:d=0.3[v0]`,
-      `[v0][1:v]overlay=0:0[v1]`,
-    ];
-    let last = 'v1';
+
+    const filters = [];
+    if (canCropClean) {
+      // Widescreen: crop 9:16 centrado no rosto + escala
+      const cropW = Math.min(vw, idealCropW);
+      const cropX = Math.min(vw - cropW, Math.max(0, Math.round(vw * centerPct / 100 - cropW / 2)));
+      filters.push(
+        `[0:v]crop=${cropW}:${vh}:${cropX}:0,scale=${W}:${H},setpts=PTS-STARTPTS,` +
+          `eq=contrast=1.06:saturation=1.15,unsharp=5:5:0.4,` +
+          `fade=t=in:d=0.3,fade=t=out:st=${fadeOutStart}:d=0.3[v0]`
+      );
+    } else {
+      // Fonte estreita/quadrada: fundo blur + vídeo centralizado por cima
+      filters.push(
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},gblur=sigma=25,setpts=PTS-STARTPTS[bg]`,
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,setpts=PTS-STARTPTS[fg]`,
+        `[bg][fg]overlay=(W-w)/2:(H-h)/2,` +
+          `eq=contrast=1.06:saturation=1.15,unsharp=5:5:0.4,` +
+          `fade=t=in:d=0.3,fade=t=out:st=${fadeOutStart}:d=0.3[v0]`
+      );
+    }
+
+    // Overlay hook (se ativado)
+    let last = 'v0';
+    let inputIdx = 1;
+    if (hookPng) {
+      filters.push(`[${last}][${inputIdx}:v]overlay=0:0[v_hook]`);
+      last = 'v_hook';
+      inputIdx++;
+    }
+
+    // Overlay legendas (se ativadas)
     chunks.forEach((c, i) => {
-      const next = `v${i + 2}`;
-      filters.push(`[${last}][${i + 2}:v]overlay=0:${H - 420}:enable='between(t,${c.start.toFixed(2)},${c.end.toFixed(2)})'[${next}]`);
+      const next = `v_cap${i}`;
+      filters.push(`[${last}][${inputIdx + i}:v]overlay=0:${H - 420}:enable='between(t,${c.start.toFixed(2)},${c.end.toFixed(2)})'[${next}]`);
       last = next;
     });
 
-    // Áudio: normalização broadcast (loudnorm) + fades — volume consistente de Reels
+    // Áudio: normalização broadcast (loudnorm) + fades
     const audioChain = `loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=in:d=0.25,afade=t=out:st=${fadeOutStart}:d=0.3`;
 
     cmd.complexFilter(filters.join(';'))
