@@ -1503,7 +1503,9 @@ class Component extends DCLogic {
     this.setState({ tvStep: 'analyzing', tvProgressText: 'Lendo o vídeo...', tvProgressPct: 3, tvError: null, tvMoments: [], tvDoneCount: 0 });
 
     const probe = await this._tvPostJson('/api/tv-cuts/probe', { sourceUrl: link });
-    this._tvSource = probe;
+    // Guarda o link original: o backend re-resolve a cada chamada (URLs do
+    // YouTube expiram e são presas ao IP da invocação que as gerou)
+    this._tvSource = { ...probe, sourceUrl: link };
     const dur = probe.durationSec;
 
     const segments = [];
@@ -1518,7 +1520,7 @@ class Component extends DCLogic {
       const window = Math.min(winSec, dur - offset);
       try {
         const t = await this._tvPostJson('/api/tv-cuts/transcribe', {
-          directUrl: probe.directUrl, offsetSec: offset, windowSec: window,
+          sourceUrl: link, offsetSec: offset, windowSec: window,
         });
         segments.push(...(t.segments || []));
         words.push(...(t.words || []));
@@ -1620,7 +1622,7 @@ class Component extends DCLogic {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          directUrl: src.directUrl,
+          sourceUrl: src.sourceUrl,
           startSec: m.startSec, endSec: m.endSec,
           hook: m.hook, caption: m.caption,
           words: clipWords,

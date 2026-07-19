@@ -6,6 +6,7 @@
     "start": "node backend/server.js"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.7.9",
     "cors": "^2.8.5",
