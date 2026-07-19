@@ -582,6 +582,100 @@
       </div>
     </sc-if>
 
+    <!-- CORTES TV TAB -->
+    <sc-if value="{{ showTvCuts }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 16px; animation: fadeUp 0.3s ease-out forwards">
+
+        <!-- IDLE: link input -->
+        <sc-if value="{{ tvShowIdle }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 16px">
+            <div>
+              <div style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">Cortes de TV</div>
+              <div style="font-size: 13px; color: #86868B; margin-top: 3px">Cole o link da gravação e receba os reels prontos</div>
+            </div>
+
+            <div style="background: #FFFFFF; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 14px">
+              <div>
+                <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Link da gravação</div>
+                <input id="tvLinkInput" type="text" placeholder="Link do Google Drive, YouTube ou .mp4" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none" />
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Google Drive: compartilhe com "Qualquer pessoa com o link"</div>
+              </div>
+            </div>
+
+            <div onClick="{{ analisarPrograma }}" style="background: linear-gradient(135deg, #AF52DE, #5856D6); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(175,82,222,0.25); transition: all 0.2s" style-active="opacity: 0.85; transform: scale(0.98)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88"/><path d="M14.47 14.48L20 20"/><path d="M8.12 8.12L12 12"/></svg>
+              <span style="font-size: 16px; font-weight: 700; color: white">Analisar Programa</span>
+            </div>
+
+            <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px">Como funciona</div>
+              <div style="display: flex; flex-direction: column; gap: 8px">
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(175,82,222,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #AF52DE">1</span></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Transcrição completa</div><div style="font-size: 11px; color: #86868B">A IA ouve o programa inteiro (Whisper)</div></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(0,122,255,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #007AFF">2</span></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Caça aos momentos virais</div><div style="font-size: 11px; color: #86868B">Todos os trechos fortes com nota 0-10</div></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #34C759">3</span></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Reels prontos</div><div style="font-size: 11px; color: #86868B">Vertical 9:16 + legendas + gancho no topo</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ANALYZING: progress -->
+        <sc-if value="{{ tvAnalyzing }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 16px">
+            <div style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">Analisando programa...</div>
+            <div style="background: #FFFFFF; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 14px">
+              <div style="display: flex; align-items: center; gap: 12px">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: #AF52DE; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+                  <div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div>
+                </div>
+                <span style="font-size: 14px; color: #1D1D1F; font-weight: 600">{{ tvProgressText }}</span>
+              </div>
+              <div style="height: 6px; background: #E5E5EA; border-radius: 3px; overflow: hidden">
+                <div style="height: 100%; background: linear-gradient(90deg, #AF52DE, #5856D6); border-radius: 3px; transition: width 0.5s; {{ tvProgressBarStyle }}"></div>
+              </div>
+            </div>
+            <div style="font-size: 12px; color: #86868B; text-align: center">Programas longos podem levar alguns minutos. Não feche esta tela.</div>
+          </div>
+        </sc-if>
+
+        <!-- RESULTS: moment cards -->
+        <sc-if value="{{ tvShowResults }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 14px">
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <div style="font-size: 18px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">{{ tvResultsTitle }}</div>
+              <div style="padding: 6px 12px; background: linear-gradient(135deg, #AF52DE, #5856D6); border-radius: 20px">
+                <span style="font-size: 13px; font-weight: 700; color: white">{{ tvDoneCounter }}</span>
+              </div>
+            </div>
+            <div id="tvMomentsContainer" style="display: flex; flex-direction: column; gap: 12px"></div>
+            <div onClick="{{ tvReiniciar }}" style="padding: 14px; border-radius: 12px; border: 1.5px solid #E5E5EA; text-align: center; cursor: pointer; transition: all 0.2s" style-active="background: #F2F2F7">
+              <span style="font-size: 15px; font-weight: 600; color: #AF52DE">Analisar outro programa</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ERROR -->
+        <sc-if value="{{ tvShowError }}" hint-placeholder-val="{{ false }}">
+          <div style="background: rgba(255,59,48,0.06); border: 1px solid rgba(255,59,48,0.2); border-radius: 14px; padding: 16px">
+            <div style="font-size: 14px; font-weight: 600; color: #FF3B30; margin-bottom: 6px">Erro na análise</div>
+            <div style="font-size: 13px; color: #3C3C43; line-height: 1.4">{{ tvErrorMsg }}</div>
+            <div onClick="{{ tvReiniciar }}" style="margin-top: 12px; padding: 10px; background: #FF3B30; border-radius: 10px; text-align: center; cursor: pointer" style-active="opacity: 0.85">
+              <span style="font-size: 14px; font-weight: 600; color: white">Tentar novamente</span>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </sc-if>
+
   </div>
 
   <!-- Bottom Tab Bar -->
@@ -606,6 +700,13 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{ videoColor }}" stroke-width="2" stroke-linecap="round"><path d="M15 10l4.553-2.069A1 1 0 0 1 21 8.87v6.26a1 1 0 0 1-1.447.894L15 14"/><rect x="1" y="6" width="15" height="12" rx="2"/></svg>
       </div>
       <span style="font-size: 10px; font-weight: 500; color: {{ videoColor }}">Vídeo IA</span>
+    </div>
+
+    <div onClick="{{ switchToTvCuts }}" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; padding: 0 4px" style-active="opacity: 0.6">
+      <div style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{ tvColor }}" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88"/><path d="M14.47 14.48L20 20"/><path d="M8.12 8.12L12 12"/></svg>
+      </div>
+      <span style="font-size: 10px; font-weight: 500; color: {{ tvColor }}">Cortes TV</span>
     </div>
 
   </div>
@@ -652,6 +753,12 @@ class Component extends DCLogic {
     recycledUrl:      null,
     recycledHeadline: null,
     recycledCaption:  null,
+    tvStep:           'idle',
+    tvMoments:        [],
+    tvError:          null,
+    tvProgressText:   '',
+    tvProgressPct:    0,
+    tvDoneCount:      0,
   };
 
   _progressTimer = null;
@@ -685,6 +792,7 @@ class Component extends DCLogic {
     const isC = activeTab === 'carousels';
     const isR = activeTab === 'reels';
     const isV = activeTab === 'video';
+    const isT = activeTab === 'tvcuts';
 
     const sBg  = i => videoCurrentStep > i ? '#34C759' : videoCurrentStep === i ? '#007AFF' : '#E5E5EA';
     const sCol = i => videoCurrentStep >= i ? '#1D1D1F' : '#C7C7CC';
@@ -694,11 +802,13 @@ class Component extends DCLogic {
       showCarousels: isC,
       showReels:     isR,
       showVideo:     isV,
+      showTvCuts:    isT,
 
       carouselsColor: isC ? '#007AFF' : '#8E8E93',
       reelsColor:     isR ? '#007AFF' : '#8E8E93',
       reelsFill:      isR ? '#007AFF' : 'none',
       videoColor:     isV ? '#FF3B30' : '#8E8E93',
+      tvColor:        isT ? '#AF52DE' : '#8E8E93',
 
       switchToCarousels: () => {
         this.setState({ activeTab: 'carousels' });
@@ -706,6 +816,30 @@ class Component extends DCLogic {
       },
       switchToReels:     () => this.setState({ activeTab: 'reels' }),
       switchToVideo:     () => this.setState({ activeTab: 'video' }),
+      switchToTvCuts:    () => this.setState({ activeTab: 'tvcuts' }),
+
+      // ── Cortes TV ────────────────────────────────────────────────────────
+      tvShowIdle:    this.state.tvStep === 'idle',
+      tvAnalyzing:   this.state.tvStep === 'analyzing',
+      tvShowResults: this.state.tvStep === 'results',
+      tvShowError:   this.state.tvStep === 'error',
+      tvProgressText: this.state.tvProgressText || 'Preparando...',
+      tvProgressBarStyle: `width: ${this.state.tvProgressPct || 0}%`,
+      tvErrorMsg: this.state.tvError || 'Erro desconhecido',
+      tvResultsTitle: `${this.state.tvMoments.length} cortes encontrados`,
+      tvDoneCounter: `${this.state.tvDoneCount}/${this.state.tvMoments.length} prontos`,
+      analisarPrograma: () => {
+        const link = document.getElementById('tvLinkInput')?.value?.trim();
+        if (!link) { document.getElementById('tvLinkInput')?.focus(); return; }
+        if (this.state.tvStep === 'analyzing') return;
+        this._analisarPrograma(link).catch(e =>
+          this.setState({ tvStep: 'error', tvError: e.message })
+        );
+      },
+      tvReiniciar: () => {
+        this.state.tvMoments.forEach(m => { if (m.url) try { URL.revokeObjectURL(m.url); } catch {} });
+        this.setState({ tvStep: 'idle', tvMoments: [], tvError: null, tvProgressText: '', tvProgressPct: 0, tvDoneCount: 0 });
+      },
 
       // ── Carousel state ───────────────────────────────────────────────────
       carouselShowIdle:   carouselStep === 'idle',
@@ -1346,6 +1480,169 @@ class Component extends DCLogic {
       if (data.status === 'failed') throw new Error('Render falhou no Shotstack. Tente novamente.');
     }
     throw new Error('Timeout: render demorou mais de 5 minutos.');
+  }
+
+  // ── Cortes TV ──────────────────────────────────────────────────────────────
+
+  async _tvPostJson(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.error || 'Erro ' + res.status);
+      if (data.retrySmaller) err.retrySmaller = true;
+      throw err;
+    }
+    return data;
+  }
+
+  async _analisarPrograma(link) {
+    this.setState({ tvStep: 'analyzing', tvProgressText: 'Lendo o vídeo...', tvProgressPct: 3, tvError: null, tvMoments: [], tvDoneCount: 0 });
+
+    const probe = await this._tvPostJson('/api/tv-cuts/probe', { sourceUrl: link });
+    this._tvSource = probe;
+    const dur = probe.durationSec;
+
+    const segments = [];
+    const words = [];
+    let winSec = 300;
+    let offset = 0;
+    while (offset < dur) {
+      const pct = 8 + Math.round(72 * offset / dur);
+      const doneMin = Math.floor(offset / 60);
+      const totalMin = Math.max(1, Math.round(dur / 60));
+      this.setState({ tvProgressText: `Transcrevendo... ${doneMin} de ${totalMin} min`, tvProgressPct: pct });
+      const window = Math.min(winSec, dur - offset);
+      try {
+        const t = await this._tvPostJson('/api/tv-cuts/transcribe', {
+          directUrl: probe.directUrl, offsetSec: offset, windowSec: window,
+        });
+        segments.push(...(t.segments || []));
+        words.push(...(t.words || []));
+        offset += window;
+      } catch (e) {
+        if (e.retrySmaller && winSec > 75) { winSec = Math.floor(winSec / 2); continue; }
+        throw e;
+      }
+    }
+    if (!segments.length) throw new Error('Não encontrei fala no vídeo. Confira se o link tem áudio.');
+    this._tvWords = words;
+
+    this.setState({ tvProgressText: 'Caçando momentos virais...', tvProgressPct: 85 });
+    const fm = await this._tvPostJson('/api/tv-cuts/find-moments', { segments, durationSec: dur });
+    const moments = (fm.moments || []).map(m => ({ ...m, status: 'pending', url: null, error: null }));
+    if (!moments.length) throw new Error('A IA não encontrou momentos virais fortes nesse programa.');
+
+    this.setState({ tvStep: 'results', tvMoments: moments, tvProgressPct: 100 });
+    setTimeout(() => {
+      this._renderTvCards();
+      this._renderAllTvClips();
+    }, 80);
+  }
+
+  _tvFmtTime(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  _renderTvCards() {
+    const container = document.getElementById('tvMomentsContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    this.state.tvMoments.forEach((m, i) => {
+      const card = document.createElement('div');
+      card.id = `tvCard${i}`;
+      card.style.cssText = 'background:#FFFFFF;border-radius:16px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,0.04);display:flex;flex-direction:column;gap:10px;animation:fadeUp 0.3s ease-out forwards';
+      container.appendChild(card);
+      this._fillTvCard(i);
+    });
+  }
+
+  _fillTvCard(i) {
+    const card = document.getElementById(`tvCard${i}`);
+    const m = this.state.tvMoments[i];
+    if (!card || !m) return;
+    const scoreColor = m.score >= 8 ? '#34C759' : m.score >= 6 ? '#FF9F0A' : '#8E8E93';
+    let statusHtml = '';
+    if (m.status === 'pending') {
+      statusHtml = `<div style="display:flex;align-items:center;gap:8px;padding:10px;background:#F2F2F7;border-radius:10px"><span style="font-size:12px;color:#86868B;font-weight:600">Na fila para gerar...</span></div>`;
+    } else if (m.status === 'rendering') {
+      statusHtml = `<div style="display:flex;align-items:center;gap:10px;padding:10px;background:rgba(175,82,222,0.06);border-radius:10px"><div style="width:14px;height:14px;border-radius:50%;border:2px solid #AF52DE;border-top-color:transparent;animation:spin 0.8s linear infinite"></div><span style="font-size:12px;color:#AF52DE;font-weight:600">Gerando reel... (30-50s)</span></div>`;
+    } else if (m.status === 'error') {
+      statusHtml = `<div style="padding:10px;background:rgba(255,59,48,0.06);border-radius:10px"><span style="font-size:12px;color:#FF3B30;font-weight:600">Erro: ${(m.error || '').slice(0, 120)}</span></div><div data-action="retry" style="padding:10px;background:rgba(175,82,222,0.1);border-radius:10px;text-align:center;cursor:pointer"><span style="font-size:13px;font-weight:600;color:#AF52DE">Tentar de novo</span></div>`;
+    } else if (m.status === 'done') {
+      statusHtml = `
+        <video controls playsinline src="${m.url}" style="width:100%;aspect-ratio:9/16;max-height:430px;border-radius:12px;background:#000;object-fit:contain"></video>
+        <div style="display:flex;gap:8px">
+          <a href="${m.url}" download="corte-${i + 1}.mp4" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:#1D1D1F;border-radius:10px;padding:12px;text-decoration:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span style="font-size:13px;font-weight:600;color:white">Baixar .mp4</span></a>
+          <div data-action="copycaption" style="flex:1;display:flex;align-items:center;justify-content:center;background:rgba(0,122,255,0.1);border-radius:10px;padding:12px;cursor:pointer"><span style="font-size:13px;font-weight:600;color:#007AFF">Copiar legenda</span></div>
+        </div>`;
+    }
+    card.innerHTML = `
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(145deg,${scoreColor},${scoreColor}99);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <span style="font-size:17px;font-weight:800;color:white">${m.score}</span>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;color:#1D1D1F;line-height:1.3">${m.hook || ''}</div>
+          <div style="font-size:11px;color:#86868B;margin-top:3px">${this._tvFmtTime(m.startSec)} → ${this._tvFmtTime(m.endSec)} · ${Math.round(m.endSec - m.startSec)}s</div>
+          <div style="font-size:11px;color:#86868B;margin-top:2px;font-style:italic">${(m.reason || '').slice(0, 90)}</div>
+        </div>
+      </div>
+      ${statusHtml}`;
+    card.querySelector('[data-action="copycaption"]')?.addEventListener('click', () => {
+      navigator.clipboard?.writeText(m.caption || '').catch(() => {});
+    });
+    card.querySelector('[data-action="retry"]')?.addEventListener('click', () => {
+      this._renderTvClip(i).catch(() => {});
+    });
+  }
+
+  async _renderAllTvClips() {
+    for (let i = 0; i < this.state.tvMoments.length; i++) {
+      await this._renderTvClip(i).catch(() => {});
+    }
+  }
+
+  async _renderTvClip(i) {
+    const m = this.state.tvMoments[i];
+    const src = this._tvSource;
+    if (!m || !src || m.status === 'rendering' || m.status === 'done') return;
+    m.status = 'rendering';
+    this._fillTvCard(i);
+    try {
+      const clipWords = (this._tvWords || []).filter(w => w.s >= m.startSec - 1 && w.s <= m.endSec + 1);
+      const res = await fetch('/api/tv-cuts/render-clip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          directUrl: src.directUrl,
+          startSec: m.startSec, endSec: m.endSec,
+          hook: m.hook, caption: m.caption,
+          words: clipWords,
+          srcWidth: src.width, srcHeight: src.height,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ' + res.status);
+      }
+      const blob = await res.blob();
+      m.url = URL.createObjectURL(blob);
+      m.status = 'done';
+      this.setState({ tvDoneCount: this.state.tvDoneCount + 1 });
+    } catch (e) {
+      m.status = 'error';
+      m.error = e.message;
+    }
+    setTimeout(() => {
+      if (document.getElementById(`tvCard${i}`)) this._fillTvCard(i);
+      else this._renderTvCards();
+    }, 60);
   }
 }
 </script>

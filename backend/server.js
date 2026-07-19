@@ -27,7 +27,7 @@ app.use(cors({
   exposedHeaders: ['X-Headline', 'X-Caption', 'X-Captions-Burned', 'X-Copyright-Risk', 'X-Copyright-Reasons', 'X-Mini-Jury-Verdict', 'X-Mini-Jury-Stopped', 'X-Mini-Jury-Reason'],
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 // Routes
 app.use('/api/download', require('./routes/download'));
@@ -42,6 +42,7 @@ app.use('/api/headline-jury', require('./routes/headlineJury'));
 app.use('/api/brain', require('./routes/brain'));
 app.use('/api/video', require('./routes/videoIA'));
 app.use('/api/trending', require('./routes/trending'));
+app.use('/api/tv-cuts', require('./routes/tvCuts'));
 
 app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
