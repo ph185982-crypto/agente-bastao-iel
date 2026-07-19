@@ -1510,7 +1510,7 @@ class Component extends DCLogic {
 
     const segments = [];
     const words = [];
-    let winSec = 300;
+    let winSec = 120;
     let offset = 0;
     while (offset < dur) {
       const pct = 8 + Math.round(72 * offset / dur);
@@ -1526,7 +1526,8 @@ class Component extends DCLogic {
         words.push(...(t.words || []));
         offset += window;
       } catch (e) {
-        if (e.retrySmaller && winSec > 75) { winSec = Math.floor(winSec / 2); continue; }
+        const is504 = e.message && (e.message.includes('504') || e.message.includes('timeout'));
+        if ((e.retrySmaller || is504) && winSec > 45) { winSec = Math.floor(winSec / 2); continue; }
         throw e;
       }
     }

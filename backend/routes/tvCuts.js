@@ -312,10 +312,10 @@ router.post('/transcribe', async (req, res) => {
     const directUrl = await resolveForRequest(req.body);
     if (!directUrl) return res.status(400).json({ error: 'sourceUrl ou directUrl é obrigatório' });
     const offset = Math.max(0, Number(offsetSec) || 0);
-    const window = Math.min(600, Math.max(60, Number(windowSec) || 300));
+    const window = Math.min(180, Math.max(30, Number(windowSec) || 120));
 
     try {
-      await extractAudioWindow(directUrl, offset, window, audioPath, 38000);
+      await extractAudioWindow(directUrl, offset, window, audioPath, 28000);
     } catch (err) {
       if (err.noAudio) return res.json({ segments: [], words: [] });
       throw err;
@@ -420,7 +420,7 @@ router.post('/find-moments', async (req, res) => {
       const chunkStart = Math.round(chunks[ci][0].start);
       const chunkEnd = Math.round(chunks[ci][chunks[ci].length - 1].end);
 
-      if (ci > 0) await new Promise(r => setTimeout(r, 2500));
+      if (ci > 0) await new Promise(r => setTimeout(r, 1500));
 
       console.log(`[tvCuts] find-moments chunk ${ci + 1}/${chunks.length} (${chunkStart}s-${chunkEnd}s, ${chunks[ci].length} segs)`);
       const response = await llm.chat.completions.create({
