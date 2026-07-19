@@ -279,6 +279,7 @@ async function renderPhotoContent(slide, photoBuf, idx, total, handle) {
     ${titleEls}
     ${bodyEls}
     <text x="${HPAD}" y="${CH - 40}" font-family="${FONT_FAMILY}" font-size="28" font-weight="bold" fill="white" opacity="0.5">${escXml(handle)}</text>
+    ${idx < total ? `<text x="${CW / 2}" y="${CH - 40}" font-family="${FONT_FAMILY}" font-size="26" font-weight="bold" fill="white" opacity="0.65" text-anchor="middle" letter-spacing="2">ARRASTA &gt;&gt;&gt;</text>` : ''}
     <text x="${CW - HPAD}" y="${CH - 40}" font-family="${FONT_FAMILY}" font-size="28" font-weight="bold" fill="white" opacity="0.5" text-anchor="end">${idx}/${total}</text>
   </svg>`;
 
@@ -1799,7 +1800,13 @@ Regras:
 - Ultimo slide e SEMPRE CTA (seguir/salvar)
 - photoQuery deve ser em INGLES, descritivo, para buscar fotos reais
 - Cada slide deve ter um proposito claro na narrativa
-- Narrativa em arco: gancho → contexto → desenvolvimento → surpresa → CTA`,
+- Narrativa em arco: gancho → contexto → desenvolvimento → surpresa → CTA
+
+Tecnicas de retencao OBRIGATORIAS:
+- coverHeadline usa CURIOSITY GAP: promete algo especifico mas NUNCA entrega a resposta no cover
+- OPEN LOOPS: cada slide de conteudo deve terminar criando uma pergunta que o proximo responde
+- O PAYOFF (a revelacao mais forte) fica no PENULTIMO slide, logo antes do CTA
+- Slide 2 valida o gancho rapido (quem deslizou precisa sentir que valeu) mas abre novo loop`,
       },
       {
         role: 'user',
@@ -1831,6 +1838,14 @@ Regras RIGIDAS:
 - Cada slide deve fazer a pessoa querer deslizar pro proximo.
 - O cover so tem title (sem body).
 - O CTA tem title + body pedindo pra seguir/salvar/compartilhar.
+
+Tecnicas de viralizacao OBRIGATORIAS:
+- Fale direto com "VOCE" sempre que possivel
+- Use numeros CONCRETOS (ex: "3 segundos", "90%", "5 mil anos") em vez de "muito" ou "varios"
+- Use palavras de alta ativacao quando fizer sentido: segredo, ninguem, erro, verdade, proibido, antes que
+- O title do COVER NUNCA entrega a resposta — cria curiosidade que so o carrossel resolve
+- PROIBIDO cliches genericos: "voce nao vai acreditar", "chocante", "imperdivel"
+- Cada body termina puxando o proximo slide (open loop), exceto o penultimo que entrega o payoff
 
 Retorne APENAS JSON:
 {
@@ -1912,6 +1927,17 @@ REGRAS ABSOLUTAS:
       messages: [{
         role: 'system',
         content: `Voce e um revisor de retencao de carrosseis de Instagram. Avalie se o carrossel vai RETER a atencao do leitor ate o final.
+
+Rubrica de nota (some os pontos, total 0-10):
+- HOOK (0-3): o cover cria curiosity gap real? 3 = impossivel nao deslizar; 0 = generico ou entrega a resposta
+- OPEN LOOPS (0-3): cada slide puxa o proximo? 3 = corrente perfeita; 0 = slides isolados
+- SIMPLICIDADE (0-2): uma pessoa com pouca leitura entende tudo? 2 = sim; 0 = tem jargao ou frase longa
+- CTA (0-2): pede acao especifica (salvar/seguir/compartilhar) com motivo? 2 = sim; 0 = fraco
+
+REPROVE (verdict "melhorar") automaticamente se:
+- O cover entrega a resposta da promessa
+- Algum body tem mais de 15 palavras ou title mais de 8
+- Usa cliche generico ("voce nao vai acreditar", "chocante")
 
 Retorne JSON:
 {
