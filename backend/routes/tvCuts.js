@@ -345,23 +345,7 @@ router.post('/transcribe', async (req, res) => {
   }
 });
 
-router.post('/find-moments', async (req, res) => {
-  try {
-    const { segments, durationSec } = req.body || {};
-    if (!Array.isArray(segments) || segments.length === 0) {
-      return res.status(400).json({ error: 'segments é obrigatório' });
-    }
-
-    const transcript = segments
-      .map(s => `[${Math.floor(s.start / 60)}:${String(Math.floor(s.start % 60)).padStart(2, '0')} → ${Math.floor(s.end / 60)}:${String(Math.floor(s.end % 60)).padStart(2, '0')}] (${Math.round(s.start)}s-${Math.round(s.end)}s) ${s.text}`)
-      .join('\n');
-
-    const response = await llm.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `Você é um editor de cortes virais especializado em transformar programas de TV/podcasts em Reels do Instagram (estilo "cortes de podcast").
+const FIND_MOMENTS_SYSTEM = `Você é um editor de cortes virais especializado em transformar programas de TV/podcasts em Reels do Instagram (estilo "cortes de podcast").
 
 Analise a transcrição com timestamps e encontre TODOS os momentos com potencial viral. Um bom corte tem:
 - Uma frase de impacto, revelação, opinião forte, história pessoal, dado surpreendente, humor ou emoção
@@ -378,41 +362,86 @@ Para CADA momento retorne:
 - "reason": por que esse trecho viraliza (1 frase)
 
 Inclua TODOS os momentos com score >= 6. Se o programa for rico, retorne muitos cortes.
-Responda APENAS JSON válido: {"moments":[{...},{...}]}`,
-        },
-        {
-          role: 'user',
-          content: `Duração total: ${Math.round((durationSec || 0) / 60)} minutos.\n\nTRANSCRIÇÃO:\n${transcript}`,
-        },
-      ],
-      max_tokens: 4000,
-      response_format: { type: 'json_object' },
-    });
+Responda APENAS JSON válido: {"moments":[{...},{...}]}`;
 
-    const parsed = JSON.parse(response.choices[0].message.content || '{}');
-    let moments = Array.isArray(parsed.moments) ? parsed.moments : [];
+function formatSegments(segs) {
+  return segs.map(s =>
+    `[${Math.floor(s.start / 60)}:${String(Math.floor(s.start % 60)).padStart(2, '0')} → ${Math.floor(s.end / 60)}:${String(Math.floor(s.end % 60)).padStart(2, '0')}] (${Math.round(s.start)}s-${Math.round(s.end)}s) ${s.text}`
+  ).join('\n');
+}
 
-    moments = moments
-      .map(m => ({
-        startSec: Math.max(0, Math.round(Number(m.startSec) || 0)),
-        endSec: Math.round(Number(m.endSec) || 0),
-        hook: String(m.hook || '').trim(),
-        caption: String(m.caption || '').trim(),
-        score: Math.min(10, Math.max(0, Number(m.score) || 0)),
-        reason: String(m.reason || '').trim(),
-      }))
-      .filter(m => m.endSec > m.startSec && m.hook)
-      .map(m => ({ ...m, endSec: Math.min(m.endSec, m.startSec + MAX_CLIP_SEC) }))
-      .filter(m => m.endSec - m.startSec >= 12)
-      .sort((a, b) => b.score - a.score);
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
-    // Remove sobreposições grandes (mantém o de maior score)
-    const kept = [];
-    for (const m of moments) {
-      const overlaps = kept.some(k => Math.min(k.endSec, m.endSec) - Math.max(k.startSec, m.startSec) > (m.endSec - m.startSec) * 0.5);
-      if (!overlaps) kept.push(m);
+function normalizeMoments(raw) {
+  return raw
+    .map(m => ({
+      startSec: Math.max(0, Math.round(Number(m.startSec) || 0)),
+      endSec: Math.round(Number(m.endSec) || 0),
+      hook: String(m.hook || '').trim(),
+      caption: String(m.caption || '').trim(),
+      score: Math.min(10, Math.max(0, Number(m.score) || 0)),
+      reason: String(m.reason || '').trim(),
+    }))
+    .filter(m => m.endSec > m.startSec && m.hook)
+    .map(m => ({ ...m, endSec: Math.min(m.endSec, m.startSec + MAX_CLIP_SEC) }))
+    .filter(m => m.endSec - m.startSec >= 12);
+}
+
+function deduplicateMoments(moments) {
+  const sorted = [...moments].sort((a, b) => b.score - a.score);
+  const kept = [];
+  for (const m of sorted) {
+    const overlaps = kept.some(k =>
+      Math.min(k.endSec, m.endSec) - Math.max(k.startSec, m.startSec) > (m.endSec - m.startSec) * 0.5);
+    if (!overlaps) kept.push(m);
+  }
+  return kept;
+}
+
+router.post('/find-moments', async (req, res) => {
+  try {
+    const { segments, durationSec } = req.body || {};
+    if (!Array.isArray(segments) || segments.length === 0) {
+      return res.status(400).json({ error: 'segments é obrigatório' });
     }
 
+    // Chunk segments to stay within Groq free-tier TPM (12k tokens).
+    // ~80 segments ≈ 6-8k tokens of transcript + system prompt fits under 12k.
+    const CHUNK_SIZE = 80;
+    const chunks = chunkArray(segments, CHUNK_SIZE);
+    const allMoments = [];
+
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const transcript = formatSegments(chunks[ci]);
+      const chunkStart = Math.round(chunks[ci][0].start);
+      const chunkEnd = Math.round(chunks[ci][chunks[ci].length - 1].end);
+
+      if (ci > 0) await new Promise(r => setTimeout(r, 2500));
+
+      console.log(`[tvCuts] find-moments chunk ${ci + 1}/${chunks.length} (${chunkStart}s-${chunkEnd}s, ${chunks[ci].length} segs)`);
+      const response = await llm.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: FIND_MOMENTS_SYSTEM },
+          {
+            role: 'user',
+            content: `Duração total do programa: ${Math.round((durationSec || 0) / 60)} min. Este trecho vai de ${chunkStart}s a ${chunkEnd}s.\n\nTRANSCRIÇÃO:\n${transcript}`,
+          },
+        ],
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+      });
+
+      const parsed = JSON.parse(response.choices[0].message.content || '{}');
+      const chunkMoments = normalizeMoments(Array.isArray(parsed.moments) ? parsed.moments : []);
+      allMoments.push(...chunkMoments);
+    }
+
+    const kept = deduplicateMoments(allMoments);
     res.json({ moments: kept });
   } catch (e) {
     console.error('[tvCuts/find-moments]', e.message);
