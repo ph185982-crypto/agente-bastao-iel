@@ -118,11 +118,24 @@ async function resolveDriveUrl(sourceUrl) {
   return direct;
 }
 
+function extractYouTubeId(url) {
+  const patterns = [
+    /[?&]v=([\w-]{11})/,
+    /youtu\.be\/([\w-]{11})/,
+    /\/(?:shorts|embed|live|v)\/([\w-]{11})/,
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 async function resolveYouTubeUrl(sourceUrl) {
   if (!process.env.RAPIDAPI_KEY) {
     throw new Error('Links do YouTube precisam de RAPIDAPI_KEY. Use um link do Google Drive.');
   }
-  const vid = sourceUrl.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/)?.[1];
+  const vid = extractYouTubeId(sourceUrl);
   if (!vid) throw new Error('Não consegui extrair o ID do vídeo do YouTube');
   const { data } = await axios.get('https://youtube-media-downloader.p.rapidapi.com/v2/video/details', {
     params: { videoId: vid },
