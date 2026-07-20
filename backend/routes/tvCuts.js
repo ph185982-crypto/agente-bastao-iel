@@ -98,26 +98,33 @@ async function resolveDriveUrl(sourceUrl) {
 
   let direct = `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;
 
-  // Valida com um GET parcial: se vier HTML, é a página de confirmação de vírus
-  const check = await axios.get(direct, {
-    headers: { Range: 'bytes=0-2047', 'User-Agent': UA },
-    responseType: 'arraybuffer',
-    maxRedirects: 5,
-    timeout: 20000,
-    validateStatus: s => s < 400,
-  });
-  const ct = String(check.headers['content-type'] || '');
-  if (!ct.includes('text/html')) return direct;
+  // Streaming GET to check content-type without Range header (Range can
+  // bypass the virus-scan confirmation page and give a false positive).
+  let isHtml = true;
+  try {
+    const check = await axios.get(direct, {
+      headers: { 'User-Agent': UA },
+      responseType: 'stream',
+      maxRedirects: 5,
+      timeout: 15000,
+      validateStatus: s => s < 400,
+    });
+    const ct = String(check.headers['content-type'] || '');
+    check.data.destroy();
+    isHtml = ct.includes('text/html');
+  } catch { /* fall through to confirmation flow */ }
+
+  if (!isHtml) return direct;
 
   // Página de confirmação: buscar formulário completo e reconstruir a URL
   const page = await axios.get(direct, { headers: { 'User-Agent': UA }, timeout: 20000 });
   const html = typeof page.data === 'string' ? page.data : String(page.data);
   const uuid = html.match(/name="uuid"\s+value="([^"]+)"/)?.[1];
-  const confirm = html.match(/name="confirm"\s+value="([^"]+)"/)?.[1] || 't';
+  const confirmVal = html.match(/name="confirm"\s+value="([^"]+)"/)?.[1] || 't';
   if (!uuid) {
     throw new Error('O Google Drive bloqueou o download direto. Confirme que o link está com acesso "Qualquer pessoa com o link".');
   }
-  direct = `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=${confirm}&uuid=${uuid}`;
+  direct = `https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=${confirmVal}&uuid=${uuid}`;
   return direct;
 }
 
@@ -236,10 +243,71 @@ async function resolveForRequest(body) {
   return url;
 }
 
+// Google Drive URLs can't be opened directly by ffmpeg (confirmation page,
+// cookies, JS redirects). Download the file to /tmp via axios and return
+// the local path. Non-Drive URLs pass through unchanged. Cached by Drive
+// file ID so subsequent calls within the same Vercel container reuse it.
+async function localizeUrl(url) {
+  if (!/drive\.usercontent\.google\.com|drive\.google\.com/.test(url || '')) return url;
+
+  const idMatch = url.match(/[?&]id=([\w-]+)/);
+  const id = idMatch ? idMatch[1] : 'unk';
+  const localPath = path.join(os.tmpdir(), `drive_${id}.mp4`);
+
+  try {
+    if (fs.existsSync(localPath) && fs.statSync(localPath).size > 10000) {
+      console.log(`[tvCuts] Drive cache hit: ${localPath}`);
+      return localPath;
+    }
+  } catch {}
+
+  console.log(`[tvCuts] Downloading Drive file ${id} to /tmp …`);
+  const resp = await axios({
+    method: 'get',
+    url,
+    responseType: 'stream',
+    timeout: 40000,
+    maxRedirects: 10,
+    headers: { 'User-Agent': UA },
+    validateStatus: s => s < 400,
+  });
+
+  const ct = String(resp.headers['content-type'] || '');
+  if (ct.includes('text/html')) {
+    resp.data.destroy();
+    throw new Error('O Google Drive bloqueou o download. Confirme que o link está com acesso "Qualquer pessoa com o link" e tente novamente.');
+  }
+
+  await new Promise((resolve, reject) => {
+    const writer = fs.createWriteStream(localPath);
+    let bytes = 0;
+    const MAX_BYTES = 450 * 1024 * 1024;
+    resp.data.on('data', chunk => {
+      bytes += chunk.length;
+      if (bytes > MAX_BYTES) {
+        resp.data.destroy();
+        writer.destroy();
+        try { fs.unlinkSync(localPath); } catch {}
+        reject(new Error('Vídeo muito grande (>450MB). Comprima antes de enviar ou use uma URL direta de .mp4.'));
+      }
+    });
+    resp.data.pipe(writer);
+    writer.on('finish', () => {
+      console.log(`[tvCuts] Drive download done: ${(bytes / 1024 / 1024).toFixed(1)}MB`);
+      resolve();
+    });
+    writer.on('error', err => { try { fs.unlinkSync(localPath); } catch {} reject(err); });
+    resp.data.on('error', err => { writer.destroy(); try { fs.unlinkSync(localPath); } catch {} reject(err); });
+  });
+
+  return localPath;
+}
+
 function probeRemote(url) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Timeout ao ler o vídeo (30s). Verifique o link.')), 30000);
-    ffmpeg.ffprobe(url, ['-user_agent', UA], (err, meta) => {
+    const probeOpts = url.startsWith('/') ? [] : ['-user_agent', UA];
+    ffmpeg.ffprobe(url, probeOpts, (err, meta) => {
       clearTimeout(timer);
       if (err) {
         const tail = String(err.message).split('\n').slice(-6).join(' | ');
@@ -262,7 +330,8 @@ router.post('/probe', async (req, res) => {
     const { sourceUrl } = req.body || {};
     if (!sourceUrl?.trim()) return res.status(400).json({ error: 'sourceUrl é obrigatório' });
     const directUrl = await resolveSourceUrl(sourceUrl);
-    const info = await probeRemote(directUrl);
+    const ffInput = await localizeUrl(directUrl);
+    const info = await probeRemote(ffInput);
     if (!info.durationSec) throw new Error('Não consegui determinar a duração do vídeo');
     res.json({ directUrl, ...info });
   } catch (e) {
@@ -271,12 +340,13 @@ router.post('/probe', async (req, res) => {
   }
 });
 
-function extractAudioWindow(directUrl, offsetSec, windowSec, outPath, timeoutMs) {
+function extractAudioWindow(inputPath, offsetSec, windowSec, outPath, timeoutMs) {
   return new Promise((resolve, reject) => {
+    const isLocal = inputPath.startsWith('/');
     const args = [
       '-ss', String(offsetSec), '-t', String(windowSec),
-      '-user_agent', UA,
-      '-i', directUrl,
+      ...(isLocal ? [] : ['-user_agent', UA]),
+      '-i', inputPath,
       '-vn', '-ac', '1', '-ar', '16000', '-b:a', '48k',
       '-y', outPath,
     ];
@@ -311,11 +381,12 @@ router.post('/transcribe', async (req, res) => {
     const { offsetSec = 0, windowSec = 300 } = req.body || {};
     const directUrl = await resolveForRequest(req.body);
     if (!directUrl) return res.status(400).json({ error: 'sourceUrl ou directUrl é obrigatório' });
+    const ffInput = await localizeUrl(directUrl);
     const offset = Math.max(0, Number(offsetSec) || 0);
     const window = Math.min(180, Math.max(30, Number(windowSec) || 120));
 
     try {
-      await extractAudioWindow(directUrl, offset, window, audioPath, 28000);
+      await extractAudioWindow(ffInput, offset, window, audioPath, 28000);
     } catch (err) {
       if (err.noAudio) return res.json({ segments: [], words: [] });
       throw err;
@@ -451,10 +522,13 @@ router.post('/find-moments', async (req, res) => {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
-function extractFrame(directUrl, atSec, framePath) {
+function extractFrame(inputPath, atSec, framePath) {
   return new Promise((resolve, reject) => {
+    const isLocal = inputPath.startsWith('/');
     const proc = spawn(ffmpegStatic, [
-      '-ss', String(atSec), '-user_agent', UA, '-i', directUrl,
+      '-ss', String(atSec),
+      ...(isLocal ? [] : ['-user_agent', UA]),
+      '-i', inputPath,
       '-vframes', '1', '-q:v', '3', '-y', framePath,
     ]);
     const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} reject(new Error('frame timeout')); }, 15000);
@@ -637,6 +711,7 @@ router.post('/render-clip', async (req, res) => {
     if (!directUrl || startSec == null || endSec == null) {
       return res.status(400).json({ error: 'sourceUrl/directUrl, startSec e endSec são obrigatórios' });
     }
+    const ffInput = await localizeUrl(directUrl);
     const start = Math.max(0, Number(startSec));
     const dur = Math.min(MAX_CLIP_SEC, Number(endSec) - start);
     if (!(dur > 3)) return res.status(400).json({ error: 'Trecho inválido' });
@@ -645,7 +720,7 @@ router.post('/render-clip', async (req, res) => {
     const vh = Number(srcHeight) || 1080;
 
     // 1. Vision/heurística: onde está o rosto de quem fala
-    const centerPct = await detectFaceCenter(directUrl, start + dur / 2, sid);
+    const centerPct = await detectFaceCenter(ffInput, start + dur / 2, sid);
 
     // Composição 9:16: fundo desfocado (blur do próprio vídeo) + vídeo
     // centralizado no rosto por cima. Estilo profissional de cortes de podcast.
@@ -677,10 +752,13 @@ router.post('/render-clip', async (req, res) => {
       }
     }
 
-    // 3. ffmpeg: corte remoto (input-seek) + composição 9:16 + overlays
+    // 3. ffmpeg: input-seek + composição 9:16 + overlays
+    const isLocal = ffInput.startsWith('/');
+    const inputOpts = ['-ss', String(start), '-t', dur.toFixed(2)];
+    if (!isLocal) inputOpts.push('-user_agent', UA);
     const cmd = ffmpeg()
-      .input(directUrl)
-      .inputOptions(['-ss', String(start), '-t', dur.toFixed(2), '-user_agent', UA]);
+      .input(ffInput)
+      .inputOptions(inputOpts);
     if (hookPng) cmd.input(hookPng);
     chunks.forEach(c => cmd.input(c.png));
 
@@ -734,7 +812,7 @@ router.post('/render-clip', async (req, res) => {
         '-movflags +faststart',
       ]);
 
-    console.log(`[tvCuts] render start=${start}s dur=${dur.toFixed(1)}s crop=${cropW}x${vh}@${cropX} captions=${chunks.length}`);
+    console.log(`[tvCuts] render start=${start}s dur=${dur.toFixed(1)}s mode=${canCropClean ? 'crop' : 'blur'} center=${centerPct}% captions=${chunks.length}`);
     await runFFmpeg(cmd, output, 45000);
 
     res.setHeader('Content-Type', 'video/mp4');
