@@ -8,7 +8,7 @@ const axios   = require('axios');
 const sharp   = require('sharp');
 const fs      = require('fs');
 const path    = require('path');
-const { createCompatClient } = require('../lib/llm');
+const { createCompatClient, friendlyErrorMessage } = require('../lib/llm');
 
 const router = express.Router();
 let _llm = null;
@@ -1110,7 +1110,7 @@ router.post('/search', async (req, res) => {
     res.json({ results });
   } catch (e) {
     console.error('[carousels] search error:', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
   }
 });
 
@@ -1168,7 +1168,7 @@ router.post('/generate', async (req, res) => {
     res.json({ topic: finalTopic, caption, handle, slides: rendered, review });
   } catch (e) {
     console.error('[carousels] generate error:', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
   }
 });
 
@@ -1291,7 +1291,7 @@ router.post('/generate-news', async (req, res) => {
     });
   } catch (e) {
     console.error('[carousels] generate-news error:', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
   }
 });
 
@@ -1560,7 +1560,7 @@ Responda APENAS JSON:
     });
   } catch (e) {
     console.error('[carousels] generate-arquivo error:', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
   }
 });
 
@@ -1655,7 +1655,7 @@ Responda APENAS JSON:
     });
   } catch (e) {
     console.error('[carousels] generate-boasnoticias error:', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
   }
 });
 
@@ -1735,7 +1735,7 @@ Responda APENAS JSON:
     });
   } catch (e) {
     console.error('[carousels] generate-comecou error:', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
   }
 });
 
@@ -2023,7 +2023,7 @@ Retorne JSON: { "slides": [...], "caption": "..." }`,
     });
   } catch (e) {
     console.error('[carousels] generate-trending error:', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
   }
 });
 
