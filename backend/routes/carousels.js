@@ -21,7 +21,10 @@ const DEFAULT_HANDLE = process.env.PROFILE_HANDLE || '@pedro_destrava';
 const CW = 1080;            // largura do slide
 const CH = 1350;            // altura (proporção 4:5 — ideal para carrossel IG)
 const PAD = 90;
-const FONT_FAMILY = "'DejaVu Sans', sans-serif"; // registrada via backend/fontSetup.js
+// Registradas via backend/fontSetup.js (backend/assets/*.ttf)
+const FONT_FAMILY       = "'Poppins', sans-serif";           // peso Bold — títulos/labels
+const FONT_FAMILY_BLACK = "'Poppins ExtraBold', sans-serif"; // ganchos/capas — máximo impacto
+const FONT_FAMILY_BODY  = "'Poppins SemiBold', sans-serif";  // corpo de texto — legibilidade
 
 // Paleta on-brand (escuro, igual ao app)
 const C = {
@@ -65,10 +68,11 @@ function fitText(text, { maxFont, minFont, boxW, boxH, charRatio = 0.56, lineRat
   return { fontSize: minFont, lines: wrapText(text, maxChars), lineH: minFont * lineRatio };
 }
 
-function textBlock(lines, { x, startY, lineH, fontSize, fill, weight = 'bold', anchor = 'start', spacing = 0 }) {
+function textBlock(lines, { x, startY, lineH, fontSize, fill, weight = 'bold', anchor = 'start', spacing = 0, fontFamily }) {
+  const family = fontFamily || (weight === 'normal' ? FONT_FAMILY_BODY : FONT_FAMILY);
   return lines.map((ln, i) =>
-    `<text x="${x}" y="${startY + i * lineH}" font-family="${FONT_FAMILY}" font-size="${fontSize}" ` +
-    `font-weight="${weight}" fill="${fill}" text-anchor="${anchor}"` +
+    `<text x="${x}" y="${startY + i * lineH}" font-family="${family}" font-size="${fontSize}" ` +
+    `fill="${fill}" text-anchor="${anchor}"` +
     `${spacing ? ` letter-spacing="${spacing}"` : ''}>${escXml(ln)}</text>`
   ).join('');
 }
@@ -130,11 +134,11 @@ async function renderViralCover({ slide, handle, bgBuf, circBuf }) {
   const sub = String(slide.subtitle || '').trim().toUpperCase();
   const subLines = sub ? wrapText(sub, 52) : [];
   const subEl = subLines.map((ln, i) =>
-    `<text x="${CW / 2}" y="${textStartY - (subLines.length - i) * 40 - 18}" font-family="${FONT_FAMILY}" font-size="33" font-weight="normal" fill="rgba(255,255,255,0.76)" text-anchor="middle" letter-spacing="0.5">${escXml(ln)}</text>`
+    `<text x="${CW / 2}" y="${textStartY - (subLines.length - i) * 40 - 18}" font-family="${FONT_FAMILY_BODY}" font-size="33" fill="rgba(255,255,255,0.76)" text-anchor="middle" letter-spacing="0.5">${escXml(ln)}</text>`
   ).join('');
 
   const textEls = fit.lines.map((ln, i) =>
-    `<text x="${CW / 2}" y="${textStartY + i * fit.lineH}" font-family="${FONT_FAMILY}" font-size="${fit.fontSize}" font-weight="bold" fill="white" text-anchor="middle" stroke="black" stroke-width="8" paint-order="stroke" letter-spacing="1">${escXml(ln)}</text>`
+    `<text x="${CW / 2}" y="${textStartY + i * fit.lineH}" font-family="${FONT_FAMILY_BLACK}" font-size="${fit.fontSize}" fill="white" text-anchor="middle" stroke="black" stroke-width="8" paint-order="stroke" letter-spacing="1">${escXml(ln)}</text>`
   ).join('');
 
   const handleEl = handle
@@ -164,6 +168,9 @@ async function renderViralCover({ slide, handle, bgBuf, circBuf }) {
   if (bgBuf) {
     base = await sharp(bgBuf)
       .resize(CW, CH, { fit: 'cover', position: 'center' })
+      .modulate({ saturation: 1.28, brightness: 1.04 })
+      .linear(1.08, -8)
+      .sharpen()
       .toBuffer()
       .catch(() => sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer());
   } else {
@@ -232,6 +239,10 @@ async function renderPhotoContent(slide, photoBuf, idx, total, handle) {
   if (photoBuf) {
     base = await sharp(photoBuf)
       .resize(CW, CH, { fit: 'cover', position: 'center' })
+      // realça a foto (mais saturada/contrastada) — evita o visual "sem vida" de foto de banco crua
+      .modulate({ saturation: 1.28, brightness: 1.04 })
+      .linear(1.08, -8)
+      .sharpen()
       .toBuffer()
       .catch(() => sharp(Buffer.from(buildFallbackBg('default'))).png().toBuffer());
   } else {
@@ -247,8 +258,8 @@ async function renderPhotoContent(slide, photoBuf, idx, total, handle) {
   });
 
   const body = fitText(String(slide.body || ''), {
-    maxFont: 56, minFont: 44, boxW: textW, boxH: 300,
-    charRatio: 0.54, lineRatio: 1.32,
+    maxFont: 50, minFont: 34, boxW: textW, boxH: 460,
+    charRatio: 0.52, lineRatio: 1.34,
   });
 
   const titleBlockH = title.lines.length * title.lineH;
@@ -258,23 +269,23 @@ async function renderPhotoContent(slide, photoBuf, idx, total, handle) {
 
   const titleEls = title.lines.map((ln, i) => {
     const y = textTopY + i * title.lineH + title.fontSize * 0.82;
-    return `<text x="${HPAD}" y="${y}" font-family="${FONT_FAMILY}" font-size="${title.fontSize}" font-weight="bold" fill="white" stroke="black" stroke-width="6" paint-order="stroke" letter-spacing="0.5">${escXml(ln)}</text>`;
+    return `<text x="${HPAD}" y="${y}" font-family="${FONT_FAMILY_BLACK}" font-size="${title.fontSize}" fill="white" stroke="black" stroke-width="6" paint-order="stroke" letter-spacing="0.5">${escXml(ln)}</text>`;
   }).join('\n');
 
   const bodyStartY = textTopY + titleBlockH + 30;
   const bodyEls = body.lines.map((ln, i) => {
     const y = bodyStartY + i * body.lineH + body.fontSize * 0.82;
-    return `<text x="${HPAD}" y="${y}" font-family="${FONT_FAMILY}" font-size="${body.fontSize}" font-weight="normal" fill="rgba(255,255,255,0.92)" stroke="black" stroke-width="4" paint-order="stroke">${escXml(ln)}</text>`;
+    return `<text x="${HPAD}" y="${y}" font-family="${FONT_FAMILY_BODY}" font-size="${body.fontSize}" fill="rgba(255,255,255,0.94)" stroke="black" stroke-width="4" paint-order="stroke">${escXml(ln)}</text>`;
   }).join('\n');
 
   const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
     <defs>
       <linearGradient id="pcg" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%"  stop-color="black" stop-opacity="0.05"/>
-        <stop offset="35%" stop-color="black" stop-opacity="0"/>
-        <stop offset="50%" stop-color="black" stop-opacity="0.35"/>
-        <stop offset="70%" stop-color="black" stop-opacity="0.78"/>
-        <stop offset="100%" stop-color="black" stop-opacity="0.95"/>
+        <stop offset="28%" stop-color="black" stop-opacity="0"/>
+        <stop offset="42%" stop-color="black" stop-opacity="0.38"/>
+        <stop offset="62%" stop-color="black" stop-opacity="0.80"/>
+        <stop offset="100%" stop-color="black" stop-opacity="0.96"/>
       </linearGradient>
     </defs>
     <rect width="${CW}" height="${CH}" fill="url(#pcg)"/>
@@ -996,19 +1007,22 @@ ${PEDRO_DNA}
 
 Crie um carrossel completo e ORIGINAL pronto para postar. Regras:
 - TUDO em português do Brasil.
-- Linguagem SIMPLES e popular: qualquer pessoa entende. Frases curtas. Sem jargão técnico ou acadêmico.
-- UMA ideia por tela. Texto escaneável (a pessoa lê em 2 segundos).
+- PÚBLICO-ALVO: pessoa comum, classe C/D/E, pouco tempo de leitura, sem vocabulário técnico. Linguagem SIMPLES (qualquer um entende), mas o texto tem que ter CONTEÚDO — explique o fato, não jogue só uma manchete solta.
+- UMA ideia por tela. Texto escaneável (a pessoa lê em poucos segundos), mas com substância.
 - A primeira tela (capa) é um GANCHO forte de curiosidade/choque que faz a pessoa parar e arrastar. Sem clickbait mentiroso.
-- Telas de conteúdo: título curto e impactante + 1-2 frases de explicação. Fatos surpreendentes e verdadeiros.
+- Telas de conteúdo: título curto e impactante + body de 25 A 40 palavras (2 frases) EXPLICANDO o fato — o porquê, um número concreto ou uma comparação do dia a dia que a pessoa reconhece. PROIBIDO body com menos de 20 palavras (é preguiça de redator).
 - A última tela é CTA: pede pra seguir, salvar e compartilhar.
 - NÃO use emojis dentro dos slides (title/body/subtitle) — eles não renderizam. Emojis SÓ na caption.
+
+Exemplo de body BOM (30 palavras, com contexto): "Isso acontece porque o cérebro humano gasta 20% de toda energia do corpo só pra pensar. Por isso, depois de um dia de decisões difíceis, você sente cansaço mesmo sem esforço físico."
+Exemplo de body RUIM (curto, sem contexto): "O cérebro gasta muita energia."
 
 Responda APENAS um JSON neste formato exato:
 {
   "topic": "tema do carrossel em 1 frase",
   "slides": [
     { "kind": "cover", "title": "gancho forte (máx 9 palavras)", "subtitle": "linha curta de apoio (opcional)" },
-    { "kind": "content", "number": "01", "title": "título da tela", "body": "1-2 frases simples" },
+    { "kind": "content", "number": "01", "title": "título da tela", "body": "explicação com contexto real, 25 a 40 palavras" },
     { "kind": "content", "number": "02", "title": "...", "body": "..." },
     { "kind": "cta", "title": "Gostou disso?", "body": "Segue @pedro_destrava, salva e compartilha" }
   ],
@@ -1362,7 +1376,7 @@ async function renderArquivoSlide(slide, photoBuf) {
   ).join('');
 
   const descEls = descFit.lines.map((ln, i) =>
-    `<text x="${CW / 2}" y="${descY0 + i * descFit.lineH + descFit.fontSize * 0.82}" font-family="${FONT_FAMILY}" font-size="${descFit.fontSize}" font-weight="normal" fill="rgba(255,255,255,0.88)" text-anchor="middle">${escXml(ln)}</text>`
+    `<text x="${CW / 2}" y="${descY0 + i * descFit.lineH + descFit.fontSize * 0.82}" font-family="${FONT_FAMILY_BODY}" font-size="${descFit.fontSize}" fill="rgba(255,255,255,0.88)" text-anchor="middle">${escXml(ln)}</text>`
   ).join('');
 
   const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
@@ -1484,7 +1498,7 @@ async function renderComecouSlide(slide, photoBuf) {
   ).join('');
 
   const bodyEls = bodyFit.lines.map((ln, i) =>
-    `<text x="${CW / 2}" y="${bodyY0 + i * bodyFit.lineH + bodyFit.fontSize * 0.82}" font-family="${FONT_FAMILY}" font-size="${bodyFit.fontSize}" font-weight="normal" fill="#F5C518" text-anchor="middle">${escXml(ln)}</text>`
+    `<text x="${CW / 2}" y="${bodyY0 + i * bodyFit.lineH + bodyFit.fontSize * 0.82}" font-family="${FONT_FAMILY_BODY}" font-size="${bodyFit.fontSize}" fill="#F5C518" text-anchor="middle">${escXml(ln)}</text>`
   ).join('');
 
   const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH}">
@@ -1767,8 +1781,10 @@ function enforceReadability(slides) {
     const bodyWords = String(s.body || '').split(/\s+/).filter(Boolean).length;
     if (titleWords > 8)
       issues.push({ slide: s.position || s.number, field: 'title', words: titleWords, max: 8, text: s.title });
-    if (bodyWords > 15)
-      issues.push({ slide: s.position || s.number, field: 'body', words: bodyWords, max: 15, text: s.body });
+    if (bodyWords > 42)
+      issues.push({ slide: s.position || s.number, field: 'body', words: bodyWords, max: 42, problem: 'longo demais', text: s.body });
+    if (bodyWords > 0 && bodyWords < 18)
+      issues.push({ slide: s.position || s.number, field: 'body', words: bodyWords, min: 18, problem: 'curto demais, falta contexto/explicação', text: s.body });
   }
   return issues;
 }
@@ -1819,7 +1835,7 @@ Retorne APENAS JSON:
 Regras:
 - Primeiro slide e SEMPRE cover (gancho forte)
 - Ultimo slide e SEMPRE CTA (seguir/salvar)
-- photoQuery deve ser em INGLES, descritivo, para buscar fotos reais
+- photoQuery deve ser em INGLES, descritivo e ESPECÍFICO (não genérico), pra buscar fotos reais chamativas — prefira termos que indicam cor/dinamismo/close-up dramático (ex: "vibrant colorful nebula close up" em vez de só "space"; "dramatic close up scientist face" em vez de só "laboratory")
 - Cada slide deve ter um proposito claro na narrativa
 - Narrativa em arco: gancho → contexto → desenvolvimento → surpresa → CTA
 
@@ -1853,10 +1869,16 @@ Tecnicas de retencao OBRIGATORIAS:
 
 ${PEDRO_DNA}
 
+PUBLICO-ALVO: pessoa comum, classe C/D/E, pouco tempo de leitura, sem vocabulario tecnico.
+Nao e um publico academico — e gente que quer entender rapido E sentir que aprendeu algo de verdade.
+
 Regras RIGIDAS:
 - title: MAXIMO 8 palavras. Curto, impactante, em CAIXA ALTA implicita.
-- body: MAXIMO 15 palavras. Linguagem SIMPLES. Uma crianca de 12 anos entende.
-- NAO use jargao, palavras dificeis, ou frases longas.
+- body: 25 A 40 palavras, em 2 frases curtas. NAO e so uma frase solta — EXPLIQUE o fato:
+  o que e, por que acontece ou uma comparacao/exemplo do dia a dia que a pessoa reconhece.
+  Linguagem SIMPLES (uma crianca de 12 anos entende cada palavra), mas com CONTEUDO real,
+  nao so uma manchete generica.
+- NAO use jargao, palavras dificeis, ou termos tecnicos sem explicar.
 - NAO use emojis no texto dos slides.
 - Cada slide deve fazer a pessoa querer deslizar pro proximo.
 - O cover so tem title (sem body).
@@ -1868,13 +1890,17 @@ Tecnicas de viralizacao OBRIGATORIAS:
 - Use palavras de alta ativacao quando fizer sentido: segredo, ninguem, erro, verdade, proibido, antes que
 - O title do COVER NUNCA entrega a resposta — cria curiosidade que so o carrossel resolve
 - PROIBIDO cliches genericos: "voce nao vai acreditar", "chocante", "imperdivel"
+- PROIBIDO body com menos de 20 palavras — isso e preguica de redator, sempre EXPLIQUE o fato com contexto
 - Cada body termina puxando o proximo slide (open loop), exceto o penultimo que entrega o payoff
+
+Exemplo de body BOM (contexto real, 30 palavras): "Isso acontece porque o cerebro humano gasta 20% de toda energia do corpo so pra pensar. Por isso, quando voce toma uma decisao dificil, voce literalmente sente cansaco fisico."
+Exemplo de body RUIM (curto demais, sem contexto): "O cerebro gasta muita energia."
 
 Retorne APENAS JSON:
 {
   "slides": [
     { "position": 1, "kind": "cover", "title": "TITULO DO COVER" },
-    { "position": 2, "kind": "content", "title": "TITULO", "body": "texto explicativo curto" },
+    { "position": 2, "kind": "content", "title": "TITULO", "body": "texto explicativo com contexto real, 25 a 40 palavras" },
     { "position": N, "kind": "cta", "title": "GOSTOU?", "body": "Segue e salva pra mais" }
   ],
   "caption": "legenda completa pro Instagram (com gancho, 2 paragrafos, 5 hashtags)"
@@ -1903,12 +1929,14 @@ Retorne APENAS JSON:
         max_tokens: 2000,
         messages: [{
           role: 'system',
-          content: `Voce e um editor. Os slides abaixo TEM PROBLEMAS de legibilidade. ENCURTE os textos.
+          content: `Voce e um editor. Os slides abaixo TEM PROBLEMAS de legibilidade. Corrija CADA problema listado.
 
 REGRAS ABSOLUTAS:
 - title: MAXIMO 8 palavras
-- body: MAXIMO 15 palavras
-- Mantenha o sentido original, apenas encurte
+- body: ENTRE 18 E 42 palavras, em 2 frases curtas, com CONTEUDO real (explique o fato, de contexto ou exemplo)
+- Se o problema for "curto demais": NAO invente enrolação — acrescente uma explicação de verdade (o porque, um numero, uma comparacao do dia a dia)
+- Se o problema for "longo demais": corte o que for redundante, mantendo a explicação
+- Mantenha o sentido original
 - Retorne o MESMO JSON com slides corrigidos`,
         },
         {
@@ -1954,12 +1982,14 @@ REGRAS ABSOLUTAS:
 Rubrica de nota (some os pontos, total 0-10):
 - HOOK (0-3): o cover cria curiosity gap real? 3 = impossivel nao deslizar; 0 = generico ou entrega a resposta
 - OPEN LOOPS (0-3): cada slide puxa o proximo? 3 = corrente perfeita; 0 = slides isolados
-- SIMPLICIDADE (0-2): uma pessoa com pouca leitura entende tudo? 2 = sim; 0 = tem jargao ou frase longa
+- CONTEUDO (0-2): o body de cada slide EXPLICA o fato com contexto/exemplo (nao e so uma frase solta)? 2 = sim, tem substancia; 0 = raso, generico ou curto demais
+- SIMPLICIDADE (0-2): uma pessoa com pouca leitura entende tudo? 2 = sim; 0 = tem jargao ou frase confusa
 - CTA (0-2): pede acao especifica (salvar/seguir/compartilhar) com motivo? 2 = sim; 0 = fraco
 
 REPROVE (verdict "melhorar") automaticamente se:
 - O cover entrega a resposta da promessa
-- Algum body tem mais de 15 palavras ou title mais de 8
+- Algum title tem mais de 8 palavras
+- Algum body tem menos de 18 palavras (raso demais) ou mais de 42 (longo demais)
 - Usa cliche generico ("voce nao vai acreditar", "chocante")
 
 Retorne JSON:
