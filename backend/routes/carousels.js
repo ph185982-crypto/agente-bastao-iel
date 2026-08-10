@@ -14,6 +14,9 @@ const router = express.Router();
 let _llm = null;
 const getOpenAI = () => (_llm ??= createCompatClient());
 
+// Handle usado quando o campo do frontend vem vazio.
+const DEFAULT_HANDLE = process.env.PROFILE_HANDLE || '@pedro_destrava';
+
 // ── Layout ────────────────────────────────────────────────────────────────────
 const CW = 1080;            // largura do slide
 const CH = 1350;            // altura (proporção 4:5 — ideal para carrossel IG)
@@ -972,8 +975,24 @@ async function fetchHashtagCarousels(hashtag) {
   return out;
 }
 
+// ── DNA editorial Pedro Destrava ───────────────────────────────────────────────
+// O perfil tem ~175 mil seguidores construídos com curiosidades/ciência/história.
+// Está migrando GRADUALMENTE pra autoridade em negócios/marketing — sem abandonar
+// o que trouxe a audiência. Usado como base de todo prompt de geração de carrossel.
+const PEDRO_DNA = `CONTEXTO: o perfil tem ~175 mil seguidores construídos com curiosidades, ciência, história e fatos surpreendentes. Está migrando GRADUALMENTE pra também construir autoridade em negócios/marketing — SEM abandonar o que fez o perfil crescer.
+
+POSICIONAMENTO: "Pedro Destrava mostra coisas que ninguém percebe e explica o que isso ensina sobre negócios, comportamento, marketing e vendas."
+
+REGRA DE OURO — A PONTE: continue entregando curiosidade, ciência, história e fatos surpreendentes de verdade (é isso que fez o perfil crescer). Quando fizer sentido NATURALMENTE, conecte o fato curioso a um insight de negócios/comportamento/marketing nos ÚLTIMOS slides — NUNCA force essa ponte se ela não existir de verdade. Nem todo carrossel precisa terminar em negócios; tudo bem um carrossel ser 100% curiosidade pura.
+
+NÃO FAZER: linguagem corporativa ("implementação", "otimização", "sinergia"); formato genérico "5 dicas para..."; forçar consultoria em todo post; clichês de IA ("você não vai acreditar", "chocante", "imperdível"); promessa vaga de resultado.
+
+FAZER: curiosidade real e verificável; linguagem de amigo inteligente explicando algo, não de professor; quando aplicável, 1-2 slides finais conectando o fato a uma lição prática de negócio/comportamento humano; variar o tom do CTA final entre engajamento ("Você já tinha percebido isso?"), compartilhamento ("Manda pra alguém que precisa ver isso"), salvamento ("Salva que você vai começar a notar isso em todo lugar") e, raramente (não em todo post), autoridade leve ("Quer que eu analise outro caso assim? Comenta aqui").`;
+
 // ── Geração de conteúdo (GPT) ─────────────────────────────────────────────────
-const SYSTEM_PROMPT = `Você é especialista em CARROSSÉIS virais do Instagram para o perfil @pedro_destrava (nicho ciência, tecnologia, história, espaço e curiosidades — público amplo brasileiro).
+const SYSTEM_PROMPT = `Você é especialista em CARROSSÉIS virais do Instagram para o perfil @pedro_destrava (nicho ciência, tecnologia, história, espaço, curiosidades e negócios — público amplo brasileiro).
+
+${PEDRO_DNA}
 
 Crie um carrossel completo e ORIGINAL pronto para postar. Regras:
 - TUDO em português do Brasil.
@@ -1181,7 +1200,7 @@ router.post('/generate-news', async (req, res) => {
     return res.status(500).json({ error: 'Nenhuma API key de LLM configurada (OPENAI_API_KEY ou GROQ_API_KEY)' });
   }
 
-  let handle = (rawHandle || '@seuperfil').trim();
+  let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
 
   try {
@@ -1489,7 +1508,7 @@ router.post('/generate-arquivo', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
   if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
 
-  let handle = (rawHandle || '@seuperfil').trim();
+  let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
 
   try {
@@ -1569,7 +1588,7 @@ router.post('/generate-boasnoticias', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
   if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
 
-  let handle = (rawHandle || '@seuperfil').trim();
+  let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
 
   try {
@@ -1664,7 +1683,7 @@ router.post('/generate-comecou', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
   if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
 
-  let handle = (rawHandle || '@seuperfil').trim();
+  let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
 
   try {
@@ -1762,7 +1781,7 @@ router.post('/generate-trending', async (req, res) => {
   if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY)
     return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
 
-  let handle = (rawHandle || '@seuperfil').trim();
+  let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
 
   try {
@@ -1775,6 +1794,8 @@ router.post('/generate-trending', async (req, res) => {
       messages: [{
         role: 'system',
         content: `Voce e um estrategista de conteudo para Instagram. Crie a ESTRUTURA de um carrossel informativo sobre o topico fornecido.
+
+${PEDRO_DNA}
 
 Retorne APENAS JSON:
 {
@@ -1829,6 +1850,8 @@ Tecnicas de retencao OBRIGATORIAS:
       messages: [{
         role: 'system',
         content: `Voce e um redator viral de Instagram. Escreva o TEXTO de cada slide de um carrossel.
+
+${PEDRO_DNA}
 
 Regras RIGIDAS:
 - title: MAXIMO 8 palavras. Curto, impactante, em CAIXA ALTA implicita.

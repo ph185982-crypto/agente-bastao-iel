@@ -915,7 +915,7 @@ class Component extends DCLogic {
       voltarTemplates: () => this.setState({ carouselStep: 'idle', carouselTemplate: null }),
       gerarCarrossel: () => {
         const topic  = document.getElementById('carouselTopicInput')?.value?.trim() || '';
-        const handle = document.getElementById('carouselHandleInput')?.value?.trim() || '@seuperfil';
+        const handle = document.getElementById('carouselHandleInput')?.value?.trim() || '@pedro_destrava';
         if (this.state.carouselStep === 'generating') return;
         this._gerarCarrossel(topic, handle).catch(e =>
           this.setState({ carouselStep: 'error', carouselError: e.message })
