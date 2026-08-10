@@ -36,6 +36,12 @@ function isAuthError(err) {
   return err?.status === 401 || err?.status === 403;
 }
 
+// Quota/rate-limit: cai pro Groq só nessa chamada (não troca o provider global,
+// porque quota da OpenAI volta — ao contrário de uma chave inválida).
+function isQuotaError(err) {
+  return err?.status === 429;
+}
+
 function createCompatClient() {
   return {
     chat: {
@@ -48,15 +54,29 @@ function createCompatClient() {
           try {
             return await client.chat.completions.create({ ...opts, model });
           } catch (err) {
-            // Chave OpenAI inválida/revogada → cai para Groq (se configurado) e memoriza
-            const groq = provider === 'openai' && isAuthError(err) ? groqFallbackClient() : null;
-            if (!groq) throw err;
-            console.warn('[llm] OpenAI auth failed, falling back to Groq:', err.message?.slice(0, 120));
-            _client = groq;
-            _provider = 'groq';
-            const groqModel = MODEL_MAP[opts.model] || 'llama-3.3-70b-versatile';
-            // Groq (llama) não aceita mensagens com imagem — deixa o chamador tratar
-            return await groq.chat.completions.create({ ...opts, model: groqModel });
+            if (provider !== 'openai') throw err;
+
+            if (isAuthError(err)) {
+              // Chave OpenAI inválida/revogada → troca definitivamente pro Groq
+              const groq = groqFallbackClient();
+              if (!groq) throw err;
+              console.warn('[llm] OpenAI auth failed, switching to Groq:', err.message?.slice(0, 120));
+              _client = groq;
+              _provider = 'groq';
+              const groqModel = MODEL_MAP[opts.model] || 'llama-3.3-70b-versatile';
+              return await groq.chat.completions.create({ ...opts, model: groqModel });
+            }
+
+            if (isQuotaError(err)) {
+              // Cota/rate-limit da OpenAI → usa Groq só nessa chamada, mantém OpenAI ativa
+              const groq = groqFallbackClient();
+              if (!groq) throw err;
+              console.warn('[llm] OpenAI quota excedida, usando Groq nesta chamada:', err.message?.slice(0, 120));
+              const groqModel = MODEL_MAP[opts.model] || 'llama-3.3-70b-versatile';
+              return await groq.chat.completions.create({ ...opts, model: groqModel });
+            }
+
+            throw err;
           }
         },
       },
@@ -64,4 +84,21 @@ function createCompatClient() {
   };
 }
 
-module.exports = { createCompatClient };
+// Traduz erros de LLM (OpenAI/Groq) em mensagens amigáveis pro usuário final —
+// nunca expor stack trace, chave ou texto técnico do provedor.
+function friendlyErrorMessage(err) {
+  const status = err?.status;
+  if (status === 401) return 'Chave de API inválida. Verifique a configuração no servidor.';
+  if (status === 403) return 'Acesso negado pela API de IA. Verifique a configuração de billing/acesso.';
+  if (status === 429) return 'Os modelos de IA estão sobrecarregados no momento. Tente novamente em alguns instantes.';
+  if (status >= 500) return 'O serviço de IA está instável no momento. Tente novamente em alguns instantes.';
+  if (err?.code === 'ETIMEDOUT' || err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '')) {
+    return 'A geração demorou demais e foi cancelada. Tente novamente.';
+  }
+  if (/JSON|Unexpected token/i.test(err?.message || '')) {
+    return 'A IA retornou uma resposta inválida. Tente novamente.';
+  }
+  return 'Não foi possível gerar o conteúdo agora. Tente novamente em instantes.';
+}
+
+module.exports = { createCompatClient, friendlyErrorMessage };
