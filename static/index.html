@@ -736,6 +736,101 @@
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:430,&quot;height&quot;:932},&quot;activeTab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;carousels&quot;,&quot;reels&quot;,&quot;video&quot;],&quot;default&quot;:&quot;carousels&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#FF6B35&quot;,&quot;options&quot;:[&quot;#007AFF&quot;,&quot;#5856D6&quot;,&quot;#FF6B35&quot;,&quot;#34C759&quot;]}}">
+// ── ZIP puro em JS (sem dependência externa) ──────────────────────────────────
+// Empacota várias imagens num único arquivo .zip pra download em 1 clique.
+// Necessário porque mobile (iOS/Android) bloqueia downloads múltiplos
+// disparados em sequência por um único gesto do usuário — só o primeiro passa.
+function _crc32(bytes) {
+  if (!_crc32.table) {
+    const t = [];
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    _crc32.table = t;
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = (crc >>> 8) ^ _crc32.table[(crc ^ bytes[i]) & 0xFF];
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function _dataUrlToBytes(dataUrl) {
+  const base64 = dataUrl.split(',')[1] || '';
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function buildZipBlob(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  files.forEach(f => {
+    const nameBytes = encoder.encode(f.name);
+    const data = _dataUrlToBytes(f.dataUrl);
+    const crc = _crc32(data);
+    const size = data.length;
+
+    const local = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, 0, true);
+    lv.setUint16(8, 0, true); // método = STORE (sem compressão, PNG já é comprimido)
+    lv.setUint16(10, 0, true);
+    lv.setUint16(12, 0x21, true);
+    lv.setUint32(14, crc, true);
+    lv.setUint32(18, size, true);
+    lv.setUint32(22, size, true);
+    lv.setUint16(26, nameBytes.length, true);
+    lv.setUint16(28, 0, true);
+    local.set(nameBytes, 30);
+    localParts.push(local, data);
+
+    const central = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(central.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0x21, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint16(30, 0, true);
+    cv.setUint16(32, 0, true);
+    cv.setUint16(34, 0, true);
+    cv.setUint16(36, 0, true);
+    cv.setUint32(38, 0, true);
+    cv.setUint32(42, offset, true);
+    central.set(nameBytes, 46);
+    centralParts.push(central);
+
+    offset += local.length + data.length;
+  });
+
+  const centralSize = centralParts.reduce((a, p) => a + p.length, 0);
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(4, 0, true);
+  ev.setUint16(6, 0, true);
+  ev.setUint16(8, files.length, true);
+  ev.setUint16(10, files.length, true);
+  ev.setUint32(12, centralSize, true);
+  ev.setUint32(16, offset, true);
+  ev.setUint16(20, 0, true);
+
+  return new Blob([...localParts, ...centralParts, end], { type: 'application/zip' });
+}
+
 class Component extends DCLogic {
   state = {
     activeTab:        'carousels',
@@ -1129,14 +1224,21 @@ class Component extends DCLogic {
   }
 
   _downloadAllSlides() {
-    this.state.carouselSlides.forEach((slide, i) => {
-      setTimeout(() => {
-        const a = document.createElement('a');
-        a.href = slide.dataUrl;
-        a.download = `slide-${slide.index || i + 1}.png`;
-        a.click();
-      }, i * 400);
-    });
+    const slides = this.state.carouselSlides;
+    if (!slides.length) return;
+    // Zip único: mobile (iOS/Android) bloqueia downloads múltiplos disparados
+    // em sequência — só o primeiro passa. Um único download .zip resolve.
+    const files = slides.map((slide, i) => ({
+      name: `slide-${slide.index || i + 1}.png`,
+      dataUrl: slide.dataUrl,
+    }));
+    const blob = buildZipBlob(files);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'carrossel-pedro-destrava.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
 
   async _fetchTrending(forceRefresh) {
