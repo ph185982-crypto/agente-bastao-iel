@@ -54,6 +54,16 @@ function escXml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// A fonte do gancho (Poppins) não tem glifos de emoji — sem isso, emoji vira
+// um quadrado/retângulo vazio ("tofu") no PNG. O gancho é só tipografia; emoji
+// fica na legenda, que é texto normal do Instagram e renderiza certo lá.
+function stripEmoji(text) {
+  return String(text)
+    .replace(/[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function wrapText(text, maxCharsPerLine) {
   const words = String(text).split(' ');
   const lines = [];
@@ -166,7 +176,7 @@ function verifiedBadgeSvg(cx, cy, r) {
 
 // Monta o PNG de fundo: cabeçalho do perfil + gancho. Devolve o Y onde o vídeo entra.
 async function buildFramePng(headline, bgPath) {
-  const fit = fitText(String(headline || '').trim(), {
+  const fit = fitText(stripEmoji(headline), {
     maxFont: HEAD_FONT, minFont: 30,
     boxW: W - H_PAD * 2,        // largura útil real, com as margens dos dois lados
     boxH: 4 * HEAD_LINE,        // até 4 linhas
@@ -247,6 +257,33 @@ function streamDownload(url, destPath, timeoutMs = 45000) {
       resp.data.on('error', err => { writer.destroy(); reject(err); });
     }).catch(reject);
   });
+}
+
+// Cache do vídeo baixado, reaproveitado entre /analyze e /render — o frontend
+// chama os dois em sequência para o mesmo link, e sem isso cada etapa baixava
+// o vídeo do zero (dobrava o tempo de espera à toa). Best-effort: só ajuda
+// quando as duas chamadas caem no mesmo container "quente" da Vercel; se não
+// caírem, cada rota baixa normalmente.
+function rawVideoCachePath(instagramUrl) {
+  const key = crypto.createHash('sha1').update(instagramUrl.trim()).digest('hex');
+  return path.join(os.tmpdir(), `ve_raw_${key}.mp4`);
+}
+
+async function getOrDownloadVideo(instagramUrl, destPath) {
+  const cachePath = rawVideoCachePath(instagramUrl);
+  try {
+    if (fs.existsSync(cachePath)) {
+      const stat = fs.statSync(cachePath);
+      if (stat.size > 10000 && Date.now() - stat.mtimeMs < 4 * 60 * 1000) {
+        fs.copyFileSync(cachePath, destPath);
+        return;
+      }
+    }
+  } catch {}
+
+  const cdnUrl = await resolveInstagramUrl(instagramUrl);
+  await streamDownload(cdnUrl, destPath);
+  try { fs.copyFileSync(destPath, cachePath); } catch {}
 }
 
 function getVideoInfo(videoPath) {
@@ -504,8 +541,7 @@ router.post('/analyze', async (req, res) => {
     // Gancho escrito pelo usuário é respeitado como está; vazio = a IA escreve
     const ownHeadline = String(userHeadline || '').trim();
 
-    const cdnUrl = await resolveInstagramUrl(instagramUrl.trim());
-    await streamDownload(cdnUrl, rawVideo);
+    await getOrDownloadVideo(instagramUrl.trim(), rawVideo);
 
     const info = await getVideoInfo(rawVideo);
 
@@ -622,10 +658,10 @@ router.post('/render', async (req, res) => {
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'Cole o link do vídeo do Instagram' });
     if (!String(headline || '').trim()) return res.status(400).json({ error: 'O gancho é obrigatório' });
 
-    const cdnUrl = await resolveInstagramUrl(instagramUrl.trim());
-    await streamDownload(cdnUrl, rawVideo);
+    await getOrDownloadVideo(instagramUrl.trim(), rawVideo);
 
     await composeReel({ videoPath: rawVideo, headline, bgPng, output, sid });
+    try { fs.unlinkSync(rawVideoCachePath(instagramUrl.trim())); } catch {}
     cleanTmp();
 
     res.setHeader('Content-Type', 'video/mp4');
@@ -651,4 +687,4 @@ router.post('/render', async (req, res) => {
 
 module.exports = router;
 // Exposto para inspecionar layout e composição sem depender do Instagram
-module.exports._internals = { buildFramePng, composeReel };
+module.exports._internals = { buildFramePng, composeReel, stripEmoji, getOrDownloadVideo, rawVideoCachePath };

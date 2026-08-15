@@ -723,9 +723,9 @@
               </div>
             </div>
 
-            <div onClick="{{ veAnalisar }}" style="background: linear-gradient(135deg, #34C759, #30B0C7); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(52,199,89,0.25); transition: all 0.2s" style-active="opacity: 0.85; transform: scale(0.98)">
+            <div onClick="{{ veGerar }}" style="background: linear-gradient(135deg, #34C759, #30B0C7); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(52,199,89,0.25); transition: all 0.2s" style-active="opacity: 0.85; transform: scale(0.98)">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M15 10l4.553-2.069A1 1 0 0 1 21 8.87v6.26a1 1 0 0 1-1.447.894L15 14"/><rect x="1" y="6" width="15" height="12" rx="2"/></svg>
-              <span style="font-size: 16px; font-weight: 700; color: white">Analisar Vídeo</span>
+              <span style="font-size: 16px; font-weight: 700; color: white">Gerar Vídeo Editado</span>
             </div>
 
             <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
@@ -733,15 +733,11 @@
               <div style="display: flex; flex-direction: column; gap: 8px">
                 <div style="display: flex; align-items: center; gap: 10px">
                   <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #34C759">1</span></div>
-                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Baixa e entende o vídeo</div><div style="font-size: 11px; color: #86868B">Ouve a fala e lê a imagem</div></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Baixa, entende e escreve</div><div style="font-size: 11px; color: #86868B">Ouve a fala, lê a imagem e escreve gancho + legenda</div></div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px">
-                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(0,122,255,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #007AFF">2</span></div>
-                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Escreve o gancho e a legenda</div><div style="font-size: 11px; color: #86868B">Linguagem simples + CTA pra seguir</div></div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px">
-                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(175,82,222,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #AF52DE">3</span></div>
-                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Monta o reel pronto</div><div style="font-size: 11px; color: #86868B">Cabeçalho do perfil + gancho + vídeo recortado</div></div>
+                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(175,82,222,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #AF52DE">2</span></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Já entrega o reel pronto</div><div style="font-size: 11px; color: #86868B">Um clique — sem etapa extra pra confirmar</div></div>
                 </div>
               </div>
             </div>
@@ -762,48 +758,13 @@
           </div>
         </sc-if>
 
-        <!-- REVIEW: edit headline before rendering -->
-        <sc-if value="{{ veShowReview }}" hint-placeholder-val="{{ false }}">
-          <div style="display: flex; flex-direction: column; gap: 14px">
-            <div style="font-size: 18px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">Confira antes de gerar</div>
-
-            <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
-                <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Gancho (aparece no vídeo)</span>
-                <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">{{ veHeadlineBadge }}</span>
-              </div>
-              <textarea id="veHeadlineInput" rows="3" defaultValue="{{ veHeadline }}" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 600; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
-              <div style="font-size: 11px; color: #86868B; margin-top: 6px">Pode editar do jeito que quiser</div>
-            </div>
-
-            <sc-if value="{{ veWillTrim }}" hint-placeholder-val="{{ false }}">
-              <div style="background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.25); border-radius: 12px; padding: 12px 14px">
-                <div style="font-size: 13px; color: #3C3C43; line-height: 1.4">{{ veTrimMsg }}</div>
-              </div>
-            </sc-if>
-
-            <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Legenda do post</div>
-              <div id="veCaptionText" style="font-size: 14px; color: #1D1D1F; line-height: 1.55; white-space: pre-wrap">{{ veCaption }}</div>
-            </div>
-
-            <div onClick="{{ veGerar }}" style="background: linear-gradient(135deg, #34C759, #30B0C7); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(52,199,89,0.25)" style-active="opacity: 0.85; transform: scale(0.98)">
-              <span style="font-size: 16px; font-weight: 700; color: white">Gerar Vídeo Editado</span>
-            </div>
-
-            <div onClick="{{ veReiniciar }}" style="padding: 14px; border-radius: 12px; border: 1.5px solid #E5E5EA; text-align: center; cursor: pointer" style-active="background: #F2F2F7">
-              <span style="font-size: 15px; font-weight: 600; color: #86868B">Cancelar</span>
-            </div>
-          </div>
-        </sc-if>
-
         <!-- DONE: player + downloads -->
         <sc-if value="{{ veShowDone }}" hint-placeholder-val="{{ false }}">
           <div style="display: flex; flex-direction: column; gap: 14px">
             <div style="font-size: 18px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">Vídeo pronto pra postar</div>
 
-            <div style="border-radius: 16px; overflow: hidden; background: #000; box-shadow: 0 2px 12px rgba(0,0,0,0.12)">
-              <video id="veVideoPlayer" controls playsinline style="width: 100%; display: block"></video>
+            <div style="border-radius: 16px; overflow: hidden; background: #000; box-shadow: 0 2px 12px rgba(0,0,0,0.12); aspect-ratio: 9/16">
+              <video id="veVideoPlayer" controls playsinline style="width: 100%; height: 100%; object-fit: cover"></video>
             </div>
 
             <div onClick="{{ veBaixar }}" style="background: linear-gradient(135deg, #34C759, #30B0C7); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(52,199,89,0.25)" style-active="opacity: 0.85">
@@ -1028,12 +989,7 @@ class Component extends DCLogic {
     tvDoneCount:      0,
     veStep:           'idle',
     veLink:           '',
-    veHeadline:       '',
-    veHeadlineFromUser: false,
     veCaption:        '',
-    veWillTrim:       false,
-    veMaxClipSec:     45,
-    veDurationSec:    0,
     veVideoUrl:       null,
     veProgressText:   '',
     veError:          null,
@@ -1103,32 +1059,19 @@ class Component extends DCLogic {
       // ── Editor de Vídeo ──────────────────────────────────────────────────
       veShowIdle:   this.state.veStep === 'idle',
       veBusy:       this.state.veStep === 'analyzing' || this.state.veStep === 'rendering',
-      veShowReview: this.state.veStep === 'review',
       veShowDone:   this.state.veStep === 'done',
       veShowError:  this.state.veStep === 'error',
-      veBusyTitle:  this.state.veStep === 'rendering' ? 'Montando o vídeo...' : 'Analisando o vídeo...',
+      veBusyTitle:  this.state.veStep === 'rendering' ? 'Montando o vídeo...' : 'Entendendo o vídeo...',
       veProgressText: this.state.veProgressText,
-      veHeadline:   this.state.veHeadline,
-      veHeadlineBadge: this.state.veHeadlineFromUser ? 'SEU GANCHO' : 'ESCRITO PELA IA',
       veCaption:    this.state.veCaption,
       veErrorMsg:   this.state.veError,
-      veWillTrim:   this.state.veWillTrim,
-      veTrimMsg:    `Esse vídeo tem ${this.state.veDurationSec}s. Vou usar os primeiros ${this.state.veMaxClipSec}s.`,
 
-      veAnalisar: () => {
+      veGerar: () => {
         const link = document.getElementById('veLinkInput')?.value?.trim() || '';
         const manual = document.getElementById('veHeadlineManual')?.value?.trim() || '';
         if (!link) return this.setState({ veStep: 'error', veError: 'Cole o link do vídeo do Instagram.' });
-        if (this.state.veStep === 'analyzing') return;
-        this._veAnalisar(link, manual).catch(e =>
-          this.setState({ veStep: 'error', veError: e.message })
-        );
-      },
-      veGerar: () => {
-        const headline = document.getElementById('veHeadlineInput')?.value?.trim() || this.state.veHeadline;
-        if (!headline) return this.setState({ veStep: 'error', veError: 'O gancho não pode ficar vazio.' });
-        if (this.state.veStep === 'rendering') return;
-        this._veRenderizar(headline).catch(e =>
+        if (this.state.veStep === 'analyzing' || this.state.veStep === 'rendering') return;
+        this._veGerarTudo(link, manual).catch(e =>
           this.setState({ veStep: 'error', veError: e.message })
         );
       },
@@ -1144,9 +1087,13 @@ class Component extends DCLogic {
       },
       veReiniciar: () => {
         if (this.state.veVideoUrl) { try { URL.revokeObjectURL(this.state.veVideoUrl); } catch {} }
+        const linkEl = document.getElementById('veLinkInput');
+        const headEl = document.getElementById('veHeadlineManual');
+        if (linkEl) linkEl.value = '';
+        if (headEl) headEl.value = '';
         this.setState({
-          veStep: 'idle', veHeadline: '', veCaption: '', veVideoUrl: null,
-          veError: null, veProgressText: '', veWillTrim: false, veDurationSec: 0,
+          veStep: 'idle', veCaption: '', veVideoUrl: null,
+          veError: null, veProgressText: '',
         });
       },
 
@@ -1332,21 +1279,24 @@ class Component extends DCLogic {
   }
 
   // ── Editor de Vídeo ─────────────────────────────────────────────────────────
-  async _veAnalisar(link, manualHeadline) {
+  // Um clique só: entende o vídeo + escreve gancho/legenda + monta o reel,
+  // sem parar numa tela de confirmação no meio do caminho.
+  async _veGerarTudo(link, manualHeadline) {
     this.setState({
       veStep: 'analyzing', veLink: link, veError: null,
       veProgressText: 'Baixando o vídeo...',
     });
 
-    const msgs = manualHeadline
+    const msgsAnalyze = manualHeadline
       ? ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo a legenda...']
       : ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo o gancho e a legenda...'];
     let i = 0;
-    const timer = setInterval(() => {
-      i = Math.min(i + 1, msgs.length - 1);
-      this.setState({ veProgressText: msgs[i] });
-    }, 9000);
+    let timer = setInterval(() => {
+      i = Math.min(i + 1, msgsAnalyze.length - 1);
+      this.setState({ veProgressText: msgsAnalyze[i] });
+    }, 8000);
 
+    let headline, caption;
     try {
       const res = await fetch('/api/video-editor/analyze', {
         method: 'POST',
@@ -1358,43 +1308,30 @@ class Component extends DCLogic {
         throw new Error(err.error || 'Erro ' + res.status);
       }
       const data = await res.json();
-      this.setState({
-        veStep: 'review',
-        veHeadline: data.headline || '',
-        veHeadlineFromUser: !!data.headlineFromUser,
-        veCaption: data.caption || '',
-        veWillTrim: !!data.willTrim,
-        veDurationSec: data.durationSec || 0,
-        veMaxClipSec: data.maxClipSec || 45,
-        veProgressText: '',
-      });
+      headline = data.headline || '';
+      caption = data.caption || '';
     } finally {
       clearInterval(timer);
     }
-  }
 
-  async _veRenderizar(headline) {
+    // encadeia direto pro render — sem esperar outro clique
     this.setState({
-      veStep: 'rendering', veHeadline: headline,
+      veStep: 'rendering', veCaption: caption,
       veProgressText: 'Recortando e montando...',
     });
 
-    const msgs = ['Recortando e montando...', 'Ajustando imagem e som...', 'Finalizando o arquivo...'];
-    let i = 0;
-    const timer = setInterval(() => {
-      i = Math.min(i + 1, msgs.length - 1);
-      this.setState({ veProgressText: msgs[i] });
-    }, 12000);
+    const msgsRender = ['Recortando e montando...', 'Ajustando imagem e som...', 'Finalizando o arquivo...'];
+    i = 0;
+    timer = setInterval(() => {
+      i = Math.min(i + 1, msgsRender.length - 1);
+      this.setState({ veProgressText: msgsRender[i] });
+    }, 10000);
 
     try {
       const res = await fetch('/api/video-editor/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instagramUrl: this.state.veLink,
-          headline,
-          caption: this.state.veCaption,
-        }),
+        body: JSON.stringify({ instagramUrl: link, headline, caption }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
