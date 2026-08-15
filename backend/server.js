@@ -43,6 +43,7 @@ app.use('/api/brain', require('./routes/brain'));
 app.use('/api/video', require('./routes/videoIA'));
 app.use('/api/trending', require('./routes/trending'));
 app.use('/api/tv-cuts', require('./routes/tvCuts'));
+app.use('/api/video-editor', require('./routes/videoEditor'));
 
 app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })

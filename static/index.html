@@ -695,6 +695,138 @@
       </div>
     </sc-if>
 
+    <sc-if value="{{ showEditor }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 16px; animation: fadeUp 0.3s ease-out forwards">
+
+        <!-- IDLE: link input -->
+        <sc-if value="{{ veShowIdle }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 16px">
+            <div>
+              <div style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">Editor de Vídeo</div>
+              <div style="font-size: 13px; color: #86868B; margin-top: 3px">Cole o link do Reels e receba o vídeo editado + legenda</div>
+            </div>
+
+            <div style="background: #FFFFFF; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Link do vídeo</div>
+              <input id="veLinkInput" type="text" placeholder="https://www.instagram.com/reel/..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none" />
+              <div style="font-size: 11px; color: #86868B; margin-top: 6px">O post precisa ser público</div>
+            </div>
+
+            <div onClick="{{ veAnalisar }}" style="background: linear-gradient(135deg, #34C759, #30B0C7); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(52,199,89,0.25); transition: all 0.2s" style-active="opacity: 0.85; transform: scale(0.98)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M15 10l4.553-2.069A1 1 0 0 1 21 8.87v6.26a1 1 0 0 1-1.447.894L15 14"/><rect x="1" y="6" width="15" height="12" rx="2"/></svg>
+              <span style="font-size: 16px; font-weight: 700; color: white">Analisar Vídeo</span>
+            </div>
+
+            <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px">Como funciona</div>
+              <div style="display: flex; flex-direction: column; gap: 8px">
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #34C759">1</span></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Baixa e entende o vídeo</div><div style="font-size: 11px; color: #86868B">Ouve a fala e lê a imagem</div></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(0,122,255,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #007AFF">2</span></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Escreve o gancho e a legenda</div><div style="font-size: 11px; color: #86868B">Linguagem simples + CTA pra seguir</div></div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(175,82,222,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #AF52DE">3</span></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Monta o reel pronto</div><div style="font-size: 11px; color: #86868B">Cabeçalho do perfil + gancho + vídeo recortado</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- BUSY: analyzing / rendering -->
+        <sc-if value="{{ veBusy }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 16px">
+            <div style="font-size: 20px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.4px">{{ veBusyTitle }}</div>
+            <div style="background: #FFFFFF; border-radius: 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; align-items: center; gap: 12px">
+              <div style="width: 24px; height: 24px; border-radius: 50%; background: #34C759; display: flex; align-items: center; justify-content: center; flex-shrink: 0">
+                <div style="width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; border-top-color: transparent; animation: spin 0.8s linear infinite"></div>
+              </div>
+              <span style="font-size: 14px; color: #1D1D1F; font-weight: 600">{{ veProgressText }}</span>
+            </div>
+            <div style="font-size: 12px; color: #86868B; text-align: center">Não feche esta tela.</div>
+          </div>
+        </sc-if>
+
+        <!-- REVIEW: edit headline before rendering -->
+        <sc-if value="{{ veShowReview }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 14px">
+            <div style="font-size: 18px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">Confira antes de gerar</div>
+
+            <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Gancho (aparece no vídeo)</div>
+              <textarea id="veHeadlineInput" rows="3" defaultValue="{{ veHeadline }}" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 600; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
+              <div style="font-size: 11px; color: #86868B; margin-top: 6px">Pode editar do jeito que quiser</div>
+            </div>
+
+            <sc-if value="{{ veWillTrim }}" hint-placeholder-val="{{ false }}">
+              <div style="background: rgba(255,149,0,0.08); border: 1px solid rgba(255,149,0,0.25); border-radius: 12px; padding: 12px 14px">
+                <div style="font-size: 13px; color: #3C3C43; line-height: 1.4">{{ veTrimMsg }}</div>
+              </div>
+            </sc-if>
+
+            <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Legenda do post</div>
+              <div id="veCaptionText" style="font-size: 14px; color: #1D1D1F; line-height: 1.55; white-space: pre-wrap">{{ veCaption }}</div>
+            </div>
+
+            <div onClick="{{ veGerar }}" style="background: linear-gradient(135deg, #34C759, #30B0C7); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(52,199,89,0.25)" style-active="opacity: 0.85; transform: scale(0.98)">
+              <span style="font-size: 16px; font-weight: 700; color: white">Gerar Vídeo Editado</span>
+            </div>
+
+            <div onClick="{{ veReiniciar }}" style="padding: 14px; border-radius: 12px; border: 1.5px solid #E5E5EA; text-align: center; cursor: pointer" style-active="background: #F2F2F7">
+              <span style="font-size: 15px; font-weight: 600; color: #86868B">Cancelar</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- DONE: player + downloads -->
+        <sc-if value="{{ veShowDone }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 14px">
+            <div style="font-size: 18px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">Vídeo pronto pra postar</div>
+
+            <div style="border-radius: 16px; overflow: hidden; background: #000; box-shadow: 0 2px 12px rgba(0,0,0,0.12)">
+              <video id="veVideoPlayer" controls playsinline style="width: 100%; display: block"></video>
+            </div>
+
+            <div onClick="{{ veBaixar }}" style="background: linear-gradient(135deg, #34C759, #30B0C7); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(52,199,89,0.25)" style-active="opacity: 0.85">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span style="font-size: 16px; font-weight: 700; color: white">Baixar Vídeo</span>
+            </div>
+
+            <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+                <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Legenda do post</span>
+                <div onClick="{{ veCopiarLegenda }}" style="padding: 6px 12px; background: #F2F2F7; border-radius: 8px; cursor: pointer" style-active="opacity: 0.7">
+                  <span style="font-size: 12px; font-weight: 600; color: #007AFF">Copiar</span>
+                </div>
+              </div>
+              <div id="veCaptionDone" style="font-size: 14px; color: #1D1D1F; line-height: 1.55; white-space: pre-wrap">{{ veCaption }}</div>
+            </div>
+
+            <div onClick="{{ veReiniciar }}" style="padding: 14px; border-radius: 12px; border: 1.5px solid #E5E5EA; text-align: center; cursor: pointer" style-active="background: #F2F2F7">
+              <span style="font-size: 15px; font-weight: 600; color: #34C759">Editar outro vídeo</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ERROR -->
+        <sc-if value="{{ veShowError }}" hint-placeholder-val="{{ false }}">
+          <div style="background: rgba(255,59,48,0.06); border: 1px solid rgba(255,59,48,0.2); border-radius: 14px; padding: 16px">
+            <div style="font-size: 14px; font-weight: 600; color: #FF3B30; margin-bottom: 6px">Não deu certo</div>
+            <div style="font-size: 13px; color: #3C3C43; line-height: 1.4">{{ veErrorMsg }}</div>
+            <div onClick="{{ veReiniciar }}" style="margin-top: 12px; padding: 10px; background: #FF3B30; border-radius: 10px; text-align: center; cursor: pointer" style-active="opacity: 0.85">
+              <span style="font-size: 14px; font-weight: 600; color: white">Tentar novamente</span>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </sc-if>
+
   </div>
 
   <!-- Bottom Tab Bar -->
@@ -726,6 +858,13 @@
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{ tvColor }}" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.12 15.88"/><path d="M14.47 14.48L20 20"/><path d="M8.12 8.12L12 12"/></svg>
       </div>
       <span style="font-size: 10px; font-weight: 500; color: {{ tvColor }}">Cortes TV</span>
+    </div>
+
+    <div onClick="{{ switchToEditor }}" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; padding: 0 4px" style-active="opacity: 0.6">
+      <div style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="{{ editorColor }}" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/><path d="M10 13.5v3l3-1.5z" fill="{{ editorColor }}"/></svg>
+      </div>
+      <span style="font-size: 10px; font-weight: 500; color: {{ editorColor }}">Editor</span>
     </div>
 
   </div>
@@ -873,6 +1012,16 @@ class Component extends DCLogic {
     tvProgressText:   '',
     tvProgressPct:    0,
     tvDoneCount:      0,
+    veStep:           'idle',
+    veLink:           '',
+    veHeadline:       '',
+    veCaption:        '',
+    veWillTrim:       false,
+    veMaxClipSec:     45,
+    veDurationSec:    0,
+    veVideoUrl:       null,
+    veProgressText:   '',
+    veError:          null,
   };
 
   _progressTimer = null;
@@ -907,6 +1056,7 @@ class Component extends DCLogic {
     const isR = activeTab === 'reels';
     const isV = activeTab === 'video';
     const isT = activeTab === 'tvcuts';
+    const isE = activeTab === 'editor';
 
     const sBg  = i => videoCurrentStep > i ? '#34C759' : videoCurrentStep === i ? '#007AFF' : '#E5E5EA';
     const sCol = i => videoCurrentStep >= i ? '#1D1D1F' : '#C7C7CC';
@@ -917,12 +1067,14 @@ class Component extends DCLogic {
       showReels:     isR,
       showVideo:     isV,
       showTvCuts:    isT,
+      showEditor:    isE,
 
       carouselsColor: isC ? '#007AFF' : '#8E8E93',
       reelsColor:     isR ? '#007AFF' : '#8E8E93',
       reelsFill:      isR ? '#007AFF' : 'none',
       videoColor:     isV ? '#FF3B30' : '#8E8E93',
       tvColor:        isT ? '#AF52DE' : '#8E8E93',
+      editorColor:    isE ? '#34C759' : '#8E8E93',
 
       switchToCarousels: () => {
         this.setState({ activeTab: 'carousels' });
@@ -931,6 +1083,55 @@ class Component extends DCLogic {
       switchToReels:     () => this.setState({ activeTab: 'reels' }),
       switchToVideo:     () => this.setState({ activeTab: 'video' }),
       switchToTvCuts:    () => this.setState({ activeTab: 'tvcuts' }),
+      switchToEditor:    () => this.setState({ activeTab: 'editor' }),
+
+      // ── Editor de Vídeo ──────────────────────────────────────────────────
+      veShowIdle:   this.state.veStep === 'idle',
+      veBusy:       this.state.veStep === 'analyzing' || this.state.veStep === 'rendering',
+      veShowReview: this.state.veStep === 'review',
+      veShowDone:   this.state.veStep === 'done',
+      veShowError:  this.state.veStep === 'error',
+      veBusyTitle:  this.state.veStep === 'rendering' ? 'Montando o vídeo...' : 'Analisando o vídeo...',
+      veProgressText: this.state.veProgressText,
+      veHeadline:   this.state.veHeadline,
+      veCaption:    this.state.veCaption,
+      veErrorMsg:   this.state.veError,
+      veWillTrim:   this.state.veWillTrim,
+      veTrimMsg:    `Esse vídeo tem ${this.state.veDurationSec}s. Vou usar os primeiros ${this.state.veMaxClipSec}s.`,
+
+      veAnalisar: () => {
+        const link = document.getElementById('veLinkInput')?.value?.trim() || '';
+        if (!link) return this.setState({ veStep: 'error', veError: 'Cole o link do vídeo do Instagram.' });
+        if (this.state.veStep === 'analyzing') return;
+        this._veAnalisar(link).catch(e =>
+          this.setState({ veStep: 'error', veError: e.message })
+        );
+      },
+      veGerar: () => {
+        const headline = document.getElementById('veHeadlineInput')?.value?.trim() || this.state.veHeadline;
+        if (!headline) return this.setState({ veStep: 'error', veError: 'O gancho não pode ficar vazio.' });
+        if (this.state.veStep === 'rendering') return;
+        this._veRenderizar(headline).catch(e =>
+          this.setState({ veStep: 'error', veError: e.message })
+        );
+      },
+      veBaixar: () => {
+        if (!this.state.veVideoUrl) return;
+        const a = document.createElement('a');
+        a.href = this.state.veVideoUrl;
+        a.download = 'reel_pronto.mp4';
+        a.click();
+      },
+      veCopiarLegenda: () => {
+        navigator.clipboard?.writeText(this.state.veCaption || '').catch(() => {});
+      },
+      veReiniciar: () => {
+        if (this.state.veVideoUrl) { try { URL.revokeObjectURL(this.state.veVideoUrl); } catch {} }
+        this.setState({
+          veStep: 'idle', veHeadline: '', veCaption: '', veVideoUrl: null,
+          veError: null, veProgressText: '', veWillTrim: false, veDurationSec: 0,
+        });
+      },
 
       // ── Cortes TV ────────────────────────────────────────────────────────
       tvShowIdle:    this.state.tvStep === 'idle',
@@ -1111,6 +1312,84 @@ class Component extends DCLogic {
       'boas-noticias-mundo': 'Tema opcional (ex: medicina, natureza)',
     };
     return map[template] || 'Digite o tema do carrossel';
+  }
+
+  // ── Editor de Vídeo ─────────────────────────────────────────────────────────
+  async _veAnalisar(link) {
+    this.setState({
+      veStep: 'analyzing', veLink: link, veError: null,
+      veProgressText: 'Baixando o vídeo...',
+    });
+
+    const msgs = ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo o gancho e a legenda...'];
+    let i = 0;
+    const timer = setInterval(() => {
+      i = Math.min(i + 1, msgs.length - 1);
+      this.setState({ veProgressText: msgs[i] });
+    }, 9000);
+
+    try {
+      const res = await fetch('/api/video-editor/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instagramUrl: link }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ' + res.status);
+      }
+      const data = await res.json();
+      this.setState({
+        veStep: 'review',
+        veHeadline: data.headline || '',
+        veCaption: data.caption || '',
+        veWillTrim: !!data.willTrim,
+        veDurationSec: data.durationSec || 0,
+        veMaxClipSec: data.maxClipSec || 45,
+        veProgressText: '',
+      });
+    } finally {
+      clearInterval(timer);
+    }
+  }
+
+  async _veRenderizar(headline) {
+    this.setState({
+      veStep: 'rendering', veHeadline: headline,
+      veProgressText: 'Recortando e montando...',
+    });
+
+    const msgs = ['Recortando e montando...', 'Ajustando imagem e som...', 'Finalizando o arquivo...'];
+    let i = 0;
+    const timer = setInterval(() => {
+      i = Math.min(i + 1, msgs.length - 1);
+      this.setState({ veProgressText: msgs[i] });
+    }, 12000);
+
+    try {
+      const res = await fetch('/api/video-editor/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instagramUrl: this.state.veLink,
+          headline,
+          caption: this.state.veCaption,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ' + res.status);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      this.setState({ veStep: 'done', veVideoUrl: url, veProgressText: '' });
+      setTimeout(() => {
+        const player = document.getElementById('veVideoPlayer');
+        if (player) player.src = url;
+      }, 80);
+    } finally {
+      clearInterval(timer);
+    }
   }
 
   async _gerarCarrossel(topic, handle) {
