@@ -9,6 +9,7 @@ const sharp   = require('sharp');
 const fs      = require('fs');
 const path    = require('path');
 const { createCompatClient, friendlyErrorMessage } = require('../lib/llm');
+const { PEDRO_DNA: PEDRO_DNA_BASE } = require('../lib/pedroDna');
 
 const router = express.Router();
 let _llm = null;
@@ -987,18 +988,11 @@ async function fetchHashtagCarousels(hashtag) {
 }
 
 // ── DNA editorial Pedro Destrava ───────────────────────────────────────────────
-// O perfil tem ~175 mil seguidores construídos com curiosidades/ciência/história.
-// Está migrando GRADUALMENTE pra autoridade em negócios/marketing — sem abandonar
-// o que trouxe a audiência. Usado como base de todo prompt de geração de carrossel.
-const PEDRO_DNA = `CONTEXTO: o perfil tem ~175 mil seguidores construídos com curiosidades, ciência, história e fatos surpreendentes. Está migrando GRADUALMENTE pra também construir autoridade em negócios/marketing — SEM abandonar o que fez o perfil crescer.
+// Base compartilhada em backend/lib/pedroDna.js (usada também pelo editor de
+// vídeo) + as regras específicas do formato carrossel.
+const PEDRO_DNA = `${PEDRO_DNA_BASE}
 
-POSICIONAMENTO: "Pedro Destrava mostra coisas que ninguém percebe e explica o que isso ensina sobre negócios, comportamento, marketing e vendas."
-
-REGRA DE OURO — A PONTE: continue entregando curiosidade, ciência, história e fatos surpreendentes de verdade (é isso que fez o perfil crescer). Quando fizer sentido NATURALMENTE, conecte o fato curioso a um insight de negócios/comportamento/marketing nos ÚLTIMOS slides — NUNCA force essa ponte se ela não existir de verdade. Nem todo carrossel precisa terminar em negócios; tudo bem um carrossel ser 100% curiosidade pura.
-
-NÃO FAZER: linguagem corporativa ("implementação", "otimização", "sinergia"); formato genérico "5 dicas para..."; forçar consultoria em todo post; clichês de IA ("você não vai acreditar", "chocante", "imperdível"); promessa vaga de resultado.
-
-FAZER: curiosidade real e verificável; linguagem de amigo inteligente explicando algo, não de professor; quando aplicável, 1-2 slides finais conectando o fato a uma lição prática de negócio/comportamento humano; variar o tom do CTA final entre engajamento ("Você já tinha percebido isso?"), compartilhamento ("Manda pra alguém que precisa ver isso"), salvamento ("Salva que você vai começar a notar isso em todo lugar") e, raramente (não em todo post), autoridade leve ("Quer que eu analise outro caso assim? Comenta aqui").`;
+ESPECÍFICO DE CARROSSEL: quando a ponte com negócios existir de verdade, faça nos 1-2 ÚLTIMOS slides. Nem todo carrossel precisa terminar em negócios; tudo bem ser 100% curiosidade pura. Varie o tom do CTA final entre engajamento ("Você já tinha percebido isso?"), compartilhamento ("Manda pra alguém que precisa ver isso"), salvamento ("Salva que você vai começar a notar isso em todo lugar") e, raramente (não em todo post), autoridade leve ("Quer que eu analise outro caso assim? Comenta aqui").`;
 
 // ── Geração de conteúdo (GPT) ─────────────────────────────────────────────────
 const SYSTEM_PROMPT = `Você é especialista em CARROSSÉIS virais do Instagram para o perfil @pedro_destrava (nicho ciência, tecnologia, história, espaço, curiosidades e negócios — público amplo brasileiro).
