@@ -526,6 +526,17 @@ ${REGRAS_CAPTION}
 
 Responda APENAS JSON: {"caption":"..."}`;
 
+// Extrai primeira frase da transcrição para usar como headline quando não houver input manual
+function extractFirstSentence(text) {
+  if (!text) return '';
+  const match = text.match(/^([^.!?]+[.!?])/);
+  if (!match) return '';
+  const sentence = match[1].trim();
+  // Só usa se tiver entre 10 e 120 chars (gancho nem muito curto nem muito longo)
+  if (sentence.length >= 10 && sentence.length <= 120) return sentence;
+  return '';
+}
+
 router.post('/analyze', async (req, res) => {
   const sid = crypto.randomUUID();
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
@@ -538,7 +549,7 @@ router.post('/analyze', async (req, res) => {
     const { instagramUrl, headline: userHeadline } = req.body || {};
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'Cole o link do vídeo do Instagram' });
 
-    // Gancho escrito pelo usuário é respeitado como está; vazio = a IA escreve
+    // Gancho escrito pelo usuário é respeitado como está; vazio = tenta extrair da transcrição ou a IA escreve
     const ownHeadline = String(userHeadline || '').trim();
 
     await getOrDownloadVideo(instagramUrl.trim(), rawVideo);
@@ -563,17 +574,24 @@ router.post('/analyze', async (req, res) => {
       throw new Error('Não consegui entender o conteúdo desse vídeo (sem fala e sem leitura de imagem disponível).');
     }
 
+    // Se usuário não preencheu headline, tenta usar a primeira frase da transcrição
+    let headlineFromTranscript = '';
+    if (!ownHeadline && transcript) {
+      headlineFromTranscript = extractFirstSentence(transcript);
+    }
+    const finalHeadline = ownHeadline || headlineFromTranscript;
+
     const ai = await llm.chat.completions.create({
       model: 'gpt-4o',
       temperature: 0.85,
       max_tokens: 1000,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: ownHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
+        { role: 'system', content: finalHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
         {
           role: 'user',
           content: [
-            ownHeadline ? `GANCHO ESCRITO PELO AUTOR (use exatamente assim):\n${ownHeadline}` : '',
+            finalHeadline ? `GANCHO (use exatamente assim):\n${finalHeadline}` : '',
             transcript ? `TRANSCRIÇÃO DA FALA DO VÍDEO:\n${transcript.slice(0, 4000)}` : '',
             visual ? `DESCRIÇÃO DA IMAGEM DO VÍDEO:\n${visual}` : '',
           ].filter(Boolean).join('\n\n'),
@@ -582,7 +600,7 @@ router.post('/analyze', async (req, res) => {
     });
 
     const parsed = JSON.parse(ai.choices[0].message.content || '{}');
-    const headline = ownHeadline || String(parsed.headline || '').trim();
+    const headline = finalHeadline || String(parsed.headline || '').trim();
     const caption = String(parsed.caption || '').trim();
     if (!headline) throw new Error('A IA não conseguiu escrever o gancho. Tente de novo.');
 
@@ -590,6 +608,7 @@ router.post('/analyze', async (req, res) => {
     res.json({
       headline,
       headlineFromUser: !!ownHeadline,
+      headlineFromTranscript: !!headlineFromTranscript,
       caption,
       durationSec: Math.round(info.duration),
       willTrim: info.duration > MAX_CLIP_SEC,
