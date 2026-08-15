@@ -706,10 +706,21 @@
               <div style="font-size: 13px; color: #86868B; margin-top: 3px">Cole o link do Reels e receba o vídeo editado + legenda</div>
             </div>
 
-            <div style="background: #FFFFFF; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Link do vídeo</div>
-              <input id="veLinkInput" type="text" placeholder="https://www.instagram.com/reel/..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none" />
-              <div style="font-size: 11px; color: #86868B; margin-top: 6px">O post precisa ser público</div>
+            <div style="background: #FFFFFF; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 16px">
+              <div>
+                <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Link do vídeo</div>
+                <input id="veLinkInput" type="text" placeholder="https://www.instagram.com/reel/..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">O post precisa ser público</div>
+              </div>
+
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                  <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Gancho</span>
+                  <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">OPCIONAL</span>
+                </div>
+                <textarea id="veHeadlineManual" rows="3" placeholder="Escreva seu gancho aqui..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Deixe em branco que a IA escreve o gancho pra você</div>
+              </div>
             </div>
 
             <div onClick="{{ veAnalisar }}" style="background: linear-gradient(135deg, #34C759, #30B0C7); border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; box-shadow: 0 4px 16px rgba(52,199,89,0.25); transition: all 0.2s" style-active="opacity: 0.85; transform: scale(0.98)">
@@ -757,7 +768,10 @@
             <div style="font-size: 18px; font-weight: 700; color: #1D1D1F; letter-spacing: -0.3px">Confira antes de gerar</div>
 
             <div style="background: #FFFFFF; border-radius: 14px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04)">
-              <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Gancho (aparece no vídeo)</div>
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Gancho (aparece no vídeo)</span>
+                <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">{{ veHeadlineBadge }}</span>
+              </div>
               <textarea id="veHeadlineInput" rows="3" defaultValue="{{ veHeadline }}" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; font-weight: 600; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
               <div style="font-size: 11px; color: #86868B; margin-top: 6px">Pode editar do jeito que quiser</div>
             </div>
@@ -1015,6 +1029,7 @@ class Component extends DCLogic {
     veStep:           'idle',
     veLink:           '',
     veHeadline:       '',
+    veHeadlineFromUser: false,
     veCaption:        '',
     veWillTrim:       false,
     veMaxClipSec:     45,
@@ -1094,6 +1109,7 @@ class Component extends DCLogic {
       veBusyTitle:  this.state.veStep === 'rendering' ? 'Montando o vídeo...' : 'Analisando o vídeo...',
       veProgressText: this.state.veProgressText,
       veHeadline:   this.state.veHeadline,
+      veHeadlineBadge: this.state.veHeadlineFromUser ? 'SEU GANCHO' : 'ESCRITO PELA IA',
       veCaption:    this.state.veCaption,
       veErrorMsg:   this.state.veError,
       veWillTrim:   this.state.veWillTrim,
@@ -1101,9 +1117,10 @@ class Component extends DCLogic {
 
       veAnalisar: () => {
         const link = document.getElementById('veLinkInput')?.value?.trim() || '';
+        const manual = document.getElementById('veHeadlineManual')?.value?.trim() || '';
         if (!link) return this.setState({ veStep: 'error', veError: 'Cole o link do vídeo do Instagram.' });
         if (this.state.veStep === 'analyzing') return;
-        this._veAnalisar(link).catch(e =>
+        this._veAnalisar(link, manual).catch(e =>
           this.setState({ veStep: 'error', veError: e.message })
         );
       },
@@ -1315,13 +1332,15 @@ class Component extends DCLogic {
   }
 
   // ── Editor de Vídeo ─────────────────────────────────────────────────────────
-  async _veAnalisar(link) {
+  async _veAnalisar(link, manualHeadline) {
     this.setState({
       veStep: 'analyzing', veLink: link, veError: null,
       veProgressText: 'Baixando o vídeo...',
     });
 
-    const msgs = ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo o gancho e a legenda...'];
+    const msgs = manualHeadline
+      ? ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo a legenda...']
+      : ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo o gancho e a legenda...'];
     let i = 0;
     const timer = setInterval(() => {
       i = Math.min(i + 1, msgs.length - 1);
@@ -1332,7 +1351,7 @@ class Component extends DCLogic {
       const res = await fetch('/api/video-editor/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instagramUrl: link }),
+        body: JSON.stringify({ instagramUrl: link, headline: manualHeadline || '' }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -1342,6 +1361,7 @@ class Component extends DCLogic {
       this.setState({
         veStep: 'review',
         veHeadline: data.headline || '',
+        veHeadlineFromUser: !!data.headlineFromUser,
         veCaption: data.caption || '',
         veWillTrim: !!data.willTrim,
         veDurationSec: data.durationSec || 0,

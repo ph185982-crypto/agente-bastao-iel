@@ -446,32 +446,48 @@ async function describeFrame(videoPath, atSec, sid) {
   }
 }
 
-const WRITER_SYSTEM = `Você escreve ganchos e legendas de Reels virais do Instagram para o perfil ${PROFILE_HANDLE}.
+const WRITER_BASE = `Você escreve ganchos e legendas de Reels virais do Instagram para o perfil ${PROFILE_HANDLE}.
 
 ${PEDRO_DNA}
 
 ${LINGUAGEM_LEIGO}
 
-Você recebe o conteúdo de um vídeo (transcrição da fala e/ou descrição da imagem). Escreva:
+Você recebe o conteúdo de um vídeo (transcrição da fala e/ou descrição da imagem).`;
 
-1. "headline" — o GANCHO que aparece em cima do vídeo. Regras:
+const REGRAS_HEADLINE = `"headline" — o GANCHO que aparece em cima do vídeo. Regras:
 - No MÁXIMO 12 palavras. Uma frase só.
 - Português básico. Palavra do dia a dia. Nada de termo difícil.
 - Cria curiosidade mas NUNCA entrega a resposta — quem lê precisa assistir pra descobrir.
 - Fale direto com a pessoa usando "você" quando couber.
 - Use número concreto se o vídeo tiver um (ex: "em 3 segundos", "90% das pessoas").
 - PROIBIDO: "você não vai acreditar", "chocante", "imperdível", "olha isso", "impressionante".
-- Sem emoji, sem hashtag, sem aspas.
+- Sem emoji, sem hashtag, sem aspas.`;
 
-2. "caption" — a legenda do post. Regras:
+const REGRAS_CAPTION = `"caption" — a legenda do post. Regras:
 - Primeira linha: uma frase de impacto que puxa a pessoa pra ler o resto.
 - Depois: 2 a 3 parágrafos CURTOS dando o CONTEXTO — o que é isso, por que acontece, por que importa. Explique como se estivesse contando pra um amigo. Aqui a pessoa tem que aprender algo de verdade, não pode ser texto vazio.
 - Se houver uma ligação natural com negócios, comportamento ou marketing, faça em 1 parágrafo. Se não houver, não force.
 - Termine com um CTA claro pedindo pra SEGUIR o perfil, escrito de forma natural (ex: "Segue ${PROFILE_HANDLE} que todo dia tem um assim por aqui"). O CTA de seguir é obrigatório.
 - Pode usar emoji na legenda (com moderação, 2 a 4 no total).
-- Fecha com 4 a 6 hashtags em português, relevantes ao tema.
+- Fecha com 4 a 6 hashtags em português, relevantes ao tema.`;
+
+// Modo 1: a IA escreve gancho e legenda
+const WRITER_SYSTEM = `${WRITER_BASE} Escreva:
+
+1. ${REGRAS_HEADLINE}
+
+2. ${REGRAS_CAPTION}
 
 Responda APENAS JSON: {"headline":"...","caption":"..."}`;
+
+// Modo 2: o autor já escreveu o gancho — a IA só faz a legenda, coerente com ele
+const WRITER_SYSTEM_CAPTION_ONLY = `${WRITER_BASE}
+
+O AUTOR JÁ ESCREVEU O GANCHO. Não altere, não corrija e não sugira outro gancho — ele será usado exatamente como está. Sua tarefa é escrever APENAS a legenda, coerente com esse gancho: a legenda precisa entregar o que o gancho promete.
+
+${REGRAS_CAPTION}
+
+Responda APENAS JSON: {"caption":"..."}`;
 
 router.post('/analyze', async (req, res) => {
   const sid = crypto.randomUUID();
@@ -482,8 +498,11 @@ router.post('/analyze', async (req, res) => {
   });
 
   try {
-    const { instagramUrl } = req.body || {};
+    const { instagramUrl, headline: userHeadline } = req.body || {};
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'Cole o link do vídeo do Instagram' });
+
+    // Gancho escrito pelo usuário é respeitado como está; vazio = a IA escreve
+    const ownHeadline = String(userHeadline || '').trim();
 
     const cdnUrl = await resolveInstagramUrl(instagramUrl.trim());
     await streamDownload(cdnUrl, rawVideo);
@@ -514,10 +533,11 @@ router.post('/analyze', async (req, res) => {
       max_tokens: 1000,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: WRITER_SYSTEM },
+        { role: 'system', content: ownHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
         {
           role: 'user',
           content: [
+            ownHeadline ? `GANCHO ESCRITO PELO AUTOR (use exatamente assim):\n${ownHeadline}` : '',
             transcript ? `TRANSCRIÇÃO DA FALA DO VÍDEO:\n${transcript.slice(0, 4000)}` : '',
             visual ? `DESCRIÇÃO DA IMAGEM DO VÍDEO:\n${visual}` : '',
           ].filter(Boolean).join('\n\n'),
@@ -526,13 +546,14 @@ router.post('/analyze', async (req, res) => {
     });
 
     const parsed = JSON.parse(ai.choices[0].message.content || '{}');
-    const headline = String(parsed.headline || '').trim();
+    const headline = ownHeadline || String(parsed.headline || '').trim();
     const caption = String(parsed.caption || '').trim();
     if (!headline) throw new Error('A IA não conseguiu escrever o gancho. Tente de novo.');
 
     cleanup();
     res.json({
       headline,
+      headlineFromUser: !!ownHeadline,
       caption,
       durationSec: Math.round(info.duration),
       willTrim: info.duration > MAX_CLIP_SEC,
