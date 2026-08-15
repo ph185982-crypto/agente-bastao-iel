@@ -453,16 +453,6 @@ const QUESTIONS = [
     ]
   },
   {
-    id:"whatsapp", scored:true,
-    title:"Cliente chama no WhatsApp fora do horário. O que acontece?",
-    options:[
-      {k:"A",label:"Respondo só quando vejo",pts:0,gap:["Leads perdidos fora do horário","Quem não é respondido em minutos compra do concorrente."]},
-      {k:"B",label:"Demora horas pra responder",pts:1,gap:["Resposta lenta no WhatsApp","Cada hora de demora derruba a chance de venda."]},
-      {k:"C",label:"Respondo rápido",pts:2,str:"Resposta rápida no WhatsApp"},
-      {k:"D",label:"Tenho atendimento automático",pts:3,str:"Atendimento automatizado"}
-    ]
-  },
-  {
     id:"metricas", scored:true,
     title:"Você sabe quantos clientes novos vêm da internet por mês?",
     options:[
@@ -662,7 +652,6 @@ function buildWhatsApp(score,tier,gaps){
   msg += `Aparece no Google: ${val('google')}\n`;
   msg += `Como os clientes me encontram: ${val('aquisicao')}\n`;
   msg += `Constância no Instagram: ${val('instagram')}\n`;
-  msg += `WhatsApp fora do horário: ${val('whatsapp')}\n`;
   msg += `Mede clientes vindos da internet: ${val('metricas')}\n`;
   if(gaps.length){
     msg += `\n*Vulnerabilidades apontadas*\n`;
