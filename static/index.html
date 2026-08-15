@@ -718,7 +718,7 @@
                   <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Gancho</span>
                   <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">OPCIONAL</span>
                 </div>
-                <textarea id="veHeadlineManual" rows="3" placeholder="Escreva seu gancho aqui..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
+                <textarea id="veHeadlineManual" rows="3" maxlength="140" placeholder="Escreva seu gancho aqui..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
                 <div style="font-size: 11px; color: #86868B; margin-top: 6px">Deixe em branco que a IA escreve o gancho pra você</div>
               </div>
             </div>
@@ -1296,7 +1296,7 @@ class Component extends DCLogic {
       this.setState({ veProgressText: msgsAnalyze[i] });
     }, 8000);
 
-    let headline, caption;
+    let headline, caption, trimNotice;
     try {
       const res = await fetch('/api/video-editor/analyze', {
         method: 'POST',
@@ -1310,6 +1310,9 @@ class Component extends DCLogic {
       const data = await res.json();
       headline = data.headline || '';
       caption = data.caption || '';
+      trimNotice = data.willTrim
+        ? `Vídeo tem ${data.durationSec}s — usando os primeiros ${data.maxClipSec}s...`
+        : null;
     } finally {
       clearInterval(timer);
     }
@@ -1317,7 +1320,7 @@ class Component extends DCLogic {
     // encadeia direto pro render — sem esperar outro clique
     this.setState({
       veStep: 'rendering', veCaption: caption,
-      veProgressText: 'Recortando e montando...',
+      veProgressText: trimNotice || 'Recortando e montando...',
     });
 
     const msgsRender = ['Recortando e montando...', 'Ajustando imagem e som...', 'Finalizando o arquivo...'];
