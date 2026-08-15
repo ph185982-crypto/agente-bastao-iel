@@ -16,7 +16,7 @@ const OpenAI = require('openai');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
-const { createCompatClient } = require('../lib/llm');
+const { createCompatClient, friendlyErrorMessage } = require('../lib/llm');
 const { PEDRO_DNA, LINGUAGEM_LEIGO, PROFILE_HANDLE, PROFILE_NAME } = require('../lib/pedroDna');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -29,6 +29,19 @@ ffmpeg.setFfprobePath(require('ffprobe-static').path);
 
 const llm = createCompatClient();
 const router = express.Router();
+
+// Erro técnico de provedor (OpenAI/Groq/axios) vira mensagem amigável; erro de
+// negócio (já escrito em português por este arquivo) passa direto.
+function safeErrorMessage(e) {
+  if (e?.status) return friendlyErrorMessage(e);
+  if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNABORTED' || /timeout/i.test(e?.message || '')) {
+    return 'Isso demorou mais que o esperado. Tente novamente ou use um vídeo mais curto.';
+  }
+  return e?.message || 'Não foi possível processar o vídeo agora. Tente novamente.';
+}
+
+// Verificado é opcional e específico do perfil — não assumir por padrão.
+const PROFILE_VERIFIED = String(process.env.PROFILE_VERIFIED || '').toLowerCase() === 'true';
 
 // ── Layout (mesmo perfil de saída das outras rotas de vídeo) ──────────────────
 const W = 720;
@@ -86,8 +99,17 @@ function fitText(text, { maxFont, minFont, boxW, boxH, charRatio = 0.60, lineRat
     const lineH = fontSize * lineRatio;
     if (lines.length * lineH <= boxH) return { fontSize, lines, lineH };
   }
+  // Nem no fontSize mínimo coube — trunca (com reticências) em vez de deixar
+  // o bloco de texto invadir o espaço reservado ao vídeo.
   const maxChars = Math.max(6, Math.floor(boxW / (minFont * charRatio)));
-  return { fontSize: minFont, lines: wrapText(text, maxChars), lineH: minFont * lineRatio };
+  const lineH = minFont * lineRatio;
+  const maxLines = Math.max(1, Math.floor(boxH / lineH));
+  let lines = wrapText(text, maxChars);
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    lines[maxLines - 1] = lines[maxLines - 1].replace(/\s*\S*$/, '').trim() + '…';
+  }
+  return { fontSize: minFont, lines, lineH };
 }
 
 // ── Avatar do perfil ──────────────────────────────────────────────────────────
@@ -184,7 +206,10 @@ async function buildFramePng(headline, bgPath) {
   const lines = fit.lines;
   const headTop = HEADER_BOTTOM + 46;
   const headBlockH = lines.length * fit.lineH;
-  const videoY = Math.round(headTop + headBlockH + 34);
+  // Reserva um mínimo de altura pro vídeo mesmo num cenário extremo de texto —
+  // segunda camada de defesa além do truncamento em fitText().
+  const MIN_VIDEO_H = 500;
+  const videoY = Math.min(Math.round(headTop + headBlockH + 34), H - MIN_VIDEO_H);
 
   const nameSize = 42;
   const handleSize = 32;
@@ -202,7 +227,7 @@ async function buildFramePng(headline, bgPath) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
     <rect width="${W}" height="${H}" fill="white"/>
     <text x="${NAME_X}" y="${nameY}" font-family="${FONT_BLACK}" font-size="${nameSize}" fill="#0A0A0A">${escXml(PROFILE_NAME)}</text>
-    ${verifiedBadgeSvg(NAME_X + nameW + badgeR + 14, nameY - nameSize * 0.34, badgeR)}
+    ${PROFILE_VERIFIED ? verifiedBadgeSvg(NAME_X + nameW + badgeR + 14, nameY - nameSize * 0.34, badgeR) : ''}
     <text x="${NAME_X}" y="${handleY}" font-family="${FONT_BODY}" font-size="${handleSize}" fill="#3C3C43">${escXml(PROFILE_HANDLE)}</text>
     ${headEls}
   </svg>`;
@@ -269,7 +294,23 @@ function rawVideoCachePath(instagramUrl) {
   return path.join(os.tmpdir(), `ve_raw_${key}.mp4`);
 }
 
+// Varredura best-effort do /tmp: apaga caches de vídeo abandonados (sessão que
+// fez /analyze mas nunca chegou no /render) — sem isso, ficam até o container reciclar.
+function sweepStaleVideoCache() {
+  try {
+    const now = Date.now();
+    for (const name of fs.readdirSync(os.tmpdir())) {
+      if (!name.startsWith('ve_raw_')) continue;
+      const p = path.join(os.tmpdir(), name);
+      try {
+        if (now - fs.statSync(p).mtimeMs > 10 * 60 * 1000) fs.unlinkSync(p);
+      } catch {}
+    }
+  } catch {}
+}
+
 async function getOrDownloadVideo(instagramUrl, destPath) {
+  sweepStaleVideoCache();
   const cachePath = rawVideoCachePath(instagramUrl);
   try {
     if (fs.existsSync(cachePath)) {
@@ -372,7 +413,7 @@ async function detectContentRegion(videoPath, vw, vh, sid) {
   try {
     await extractFrame(videoPath, 1, framePath);
     const base64 = fs.readFileSync(framePath).toString('base64');
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000 });
     const res = await client.chat.completions.create({
       model: 'gpt-4o',
       max_tokens: 60,
@@ -442,7 +483,7 @@ async function transcribeAudio(audioPath) {
 
   if (process.env.OPENAI_API_KEY) {
     try {
-      return await attempt(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), 'whisper-1');
+      return await attempt(new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30000 }), 'whisper-1');
     } catch (err) {
       if (!process.env.GROQ_API_KEY) throw err;
       console.warn('[videoEditor] OpenAI whisper falhou, tentando Groq:', err.message?.slice(0, 120));
@@ -450,7 +491,7 @@ async function transcribeAudio(audioPath) {
   }
   if (!process.env.GROQ_API_KEY) throw new Error('Nenhuma chave de transcrição configurada');
   return attempt(
-    new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' }),
+    new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1', timeout: 30000 }),
     'whisper-large-v3'
   );
 }
@@ -462,7 +503,7 @@ async function describeFrame(videoPath, atSec, sid) {
   try {
     await extractFrame(videoPath, atSec, framePath);
     const base64 = fs.readFileSync(framePath).toString('base64');
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000 });
     const res = await client.chat.completions.create({
       model: 'gpt-4o',
       max_tokens: 220,
@@ -512,6 +553,7 @@ const REGRAS_CAPTION = `"caption" — a legenda do post. Regras:
 const WRITER_SYSTEM = `${WRITER_BASE} Escreva:
 
 1. ${REGRAS_HEADLINE}
+   Se a FALA do vídeo já abrir com um gancho forte, pronto e dentro dessas regras, reaproveite esse gancho (pode limpar pontuação/repetição, sem mudar o sentido) em vez de inventar um novo. Só reaproveite se ele for realmente bom pelas mesmas regras acima — na dúvida, escreva um gancho novo do zero.
 
 2. ${REGRAS_CAPTION}
 
@@ -526,17 +568,6 @@ ${REGRAS_CAPTION}
 
 Responda APENAS JSON: {"caption":"..."}`;
 
-// Extrai primeira frase da transcrição para usar como headline quando não houver input manual
-function extractFirstSentence(text) {
-  if (!text) return '';
-  const match = text.match(/^([^.!?]+[.!?])/);
-  if (!match) return '';
-  const sentence = match[1].trim();
-  // Só usa se tiver entre 10 e 120 chars (gancho nem muito curto nem muito longo)
-  if (sentence.length >= 10 && sentence.length <= 120) return sentence;
-  return '';
-}
-
 router.post('/analyze', async (req, res) => {
   const sid = crypto.randomUUID();
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
@@ -549,8 +580,9 @@ router.post('/analyze', async (req, res) => {
     const { instagramUrl, headline: userHeadline } = req.body || {};
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'Cole o link do vídeo do Instagram' });
 
-    // Gancho escrito pelo usuário é respeitado como está; vazio = tenta extrair da transcrição ou a IA escreve
-    const ownHeadline = String(userHeadline || '').trim();
+    // Gancho escrito pelo usuário é respeitado como está; vazio = a IA escreve (podendo
+    // reaproveitar um gancho forte que já exista na fala do vídeo — ver WRITER_SYSTEM)
+    const ownHeadline = String(userHeadline || '').trim().slice(0, 140);
 
     await getOrDownloadVideo(instagramUrl.trim(), rawVideo);
 
@@ -574,12 +606,10 @@ router.post('/analyze', async (req, res) => {
       throw new Error('Não consegui entender o conteúdo desse vídeo (sem fala e sem leitura de imagem disponível).');
     }
 
-    // Se usuário não preencheu headline, tenta usar a primeira frase da transcrição
-    let headlineFromTranscript = '';
-    if (!ownHeadline && transcript) {
-      headlineFromTranscript = extractFirstSentence(transcript);
+    // Gancho manual só pode ter texto de verdade — não pode ser só emoji
+    if (ownHeadline && !stripEmoji(ownHeadline).trim()) {
+      throw new Error('O gancho não pode ser só emoji — adicione texto.');
     }
-    const finalHeadline = ownHeadline || headlineFromTranscript;
 
     const ai = await llm.chat.completions.create({
       model: 'gpt-4o',
@@ -587,28 +617,29 @@ router.post('/analyze', async (req, res) => {
       max_tokens: 1000,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: finalHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
+        { role: 'system', content: ownHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
         {
           role: 'user',
           content: [
-            finalHeadline ? `GANCHO (use exatamente assim):\n${finalHeadline}` : '',
+            ownHeadline ? `GANCHO (use exatamente assim):\n${ownHeadline}` : '',
             transcript ? `TRANSCRIÇÃO DA FALA DO VÍDEO:\n${transcript.slice(0, 4000)}` : '',
             visual ? `DESCRIÇÃO DA IMAGEM DO VÍDEO:\n${visual}` : '',
           ].filter(Boolean).join('\n\n'),
         },
       ],
-    });
+    }, { timeout: 25000 });
 
     const parsed = JSON.parse(ai.choices[0].message.content || '{}');
-    const headline = finalHeadline || String(parsed.headline || '').trim();
+    const headline = ownHeadline || String(parsed.headline || '').trim();
     const caption = String(parsed.caption || '').trim();
-    if (!headline) throw new Error('A IA não conseguiu escrever o gancho. Tente de novo.');
+    if (!headline || !stripEmoji(headline).trim()) {
+      throw new Error('A IA não conseguiu escrever o gancho. Tente de novo.');
+    }
 
     cleanup();
     res.json({
       headline,
       headlineFromUser: !!ownHeadline,
-      headlineFromTranscript: !!headlineFromTranscript,
       caption,
       durationSec: Math.round(info.duration),
       willTrim: info.duration > MAX_CLIP_SEC,
@@ -617,7 +648,7 @@ router.post('/analyze', async (req, res) => {
   } catch (e) {
     cleanup();
     console.error('[videoEditor/analyze]', e.message);
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: safeErrorMessage(e) });
   }
 });
 
@@ -672,10 +703,13 @@ router.post('/render', async (req, res) => {
     try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
   });
 
+  const cleanOutput = () => { try { if (fs.existsSync(output)) fs.unlinkSync(output); } catch {} };
+
   try {
     const { instagramUrl, headline, caption } = req.body || {};
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'Cole o link do vídeo do Instagram' });
     if (!String(headline || '').trim()) return res.status(400).json({ error: 'O gancho é obrigatório' });
+    if (!stripEmoji(headline).trim()) return res.status(400).json({ error: 'O gancho não pode ser só emoji — adicione texto.' });
 
     await getOrDownloadVideo(instagramUrl.trim(), rawVideo);
 
@@ -685,22 +719,24 @@ router.post('/render', async (req, res) => {
 
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Disposition', 'attachment; filename="reel_pronto.mp4"');
-    res.setHeader('X-Headline', encodeURIComponent(headline));
-    res.setHeader('X-Caption', encodeURIComponent(caption || ''));
-    res.setHeader('Access-Control-Expose-Headers', 'X-Headline, X-Caption');
+
+    // Se o cliente cancelar (fechar aba, perder conexão) no meio do envio, o
+    // arquivo temporário não pode ficar órfão em /tmp.
+    res.on('close', cleanOutput);
 
     const stream = fs.createReadStream(output);
     stream.pipe(res);
-    stream.on('end', () => { try { fs.unlinkSync(output); } catch {} });
+    stream.on('end', () => { res.removeListener('close', cleanOutput); cleanOutput(); });
     stream.on('error', err => {
       console.error('[videoEditor] stream error:', err.message);
+      cleanOutput();
       if (!res.headersSent) res.status(500).json({ error: 'Erro ao enviar o vídeo' });
     });
   } catch (e) {
     cleanTmp();
-    try { if (fs.existsSync(output)) fs.unlinkSync(output); } catch {}
+    cleanOutput();
     console.error('[videoEditor/render]', e.message);
-    if (!res.headersSent) res.status(500).json({ error: e.message });
+    if (!res.headersSent) res.status(500).json({ error: safeErrorMessage(e) });
   }
 });
 

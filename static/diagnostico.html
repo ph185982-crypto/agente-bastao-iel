@@ -641,7 +641,11 @@ function countUp(target){
 
 function buildWhatsApp(score,tier,gaps){
   const val = id => (answers[id] && answers[id].label) || "-";
-  let msg = `Olá! Vim pelo site da Nexos e acabei de fazer o diagnóstico do meu negócio.\n\n`;
+  const billingTier = (answers.faturamento && answers.faturamento.tier) || 0;
+  // Lead de alto faturamento com baixa maturidade digital = maior urgência de atendimento
+  const isPriority = billingTier>=3 && score<=70;
+  let msg = isPriority ? `🔥 *LEAD PRIORITÁRIO*\n\n` : '';
+  msg += `Olá! Vim pelo site da Nexos e acabei de fazer o diagnóstico do meu negócio.\n\n`;
   msg += `*Meu resultado*\n`;
   msg += `Índice de Presença Digital: ${score}/100 (${tier})\n\n`;
   msg += `*Meu negócio*\n`;

@@ -46,13 +46,15 @@ function createCompatClient() {
   return {
     chat: {
       completions: {
-        create: async (opts) => {
+        // requestOptions (2º argumento) é passado direto pro SDK — usado pra
+        // limitar `timeout` sem contaminar o body da requisição.
+        create: async (opts, requestOptions) => {
           const { client, provider } = getClient();
           const model = provider === 'groq'
             ? (MODEL_MAP[opts.model] || opts.model || 'llama-3.3-70b-versatile')
             : (opts.model || 'gpt-4o');
           try {
-            return await client.chat.completions.create({ ...opts, model });
+            return await client.chat.completions.create({ ...opts, model }, requestOptions);
           } catch (err) {
             if (provider !== 'openai') throw err;
 
@@ -64,7 +66,7 @@ function createCompatClient() {
               _client = groq;
               _provider = 'groq';
               const groqModel = MODEL_MAP[opts.model] || 'llama-3.3-70b-versatile';
-              return await groq.chat.completions.create({ ...opts, model: groqModel });
+              return await groq.chat.completions.create({ ...opts, model: groqModel }, requestOptions);
             }
 
             if (isQuotaError(err)) {
@@ -73,7 +75,7 @@ function createCompatClient() {
               if (!groq) throw err;
               console.warn('[llm] OpenAI quota excedida, usando Groq nesta chamada:', err.message?.slice(0, 120));
               const groqModel = MODEL_MAP[opts.model] || 'llama-3.3-70b-versatile';
-              return await groq.chat.completions.create({ ...opts, model: groqModel });
+              return await groq.chat.completions.create({ ...opts, model: groqModel }, requestOptions);
             }
 
             throw err;
