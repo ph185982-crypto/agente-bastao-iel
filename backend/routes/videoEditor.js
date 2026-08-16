@@ -423,23 +423,26 @@ async function readFramePlan(videoPath, vw, vh, sid) {
           role: 'system',
           content: `You analyze one frame from a short vertical video.
 
-This clip is often a "repost": someone's edit where an editorial HEADLINE was written on a solid (white/black/colored) band above or below the actual footage. We rebuild that layout with our own branding, so we need two things from this frame.
+This clip is often a "repost": someone's edit where an editorial HEADLINE was written on a solid-color band (white, black, or any other flat color — no picture visible behind the text) stacked above or below the actual footage. We rebuild that layout with our own branding, so we need two things from this frame.
 
 Return JSON:
 {"headline": string, "top": number, "bottom": number, "left": number, "right": number}
 
-"headline" — the editorial headline/title text baked onto a solid band in this frame, transcribed EXACTLY as written (keep original wording, accents and capitalization; join wrapped lines with a single space).
+"headline" — the editorial headline/title text baked onto a solid band in this frame, transcribed EXACTLY as written (keep original wording, accents, emoji and capitalization; join wrapped lines with a single space).
 - Only text that reads as a written headline/title about the content.
 - NOT the username/handle/@, NOT "seguir"/"follow" buttons, NOT UI labels, NOT timestamps.
-- NOT burned-in speech subtitles that sit over the footage itself.
+- NOT subtitles that sit ON TOP of the visible footage picture.
 - If there is no such headline band, return "".
 
 "top"/"bottom"/"left"/"right" — the rectangle of the pure footage (photo/video), as integers 0-100 percent of the frame; top/bottom measured from the TOP edge, left/right from the LEFT edge.
-- EXCLUDE: the headline band, black bars, solid margins, app chrome (status bar, avatar+username row, navigation).
-- KEEP the whole footage: never crop into it, never cut off a head, face, or subtitles burned over the footage.
-- Subtitles sitting ON TOP of the footage are part of the footage: keep them.
-- If the footage already fills the frame: top 0, bottom 100, left 0, right 100.
-- When unsure whether something belongs to the footage, keep it.`,
+
+The KEY test to decide what's "footage" vs. "band": can you see picture/scene behind the text?
+- If text sits on a FLAT, solid-color rectangle with NO picture visible around or behind it (any color — white, black, gray, brand color), that whole rectangle is a caption/title BAND. EXCLUDE it, however short or long, however many lines, with or without emoji.
+- If text is overlaid directly on top of the visible photo/video picture (you can see the scene behind/around the letters, even if there's a semi-transparent dark box just tightly hugging the text) — that's a subtitle and IS part of the footage. KEEP it.
+- Also EXCLUDE: black bars, solid margins, app chrome (status bar, avatar+username row, navigation).
+- Never crop INTO the footage itself once you've found where it starts/ends — never cut off a head or face.
+- If the footage already fills the frame with zero bands: top 0, bottom 100, left 0, right 100.
+- A frame can have a band at the top AND still have subtitles further down sitting on the footage — only cut the band, keep the footage (subtitles included) intact.`,
         },
         {
           role: 'user',
@@ -477,12 +480,67 @@ Return JSON:
       region = null;
     }
 
+    // Segunda passada: o primeiro palpite às vezes deixa passar uma faixa
+    // (ex: fundo preto confundido com legenda-sobre-vídeo). Confere o recorte
+    // já feito e aperta mais se ainda sobrou banda de texto.
+    if (region) region = await verifyCropIsClean(client, framePath, region, vw, vh);
+
     return { region, bakedHeadline: cleanBakedHeadline(p.headline) };
   } catch (e) {
     console.warn('[videoEditor] leitura do frame falhou:', e.message);
     return empty;
   } finally {
     try { if (fs.existsSync(framePath)) fs.unlinkSync(framePath); } catch {}
+  }
+}
+
+// Confere o recorte já proposto: corta o frame original pra essa região e
+// pergunta de novo, olhando só o resultado, se ainda sobrou faixa de legenda
+// nas bordas. Pega os casos em que o primeiro palpite classificou errado uma
+// banda escura como "legenda sobre o vídeo" (que deveria ficar).
+async function verifyCropIsClean(client, framePath, region, vw, vh) {
+  try {
+    const cropped = await sharp(framePath)
+      .extract({ left: region.cropX, top: region.cropY, width: region.cropW, height: region.cropH })
+      .resize({ width: 640, withoutEnlargement: true })
+      .jpeg({ quality: 82 })
+      .toBuffer();
+    const base64 = cropped.toString('base64');
+    const res = await client.chat.completions.create({
+      model: 'gpt-4o',
+      max_tokens: 80,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `This image was already cropped to keep only footage. Check the TOP and BOTTOM edges for a leftover caption/title band — text sitting on a flat solid-color strip with NO picture visible behind it (any color). Text overlaid directly on visible footage (subtitles) is fine and NOT a band.
+
+Return JSON: {"trimTopPct": number, "trimBottomPct": number} — percent (0-40) of THIS image's height still to shave off the top/bottom to remove a leftover band. 0 if that edge is already clean.`,
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'low' } },
+            { type: 'text', text: 'Any leftover caption band at the top or bottom?' },
+          ],
+        },
+      ],
+    }, { timeout: 15000 });
+    const p = JSON.parse(res.choices[0].message.content || '{}');
+    const trimTop = Math.max(0, Math.min(40, parseFloat(p.trimTopPct) || 0));
+    const trimBottom = Math.max(0, Math.min(40, parseFloat(p.trimBottomPct) || 0));
+    if (!trimTop && !trimBottom) return region;
+
+    const cutTop = Math.round(region.cropH * trimTop / 100);
+    const cutBottom = Math.round(region.cropH * trimBottom / 100);
+    const newH = region.cropH - cutTop - cutBottom;
+    if (newH < region.cropH * 0.4) return region; // corte agressivo demais — não confia
+
+    console.log(`[videoEditor] verificação apertou o recorte (topo -${trimTop.toFixed(0)}%, base -${trimBottom.toFixed(0)}%)`);
+    return { cropX: region.cropX, cropY: region.cropY + cutTop, cropW: region.cropW, cropH: newH };
+  } catch (e) {
+    console.warn('[videoEditor] verificação de recorte falhou, mantendo o primeiro palpite:', e.message);
+    return region;
   }
 }
 
