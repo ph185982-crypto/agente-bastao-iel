@@ -401,13 +401,139 @@ function extractFrame(videoPath, atSec, framePath) {
   });
 }
 
-// Lê UM frame e resolve duas coisas de uma vez:
-//  1. o gancho que o autor original já escreveu queimado no vídeo (quando existe);
-//  2. o retângulo com a mídia pura, pra cortar fora essa faixa de texto.
-// São a mesma pergunta na prática — pra excluir a faixa, o modelo precisa achá-la
-// e ler o que está escrito nela. Por isso vale uma chamada só.
+// ── Onde o vídeo está passando: detecção por MOVIMENTO ────────────────────────
+// O sinal mais confiável de "aqui é vídeo" não é cor nem texto: é que a imagem
+// MUDA de um frame pro outro. Faixa de título, legenda do post e interface do
+// app ficam paradas; só a filmagem se mexe. Comparando vários frames dá pra
+// isolar exatamente a região que se move — sem depender do olho da IA.
+function extractFrameSeries(videoPath, dir, seconds = 12) {
+  return new Promise((resolve, reject) => {
+    const pattern = path.join(dir, 'm%03d.jpg');
+    const proc = spawn(ffmpegStatic, [
+      '-t', String(seconds), '-i', videoPath,
+      '-vf', 'fps=2,scale=160:-2', '-q:v', '4', '-y', pattern,
+    ]);
+    const timer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} reject(new Error('series timeout')); }, 20000);
+    proc.on('close', code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`series exit ${code}`)); });
+    proc.on('error', err => { clearTimeout(timer); reject(err); });
+  });
+}
+
+// Acha a maior faixa contínua de índices "ativos", tolerando pequenos buracos
+// (uma linha isolada parada no meio da filmagem não deve quebrar a faixa).
+function longestActiveRun(active, maxGap) {
+  let best = null, start = -1, lastOn = -1;
+  for (let i = 0; i < active.length; i++) {
+    if (active[i]) {
+      if (start < 0) start = i;
+      lastOn = i;
+    } else if (start >= 0 && i - lastOn > maxGap) {
+      if (!best || lastOn - start > best.end - best.start) best = { start, end: lastOn };
+      start = -1;
+    }
+  }
+  if (start >= 0 && (!best || lastOn - start > best.end - best.start)) best = { start, end: lastOn };
+  return best;
+}
+
+async function detectMotionRegion(videoPath, vw, vh, sid) {
+  const dir = path.join(os.tmpdir(), `mo_${sid}`);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    await extractFrameSeries(videoPath, dir);
+
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.jpg')).sort();
+    if (files.length < 3) return null;
+
+    const frames = [];
+    for (const f of files) {
+      const { data, info } = await sharp(path.join(dir, f))
+        .greyscale().raw().toBuffer({ resolveWithObject: true });
+      frames.push({ data, w: info.width, h: info.height });
+    }
+    const { w, h } = frames[0];
+    if (!w || !h || frames.some(f => f.w !== w || f.h !== h)) return null;
+
+    // Acumula quanto cada linha e cada coluna mudam ao longo do tempo
+    const rowDiff = new Float64Array(h);
+    const colDiff = new Float64Array(w);
+    for (let k = 1; k < frames.length; k++) {
+      const a = frames[k - 1].data, b = frames[k].data;
+      for (let y = 0; y < h; y++) {
+        const off = y * w;
+        for (let x = 0; x < w; x++) {
+          const d = Math.abs(a[off + x] - b[off + x]);
+          if (d > 8) { rowDiff[y] += d; colDiff[x] += d; }   // ignora ruído de compressão
+        }
+      }
+    }
+
+    // Normaliza pra "mudança média por pixel, por par de frames". Medido em
+    // vídeos reais: texto e interface parados dão exatamente 0.00; filmagem
+    // nunca fica abaixo de ~0.35, mesmo numa cena calma. Por isso o corte é
+    // por limiar ABSOLUTO perto de zero — separa parado de filmado. Um limiar
+    // relativo ao máximo (o que eu tinha antes) cortava trecho calmo de vídeo
+    // normal, achando que era texto.
+    const pairs = frames.length - 1;
+    const ATIVO = 0.15;
+    const rowNorm = Array.from(rowDiff, v => v / (w * pairs));
+    const colNorm = Array.from(colDiff, v => v / (h * pairs));
+    if (!rowNorm.some(v => v > ATIVO)) return null;          // vídeo totalmente parado
+
+    // Eixo VERTICAL é o confiável: faixa de título, legenda do post e barras da
+    // interface são sempre tiras horizontais — linhas inteiras paradas.
+    const rowRun = longestActiveRun(rowNorm.map(v => v > ATIVO), Math.max(2, Math.round(h * 0.03)));
+    if (!rowRun) return null;
+
+    // Eixo HORIZONTAL é traiçoeiro: um vídeo pode ter uma faixa lateral parada
+    // (parede, céu, fundo fixo) sem deixar de ser vídeo. Só aceita cortar a
+    // lateral se ainda sobrar a maior parte da largura — aí é margem de
+    // verdade, não cena parada.
+    const colRun = longestActiveRun(colNorm.map(v => v > ATIVO), Math.max(4, Math.round(w * 0.08)));
+    let left = 0, right = 1;
+    if (colRun) {
+      const cw = (colRun.end + 1 - colRun.start) / w;
+      if (cw >= 0.6) { left = colRun.start / w; right = (colRun.end + 1) / w; }
+      else console.log(`[videoEditor] corte lateral ignorado (só ${(cw * 100).toFixed(0)}% da largura se mexe)`);
+    }
+
+    const top = rowRun.start / h, bottom = (rowRun.end + 1) / h;
+
+    const region = {
+      cropX: Math.round(vw * left),
+      cropY: Math.round(vh * top),
+      cropW: Math.round(vw * (right - left)),
+      cropH: Math.round(vh * (bottom - top)),
+    };
+
+    const areaRatio = (region.cropW * region.cropH) / (vw * vh);
+    const shape = region.cropW / region.cropH;
+    if (areaRatio < 0.08 || shape < 0.2 || shape > 5) return null;
+
+    console.log(
+      `[videoEditor] movimento: vídeo em ${(top * 100).toFixed(0)}%–${(bottom * 100).toFixed(0)}% ` +
+      `da altura, ${(left * 100).toFixed(0)}%–${(right * 100).toFixed(0)}% da largura`
+    );
+    return region;
+  } catch (e) {
+    console.warn('[videoEditor] detecção por movimento falhou:', e.message);
+    return null;
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+// Resolve as duas perguntas do vídeo de origem:
+//  1. onde a filmagem está passando (recorte) — pelo MOVIMENTO, que é medida
+//     direta e não opinião: texto e interface ficam parados, filmagem se mexe;
+//  2. o gancho que o autor já escreveu queimado no vídeo (quando existe) — aí
+//     sim precisa da IA, porque é leitura de texto.
+// A visão só decide o recorte se a medição por movimento não conseguir (vídeo
+// praticamente estático, por exemplo).
 async function readFramePlan(videoPath, vw, vh, sid) {
-  const empty = { region: null, bakedHeadline: '' };
+  const motionRegion = await detectMotionRegion(videoPath, vw, vh, sid);
+
+  const empty = { region: motionRegion, bakedHeadline: '' };
   if (!process.env.OPENAI_API_KEY) return empty;   // Groq/llama não aceita imagem
 
   const framePath = path.join(os.tmpdir(), `${sid}_plan.jpg`);
@@ -496,9 +622,13 @@ More rules:
       region = null;
     }
 
-    // Segunda passada: o primeiro palpite às vezes deixa passar uma faixa
-    // (ex: fundo preto confundido com legenda-sobre-vídeo). Confere o recorte
-    // já feito e aperta mais se ainda sobrou banda de texto.
+    // Movimento é medição, visão é palpite: onde o movimento resolveu, ele manda.
+    if (motionRegion) {
+      console.log('[videoEditor] recorte definido pelo movimento (visão usada só pro gancho)');
+      return { region: motionRegion, bakedHeadline: cleanBakedHeadline(p.headline) };
+    }
+
+    // Sem movimento utilizável: usa o palpite da visão, conferido uma segunda vez
     if (region) region = await verifyCropIsClean(client, framePath, region, vw, vh);
 
     return { region, bakedHeadline: cleanBakedHeadline(p.headline) };
@@ -579,6 +709,8 @@ function cleanBakedHeadline(raw) {
 // Recorte usado na renderização. Se o /analyze já mandou o retângulo (caminho
 // normal), usa direto — a vision já rodou lá. Senão resolve aqui.
 async function detectContentRegion(videoPath, vw, vh, sid) {
+  const motion = await detectMotionRegion(videoPath, vw, vh, sid);
+  if (motion) return motion;
   const { region } = await readFramePlan(videoPath, vw, vh, sid);
   if (region) return region;
   const detected = await cropDetect(videoPath);
@@ -925,4 +1057,5 @@ module.exports = router;
 module.exports._internals = {
   buildFramePng, composeReel, stripEmoji, getOrDownloadVideo, rawVideoCachePath,
   cleanBakedHeadline, sanitizeCropRegion, readFramePlan,
+  detectMotionRegion, detectContentRegion, longestActiveRun,
 };
