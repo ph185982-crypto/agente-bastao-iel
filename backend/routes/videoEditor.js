@@ -30,10 +30,18 @@ ffmpeg.setFfprobePath(require('ffprobe-static').path);
 const llm = createCompatClient();
 const router = express.Router();
 
-// Erro técnico de provedor (OpenAI/Groq/axios) vira mensagem amigável; erro de
-// negócio (já escrito em português por este arquivo) passa direto.
+// Traduz o erro pro usuário. Cuidado importante: só chama a tradução de erro
+// de IA quando o erro veio MESMO de um modelo. O axios também põe `status` no
+// erro, então a versão antiga (que olhava só `status`) anunciava "IA
+// sobrecarregada" quando quem tinha estourado o limite era a API de download
+// do Instagram — mandando o usuário esperar por algo que nunca ia resolver.
 function safeErrorMessage(e) {
-  if (e?.status) return friendlyErrorMessage(e);
+  if (e?.isDownloadError) return e.message;                       // já em português e específico
+  const vemDeModelo = typeof e?.status === 'number' &&
+    (e?.name === 'APIError' || /openai|groq|api\.groq|completions|whisper/i.test(
+      `${e?.constructor?.name || ''} ${e?.message || ''} ${e?.request?.path || ''}`
+    ));
+  if (vemDeModelo) return friendlyErrorMessage(e);
   if (e?.code === 'ETIMEDOUT' || e?.code === 'ECONNABORTED' || /timeout/i.test(e?.message || '')) {
     return 'Isso demorou mais que o esperado. Tente novamente ou use um vídeo mais curto.';
   }
@@ -248,26 +256,83 @@ async function buildFramePng(headline, bgPath) {
 }
 
 // ── Instagram ─────────────────────────────────────────────────────────────────
-async function resolveInstagramUrl(instagramUrl) {
-  if (!process.env.RAPIDAPI_KEY) throw new Error('RAPIDAPI_KEY não configurada no servidor');
-  const { data } = await axios.get(
-    'https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert',
-    {
-      params: { url: instagramUrl.trim() },
-      headers: {
-        'x-rapidapi-host': 'instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com',
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-      },
-      timeout: 30000,
-    }
-  );
-  if (Array.isArray(data?.media)) {
-    const video = data.media.find(m => m.type === 'video' && m.url);
-    if (video) return video.url;
-    const any = data.media.find(m => m.url);
-    if (any) return any.url;
+// Erro de negócio já em português: sai pro usuário como está, sem passar pela
+// tradução de erro de IA. Sem `status`, justamente pra não ser confundido com
+// falha de modelo (era esse o bug: 429 do download virava "IA sobrecarregada").
+function erroDownload(msg) {
+  const e = new Error(msg);
+  e.isDownloadError = true;
+  return e;
+}
+
+// Traduz a falha da API de download pra causa real, que é o que o usuário
+// precisa saber pra decidir o que fazer.
+function traduzErroDownload(err) {
+  const status = err?.response?.status ?? err?.status;
+  const corpo = JSON.stringify(err?.response?.data || '').slice(0, 200).toLowerCase();
+
+  if (status === 429) {
+    const semCota = /quota|exceeded|monthly|limit reached/.test(corpo);
+    return erroDownload(semCota
+      ? 'O plano da API que baixa vídeos do Instagram esgotou a cota. É preciso renovar o plano no RapidAPI pra voltar a baixar.'
+      : 'A API que baixa vídeos do Instagram está recebendo pedidos demais. Espere cerca de um minuto e tente de novo.');
   }
-  throw new Error('Nenhum vídeo encontrado nesse link. Confirme que o post é público.');
+  if (status === 401 || status === 403) {
+    return erroDownload('A chave da API que baixa vídeos do Instagram foi recusada. Verifique a RAPIDAPI_KEY e a assinatura do serviço.');
+  }
+  if (status === 404) {
+    return erroDownload('Esse post não foi encontrado. Confirme se o link está certo e se o perfil é público.');
+  }
+  if (status >= 500) {
+    return erroDownload('A API que baixa vídeos do Instagram está fora do ar no momento. Tente de novo em alguns minutos.');
+  }
+  if (err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '')) {
+    return erroDownload('O download do vídeo demorou demais. Tente de novo, ou use um vídeo mais curto.');
+  }
+  return erroDownload('Não consegui baixar esse vídeo do Instagram. Confirme que o link está certo e que o post é público.');
+}
+
+const espera = ms => new Promise(r => setTimeout(r, ms));
+
+async function resolveInstagramUrl(instagramUrl) {
+  if (!process.env.RAPIDAPI_KEY) {
+    throw erroDownload('O serviço de download não está configurado no servidor (RAPIDAPI_KEY ausente).');
+  }
+
+  // 429/5xx costuma ser aperto momentâneo: tenta de novo antes de desistir.
+  let ultimoErro;
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    try {
+      const { data } = await axios.get(
+        'https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert',
+        {
+          params: { url: instagramUrl.trim() },
+          headers: {
+            'x-rapidapi-host': 'instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com',
+            'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+          },
+          timeout: 25000,
+        }
+      );
+      if (Array.isArray(data?.media)) {
+        const video = data.media.find(m => m.type === 'video' && m.url);
+        if (video) return video.url;
+        const any = data.media.find(m => m.url);
+        if (any) return any.url;
+      }
+      throw erroDownload('Nenhum vídeo encontrado nesse link. Confirme que o post é público.');
+    } catch (err) {
+      if (err?.isDownloadError) throw err;                 // erro definitivo
+      ultimoErro = err;
+      const status = err?.response?.status ?? err?.status;
+      const vaiTentarDeNovo = (status === 429 || status >= 500) && tentativa < 3;
+      if (!vaiTentarDeNovo) break;
+      const pausa = tentativa * 1500;
+      console.warn(`[videoEditor] download falhou (${status}), tentativa ${tentativa}/3 — repetindo em ${pausa}ms`);
+      await espera(pausa);
+    }
+  }
+  throw traduzErroDownload(ultimoErro);
 }
 
 function streamDownload(url, destPath, timeoutMs = 45000) {
@@ -1148,4 +1213,5 @@ module.exports._internals = {
   buildFramePng, composeReel, stripEmoji, getOrDownloadVideo, rawVideoCachePath,
   cleanBakedHeadline, sanitizeCropRegion, readFramePlan,
   detectMotionRegion, detectContentRegion, longestActiveRun,
+  safeErrorMessage, traduzErroDownload, resolveInstagramUrl,
 };
