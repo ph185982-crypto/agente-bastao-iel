@@ -400,55 +400,59 @@ function extractFrame(videoPath, atSec, framePath) {
   });
 }
 
-// Região visual do conteúdo: SÓ a mídia pura (foto/vídeo), sem nenhum texto que
-// já viesse gravado no vídeo original — a gente desenha nosso próprio cabeçalho
-// e gancho por cima, então legenda/título do vídeo-fonte tem que ser cortado fora.
-// Vision primeiro (entende texto, não só cor de fundo); cropDetect (barra preta,
-// grátis) só entra como fallback se não tiver chave OpenAI ou a vision falhar.
-async function detectContentRegion(videoPath, vw, vh, sid) {
-  if (!process.env.OPENAI_API_KEY) {
-    // Groq/llama não aceita imagem — sem vision só dá pra cortar barra preta
-    const detected = await cropDetect(videoPath);
-    return detected || { cropW: vw, cropH: vh, cropX: 0, cropY: 0 };
-  }
+// Lê UM frame e resolve duas coisas de uma vez:
+//  1. o gancho que o autor original já escreveu queimado no vídeo (quando existe);
+//  2. o retângulo com a mídia pura, pra cortar fora essa faixa de texto.
+// São a mesma pergunta na prática — pra excluir a faixa, o modelo precisa achá-la
+// e ler o que está escrito nela. Por isso vale uma chamada só.
+async function readFramePlan(videoPath, vw, vh, sid) {
+  const empty = { region: null, bakedHeadline: '' };
+  if (!process.env.OPENAI_API_KEY) return empty;   // Groq/llama não aceita imagem
 
-  const framePath = path.join(os.tmpdir(), `${sid}_crop.jpg`);
+  const framePath = path.join(os.tmpdir(), `${sid}_plan.jpg`);
   try {
     await extractFrame(videoPath, 1, framePath);
     const base64 = fs.readFileSync(framePath).toString('base64');
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000 });
+    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 25000 });
     const res = await client.chat.completions.create({
       model: 'gpt-4o',
-      max_tokens: 120,
+      max_tokens: 300,
       response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
-          content: `You crop video frames. Find the rectangle containing ONLY the real photo/video media, excluding text that is baked into the frame.
+          content: `You analyze one frame from a short vertical video.
 
-Context: this clip is often a "repost" — someone else's edit where a caption/title was added on a solid (white/black/colored) band above or below the actual footage. We draw our OWN header and hook separately, so that baked-in text band must be cut off. Keep ONLY the footage itself.
+This clip is often a "repost": someone's edit where an editorial HEADLINE was written on a solid (white/black/colored) band above or below the actual footage. We rebuild that layout with our own branding, so we need two things from this frame.
 
-Return JSON with four integers 0-100, each measured as a percentage of the frame:
-{"top": number, "bottom": number, "left": number, "right": number}
-where top/bottom are measured from the TOP edge, and left/right from the LEFT edge.
+Return JSON:
+{"headline": string, "top": number, "bottom": number, "left": number, "right": number}
 
-Rules:
-- EXCLUDE: caption/title bands, headlines, watermarks-on-solid-bars, black bars, solid margins, app chrome (status bar, avatar+username row, navigation).
-- KEEP: the entire footage rectangle. Do NOT crop into the footage itself — never cut off a person's head, face or the subtitles burned onto the footage.
-- Subtitles/lower-thirds that sit ON TOP of the footage (over the image, not on a separate solid band) are part of the footage: KEEP them.
-- If the footage already fills the whole frame: {"top":0,"bottom":100,"left":0,"right":100}.
-- Be conservative: when unsure whether something is part of the footage, keep it.`,
+"headline" — the editorial headline/title text baked onto a solid band in this frame, transcribed EXACTLY as written (keep original wording, accents and capitalization; join wrapped lines with a single space).
+- Only text that reads as a written headline/title about the content.
+- NOT the username/handle/@, NOT "seguir"/"follow" buttons, NOT UI labels, NOT timestamps.
+- NOT burned-in speech subtitles that sit over the footage itself.
+- If there is no such headline band, return "".
+
+"top"/"bottom"/"left"/"right" — the rectangle of the pure footage (photo/video), as integers 0-100 percent of the frame; top/bottom measured from the TOP edge, left/right from the LEFT edge.
+- EXCLUDE: the headline band, black bars, solid margins, app chrome (status bar, avatar+username row, navigation).
+- KEEP the whole footage: never crop into it, never cut off a head, face, or subtitles burned over the footage.
+- Subtitles sitting ON TOP of the footage are part of the footage: keep them.
+- If the footage already fills the frame: top 0, bottom 100, left 0, right 100.
+- When unsure whether something belongs to the footage, keep it.`,
         },
         {
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
-            { type: 'text', text: 'Give the footage rectangle, excluding any baked-in caption band.' },
+            { type: 'text', text: 'Transcribe the baked-in headline (if any) and give the footage rectangle.' },
           ],
         },
       ],
     });
+
     const p = JSON.parse(res.choices[0].message.content || '{}');
+
     const num = (v, dflt) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : dflt);
     let top = Math.max(0, Math.min(100, num(p.top, 0)));
     let bottom = Math.max(0, Math.min(100, num(p.bottom, 100)));
@@ -457,7 +461,7 @@ Rules:
     if (bottom <= top) { top = 0; bottom = 100; }
     if (right <= left) { left = 0; right = 100; }
 
-    const region = {
+    let region = {
       cropX: Math.round(vw * left / 100),
       cropY: Math.round(vh * top / 100),
       cropW: Math.round(vw * (right - left) / 100),
@@ -470,20 +474,49 @@ Rules:
     const areaRatio = (region.cropW * region.cropH) / (vw * vh);
     if (areaRatio < 0.45) {
       console.warn(`[videoEditor] recorte da vision descartado (área ${(areaRatio * 100).toFixed(0)}%)`);
-      const detected = await cropDetect(videoPath);
-      return detected || { cropW: vw, cropH: vh, cropX: 0, cropY: 0 };
+      region = null;
     }
-    return region;
+
+    return { region, bakedHeadline: cleanBakedHeadline(p.headline) };
   } catch (e) {
-    console.warn('[videoEditor] crop vision falhou, tentando barra preta:', e.message);
-    try {
-      const detected = await cropDetect(videoPath);
-      if (detected) return detected;
-    } catch {}
-    return { cropW: vw, cropH: vh, cropX: 0, cropY: 0 };
+    console.warn('[videoEditor] leitura do frame falhou:', e.message);
+    return empty;
   } finally {
     try { if (fs.existsSync(framePath)) fs.unlinkSync(framePath); } catch {}
   }
+}
+
+// O gancho lido do vídeo só serve se for mesmo uma frase editorial — descarta
+// @, sobra de interface e textos curtos/longos demais pra caber no layout.
+function cleanBakedHeadline(raw) {
+  const text = stripEmoji(String(raw || '')).replace(/\s+/g, ' ').trim().replace(/^["“”']|["“”']$/g, '').trim();
+  if (text.length < 12 || text.length > 140) return '';
+  if (/^@/.test(text)) return '';
+  if (!/\s/.test(text)) return '';                       // uma palavra só não é gancho
+  if (/^(seguir|follow|inscreva|compartilhar|curtir)\b/i.test(text)) return '';
+  return text;
+}
+
+// Recorte usado na renderização. Se o /analyze já mandou o retângulo (caminho
+// normal), usa direto — a vision já rodou lá. Senão resolve aqui.
+async function detectContentRegion(videoPath, vw, vh, sid) {
+  const { region } = await readFramePlan(videoPath, vw, vh, sid);
+  if (region) return region;
+  const detected = await cropDetect(videoPath);
+  return detected || { cropW: vw, cropH: vh, cropX: 0, cropY: 0 };
+}
+
+// Valida um retângulo vindo do cliente antes de deixar entrar no ffmpeg.
+function sanitizeCropRegion(crop, vw, vh) {
+  if (!crop || typeof crop !== 'object') return null;
+  const int = v => (Number.isFinite(parseInt(v)) ? parseInt(v) : NaN);
+  const cropX = int(crop.cropX), cropY = int(crop.cropY);
+  const cropW = int(crop.cropW), cropH = int(crop.cropH);
+  if ([cropX, cropY, cropW, cropH].some(Number.isNaN)) return null;
+  if (cropX < 0 || cropY < 0 || cropW < 16 || cropH < 16) return null;
+  if (cropX + cropW > vw || cropY + cropH > vh) return null;
+  if ((cropW * cropH) / (vw * vh) < 0.45) return null;
+  return { cropX, cropY, cropW, cropH };
 }
 
 // ── Entender o vídeo: transcrição do áudio ────────────────────────────────────
@@ -630,18 +663,27 @@ router.post('/analyze', async (req, res) => {
         console.warn('[videoEditor] transcrição indisponível:', e.message);
       }
     }
-    const visual = transcript.length > 80
-      ? ''
-      : await describeFrame(rawVideo, Math.min(2, info.duration / 2), sid);
-
-    if (!transcript && !visual) {
-      throw new Error('Não consegui entender o conteúdo desse vídeo (sem fala e sem leitura de imagem disponível).');
-    }
-
     // Gancho manual só pode ter texto de verdade — não pode ser só emoji
     if (ownHeadline && !stripEmoji(ownHeadline).trim()) {
       throw new Error('O gancho não pode ser só emoji — adicione texto.');
     }
+
+    // Uma leitura do frame resolve o gancho já queimado no vídeo E o recorte.
+    // O recorte volta pro cliente e é repassado ao /render, que então não
+    // precisa rodar visão de novo.
+    const { region, bakedHeadline } = await readFramePlan(rawVideo, info.width, info.height, sid);
+
+    const visual = transcript.length > 80
+      ? ''
+      : await describeFrame(rawVideo, Math.min(2, info.duration / 2), sid);
+
+    if (!transcript && !visual && !bakedHeadline) {
+      throw new Error('Não consegui entender o conteúdo desse vídeo (sem fala e sem leitura de imagem disponível).');
+    }
+
+    // Gancho que o autor original escreveu no vídeo vale como gancho pronto:
+    // é uma frase editorial de verdade, não um pedaço solto da fala.
+    const givenHeadline = ownHeadline || bakedHeadline;
 
     const ai = await llm.chat.completions.create({
       model: 'gpt-4o',
@@ -649,11 +691,11 @@ router.post('/analyze', async (req, res) => {
       max_tokens: 1000,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: ownHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
+        { role: 'system', content: givenHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
         {
           role: 'user',
           content: [
-            ownHeadline ? `GANCHO (use exatamente assim):\n${ownHeadline}` : '',
+            givenHeadline ? `GANCHO (use exatamente assim):\n${givenHeadline}` : '',
             transcript ? `TRANSCRIÇÃO DA FALA DO VÍDEO:\n${transcript.slice(0, 4000)}` : '',
             visual ? `DESCRIÇÃO DA IMAGEM DO VÍDEO:\n${visual}` : '',
           ].filter(Boolean).join('\n\n'),
@@ -662,7 +704,7 @@ router.post('/analyze', async (req, res) => {
     }, { timeout: 25000 });
 
     const parsed = JSON.parse(ai.choices[0].message.content || '{}');
-    const headline = ownHeadline || String(parsed.headline || '').trim();
+    const headline = givenHeadline || String(parsed.headline || '').trim();
     const caption = String(parsed.caption || '').trim();
     if (!headline || !stripEmoji(headline).trim()) {
       throw new Error('A IA não conseguiu escrever o gancho. Tente de novo.');
@@ -672,7 +714,9 @@ router.post('/analyze', async (req, res) => {
     res.json({
       headline,
       headlineFromUser: !!ownHeadline,
+      headlineFromVideo: !ownHeadline && !!bakedHeadline,
       caption,
+      crop: region,
       durationSec: Math.round(info.duration),
       willTrim: info.duration > MAX_CLIP_SEC,
       maxClipSec: MAX_CLIP_SEC,
@@ -686,11 +730,14 @@ router.post('/analyze', async (req, res) => {
 
 // Monta o reel final: recorta a região de conteúdo do vídeo e encaixa no frame
 // (cabeçalho + gancho). Devolve o caminho do MP4 gerado.
-async function composeReel({ videoPath, headline, bgPng, output, sid }) {
+async function composeReel({ videoPath, headline, bgPng, output, sid, crop }) {
   const { width: vw, height: vh, hasAudio, duration } = await getVideoInfo(videoPath);
   const clipDur = Math.min(duration, MAX_CLIP_SEC).toFixed(3);
 
-  const { cropW, cropH, cropX, cropY } = await detectContentRegion(videoPath, vw, vh, sid);
+  // Recorte já resolvido no /analyze chega pronto — evita rodar visão duas vezes
+  const preset = sanitizeCropRegion(crop, vw, vh);
+  const { cropW, cropH, cropX, cropY } = preset || await detectContentRegion(videoPath, vw, vh, sid);
+  if (preset) console.log('[videoEditor] usando recorte vindo do /analyze');
   const { videoY } = await buildFramePng(headline, bgPng);
   const videoH = H - videoY - 24;
 
@@ -770,14 +817,14 @@ router.post('/render', async (req, res) => {
   const cleanOutput = () => { try { if (fs.existsSync(output)) fs.unlinkSync(output); } catch {} };
 
   try {
-    const { instagramUrl, headline, caption } = req.body || {};
+    const { instagramUrl, headline, caption, crop } = req.body || {};
     if (!instagramUrl?.trim()) return res.status(400).json({ error: 'Cole o link do vídeo do Instagram' });
     if (!String(headline || '').trim()) return res.status(400).json({ error: 'O gancho é obrigatório' });
     if (!stripEmoji(headline).trim()) return res.status(400).json({ error: 'O gancho não pode ser só emoji — adicione texto.' });
 
     await getOrDownloadVideo(instagramUrl.trim(), rawVideo);
 
-    await composeReel({ videoPath: rawVideo, headline, bgPng, output, sid });
+    await composeReel({ videoPath: rawVideo, headline, bgPng, output, sid, crop });
     try { fs.unlinkSync(rawVideoCachePath(instagramUrl.trim())); } catch {}
     cleanTmp();
 
@@ -806,4 +853,7 @@ router.post('/render', async (req, res) => {
 
 module.exports = router;
 // Exposto para inspecionar layout e composição sem depender do Instagram
-module.exports._internals = { buildFramePng, composeReel, stripEmoji, getOrDownloadVideo, rawVideoCachePath };
+module.exports._internals = {
+  buildFramePng, composeReel, stripEmoji, getOrDownloadVideo, rawVideoCachePath,
+  cleanBakedHeadline, sanitizeCropRegion, readFramePlan,
+};
