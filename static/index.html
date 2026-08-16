@@ -1286,7 +1286,7 @@ class Component extends DCLogic {
       this.setState({ veProgressText: msgsAnalyze[i] });
     }, 8000);
 
-    let headline, caption, trimNotice;
+    let headline, caption, trimNotice, crop;
     try {
       const res = await fetch('/api/video-editor/analyze', {
         method: 'POST',
@@ -1300,6 +1300,7 @@ class Component extends DCLogic {
       const data = await res.json();
       headline = data.headline || '';
       caption = data.caption || '';
+      crop = data.crop || null;
       trimNotice = data.willTrim
         ? `Vídeo tem ${data.durationSec}s — usando os primeiros ${data.maxClipSec}s...`
         : null;
@@ -1324,7 +1325,7 @@ class Component extends DCLogic {
       const res = await fetch('/api/video-editor/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instagramUrl: link, headline, caption }),
+        body: JSON.stringify({ instagramUrl: link, headline, caption, crop }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
