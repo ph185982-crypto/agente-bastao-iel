@@ -40,8 +40,9 @@ function safeErrorMessage(e) {
   return e?.message || 'Não foi possível processar o vídeo agora. Tente novamente.';
 }
 
-// Verificado é opcional e específico do perfil — não assumir por padrão.
-const PROFILE_VERIFIED = String(process.env.PROFILE_VERIFIED || '').toLowerCase() === 'true';
+// Selo de verificado no cabeçalho. Ligado por padrão (o perfil é verificado);
+// dá pra desligar com PROFILE_VERIFIED=false.
+const PROFILE_VERIFIED = String(process.env.PROFILE_VERIFIED || 'true').toLowerCase() !== 'false';
 
 // ── Layout (mesmo perfil de saída das outras rotas de vídeo) ──────────────────
 const W = 720;
@@ -418,39 +419,61 @@ async function detectContentRegion(videoPath, vw, vh, sid) {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000 });
     const res = await client.chat.completions.create({
       model: 'gpt-4o',
-      max_tokens: 80,
+      max_tokens: 120,
       response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
-          content: `Analyze this video frame and find the region containing ONLY the pure photo/video media — no text.
+          content: `You crop video frames. Find the rectangle containing ONLY the real photo/video media, excluding text that is baked into the frame.
 
-We add our OWN header and hook on top of this video separately. Any caption, title, username, quote, or text overlay ALREADY baked into this frame — even if it looks like part of "the post" (e.g. a repost/curation screenshot with its own caption bar) — must be EXCLUDED. We only want the actual visual media: the photo, video, or animation itself.
+Context: this clip is often a "repost" — someone else's edit where a caption/title was added on a solid (white/black/colored) band above or below the actual footage. We draw our OWN header and hook separately, so that baked-in text band must be cut off. Keep ONLY the footage itself.
 
-Return JSON: {"startPct": number, "endPct": number} (integers 0-100, measured from the TOP of the image).
+Return JSON with four integers 0-100, each measured as a percentage of the frame:
+{"top": number, "bottom": number, "left": number, "right": number}
+where top/bottom are measured from the TOP edge, and left/right from the LEFT edge.
+
 Rules:
-- Exclude any baked-in text/caption/title bar (regardless of background color), black bars, white/colored margins, and app chrome (status bar, navigation, avatar+username rows).
-- Return just the boundaries of the media itself.
-- If the media fills the entire frame with no overlay at all: start=0, end=100.`,
+- EXCLUDE: caption/title bands, headlines, watermarks-on-solid-bars, black bars, solid margins, app chrome (status bar, avatar+username row, navigation).
+- KEEP: the entire footage rectangle. Do NOT crop into the footage itself — never cut off a person's head, face or the subtitles burned onto the footage.
+- Subtitles/lower-thirds that sit ON TOP of the footage (over the image, not on a separate solid band) are part of the footage: KEEP them.
+- If the footage already fills the whole frame: {"top":0,"bottom":100,"left":0,"right":100}.
+- Be conservative: when unsure whether something is part of the footage, keep it.`,
         },
         {
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'low' } },
-            { type: 'text', text: 'Where is the pure media, excluding any baked-in text?' },
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'high' } },
+            { type: 'text', text: 'Give the footage rectangle, excluding any baked-in caption band.' },
           ],
         },
       ],
     });
-    const parsed = JSON.parse(res.choices[0].message.content || '{}');
-    const startPct = Math.max(0, Math.min(99, parseInt(parsed.startPct) || 0));
-    const endPct = Math.max(1, Math.min(100, parseInt(parsed.endPct) || 100));
-    return {
-      cropW: vw,
-      cropH: Math.max(50, Math.round(vh * (endPct - startPct) / 100)),
-      cropX: 0,
-      cropY: Math.max(0, Math.round(vh * startPct / 100)),
+    const p = JSON.parse(res.choices[0].message.content || '{}');
+    const num = (v, dflt) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : dflt);
+    let top = Math.max(0, Math.min(100, num(p.top, 0)));
+    let bottom = Math.max(0, Math.min(100, num(p.bottom, 100)));
+    let left = Math.max(0, Math.min(100, num(p.left, 0)));
+    let right = Math.max(0, Math.min(100, num(p.right, 100)));
+    if (bottom <= top) { top = 0; bottom = 100; }
+    if (right <= left) { left = 0; right = 100; }
+
+    const region = {
+      cropX: Math.round(vw * left / 100),
+      cropY: Math.round(vh * top / 100),
+      cropW: Math.round(vw * (right - left) / 100),
+      cropH: Math.round(vh * (bottom - top) / 100),
     };
+
+    // Guarda-chuva contra alucinação: recorte que joga fora mais da metade da
+    // imagem quase sempre é erro do modelo — nesses casos é melhor usar o frame
+    // inteiro (sobra texto) do que entregar um vídeo com o rosto cortado.
+    const areaRatio = (region.cropW * region.cropH) / (vw * vh);
+    if (areaRatio < 0.45) {
+      console.warn(`[videoEditor] recorte da vision descartado (área ${(areaRatio * 100).toFixed(0)}%)`);
+      const detected = await cropDetect(videoPath);
+      return detected || { cropW: vw, cropH: vh, cropX: 0, cropY: 0 };
+    }
+    return region;
   } catch (e) {
     console.warn('[videoEditor] crop vision falhou, tentando barra preta:', e.message);
     try {
@@ -673,12 +696,44 @@ async function composeReel({ videoPath, headline, bgPng, output, sid }) {
 
   console.log(`[videoEditor] clip=${clipDur}s src=${vw}x${vh} crop=${cropW}x${cropH}@${cropX},${cropY} slot=${W}x${videoH}`);
 
+  // Como encaixar o clipe no espaço disponível:
+  //  - Se preencher a caixa toda (cover) descartar POUCO do conteúdo, faz isso —
+  //    fica cheio, sem tarja, e a perda é irrelevante.
+  //  - Se cover fosse cortar muito (clipe 9:16 numa caixa mais baixa, por ex.),
+  //    encaixa o vídeo INTEIRO e preenche a sobra com uma cópia borrada dele.
+  //    Cortar no centro nesse caso dava zoom absurdo, decepando rosto e a
+  //    legenda queimada do clipe.
+  const coverScale = Math.max(W / cropW, videoH / cropH);
+  const coverLoss = 1 - (W * videoH) / (cropW * coverScale * cropH * coverScale);
+  const useCover = coverLoss <= 0.18;
+
+  console.log(`[videoEditor] encaixe=${useCover ? 'cover' : 'fit+blur'} perda=${(coverLoss * 100).toFixed(0)}%`);
+
+  const prep = `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},` +
+    `eq=contrast=1.05:saturation=1.12,setpts=PTS-STARTPTS`;
+
+  const videoChain = useCover
+    ? [
+        `${prep},scale=${W}:${videoH}:force_original_aspect_ratio=increase,` +
+          `crop=${W}:${videoH}:(iw-${W})/2:(ih-${videoH})/2[vid]`,
+      ]
+    : (() => {
+        // blur barato: reduz, borra pequeno, amplia de volta
+        const blurW = Math.max(2, Math.round(W / 8 / 2) * 2);
+        const blurH = Math.max(2, Math.round(videoH / 8 / 2) * 2);
+        return [
+          `${prep},split=2[src][blursrc]`,
+          `[blursrc]scale=${blurW}:${blurH}:force_original_aspect_ratio=increase,` +
+            `crop=${blurW}:${blurH},gblur=sigma=4,` +
+            `scale=${W}:${videoH},eq=brightness=-0.08[blurbg]`,
+          `[src]scale=${W}:${videoH}:force_original_aspect_ratio=decrease:force_divisible_by=2[fit]`,
+          `[blurbg][fit]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vid]`,
+        ];
+      })();
+
   const filterGraph = [
     `[1:v]loop=loop=-1:size=1:start=0,scale=${W}:${H}[bg]`,
-    `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},` +
-      `scale=${W}:${videoH}:force_original_aspect_ratio=increase,` +
-      `crop=${W}:${videoH}:(iw-${W})/2:(ih-${videoH})/2,` +
-      `eq=contrast=1.05:saturation=1.12,setpts=PTS-STARTPTS[vid]`,
+    ...videoChain,
     `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
   ].join(';');
 
