@@ -422,28 +422,40 @@ async function readFramePlan(videoPath, vw, vh, sid) {
       messages: [
         {
           role: 'system',
-          content: `You analyze one frame from a short vertical video.
+          content: `You analyze one frame from a short vertical video and isolate the ACTUAL FOOTAGE — the moving picture itself — discarding every piece of text, banner and app interface around it.
 
-This clip is often a "repost": someone's edit where an editorial HEADLINE was written on a solid-color band (white, black, or any other flat color — no picture visible behind the text) stacked above or below the actual footage. We rebuild that layout with our own branding, so we need two things from this frame.
+Two common shapes:
+(a) "Repost edit": an editorial HEADLINE typed on a solid-color band (white, black, any flat color) stacked above or below the footage.
+(b) "Screen recording" of Instagram/TikTok/YouTube: someone filmed their phone screen, so the footage is a rectangle embedded in app interface.
 
 Return JSON:
 {"headline": string, "top": number, "bottom": number, "left": number, "right": number}
 
-"headline" — the editorial headline/title text baked onto a solid band in this frame, transcribed EXACTLY as written (keep original wording, accents, emoji and capitalization; join wrapped lines with a single space).
+"headline" — the editorial headline/title text typed on a solid band in this frame, transcribed EXACTLY as written (keep wording, accents, emoji, capitalization; join wrapped lines with one space).
 - Only text that reads as a written headline/title about the content.
-- NOT the username/handle/@, NOT "seguir"/"follow" buttons, NOT UI labels, NOT timestamps.
-- NOT subtitles that sit ON TOP of the visible footage picture.
+- NOT the username/handle/@, NOT "Seguir"/"Follow", NOT like/comment counts, NOT UI labels, NOT timestamps, NOT the post's own caption at the bottom of the app.
+- NOT subtitles sitting ON TOP of the footage picture.
 - If there is no such headline band, return "".
 
-"top"/"bottom"/"left"/"right" — the rectangle of the pure footage (photo/video), as integers 0-100 percent of the frame; top/bottom measured from the TOP edge, left/right from the LEFT edge.
+"top"/"bottom"/"left"/"right" — the rectangle of the footage ONLY, as integers 0-100 percent of the frame; top/bottom from the TOP edge, left/right from the LEFT edge.
 
-The KEY test to decide what's "footage" vs. "band": can you see picture/scene behind the text?
-- If text sits on a FLAT, solid-color rectangle with NO picture visible around or behind it (any color — white, black, gray, brand color), that whole rectangle is a caption/title BAND. EXCLUDE it, however short or long, however many lines, with or without emoji.
-- If text is overlaid directly on top of the visible photo/video picture (you can see the scene behind/around the letters, even if there's a semi-transparent dark box just tightly hugging the text) — that's a subtitle and IS part of the footage. KEEP it.
-- Also EXCLUDE: black bars, solid margins, app chrome (status bar, avatar+username row, navigation).
-- Never crop INTO the footage itself once you've found where it starts/ends — never cut off a head or face.
-- If the footage already fills the frame with zero bands: top 0, bottom 100, left 0, right 100.
-- A frame can have a band at the top AND still have subtitles further down sitting on the footage — only cut the band, keep the footage (subtitles included) intact.`,
+EXCLUDE, always — none of this is footage:
+- Headline/caption bands: text on a FLAT solid-color rectangle with no picture visible behind it (any color, any number of lines, emoji or not).
+- Phone status bar (clock, wifi, battery), and any home-indicator bar.
+- App chrome of a screen recording: the "Reels"/"Para você"/tab row at the top; the account row (profile picture + @handle + "Seguir"); the right-hand action rail (heart/comment/share/save icons and their counts); the post caption and music row at the bottom; the bottom navigation bar; progress/seek bars.
+- Black bars and flat solid margins.
+
+KEEP — this IS footage:
+- The moving picture rectangle itself, whole and uncut.
+- Subtitles/captions burned ON TOP of that picture (you can see the scene behind or around the letters, even inside a small box hugging the text). Keep them; they belong to the footage.
+
+The decisive test: can you see photographic/video scene behind it? Scene visible → footage. Flat color or app UI → cut.
+
+More rules:
+- The footage can be a small part of the frame (a screen recording often leaves it under half the image) — that is normal and expected. Report it truthfully; do not inflate the rectangle to cover more of the frame.
+- Once you locate the footage edges, do not crop further into it — never cut off a head or face.
+- If the footage genuinely fills the whole frame with no bands or UI: top 0, bottom 100, left 0, right 100.
+- A frame can have a band on top AND subtitles inside the footage below — cut only the band.`,
         },
         {
           role: 'user',
@@ -472,12 +484,15 @@ The KEY test to decide what's "footage" vs. "band": can you see picture/scene be
       cropH: Math.round(vh * (bottom - top) / 100),
     };
 
-    // Guarda-chuva contra alucinação: recorte que joga fora mais da metade da
-    // imagem quase sempre é erro do modelo — nesses casos é melhor usar o frame
-    // inteiro (sobra texto) do que entregar um vídeo com o rosto cortado.
+    // Guarda-chuva contra alucinação. Gravação de tela do Instagram deixa o
+    // vídeo em ~30% do frame (o resto é interface), então área pequena É o
+    // caso normal aqui — a trava antiga em 45% descartava justamente o
+    // recorte certo. Agora só barra o que é fisicamente implausível: um
+    // pedaço minúsculo ou uma tira muito fina.
     const areaRatio = (region.cropW * region.cropH) / (vw * vh);
-    if (areaRatio < 0.45) {
-      console.warn(`[videoEditor] recorte da vision descartado (área ${(areaRatio * 100).toFixed(0)}%)`);
+    const shape = region.cropW / region.cropH;
+    if (areaRatio < 0.10 || shape < 0.25 || shape > 4) {
+      console.warn(`[videoEditor] recorte implausível descartado (área ${(areaRatio * 100).toFixed(0)}%, proporção ${shape.toFixed(2)})`);
       region = null;
     }
 
@@ -514,15 +529,20 @@ async function verifyCropIsClean(client, framePath, region, vw, vh) {
       messages: [
         {
           role: 'system',
-          content: `This image was already cropped to keep only footage. Check the TOP and BOTTOM edges for a leftover caption/title band — text sitting on a flat solid-color strip with NO picture visible behind it (any color). Text overlaid directly on visible footage (subtitles) is fine and NOT a band.
+          content: `This image was already cropped to keep only video footage. Check the TOP and BOTTOM edges for anything left over that is NOT footage:
+- a caption/title band: text on a flat solid-color strip with no picture behind it (any color);
+- app interface from a screen recording: phone status bar, "Reels"/tab row, account row (profile picture + @handle + "Seguir"), post caption row, navigation bar, progress bar;
+- a flat solid margin or black bar.
 
-Return JSON: {"trimTopPct": number, "trimBottomPct": number} — percent (0-40) of THIS image's height still to shave off the top/bottom to remove a leftover band. 0 if that edge is already clean.`,
+Text sitting directly on top of the visible footage picture (subtitles) is fine — that is NOT leftover, leave it alone.
+
+Return JSON: {"trimTopPct": number, "trimBottomPct": number} — percent (0-40) of THIS image's height still to shave off each edge to remove leftovers. 0 if that edge is already clean footage.`,
         },
         {
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'low' } },
-            { type: 'text', text: 'Any leftover caption band at the top or bottom?' },
+            { type: 'text', text: 'Anything left at the top or bottom that is not footage?' },
           ],
         },
       ],
@@ -574,7 +594,9 @@ function sanitizeCropRegion(crop, vw, vh) {
   if ([cropX, cropY, cropW, cropH].some(Number.isNaN)) return null;
   if (cropX < 0 || cropY < 0 || cropW < 16 || cropH < 16) return null;
   if (cropX + cropW > vw || cropY + cropH > vh) return null;
-  if ((cropW * cropH) / (vw * vh) < 0.45) return null;
+  // mesmo critério do readFramePlan: gravação de tela deixa o vídeo pequeno
+  const shape = cropW / cropH;
+  if ((cropW * cropH) / (vw * vh) < 0.10 || shape < 0.25 || shape > 4) return null;
   return { cropX, cropY, cropW, cropH };
 }
 
