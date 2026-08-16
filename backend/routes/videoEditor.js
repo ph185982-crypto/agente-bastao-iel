@@ -436,6 +436,90 @@ function longestActiveRun(active, maxGap) {
   return best;
 }
 
+// Tira margem de cor CHAPADA em volta do vídeo (tarja preta, fundo branco,
+// qualquer cor lisa). Complementa a detecção por movimento: movimento acha
+// onde a filmagem passa; isto acerta a borda exata.
+// O critério separa margem de cena parada: margem é lisa (todos os pixels da
+// linha praticamente da mesma cor); céu ou parede numa filmagem tem textura,
+// sombra e ruído, então varia. Cada vídeo é medido por si — nada fixo.
+async function trimFlatBorders(framePath, region, sid) {
+  const TOL = 14;          // variação de cor tolerada dentro de uma linha lisa
+  const MAX_TRIM = 0.45;   // nunca comer mais que isso de um lado
+  try {
+    const { data, info } = await sharp(framePath)
+      .extract({ left: region.cropX, top: region.cropY, width: region.cropW, height: region.cropH })
+      .resize({ width: 200, withoutEnlargement: true })
+      .removeAlpha().raw().toBuffer({ resolveWithObject: true });
+
+    const { width: w, height: h, channels: ch } = info;
+    if (w < 8 || h < 8) return region;
+
+    const px = (x, y) => {
+      const o = (y * w + x) * ch;
+      return [data[o], data[o + 1], data[o + 2]];
+    };
+    // uma linha/coluna é "lisa" se todos os pixels ficam perto da mesma cor
+    const isFlatRow = y => {
+      let mn = [255, 255, 255], mx = [0, 0, 0];
+      for (let x = 0; x < w; x++) {
+        const p = px(x, y);
+        for (let c = 0; c < 3; c++) { if (p[c] < mn[c]) mn[c] = p[c]; if (p[c] > mx[c]) mx[c] = p[c]; }
+      }
+      return mx[0] - mn[0] <= TOL && mx[1] - mn[1] <= TOL && mx[2] - mn[2] <= TOL;
+    };
+    const isFlatCol = x => {
+      let mn = [255, 255, 255], mx = [0, 0, 0];
+      for (let y = 0; y < h; y++) {
+        const p = px(x, y);
+        for (let c = 0; c < 3; c++) { if (p[c] < mn[c]) mn[c] = p[c]; if (p[c] > mx[c]) mx[c] = p[c]; }
+      }
+      return mx[0] - mn[0] <= TOL && mx[1] - mn[1] <= TOL && mx[2] - mn[2] <= TOL;
+    };
+
+    const limH = Math.floor(h * MAX_TRIM), limW = Math.floor(w * MAX_TRIM);
+    let top = 0, bottom = h - 1, left = 0, right = w - 1;
+    while (top < limH && isFlatRow(top)) top++;
+    while (bottom > h - 1 - limH && isFlatRow(bottom)) bottom--;
+    while (left < limW && isFlatCol(left)) left++;
+    while (right > w - 1 - limW && isFlatCol(right)) right--;
+
+    if (top === 0 && left === 0 && bottom === h - 1 && right === w - 1) return region;
+    if (bottom - top < h * 0.25 || right - left < w * 0.25) return region;  // sobrou pouco: não confia
+
+    // volta pra escala do vídeo original
+    const sx = region.cropW / w, sy = region.cropH / h;
+    const trimmed = {
+      cropX: region.cropX + Math.round(left * sx),
+      cropY: region.cropY + Math.round(top * sy),
+      cropW: Math.round((right - left + 1) * sx),
+      cropH: Math.round((bottom - top + 1) * sy),
+    };
+    console.log(
+      `[videoEditor] margem lisa removida: topo ${top}, base ${h - 1 - bottom}, ` +
+      `esq ${left}, dir ${w - 1 - right} (de ${w}x${h}) → ${trimmed.cropW}x${trimmed.cropH}`
+    );
+    return trimmed;
+  } catch (e) {
+    console.warn('[videoEditor] remoção de margem lisa falhou:', e.message);
+    return region;
+  }
+}
+
+// Aplica a remoção de margem lisa sobre um recorte, usando um frame do meio
+// do clipe (mais representativo que o primeiro, que às vezes é uma abertura).
+async function refineWithFlatBorders(videoPath, region, sid, atSec = 2) {
+  const framePath = path.join(os.tmpdir(), `${sid}_flat.jpg`);
+  try {
+    await extractFrame(videoPath, atSec, framePath);
+    return await trimFlatBorders(framePath, region, sid);
+  } catch (e) {
+    console.warn('[videoEditor] frame pra margem lisa falhou:', e.message);
+    return region;
+  } finally {
+    try { if (fs.existsSync(framePath)) fs.unlinkSync(framePath); } catch {}
+  }
+}
+
 async function detectMotionRegion(videoPath, vw, vh, sid) {
   const dir = path.join(os.tmpdir(), `mo_${sid}`);
   try {
@@ -514,6 +598,12 @@ async function detectMotionRegion(videoPath, vw, vh, sid) {
       `[videoEditor] movimento: vídeo em ${(top * 100).toFixed(0)}%–${(bottom * 100).toFixed(0)}% ` +
       `da altura, ${(left * 100).toFixed(0)}%–${(right * 100).toFixed(0)}% da largura`
     );
+
+    // Segunda medida: sobrou tarja de cor lisa em volta? tira também.
+    const refined = await refineWithFlatBorders(videoPath, region, sid);
+    const rShape = refined.cropW / refined.cropH;
+    const rArea = (refined.cropW * refined.cropH) / (vw * vh);
+    if (rArea >= 0.06 && rShape >= 0.2 && rShape <= 5) return refined;
     return region;
   } catch (e) {
     console.warn('[videoEditor] detecção por movimento falhou:', e.message);
