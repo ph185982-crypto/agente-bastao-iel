@@ -63,6 +63,7 @@ const HEADER_BOTTOM = AV_Y + AV_D + 42;
 const H_PAD = 52;
 const HEAD_FONT = 44;
 const HEAD_LINE = 58;
+const BOTTOM_GAP = 24;         // respiro embaixo do vídeo
 
 function escXml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -797,48 +798,36 @@ async function composeReel({ videoPath, headline, bgPng, output, sid, crop }) {
   const { cropW, cropH, cropX, cropY } = preset || await detectContentRegion(videoPath, vw, vh, sid);
   if (preset) console.log('[videoEditor] usando recorte vindo do /analyze');
   const { videoY } = await buildFramePng(headline, bgPng);
-  const videoH = H - videoY - 24;
+  const availableH = H - videoY - BOTTOM_GAP;
 
-  console.log(`[videoEditor] clip=${clipDur}s src=${vw}x${vh} crop=${cropW}x${cropH}@${cropX},${cropY} slot=${W}x${videoH}`);
+  // REGRA: o vídeo SEMPRE ocupa a largura inteira. Nunca tarja preta nem
+  // borrada nas laterais — isso é reenquadrar, não recortar.
+  //  - Cabe na altura disponível → entra inteiro, sobra branco embaixo
+  //    (é o visual de post: mídia cheia no topo, respiro embaixo).
+  //  - Não cabe → corta em cima/embaixo, puxando pro topo, que é onde
+  //    normalmente estão rosto e começo do conteúdo.
+  const even = n => Math.max(2, Math.round(n / 2) * 2);
+  const naturalH = Math.round(W * cropH / cropW);   // altura em largura cheia
+  const needsVerticalCrop = naturalH > availableH;
+  const videoH = even(needsVerticalCrop ? availableH : naturalH);
 
-  // Como encaixar o clipe no espaço disponível:
-  //  - Se preencher a caixa toda (cover) descartar POUCO do conteúdo, faz isso —
-  //    fica cheio, sem tarja, e a perda é irrelevante.
-  //  - Se cover fosse cortar muito (clipe 9:16 numa caixa mais baixa, por ex.),
-  //    encaixa o vídeo INTEIRO e preenche a sobra com uma cópia borrada dele.
-  //    Cortar no centro nesse caso dava zoom absurdo, decepando rosto e a
-  //    legenda queimada do clipe.
-  const coverScale = Math.max(W / cropW, videoH / cropH);
-  const coverLoss = 1 - (W * videoH) / (cropW * coverScale * cropH * coverScale);
-  const useCover = coverLoss <= 0.18;
-
-  console.log(`[videoEditor] encaixe=${useCover ? 'cover' : 'fit+blur'} perda=${(coverLoss * 100).toFixed(0)}%`);
+  console.log(
+    `[videoEditor] clip=${clipDur}s src=${vw}x${vh} crop=${cropW}x${cropH}@${cropX},${cropY} ` +
+    `→ ${W}x${videoH} (natural ${W}x${naturalH}, disponível ${availableH}) ` +
+    `${needsVerticalCrop ? `corte vertical -${(100 - availableH / naturalH * 100).toFixed(0)}%` : 'inteiro'}`
+  );
 
   const prep = `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},` +
     `eq=contrast=1.05:saturation=1.12,setpts=PTS-STARTPTS`;
 
-  const videoChain = useCover
-    ? [
-        `${prep},scale=${W}:${videoH}:force_original_aspect_ratio=increase,` +
-          `crop=${W}:${videoH}:(iw-${W})/2:(ih-${videoH})/2[vid]`,
-      ]
-    : (() => {
-        // blur barato: reduz, borra pequeno, amplia de volta
-        const blurW = Math.max(2, Math.round(W / 8 / 2) * 2);
-        const blurH = Math.max(2, Math.round(videoH / 8 / 2) * 2);
-        return [
-          `${prep},split=2[src][blursrc]`,
-          `[blursrc]scale=${blurW}:${blurH}:force_original_aspect_ratio=increase,` +
-            `crop=${blurW}:${blurH},gblur=sigma=4,` +
-            `scale=${W}:${videoH},eq=brightness=-0.08[blurbg]`,
-          `[src]scale=${W}:${videoH}:force_original_aspect_ratio=decrease:force_divisible_by=2[fit]`,
-          `[blurbg][fit]overlay=(main_w-overlay_w)/2:(main_h-overlay_h)/2[vid]`,
-        ];
-      })();
+  const videoChain = needsVerticalCrop
+    // largura cheia e corta o excesso de altura, ancorado mais pro topo
+    ? `${prep},scale=${W}:-2,crop=${W}:${videoH}:0:(ih-${videoH})*0.25[vid]`
+    : `${prep},scale=${W}:${videoH}[vid]`;
 
   const filterGraph = [
     `[1:v]loop=loop=-1:size=1:start=0,scale=${W}:${H}[bg]`,
-    ...videoChain,
+    videoChain,
     `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
   ].join(';');
 
