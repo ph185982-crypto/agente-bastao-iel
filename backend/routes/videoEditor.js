@@ -399,15 +399,17 @@ function extractFrame(videoPath, atSec, framePath) {
   });
 }
 
-// Região visual do conteúdo: barras pretas primeiro (barato), depois vision
+// Região visual do conteúdo: SÓ a mídia pura (foto/vídeo), sem nenhum texto que
+// já viesse gravado no vídeo original — a gente desenha nosso próprio cabeçalho
+// e gancho por cima, então legenda/título do vídeo-fonte tem que ser cortado fora.
+// Vision primeiro (entende texto, não só cor de fundo); cropDetect (barra preta,
+// grátis) só entra como fallback se não tiver chave OpenAI ou a vision falhar.
 async function detectContentRegion(videoPath, vw, vh, sid) {
-  const detected = await cropDetect(videoPath);
-  if (detected) {
-    const areaRatio = (detected.cropW * detected.cropH) / (vw * vh);
-    if (areaRatio < 0.92) return detected;
+  if (!process.env.OPENAI_API_KEY) {
+    // Groq/llama não aceita imagem — sem vision só dá pra cortar barra preta
+    const detected = await cropDetect(videoPath);
+    return detected || { cropW: vw, cropH: vh, cropX: 0, cropY: 0 };
   }
-  // Groq/llama não aceita imagem — só tenta vision com OpenAI
-  if (!process.env.OPENAI_API_KEY) return { cropW: vw, cropH: vh, cropX: 0, cropY: 0 };
 
   const framePath = path.join(os.tmpdir(), `${sid}_crop.jpg`);
   try {
@@ -416,23 +418,26 @@ async function detectContentRegion(videoPath, vw, vh, sid) {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000 });
     const res = await client.chat.completions.create({
       model: 'gpt-4o',
-      max_tokens: 60,
+      max_tokens: 80,
       response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
-          content: `Analyze this video frame and return the vertical region containing the main visual content.
-Return JSON: {"startPct": number, "endPct": number} (integers 0-100, measured from the TOP).
+          content: `Analyze this video frame and find the region containing ONLY the pure photo/video media — no text.
+
+We add our OWN header and hook on top of this video separately. Any caption, title, username, quote, or text overlay ALREADY baked into this frame — even if it looks like part of "the post" (e.g. a repost/curation screenshot with its own caption bar) — must be EXCLUDED. We only want the actual visual media: the photo, video, or animation itself.
+
+Return JSON: {"startPct": number, "endPct": number} (integers 0-100, measured from the TOP of the image).
 Rules:
-- Ignore black bars, white/gray margins, and app chrome (status bar, navigation).
-- If a social post is shown, include the FULL post (avatar + text + embedded media).
-- If one video fills the screen: start=0, end=100.`,
+- Exclude any baked-in text/caption/title bar (regardless of background color), black bars, white/colored margins, and app chrome (status bar, navigation, avatar+username rows).
+- Return just the boundaries of the media itself.
+- If the media fills the entire frame with no overlay at all: start=0, end=100.`,
         },
         {
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}`, detail: 'low' } },
-            { type: 'text', text: 'Where is the main content?' },
+            { type: 'text', text: 'Where is the pure media, excluding any baked-in text?' },
           ],
         },
       ],
@@ -447,7 +452,11 @@ Rules:
       cropY: Math.max(0, Math.round(vh * startPct / 100)),
     };
   } catch (e) {
-    console.warn('[videoEditor] crop vision falhou, usando frame inteiro:', e.message);
+    console.warn('[videoEditor] crop vision falhou, tentando barra preta:', e.message);
+    try {
+      const detected = await cropDetect(videoPath);
+      if (detected) return detected;
+    } catch {}
     return { cropW: vw, cropH: vh, cropX: 0, cropY: 0 };
   } finally {
     try { if (fs.existsSync(framePath)) fs.unlinkSync(framePath); } catch {}
