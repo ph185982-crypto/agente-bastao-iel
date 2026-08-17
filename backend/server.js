@@ -49,18 +49,25 @@ app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
-// Diagnóstico de LLM — lista modelos disponíveis no Groq
+// Diagnóstico de LLM — testa cada modelo do Groq com uma chamada real
 app.get('/api/llm-diag', async (req, res) => {
   const OpenAI = require('openai');
   if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
-  try {
-    const groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
-    const models = await groq.models.list();
-    const ids = models.data.map(m => m.id).sort();
-    res.json({ count: ids.length, models: ids });
-  } catch (e) {
-    res.status(500).json({ ok: false, status: e?.status, message: e?.message?.slice(0, 200) });
+  const groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
+  const candidates = ['groq/compound', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.6-27b', 'groq/compound-mini'];
+  const results = [];
+  for (const model of candidates) {
+    try {
+      const r = await groq.chat.completions.create({
+        model, max_tokens: 5, messages: [{ role: 'user', content: 'Say: ok' }],
+      });
+      results.push({ model, ok: true, reply: r.choices[0]?.message?.content });
+      break; // para no primeiro que funcionar
+    } catch (e) {
+      results.push({ model, ok: false, status: e?.status, code: e?.error?.code, msg: e?.message?.slice(0, 120) });
+    }
   }
+  res.json({ results });
 });
 
 // Redirect root to the frontend so visiting the Render URL doesn't show a blank error
