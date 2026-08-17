@@ -3,19 +3,17 @@ const OpenAI = require('openai');
 let _client = null;
 let _provider = null;
 
-// Lista de modelos Groq em ordem de preferência — tenta o próximo se o atual
-// for descontinuado (400 model_decommissioned) ou não encontrado (404).
+// Modelos Groq disponíveis (verificados em agosto/2026).
 const GROQ_MODELS_LARGE = [
-  'llama-3.3-70b-specdec',
-  'llama-3.1-70b-versatile',
-  'llama3-70b-8192',
-  'gemma2-9b-it',
-  'mixtral-8x7b-32768',
+  'groq/compound',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+  'qwen/qwen3.6-27b',
 ];
 const GROQ_MODELS_SMALL = [
-  'llama-3.1-8b-instant',
-  'llama3-8b-8192',
-  'gemma2-9b-it',
+  'groq/compound-mini',
+  'openai/gpt-oss-20b',
+  'qwen/qwen3.6-27b',
 ];
 
 const MODEL_MAP = {
