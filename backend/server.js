@@ -49,28 +49,6 @@ app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
-// Diagnóstico de LLM — testa json_object format em cada modelo Groq
-app.get('/api/llm-diag', async (req, res) => {
-  const OpenAI = require('openai');
-  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
-  const groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
-  const candidates = ['groq/compound', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.6-27b', 'groq/compound-mini'];
-  const results = [];
-  for (const model of candidates) {
-    try {
-      const r = await groq.chat.completions.create({
-        model, max_tokens: 20,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: 'Return JSON: {"ok":true}' }],
-      });
-      results.push({ model, ok: true, reply: r.choices[0]?.message?.content });
-    } catch (e) {
-      results.push({ model, ok: false, status: e?.status, code: e?.error?.code, msg: e?.message?.slice(0, 150) });
-    }
-  }
-  res.json({ results });
-});
-
 // Redirect root to the frontend so visiting the Render URL doesn't show a blank error
 app.get('/', (req, res) => {
   const frontend = process.env.FRONTEND_URL || 'https://nexos-paginas.netlify.app';

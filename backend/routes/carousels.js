@@ -1195,10 +1195,7 @@ router.post('/generate', async (req, res) => {
     res.json({ topic: finalTopic, caption, handle, slides: rendered, review });
   } catch (e) {
     console.error('[carousels] generate error:', e.message);
-    res.status(e?.status === 429 ? 503 : 500).json({
-      error: friendlyErrorMessage(e),
-      _debug: { status: e?.status, code: e?.error?.code || e?.code, msg: e?.message?.slice(0, 200) },
-    });
+    res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
   }
 });
 
