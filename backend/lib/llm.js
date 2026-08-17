@@ -4,8 +4,8 @@ let _client = null;
 let _provider = null;
 
 const MODEL_MAP = {
-  'gpt-4o':      'llama-3.3-70b-versatile',
-  'gpt-4o-mini': 'llama-3.1-8b-instant',
+  'gpt-4o':      'llama3-70b-8192',
+  'gpt-4o-mini': 'llama3-8b-8192',
 };
 
 function getClient() {
@@ -92,6 +92,7 @@ function friendlyErrorMessage(err) {
   const status = err?.status;
   if (status === 401) return 'Chave de API inválida. Verifique a configuração no servidor.';
   if (status === 403) return 'Acesso negado pela API de IA. Verifique a configuração de billing/acesso.';
+  if (status === 404) return 'O modelo de IA configurado não está disponível. Entre em contato com o suporte.';
   if (status === 429) return 'Os modelos de IA estão sobrecarregados no momento. Tente novamente em alguns instantes.';
   if (status >= 500) return 'O serviço de IA está instável no momento. Tente novamente em alguns instantes.';
   if (err?.code === 'ETIMEDOUT' || err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '')) {
