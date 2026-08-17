@@ -4,16 +4,18 @@ let _client = null;
 let _provider = null;
 
 // Modelos Groq disponíveis (verificados em agosto/2026).
+// Ordenados do maior contexto para o menor — 413 faz tentar o próximo.
 const GROQ_MODELS_LARGE = [
-  'groq/compound',
   'openai/gpt-oss-120b',
   'openai/gpt-oss-20b',
   'qwen/qwen3.6-27b',
+  'groq/compound',
 ];
 const GROQ_MODELS_SMALL = [
-  'groq/compound-mini',
   'openai/gpt-oss-20b',
   'qwen/qwen3.6-27b',
+  'groq/compound-mini',
+  'groq/compound',
 ];
 
 const MODEL_MAP = {
@@ -58,6 +60,8 @@ function isModelNotFoundError(err) {
   // Groq retorna 400 com code 'model_decommissioned' para modelos desativados
   if (err?.status === 400 && err?.error?.code === 'model_decommissioned') return true;
   if (err?.status === 400 && /decommissioned|deprecated|not.*support/i.test(err?.message || '')) return true;
+  // 413 = prompt maior que o contexto do modelo → tenta o próximo (com contexto maior)
+  if (err?.status === 413) return true;
   return false;
 }
 
