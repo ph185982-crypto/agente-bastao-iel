@@ -49,7 +49,7 @@ app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
-// Diagnóstico de LLM — testa cada modelo do Groq com uma chamada real
+// Diagnóstico de LLM — testa json_object format em cada modelo Groq
 app.get('/api/llm-diag', async (req, res) => {
   const OpenAI = require('openai');
   if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
@@ -59,12 +59,13 @@ app.get('/api/llm-diag', async (req, res) => {
   for (const model of candidates) {
     try {
       const r = await groq.chat.completions.create({
-        model, max_tokens: 5, messages: [{ role: 'user', content: 'Say: ok' }],
+        model, max_tokens: 20,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: 'Return JSON: {"ok":true}' }],
       });
       results.push({ model, ok: true, reply: r.choices[0]?.message?.content });
-      break; // para no primeiro que funcionar
     } catch (e) {
-      results.push({ model, ok: false, status: e?.status, code: e?.error?.code, msg: e?.message?.slice(0, 120) });
+      results.push({ model, ok: false, status: e?.status, code: e?.error?.code, msg: e?.message?.slice(0, 150) });
     }
   }
   res.json({ results });
