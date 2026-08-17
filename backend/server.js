@@ -49,25 +49,17 @@ app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
-// Diagnóstico de LLM — testa a conexão com o provedor de IA sem expor chaves
+// Diagnóstico de LLM — lista modelos disponíveis no Groq
 app.get('/api/llm-diag', async (req, res) => {
-  const { createCompatClient } = require('./lib/llm');
+  const OpenAI = require('openai');
+  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
   try {
-    const client = createCompatClient();
-    const result = await client.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 5,
-      messages: [{ role: 'user', content: 'Diga apenas: ok' }],
-    });
-    res.json({ ok: true, content: result.choices[0]?.message?.content });
+    const groq = new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1' });
+    const models = await groq.models.list();
+    const ids = models.data.map(m => m.id).sort();
+    res.json({ count: ids.length, models: ids });
   } catch (e) {
-    res.status(500).json({
-      ok: false,
-      status: e?.status,
-      name: e?.name,
-      code: e?.code,
-      message: e?.message?.slice(0, 200),
-    });
+    res.status(500).json({ ok: false, status: e?.status, message: e?.message?.slice(0, 200) });
   }
 });
 
