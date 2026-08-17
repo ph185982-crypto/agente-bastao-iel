@@ -4,16 +4,17 @@ let _client = null;
 let _provider = null;
 
 // Lista de modelos Groq em ordem de preferência — tenta o próximo se o atual
-// retornar 404 (descontinuado ou sem acesso).
+// for descontinuado (400 model_decommissioned) ou não encontrado (404).
 const GROQ_MODELS_LARGE = [
-  'llama3-70b-8192',
+  'llama-3.3-70b-specdec',
   'llama-3.1-70b-versatile',
-  'mixtral-8x7b-32768',
+  'llama3-70b-8192',
   'gemma2-9b-it',
+  'mixtral-8x7b-32768',
 ];
 const GROQ_MODELS_SMALL = [
-  'llama3-8b-8192',
   'llama-3.1-8b-instant',
+  'llama3-8b-8192',
   'gemma2-9b-it',
 ];
 
@@ -55,7 +56,11 @@ function isQuotaError(err) {
 }
 
 function isModelNotFoundError(err) {
-  return err?.status === 404;
+  if (err?.status === 404) return true;
+  // Groq retorna 400 com code 'model_decommissioned' para modelos desativados
+  if (err?.status === 400 && err?.error?.code === 'model_decommissioned') return true;
+  if (err?.status === 400 && /decommissioned|deprecated|not.*support/i.test(err?.message || '')) return true;
+  return false;
 }
 
 // Tenta a chamada no Groq percorrendo a lista de modelos até um funcionar.
