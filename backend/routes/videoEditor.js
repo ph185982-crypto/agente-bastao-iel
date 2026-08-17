@@ -299,14 +299,49 @@ async function resolveInstagramUrl(instagramUrl) {
     throw erroDownload('O serviço de download não está configurado no servidor (RAPIDAPI_KEY ausente).');
   }
 
-  // 429/5xx costuma ser aperto momentâneo: tenta de novo antes de desistir.
+  const url = instagramUrl.trim();
+
+  // API primária: instagram-reels-downloader-api
   let ultimoErro;
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    try {
+      const { data } = await axios.get(
+        'https://instagram-reels-downloader-api.p.rapidapi.com/download',
+        {
+          params: { url },
+          headers: {
+            'x-rapidapi-host': 'instagram-reels-downloader-api.p.rapidapi.com',
+            'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+          },
+          timeout: 25000,
+        }
+      );
+      if (data?.success && Array.isArray(data?.data?.medias)) {
+        const video = data.data.medias.find(m => m.type === 'video' && m.url);
+        if (video) return video.url;
+      }
+      throw erroDownload('Nenhum vídeo encontrado nesse link. Confirme que o post é público.');
+    } catch (err) {
+      if (err?.isDownloadError) throw err;
+      ultimoErro = err;
+      const status = err?.response?.status ?? err?.status;
+      const vaiTentarDeNovo = (status === 429 || status >= 500) && tentativa < 3;
+      if (!vaiTentarDeNovo) break;
+      const pausa = tentativa * 1500;
+      console.warn(`[videoEditor] download API1 falhou (${status}), tentativa ${tentativa}/3 — repetindo em ${pausa}ms`);
+      await espera(pausa);
+    }
+  }
+
+  // API de fallback: instagram-downloader-download-instagram-stories-videos4
+  console.warn('[videoEditor] API primária falhou, tentando API de fallback:', ultimoErro?.message?.slice(0, 80));
+  let ultimoErroFallback;
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     try {
       const { data } = await axios.get(
         'https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert',
         {
-          params: { url: instagramUrl.trim() },
+          params: { url },
           headers: {
             'x-rapidapi-host': 'instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com',
             'x-rapidapi-key': process.env.RAPIDAPI_KEY,
@@ -322,17 +357,17 @@ async function resolveInstagramUrl(instagramUrl) {
       }
       throw erroDownload('Nenhum vídeo encontrado nesse link. Confirme que o post é público.');
     } catch (err) {
-      if (err?.isDownloadError) throw err;                 // erro definitivo
-      ultimoErro = err;
+      if (err?.isDownloadError) throw err;
+      ultimoErroFallback = err;
       const status = err?.response?.status ?? err?.status;
       const vaiTentarDeNovo = (status === 429 || status >= 500) && tentativa < 3;
       if (!vaiTentarDeNovo) break;
       const pausa = tentativa * 1500;
-      console.warn(`[videoEditor] download falhou (${status}), tentativa ${tentativa}/3 — repetindo em ${pausa}ms`);
+      console.warn(`[videoEditor] download API2 falhou (${status}), tentativa ${tentativa}/3 — repetindo em ${pausa}ms`);
       await espera(pausa);
     }
   }
-  throw traduzErroDownload(ultimoErro);
+  throw traduzErroDownload(ultimoErroFallback);
 }
 
 function streamDownload(url, destPath, timeoutMs = 45000) {
