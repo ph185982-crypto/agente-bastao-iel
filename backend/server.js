@@ -49,6 +49,28 @@ app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
+// Diagnóstico de LLM — testa a conexão com o provedor de IA sem expor chaves
+app.get('/api/llm-diag', async (req, res) => {
+  const { createCompatClient } = require('./lib/llm');
+  try {
+    const client = createCompatClient();
+    const result = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 5,
+      messages: [{ role: 'user', content: 'Diga apenas: ok' }],
+    });
+    res.json({ ok: true, content: result.choices[0]?.message?.content });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      status: e?.status,
+      name: e?.name,
+      code: e?.code,
+      message: e?.message?.slice(0, 200),
+    });
+  }
+});
+
 // Redirect root to the frontend so visiting the Render URL doesn't show a blank error
 app.get('/', (req, res) => {
   const frontend = process.env.FRONTEND_URL || 'https://nexos-paginas.netlify.app';
