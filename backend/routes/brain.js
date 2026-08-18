@@ -3,7 +3,7 @@
 // Memória: Upstash Redis. Agente: GPT-4o function-calling.
 const express = require('express');
 const axios   = require('axios');
-const { createCompatClient } = require('../lib/llm');
+const { createCompatClient, hasLlmKey, NO_LLM_KEY_MESSAGE } = require('../lib/llm');
 const crypto  = require('crypto');
 const vault   = require('../lib/vault');
 
@@ -561,7 +561,7 @@ async function sendWhatsApp(to, text) {
 router.post('/chat', async (req, res) => {
   const { message } = req.body;
   if (!message?.trim()) return res.status(400).json({ error: 'mensagem vazia' });
-  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
+  if (!hasLlmKey()) return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
   if (!vault.enabled()) return res.status(503).json({ error: 'Memória não configurada' });
   try {
     const { reply, executed } = await runBrain(message.trim());

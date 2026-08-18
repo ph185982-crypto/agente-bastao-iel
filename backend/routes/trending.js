@@ -4,7 +4,7 @@
 const express = require('express');
 const axios   = require('axios');
 const crypto  = require('crypto');
-const { createCompatClient } = require('../lib/llm');
+const { createCompatClient, hasLlmKey, NO_LLM_KEY_MESSAGE } = require('../lib/llm');
 const vault = require('../lib/vault');
 
 const router = express.Router();
@@ -131,8 +131,8 @@ router.get('/mine', async (req, res) => {
     }
   }
 
-  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
-    return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
+  if (!hasLlmKey()) {
+    return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
   }
 
   try {
@@ -240,8 +240,8 @@ router.post('/refresh', async (req, res) => {
     let topics = [];
     let source = 'serper+gpt4o';
 
-    if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
-      return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
+    if (!hasLlmKey()) {
+      return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
     }
 
     if (process.env.SERPER_API_KEY) {

@@ -4,7 +4,7 @@ const axios = require('axios');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
-const { createCompatClient } = require('../lib/llm');
+const { createCompatClient, hasLlmKey, NO_LLM_KEY_MESSAGE } = require('../lib/llm');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -1110,8 +1110,8 @@ router.get('/vet', async (req, res) => {
   if (!vault.enabled()) {
     return res.status(503).json({ error: 'Cofre (Upstash) não configurado' });
   }
-  if (!process.env.GROQ_API_KEY) {
-    return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
+  if (!hasLlmKey()) {
+    return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
   }
 
   try {

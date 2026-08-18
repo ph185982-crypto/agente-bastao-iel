@@ -8,7 +8,7 @@ const axios   = require('axios');
 const sharp   = require('sharp');
 const fs      = require('fs');
 const path    = require('path');
-const { createCompatClient, friendlyErrorMessage } = require('../lib/llm');
+const { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE } = require('../lib/llm');
 const { PEDRO_DNA: PEDRO_DNA_BASE } = require('../lib/pedroDna');
 
 const router = express.Router();
@@ -1162,8 +1162,8 @@ router.get('/cover', async (req, res) => {
 // POST /api/carousels/generate — gera um carrossel pronto para postar
 router.post('/generate', async (req, res) => {
   const { theme, topic, reference, slideCount, handle: rawHandle } = req.body || {};
-  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
-    return res.status(500).json({ error: 'Nenhuma API key de LLM configurada (OPENAI_API_KEY ou GROQ_API_KEY)' });
+  if (!hasLlmKey()) {
+    return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
   }
   let handle = (rawHandle || '@pedro_destrava').trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1204,8 +1204,8 @@ router.post('/generate', async (req, res) => {
 // manchete em CAIXA ALTA + foto real embaixo. Capa e CTA são foto única.
 router.post('/generate-news', async (req, res) => {
   const { handle: rawHandle } = req.body || {};
-  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
-    return res.status(500).json({ error: 'Nenhuma API key de LLM configurada (OPENAI_API_KEY ou GROQ_API_KEY)' });
+  if (!hasLlmKey()) {
+    return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
   }
 
   let handle = (rawHandle || DEFAULT_HANDLE).trim();
@@ -1514,7 +1514,7 @@ async function renderComecouSlide(slide, photoBuf) {
 // POST /api/carousels/generate-arquivo
 router.post('/generate-arquivo', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
-  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
+  if (!hasLlmKey()) return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
 
   let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1594,7 +1594,7 @@ Responda APENAS JSON:
 // POST /api/carousels/generate-boasnoticias
 router.post('/generate-boasnoticias', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
-  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
+  if (!hasLlmKey()) return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
 
   let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1689,7 +1689,7 @@ Responda APENAS JSON:
 // POST /api/carousels/generate-comecou
 router.post('/generate-comecou', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
-  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
+  if (!hasLlmKey()) return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
 
   let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1788,8 +1788,8 @@ function enforceReadability(slides) {
 router.post('/generate-trending', async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
   if (!topic || !topic.title) return res.status(400).json({ error: 'Topic obrigatorio' });
-  if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY)
-    return res.status(500).json({ error: 'Nenhuma API key de LLM configurada' });
+  if (!hasLlmKey())
+    return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
 
   let handle = (rawHandle || DEFAULT_HANDLE).trim();
   if (!handle.startsWith('@')) handle = '@' + handle;

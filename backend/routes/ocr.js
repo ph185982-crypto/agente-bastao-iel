@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { createCompatClient } = require('../lib/llm');
+const { createCompatClient, hasLlmKey, NO_LLM_KEY_MESSAGE } = require('../lib/llm');
 const fs = require('fs');
 
 const router = express.Router();
@@ -18,8 +18,8 @@ const upload = multer({
 router.post('/', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
 
-  if (!process.env.GROQ_API_KEY) {
-    return res.status(500).json({ error: 'GROQ_API_KEY não configurada no servidor' });
+  if (!hasLlmKey()) {
+    return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
   }
 
   try {

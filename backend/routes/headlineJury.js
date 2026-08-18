@@ -1,5 +1,5 @@
 const express = require('express');
-const { createCompatClient } = require('../lib/llm');
+const { createCompatClient, hasLlmKey, NO_LLM_KEY_MESSAGE } = require('../lib/llm');
 const crypto = require('crypto');
 
 let _llm = null;
@@ -447,8 +447,8 @@ router.post('/analyze', (req, res) => {
   const { headline, description, videoUrl, context } = req.body;
   if (!headline?.trim())    return res.status(400).json({ error: 'headline é obrigatória' });
   if (!description?.trim()) return res.status(400).json({ error: 'descrição é obrigatória' });
-  if (!process.env.GROQ_API_KEY)
-    return res.status(500).json({ error: 'GROQ_API_KEY não configurada' });
+  if (!hasLlmKey())
+    return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
 
   const jobId = crypto.randomUUID();
   const job   = createJob(jobId);

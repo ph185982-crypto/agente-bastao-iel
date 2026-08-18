@@ -66,6 +66,14 @@ function availableProviders() {
   return PROVIDERS.filter(p => !!process.env[p.envKey]);
 }
 
+// Usado pelas rotas para checar se dá pra chamar a IA, sem amarrar em um
+// provedor específico — qualquer chave da cascata serve.
+function hasLlmKey() {
+  return availableProviders().length > 0;
+}
+
+const NO_LLM_KEY_MESSAGE = `Nenhuma chave de IA configurada no servidor (${PROVIDERS.map(p => p.envKey).join(', ')})`;
+
 // ── Classificação de erro ─────────────────────────────────────────────────────
 // modelo  → só esse modelo está ruim, tenta o próximo do mesmo provedor
 // provedor→ o provedor inteiro está fora, pula pro próximo provedor
@@ -254,4 +262,4 @@ function friendlyErrorMessage(err) {
   return 'Não foi possível gerar o conteúdo agora. Tente novamente em instantes.';
 }
 
-module.exports = { createCompatClient, friendlyErrorMessage };
+module.exports = { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE };
