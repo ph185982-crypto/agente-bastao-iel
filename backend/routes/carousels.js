@@ -9,6 +9,7 @@ const sharp   = require('sharp');
 const fs      = require('fs');
 const path    = require('path');
 const { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE } = require('../lib/llm');
+const { gerarCarrossel } = require('../lib/roboCopy');
 const { PEDRO_DNA: PEDRO_DNA_BASE } = require('../lib/pedroDna');
 
 const router = express.Router();
@@ -1161,24 +1162,50 @@ router.get('/cover', async (req, res) => {
 
 // POST /api/carousels/generate — gera um carrossel pronto para postar
 router.post('/generate', async (req, res) => {
-  const { theme, topic, reference, slideCount, handle: rawHandle } = req.body || {};
-  if (!hasLlmKey()) {
-    return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
-  }
+  const { theme, topic, reference, slideCount, handle: rawHandle, modo, variante } = req.body || {};
   let handle = (rawHandle || '@pedro_destrava').trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
 
-  try {
-    const { topic: finalTopic, caption, slides } =
-      await generateCarouselContent({ theme, topic, reference, slideCount, handle });
+  // Variante controla o sorteio do robô. Sem ela, cada chamada gera outra
+  // versão do mesmo tema — que é o esperado ao clicar em "gerar de novo".
+  const varianteRobo = Number.isFinite(Number(variante))
+    ? Number(variante)
+    : Math.floor(Math.random() * 1e6);
 
+  const rodarRobo = () =>
+    gerarCarrossel({ topic, theme, slideCount, handle, variante: varianteRobo });
+
+  try {
+    // Escolhe a fonte do conteúdo: o robô por pedido explícito ou por falta de
+    // chave, senão a IA — e o robô entra de reserva se a IA falhar (cota
+    // estourada, modelo fora do ar). O importante é nunca devolver erro seco.
+    let conteudo;
+    let fonte;
+    if (modo === 'robo' || !hasLlmKey()) {
+      conteudo = rodarRobo();
+      fonte = 'robo';
+    } else {
+      try {
+        conteudo = await generateCarouselContent({ theme, topic, reference, slideCount, handle });
+        fonte = 'ia';
+      } catch (e) {
+        console.warn('[carousels] IA indisponível, gerando pelo robô:', e.message?.slice(0, 120));
+        conteudo = rodarRobo();
+        fonte = 'robo-reserva';
+      }
+    }
+
+    const { topic: finalTopic, caption, slides } = conteudo;
     const total = slides.length;
     const photoQuery = finalTopic || topic || theme || 'dramatic inspiring nature landscape';
 
-    // Fetch cover photos and run AI review in parallel (non-blocking)
+    // Fetch cover photos and run AI review in parallel (non-blocking).
+    // A revisão é da IA: sem chave, nem tenta.
     const [coverPhotos, review] = await Promise.all([
       getStoryPhotos(photoQuery, 'dramatic nature landscape inspiring', 2).catch(() => []),
-      reviewCarouselDesign({ slides, topic: finalTopic }).catch(() => null),
+      hasLlmKey() && fonte === 'ia'
+        ? reviewCarouselDesign({ slides, topic: finalTopic }).catch(() => null)
+        : Promise.resolve(null),
     ]);
 
     const buffers = await Promise.all(
@@ -1192,7 +1219,12 @@ router.post('/generate', async (req, res) => {
       dataUrl: `data:image/png;base64,${buffers[i].toString('base64')}`,
     }));
 
-    res.json({ topic: finalTopic, caption, handle, slides: rendered, review });
+    res.json({
+      topic: finalTopic, caption, handle, slides: rendered, review,
+      fonte,                                  // 'ia' | 'robo' | 'robo-reserva'
+      framework: conteudo.framework || null,  // preenchido só pelo robô
+      variante: fonte === 'ia' ? null : varianteRobo,
+    });
   } catch (e) {
     console.error('[carousels] generate error:', e.message);
     res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
