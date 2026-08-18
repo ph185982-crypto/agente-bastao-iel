@@ -24,7 +24,7 @@ Ferramenta web para criar conteúdo para o Instagram em 3 passos:
 ### Pré-requisitos
 
 - Node.js 18+
-- Chaves de API: `RAPIDAPI_KEY` e `ANTHROPIC_API_KEY`
+- Uma chave de IA (`GROQ_API_KEY` basta — é gratuita) e `RAPIDAPI_KEY`
 
 ### 1. Backend
 
@@ -60,8 +60,8 @@ npm run dev        # inicia em http://localhost:5173
    - **Start Command:** `node server.js`
    - **Runtime:** Node
 4. Adicione as variáveis de ambiente em **Environment**:
+   - `GROQ_API_KEY`
    - `RAPIDAPI_KEY`
-   - `ANTHROPIC_API_KEY`
    - `FRONTEND_URL` → URL do seu site no Netlify
 5. O `render.yaml` na raiz já documenta essa configuração.
 
@@ -79,12 +79,36 @@ npm run dev        # inicia em http://localhost:5173
 
 ## Variáveis de ambiente
 
-| Variável          | Onde        | Descrição                                    |
-|-------------------|-------------|----------------------------------------------|
-| `RAPIDAPI_KEY`    | Backend     | Chave RapidAPI para download de vídeos       |
-| `ANTHROPIC_API_KEY` | Backend   | Chave Anthropic para OCR e geração de copy   |
-| `PORT`            | Backend     | Porta do servidor (padrão: 3001)             |
-| `FRONTEND_URL`    | Backend     | URL do frontend (para CORS em produção)      |
-| `VITE_API_URL`    | Frontend    | URL base do backend em produção              |
+### IA (texto)
+
+O backend tenta os provedores **nesta ordem** e pula pro próximo quando um falha —
+chave inválida, cota estourada, modelo desativado ou prompt grande demais.
+**Basta uma chave** para o app funcionar; as outras são reforço para ele não parar.
+
+| Variável             | Custo   | Onde pegar                        |
+|----------------------|---------|-----------------------------------|
+| `GROQ_API_KEY`       | Grátis  | console.groq.com/keys             |
+| `GEMINI_API_KEY`     | Grátis  | aistudio.google.com/apikey        |
+| `CEREBRAS_API_KEY`   | Grátis  | cloud.cerebras.ai                 |
+| `OPENROUTER_API_KEY` | Grátis  | openrouter.ai/keys (modelos `:free`) |
+| `OPENAI_API_KEY`     | **Pago** | Último recurso — deixe vazia para não gerar custo |
+
+Se a lista fixa de modelos de um provedor se esgotar, o backend consulta o
+endpoint `/models` dele e tenta os modelos disponíveis no momento. Foi isso que
+resolveu a parada geral quando o Groq desativou os modelos antigos.
+
+### Demais variáveis
+
+| Variável                | Onde     | Descrição                                      |
+|-------------------------|----------|------------------------------------------------|
+| `RAPIDAPI_KEY`          | Backend  | Download de vídeos do Instagram/TikTok (cota paga) |
+| `SHOTSTACK_PROD_KEY`    | Backend  | Renderização de vídeo — **pago por render**    |
+| `SHOTSTACK_SANDBOX_KEY` | Backend  | Renderização em sandbox (testes)               |
+| `PEXELS_API_KEY`        | Backend  | Banco de imagens (gratuito)                    |
+| `GOOGLE_API_KEY` + `GOOGLE_CSE_ID` | Backend | Imagens nos carrosséis (exige billing no GCP; opcional) |
+| `PROFILE_HANDLE` / `PROFILE_NAME`  | Backend | Identidade exibida nos carrosséis      |
+| `PORT`                  | Backend  | Porta do servidor (padrão: 3001)               |
+| `FRONTEND_URL`          | Backend  | URL do frontend (para CORS em produção)        |
+| `VITE_API_URL`          | Frontend | URL base do backend em produção                |
 
 Copie `.env.example` para `.env` em cada pasta e preencha os valores.
