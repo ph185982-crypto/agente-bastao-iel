@@ -97,6 +97,39 @@ Se a lista fixa de modelos de um provedor se esgotar, o backend consulta o
 endpoint `/models` dele e tenta os modelos disponíveis no momento. Foi isso que
 resolveu a parada geral quando o Groq desativou os modelos antigos.
 
+### Modo robô — gerar carrossel sem IA
+
+Quando a cota gratuita da IA acaba, o app **não para**: um gerador
+determinístico assume e monta o carrossel sem chamar modelo nenhum.
+
+```bash
+# força o robô (não gasta cota nenhuma)
+curl -X POST .../api/carousels/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"topic":"como vender mais","slideCount":6,"modo":"robo"}'
+```
+
+A resposta traz `fonte`, que diz de onde veio o conteúdo:
+
+| `fonte`        | Significado                                     |
+|----------------|-------------------------------------------------|
+| `ia`           | gerado pela IA normalmente                      |
+| `robo`         | robô por pedido (`modo: 'robo'`) ou falta de chave |
+| `robo-reserva` | a IA falhou no meio e o robô assumiu            |
+
+O robô monta o que é fórmula: framework de copy (PAS, lista, mito × verdade,
+passo a passo), gancho de capa, ritmo das telas, CTA, legenda e hashtags.
+
+**O que ele não faz de propósito:** inventar fato, número ou explicação sobre o
+tema. Sem IA não há como verificar se seria verdade, e post com dado falso é
+pior que post nenhum — então onde entra o fato específico fica o marcador
+`[troque por um exemplo ou número real]` para você preencher antes de postar.
+
+Cada chamada gera uma versão diferente do mesmo tema. Para repetir uma versão
+exata, mande `variante` (o número vem na resposta).
+
+Testes: `node --test backend/lib/roboCopy.test.js` — rodam sem chave e sem rede.
+
 ### Demais variáveis
 
 | Variável                | Onde     | Descrição                                      |
