@@ -6,10 +6,12 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // Warn on missing env vars at startup so misconfigured deploys are obvious in logs
-if (!process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY)
-  console.warn('WARNING: Neither OPENAI_API_KEY nor GROQ_API_KEY is set — LLM features will fail');
+const LLM_KEYS = { groq: 'GROQ_API_KEY', gemini: 'GEMINI_API_KEY', cerebras: 'CEREBRAS_API_KEY', openrouter: 'OPENROUTER_API_KEY', openai: 'OPENAI_API_KEY' };
+const llmAtivos = Object.entries(LLM_KEYS).filter(([, k]) => process.env[k]).map(([n]) => n);
+if (!llmAtivos.length)
+  console.warn(`WARNING: nenhuma chave de IA configurada (${Object.values(LLM_KEYS).join(', ')}) — recursos de IA vão falhar`);
 else
-  console.log(`LLM provider: ${process.env.OPENAI_API_KEY ? 'OpenAI' : 'Groq'}`);
+  console.log(`Provedores de IA na fila (nesta ordem): ${llmAtivos.join(' → ')}`);
 if (!process.env.RAPIDAPI_KEY) console.warn('WARNING: RAPIDAPI_KEY is not set — dependent features will fail');
 
 const app = express();
