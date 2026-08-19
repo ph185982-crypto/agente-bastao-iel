@@ -19,7 +19,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
 const { createCompatClient, friendlyErrorMessage } = require('../lib/llm');
 const { gerarCopyReel } = require('../lib/roboReel');
-const { lerPrint } = require('../lib/lerPrint');
+const { lerPrint, diagnosticarOcr } = require('../lib/lerPrint');
 const { PEDRO_DNA, LINGUAGEM_LEIGO, PROFILE_HANDLE, PROFILE_NAME } = require('../lib/pedroDna');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -1194,6 +1194,35 @@ router.post('/copy', async (req, res) => {
     res.status(500).json({ error: 'Não consegui montar a legenda agora.' });
   }
 });
+
+// Diz se o leitor de print está inteiro no servidor. A falha típica aqui é de
+// empacotamento (funciona na máquina, quebra no deploy), e sem isso o sintoma é
+// só um 500 genérico.
+router.get('/print/diagnostico', async (req, res) => {
+  const info = diagnosticarOcr();
+  try {
+    // 1x1 branco: exercita worker + core + idioma sem depender de upload.
+    const pixel = await sharp({ create: { width: 60, height: 30, channels: 3, background: 'white' } }).png().toBuffer();
+    const worker = await obterWorkerDeTeste();
+    await worker.recognize(pixel);
+    info.ocr = 'ok';
+  } catch (e) {
+    info.ocr = `ERRO: ${e.message?.slice(0, 200)}`;
+  }
+  res.json(info);
+});
+
+async function obterWorkerDeTeste() {
+  const { lerPrint: _l } = require('../lib/lerPrint');
+  void _l;
+  const { createWorker } = require('tesseract.js');
+  return createWorker('por', 1, {
+    langPath: path.join(__dirname, '..', 'assets'),
+    cachePath: os.tmpdir(),
+    gzip: false,
+    logger: () => {},
+  });
+}
 
 // Copy a partir do PRINT do post: lê o gancho escrito em cima do vídeo e a
 // legenda, direto da imagem. Quem lê é o Tesseract, dentro do próprio servidor —

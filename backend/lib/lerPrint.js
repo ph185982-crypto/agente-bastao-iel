@@ -14,6 +14,39 @@ const { gerarCopyReel } = require('./roboReel');
 
 const ASSETS = path.join(__dirname, '..', 'assets');
 
+// Pistas para o empacotador da Vercel. O Tesseract sobe o worker com
+// `new Worker(caminhoCalculado)` e escolhe o core por `require` montado em
+// tempo de execução — nenhum dos dois aparece na análise estática, então esses
+// arquivos ficariam de fora do pacote e a OCR quebraria só em produção.
+// Citá-los aqui com string literal é o que os põe dentro.
+const DEPENDENCIAS_OCR = [
+  'tesseract.js/src/worker-script/node/index.js',
+  'tesseract.js-core/tesseract-core-simd-lstm.js',
+  'tesseract.js-core/tesseract-core-relaxedsimd-lstm.js',
+  'tesseract.js-core/tesseract-core-lstm.js',
+];
+try {
+  require.resolve('tesseract.js/src/worker-script/node/index.js');
+  require.resolve('tesseract.js-core/tesseract-core-simd-lstm.js');
+  require.resolve('tesseract.js-core/tesseract-core-relaxedsimd-lstm.js');
+  require.resolve('tesseract.js-core/tesseract-core-lstm.js');
+} catch { /* checado de verdade em diagnosticarOcr() */ }
+
+// Diz o que está faltando para a OCR funcionar. Existe porque a falha típica
+// aqui é de empacotamento: roda na máquina e quebra no servidor.
+function diagnosticarOcr() {
+  const fs = require('fs');
+  const info = {
+    idioma: fs.existsSync(path.join(ASSETS, 'por.traineddata')),
+    arquivos: {},
+  };
+  for (const dep of DEPENDENCIAS_OCR) {
+    try { info.arquivos[dep] = !!require.resolve(dep); }
+    catch (e) { info.arquivos[dep] = `FALTA (${e.code || e.message.slice(0, 40)})`; }
+  }
+  return info;
+}
+
 // ── Lixo de interface ─────────────────────────────────────────────────────────
 // Linhas que fazem parte do aplicativo, não do post. Saem fora antes de qualquer
 // decisão — se ficassem, virariam gancho ou entrariam no meio da legenda.
@@ -249,6 +282,7 @@ async function lerPrint(imagem, { handle = '@pedro_destrava', tema, variante = 0
 
 module.exports = {
   lerPrint,
+  diagnosticarOcr,
   // exportados para teste
   separarTextoDoPrint,
   montarCopyDoPrint,

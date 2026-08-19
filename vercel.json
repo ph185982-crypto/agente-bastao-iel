@@ -7,7 +7,7 @@
     "api/index.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "{node_modules/ffprobe-static/bin/linux/x64/**,backend/assets/**}",
+      "includeFiles": "{node_modules/ffprobe-static/bin/linux/x64/**,backend/assets/**,node_modules/tesseract.js/**,node_modules/tesseract.js-core/*lstm*,node_modules/tesseract.js-core/{package.json,index.js},node_modules/{wasm-feature-detect,bmp-js,idb-keyval,is-url,node-fetch,regenerator-runtime,zlibjs}/**}",
       "excludeFiles": "{node_modules/ffprobe-static/bin/darwin/**,node_modules/ffprobe-static/bin/win32/**,node_modules/tesseract.js-core/tesseract-core.*,node_modules/tesseract.js-core/tesseract-core-simd.*,node_modules/tesseract.js-core/tesseract-core-relaxedsimd.*}"
     }
   },
