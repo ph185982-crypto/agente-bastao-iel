@@ -1088,6 +1088,17 @@ class Component extends DCLogic {
         if (!file && !link) {
           return this.setState({ veStep: 'error', veError: 'Envie o vídeo do aparelho ou cole o link do vídeo.' });
         }
+        // A Vercel corta o envio acima de ~4,5 MB antes de chegar no servidor, e
+        // aí a resposta é um 413 sem explicação. Medindo aqui o usuário sabe na
+        // hora — e não perde tempo subindo um arquivo que seria recusado.
+        const LIMITE_MB = 4;
+        if (file && file.size > LIMITE_MB * 1024 * 1024) {
+          return this.setState({
+            veStep: 'error',
+            veError: `Esse vídeo tem ${(file.size / 1048576).toFixed(1)} MB e o limite de envio é ${LIMITE_MB} MB. `
+              + 'Corte um trecho menor, ou cole o link direto do arquivo — por link não há limite de tamanho.',
+          });
+        }
         // Sem vídeo baixado não há fala pra ouvir; o robô precisa de assunto ou gancho.
         if (file && !tema && !manual) {
           return this.setState({ veStep: 'error', veError: 'Escreva o assunto do vídeo (ou o gancho) para eu montar a legenda.' });
@@ -1393,6 +1404,11 @@ class Component extends DCLogic {
 
       const res = await fetch('/api/video-editor/render', opcoes);
       if (!res.ok) {
+        // Quando quem recusa é a borda da Vercel (arquivo grande demais), a
+        // resposta nem é JSON — sem este caso o usuário via só "Erro 413".
+        if (res.status === 413) {
+          throw new Error('O vídeo é grande demais para o envio. Corte um trecho menor, ou cole o link direto do arquivo.');
+        }
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Erro ' + res.status);
       }
