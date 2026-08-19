@@ -24,7 +24,14 @@ Ferramenta web para criar conteúdo para o Instagram em 3 passos:
 ### Pré-requisitos
 
 - Node.js 18+
-- Uma chave de IA (`GROQ_API_KEY` basta — é gratuita) e `RAPIDAPI_KEY`
+- Nenhuma chave é obrigatória para o Editor de Vídeo: enviando o arquivo do
+  aparelho (ou colando o link direto do `.mp4`), o reel é montado e a legenda é
+  escrita pelo robô, sem IA e sem API de download.
+- As chaves melhoram o resultado, não destravam o básico:
+  - `GROQ_API_KEY` (gratuita) — a IA ouve a fala do vídeo e escreve gancho e
+    legenda sobre o conteúdo real, em vez do texto estrutural do robô;
+  - `RAPIDAPI_KEY` (cota paga) — só é usada para baixar vídeo a partir do link
+    de um post do Instagram.
 
 ### 1. Backend
 

@@ -698,9 +698,33 @@
 
             <div style="background: #FFFFFF; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 16px">
               <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                  <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Vídeo do aparelho</span>
+                  <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">SEM CUSTO</span>
+                </div>
+                <input id="veFileInput" type="file" accept="video/*" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 14px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Funciona sempre — não depende de API de download nem de IA. Até 4 MB.</div>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 10px">
+                <div style="flex: 1; height: 1px; background: #E5E5EA"></div>
+                <span style="font-size: 11px; color: #86868B; font-weight: 600">OU</span>
+                <div style="flex: 1; height: 1px; background: #E5E5EA"></div>
+              </div>
+
+              <div>
                 <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Link do vídeo</div>
-                <input id="veLinkInput" type="text" placeholder="https://www.instagram.com/reel/..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
-                <div style="font-size: 11px; color: #86868B; margin-top: 6px">O post precisa ser público</div>
+                <input id="veLinkInput" type="text" placeholder="Link do Reels ou link direto do .mp4" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Link do Instagram precisa de post público e depende da cota da API de download. Link direto do arquivo não tem limite de tamanho.</div>
+              </div>
+
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                  <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Assunto do vídeo</span>
+                  <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">OPCIONAL</span>
+                </div>
+                <input id="veTemaInput" type="text" maxlength="80" placeholder="ex: vender mais no instagram" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Sobre o que é o vídeo — é com isso que a legenda é escrita quando a IA não está disponível</div>
               </div>
 
               <div>
@@ -709,7 +733,7 @@
                   <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">OPCIONAL</span>
                 </div>
                 <textarea id="veHeadlineManual" rows="3" maxlength="140" placeholder="Escreva seu gancho aqui..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
-                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Deixe em branco que a IA escreve o gancho pra você</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Deixe em branco que o gancho é escrito pra você — pela IA quando ela estiver disponível, senão pelo robô</div>
               </div>
             </div>
 
@@ -723,7 +747,7 @@
               <div style="display: flex; flex-direction: column; gap: 8px">
                 <div style="display: flex; align-items: center; gap: 10px">
                   <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(52,199,89,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #34C759">1</span></div>
-                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Baixa, entende e escreve</div><div style="font-size: 11px; color: #86868B">Ouve a fala, lê a imagem e escreve gancho + legenda</div></div>
+                  <div><div style="font-size: 13px; font-weight: 600; color: #1D1D1F">Entende e escreve</div><div style="font-size: 11px; color: #86868B">Com IA, ouve a fala do vídeo. Sem IA, o robô escreve pelo assunto</div></div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px">
                   <div style="width: 28px; height: 28px; border-radius: 8px; background: rgba(175,82,222,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="font-size: 13px; font-weight: 700; color: #AF52DE">2</span></div>
@@ -1059,9 +1083,17 @@ class Component extends DCLogic {
       veGerar: () => {
         const link = document.getElementById('veLinkInput')?.value?.trim() || '';
         const manual = document.getElementById('veHeadlineManual')?.value?.trim() || '';
-        if (!link) return this.setState({ veStep: 'error', veError: 'Cole o link do vídeo do Instagram.' });
+        const tema = document.getElementById('veTemaInput')?.value?.trim() || '';
+        const file = document.getElementById('veFileInput')?.files?.[0] || null;
+        if (!file && !link) {
+          return this.setState({ veStep: 'error', veError: 'Envie o vídeo do aparelho ou cole o link do vídeo.' });
+        }
+        // Sem vídeo baixado não há fala pra ouvir; o robô precisa de assunto ou gancho.
+        if (file && !tema && !manual) {
+          return this.setState({ veStep: 'error', veError: 'Escreva o assunto do vídeo (ou o gancho) para eu montar a legenda.' });
+        }
         if (this.state.veStep === 'analyzing' || this.state.veStep === 'rendering') return;
-        this._veGerarTudo(link, manual).catch(e =>
+        this._veGerarTudo({ file, link, manual, tema }).catch(e =>
           this.setState({ veStep: 'error', veError: e.message })
         );
       },
@@ -1079,8 +1111,12 @@ class Component extends DCLogic {
         if (this.state.veVideoUrl) { try { URL.revokeObjectURL(this.state.veVideoUrl); } catch {} }
         const linkEl = document.getElementById('veLinkInput');
         const headEl = document.getElementById('veHeadlineManual');
+        const temaEl = document.getElementById('veTemaInput');
+        const fileEl = document.getElementById('veFileInput');
         if (linkEl) linkEl.value = '';
         if (headEl) headEl.value = '';
+        if (temaEl) temaEl.value = '';
+        if (fileEl) fileEl.value = '';
         this.setState({
           veStep: 'idle', veCaption: '', veVideoUrl: null,
           veError: null, veProgressText: '',
@@ -1271,15 +1307,27 @@ class Component extends DCLogic {
   // ── Editor de Vídeo ─────────────────────────────────────────────────────────
   // Um clique só: entende o vídeo + escreve gancho/legenda + monta o reel,
   // sem parar numa tela de confirmação no meio do caminho.
-  async _veGerarTudo(link, manualHeadline) {
+  //
+  // O vídeo pode vir de três lugares. Arquivo do aparelho é o único que não
+  // depende de serviço pago nenhum — por isso ele pula o /analyze: subir o
+  // arquivo duas vezes (uma pra entender, outra pra montar) seria desperdício,
+  // então a legenda vem do /copy, que não precisa do vídeo.
+  async _veGerarTudo({ file, link, manual, tema }) {
+    const ehInstagram = /instagram\.com/i.test(link || '');
+    const fonte = file
+      ? { file }
+      : (ehInstagram ? { instagramUrl: link } : { videoUrl: link });
+
     this.setState({
-      veStep: 'analyzing', veLink: link, veError: null,
-      veProgressText: 'Baixando o vídeo...',
+      veStep: 'analyzing', veLink: link || (file && file.name) || '', veError: null,
+      veProgressText: file ? 'Escrevendo o gancho e a legenda...' : 'Baixando o vídeo...',
     });
 
-    const msgsAnalyze = manualHeadline
-      ? ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo a legenda...']
-      : ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo o gancho e a legenda...'];
+    const msgsAnalyze = file
+      ? ['Escrevendo o gancho e a legenda...']
+      : (manual
+        ? ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo a legenda...']
+        : ['Baixando o vídeo...', 'Ouvindo o que é falado...', 'Escrevendo o gancho e a legenda...']);
     let i = 0;
     let timer = setInterval(() => {
       i = Math.min(i + 1, msgsAnalyze.length - 1);
@@ -1288,10 +1336,15 @@ class Component extends DCLogic {
 
     let headline, caption, trimNotice, crop;
     try {
-      const res = await fetch('/api/video-editor/analyze', {
+      const rota = file ? '/api/video-editor/copy' : '/api/video-editor/analyze';
+      const corpo = file
+        ? { tema, headline: manual || '' }
+        : { ...fonte, tema, headline: manual || '' };
+
+      const res = await fetch(rota, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instagramUrl: link, headline: manualHeadline || '' }),
+        body: JSON.stringify(corpo),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -1322,11 +1375,23 @@ class Component extends DCLogic {
     }, 10000);
 
     try {
-      const res = await fetch('/api/video-editor/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instagramUrl: link, headline, caption, crop }),
-      });
+      // Com arquivo vai multipart; com link vai JSON. O servidor aceita os dois.
+      let opcoes;
+      if (file) {
+        const form = new FormData();
+        form.append('video', file);
+        form.append('headline', headline);
+        form.append('caption', caption || '');
+        opcoes = { method: 'POST', body: form };
+      } else {
+        opcoes = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...fonte, headline, caption, crop }),
+        };
+      }
+
+      const res = await fetch('/api/video-editor/render', opcoes);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || 'Erro ' + res.status);

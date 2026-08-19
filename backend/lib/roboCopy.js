@@ -415,6 +415,9 @@ module.exports = {
   nucleoCurto,
   palavrasChave,
   limitarPalavras,
+  capitalizar,
+  hashString,
+  criarSorteio,
   FRAMEWORKS,
   MARCADOR,
 };

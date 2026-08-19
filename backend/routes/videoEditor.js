@@ -11,12 +11,14 @@
 // escreve gancho e legenda. O usuário pode editar o gancho antes de renderizar.
 require('../fontSetup');
 const express = require('express');
+const multer = require('multer');
 const axios = require('axios');
 const OpenAI = require('openai');
 const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
 const { createCompatClient, friendlyErrorMessage } = require('../lib/llm');
+const { gerarCopyReel } = require('../lib/roboReel');
 const { PEDRO_DNA, LINGUAGEM_LEIGO, PROFILE_HANDLE, PROFILE_NAME } = require('../lib/pedroDna');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -29,6 +31,32 @@ ffmpeg.setFfprobePath(require('ffprobe-static').path);
 
 const llm = createCompatClient();
 const router = express.Router();
+
+// Envio do vídeo direto do aparelho. É o caminho que não depende de NADA pago:
+// sem API de download, sem chave de IA. O teto é da própria Vercel, que recusa
+// corpo de requisição acima de ~4,5 MB antes mesmo de chegar aqui — por isso o
+// limite do multer é um pouco menor, para o erro sair explicado em vez de virar
+// um 413 cru sem mensagem.
+const UPLOAD_MAX_MB = 4;
+const upload = multer({
+  dest: os.tmpdir(),
+  limits: { fileSize: UPLOAD_MAX_MB * 1024 * 1024 },
+});
+
+// multer joga erro próprio quando o arquivo passa do limite; sem isso o usuário
+// via só "Erro 500".
+function tratarUpload(campo) {
+  return (req, res, next) => upload.single(campo)(req, res, err => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        error: `O vídeo passou de ${UPLOAD_MAX_MB} MB, que é o limite de envio do servidor. ` +
+          `Corte um trecho menor, ou cole o link direto do vídeo — por link não há limite de tamanho.`,
+      });
+    }
+    return res.status(400).json({ error: 'Não consegui ler o vídeo enviado.' });
+  });
+}
 
 // Traduz o erro pro usuário. Cuidado importante: só chama a tradução de erro
 // de IA quando o erro veio MESMO de um modelo. O axios também põe `status` no
@@ -370,12 +398,24 @@ async function resolveInstagramUrl(instagramUrl) {
   throw traduzErroDownload(ultimoErroFallback);
 }
 
+// O Referer do Instagram é obrigatório no CDN deles, mas faz outros servidores
+// devolverem 403 (hotlink negado). Só manda para quem precisa.
+function ehHostInstagram(url) {
+  try {
+    return /(^|\.)(instagram\.com|cdninstagram\.com|fbcdn\.net)$/i.test(new URL(url).hostname);
+  } catch { return false; }
+}
+
 function streamDownload(url, destPath, timeoutMs = 45000) {
   return new Promise((resolve, reject) => {
     axios.get(url, {
       responseType: 'stream',
       timeout: timeoutMs,
-      headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://www.instagram.com/' },
+      maxRedirects: 5,
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        ...(ehHostInstagram(url) ? { Referer: 'https://www.instagram.com/' } : {}),
+      },
     }).then(resp => {
       const writer = fs.createWriteStream(destPath);
       resp.data.pipe(writer);
@@ -427,6 +467,47 @@ async function getOrDownloadVideo(instagramUrl, destPath) {
   const cdnUrl = await resolveInstagramUrl(instagramUrl);
   await streamDownload(cdnUrl, destPath);
   try { fs.copyFileSync(destPath, cachePath); } catch {}
+}
+
+// ── De onde vem o vídeo ───────────────────────────────────────────────────────
+// Três caminhos, do mais barato para o mais caro:
+//   1. arquivo enviado do aparelho — não custa nada e não depende de serviço nenhum;
+//   2. link direto do arquivo de vídeo — o servidor baixa, sem limite de tamanho;
+//   3. link de post do Instagram — precisa da API paga de download (RAPIDAPI_KEY).
+// Existir os dois primeiros é o que mantém o editor de pé quando a cota da API
+// de download acaba.
+function descreverFonte({ instagramUrl, videoUrl, file }) {
+  if (file) return 'arquivo enviado';
+  if (videoUrl) return 'link direto';
+  if (instagramUrl) return 'link do Instagram';
+  return 'nenhuma';
+}
+
+async function obterVideo({ instagramUrl, videoUrl, file }, destPath) {
+  if (file) {
+    // multer já gravou em /tmp; move para o nome que o resto do pipeline espera.
+    try { fs.renameSync(file.path, destPath); }
+    catch { fs.copyFileSync(file.path, destPath); try { fs.unlinkSync(file.path); } catch {} }
+    return;
+  }
+
+  if (videoUrl) {
+    const url = videoUrl.trim();
+    if (!/^https?:\/\//i.test(url)) throw erroDownload('O link do vídeo precisa começar com http:// ou https://');
+    try {
+      await streamDownload(url, destPath, 60000);
+    } catch (e) {
+      const status = e?.response?.status ?? e?.status;
+      if (status === 403) throw erroDownload('Esse link recusou o download (403). Links que expiram costumam dar isso — gere um novo, ou envie o arquivo do aparelho.');
+      if (status === 404) throw erroDownload('Esse link não existe mais (404). Gere um novo, ou envie o arquivo do aparelho.');
+      throw erroDownload('Não consegui baixar o vídeo desse link. Confirme que ele aponta direto para o arquivo de vídeo.');
+    }
+    return;
+  }
+
+  if (instagramUrl) return getOrDownloadVideo(instagramUrl.trim(), destPath);
+
+  throw erroDownload('Envie o vídeo do aparelho, cole o link direto do arquivo ou o link do post do Instagram.');
 }
 
 function getVideoInfo(videoPath) {
@@ -1036,6 +1117,81 @@ ${REGRAS_CAPTION}
 
 Responda APENAS JSON: {"caption":"..."}`;
 
+// Escreve gancho e legenda. Tenta a IA primeiro (ela lê a fala do vídeo e sai
+// muito melhor); se não houver chave, se a cota acabar ou se a resposta vier
+// quebrada, o robô assume. O editor nunca para por falta de copy — no pior caso
+// o texto sai genérico, com um marcador dizendo onde completar.
+async function escreverCopy({ givenHeadline, transcript, visual, tema, variante }) {
+  const contexto = [
+    givenHeadline ? `GANCHO (use exatamente assim):\n${givenHeadline}` : '',
+    transcript ? `TRANSCRIÇÃO DA FALA DO VÍDEO:\n${transcript.slice(0, 4000)}` : '',
+    visual ? `DESCRIÇÃO DA IMAGEM DO VÍDEO:\n${visual}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  if (contexto) {
+    try {
+      const ai = await llm.chat.completions.create({
+        model: 'gpt-4o',
+        temperature: 0.85,
+        max_tokens: 1000,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: givenHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
+          { role: 'user', content: contexto },
+        ],
+      }, { timeout: 25000 });
+
+      const parsed = JSON.parse(ai.choices[0].message.content || '{}');
+      const headline = givenHeadline || String(parsed.headline || '').trim();
+      const caption = String(parsed.caption || '').trim();
+      if (headline && stripEmoji(headline).trim() && caption) {
+        return { headline, caption, fonte: 'ia' };
+      }
+      console.warn('[videoEditor] IA devolveu copy incompleta — caindo pro robô');
+    } catch (e) {
+      console.warn('[videoEditor] IA indisponível, escrevendo pelo robô:', e.message?.slice(0, 120));
+    }
+  }
+
+  // O robô só sabe escrever em cima de um assunto curto. A transcrição serve
+  // como assunto quando não há tema — gerarCopyReel apara o excesso.
+  const robo = gerarCopyReel({
+    tema: tema || givenHeadline || transcript || visual,
+    headline: givenHeadline,
+    handle: PROFILE_HANDLE,
+    variante,
+  });
+  return { headline: robo.headline, caption: robo.caption, fonte: 'robo' };
+}
+
+// Copy sem vídeo nenhum: o usuário digita o assunto e recebe gancho e legenda na
+// hora. Não baixa nada, não custa nada, e é o caminho usado quando o vídeo vai
+// ser enviado do aparelho (aí o /analyze nem roda, para não subir o arquivo duas vezes).
+router.post('/copy', async (req, res) => {
+  try {
+    const { tema, headline, variante } = req.body || {};
+    const ownHeadline = String(headline || '').trim().slice(0, 140);
+    if (!String(tema || '').trim() && !ownHeadline) {
+      return res.status(400).json({ error: 'Escreva o assunto do vídeo (ou o gancho) para eu montar a legenda.' });
+    }
+    if (ownHeadline && !stripEmoji(ownHeadline).trim()) {
+      return res.status(400).json({ error: 'O gancho não pode ser só emoji — adicione texto.' });
+    }
+
+    const n = Number(variante);
+    const robo = gerarCopyReel({
+      tema,
+      headline: ownHeadline,
+      handle: PROFILE_HANDLE,
+      variante: Number.isFinite(n) ? n : Math.floor(Math.random() * 1e6),
+    });
+    res.json({ headline: robo.headline, caption: robo.caption, fonte: 'robo', variante: robo.variante });
+  } catch (e) {
+    console.error('[videoEditor/copy]', e.message);
+    res.status(500).json({ error: 'Não consegui montar a legenda agora.' });
+  }
+});
+
 router.post('/analyze', async (req, res) => {
   const sid = crypto.randomUUID();
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
@@ -1045,14 +1201,16 @@ router.post('/analyze', async (req, res) => {
   });
 
   try {
-    const { instagramUrl, headline: userHeadline } = req.body || {};
-    if (!instagramUrl?.trim()) return res.status(400).json({ error: 'Cole o link do vídeo do Instagram' });
+    const { instagramUrl, videoUrl, headline: userHeadline, tema } = req.body || {};
+    if (!String(instagramUrl || '').trim() && !String(videoUrl || '').trim()) {
+      return res.status(400).json({ error: 'Cole o link do vídeo do Instagram ou o link direto do arquivo.' });
+    }
 
     // Gancho escrito pelo usuário é respeitado como está; vazio = a IA escreve (podendo
     // reaproveitar um gancho forte que já exista na fala do vídeo — ver WRITER_SYSTEM)
     const ownHeadline = String(userHeadline || '').trim().slice(0, 140);
 
-    await getOrDownloadVideo(instagramUrl.trim(), rawVideo);
+    await obterVideo({ instagramUrl, videoUrl }, rawVideo);
 
     const info = await getVideoInfo(rawVideo);
 
@@ -1080,38 +1238,20 @@ router.post('/analyze', async (req, res) => {
       ? ''
       : await describeFrame(rawVideo, Math.min(2, info.duration / 2), sid);
 
+    // Antes isso era um erro que derrubava a rota. Não é mais: sem fala e sem
+    // leitura de imagem o robô ainda escreve em cima do assunto informado — o
+    // vídeo continua sendo editado, que é o que o usuário veio fazer aqui.
     if (!transcript && !visual && !bakedHeadline) {
-      throw new Error('Não consegui entender o conteúdo desse vídeo (sem fala e sem leitura de imagem disponível).');
+      console.warn('[videoEditor] vídeo sem fala e sem leitura de imagem — copy pelo robô');
     }
 
     // Gancho que o autor original escreveu no vídeo vale como gancho pronto:
     // é uma frase editorial de verdade, não um pedaço solto da fala.
     const givenHeadline = ownHeadline || bakedHeadline;
 
-    const ai = await llm.chat.completions.create({
-      model: 'gpt-4o',
-      temperature: 0.85,
-      max_tokens: 1000,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: givenHeadline ? WRITER_SYSTEM_CAPTION_ONLY : WRITER_SYSTEM },
-        {
-          role: 'user',
-          content: [
-            givenHeadline ? `GANCHO (use exatamente assim):\n${givenHeadline}` : '',
-            transcript ? `TRANSCRIÇÃO DA FALA DO VÍDEO:\n${transcript.slice(0, 4000)}` : '',
-            visual ? `DESCRIÇÃO DA IMAGEM DO VÍDEO:\n${visual}` : '',
-          ].filter(Boolean).join('\n\n'),
-        },
-      ],
-    }, { timeout: 25000 });
-
-    const parsed = JSON.parse(ai.choices[0].message.content || '{}');
-    const headline = givenHeadline || String(parsed.headline || '').trim();
-    const caption = String(parsed.caption || '').trim();
-    if (!headline || !stripEmoji(headline).trim()) {
-      throw new Error('A IA não conseguiu escrever o gancho. Tente de novo.');
-    }
+    const { headline, caption, fonte } = await escreverCopy({
+      givenHeadline, transcript, visual, tema,
+    });
 
     cleanup();
     res.json({
@@ -1119,6 +1259,7 @@ router.post('/analyze', async (req, res) => {
       headlineFromUser: !!ownHeadline,
       headlineFromVideo: !ownHeadline && !!bakedHeadline,
       caption,
+      fonte,
       crop: region,
       durationSec: Math.round(info.duration),
       willTrim: info.duration > MAX_CLIP_SEC,
@@ -1196,31 +1337,44 @@ async function composeReel({ videoPath, headline, bgPng, output, sid, crop }) {
   return output;
 }
 
-router.post('/render', async (req, res) => {
+// Aceita o vídeo por multipart (arquivo do aparelho) ou por JSON (link). O
+// multer ignora corpo que não seja multipart, então as duas formas passam aqui.
+router.post('/render', tratarUpload('video'), async (req, res) => {
   const sid = crypto.randomUUID();
   const rawVideo = path.join(os.tmpdir(), `${sid}_raw.mp4`);
   const bgPng = path.join(os.tmpdir(), `${sid}_bg.png`);
   const output = path.join(os.tmpdir(), `${sid}_reel.mp4`);
-  const cleanTmp = () => [rawVideo, bgPng].forEach(f => {
-    try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch {}
+  const cleanTmp = () => [rawVideo, bgPng, req.file?.path].forEach(f => {
+    try { if (f && fs.existsSync(f)) fs.unlinkSync(f); } catch {}
   });
 
   const cleanOutput = () => { try { if (fs.existsSync(output)) fs.unlinkSync(output); } catch {} };
 
   try {
-    const { instagramUrl, headline, caption, crop } = req.body || {};
-    if (!instagramUrl?.trim()) return res.status(400).json({ error: 'Cole o link do vídeo do Instagram' });
+    const { instagramUrl, videoUrl, headline, caption } = req.body || {};
+    // Vindo por multipart, todo campo chega como texto — o recorte volta a ser objeto.
+    let { crop } = req.body || {};
+    if (typeof crop === 'string') { try { crop = JSON.parse(crop); } catch { crop = null; } }
+
+    if (!req.file && !String(instagramUrl || '').trim() && !String(videoUrl || '').trim()) {
+      return res.status(400).json({ error: 'Envie o vídeo do aparelho, cole o link direto do arquivo ou o link do post do Instagram.' });
+    }
     if (!String(headline || '').trim()) return res.status(400).json({ error: 'O gancho é obrigatório' });
     if (!stripEmoji(headline).trim()) return res.status(400).json({ error: 'O gancho não pode ser só emoji — adicione texto.' });
 
-    await getOrDownloadVideo(instagramUrl.trim(), rawVideo);
+    console.log(`[videoEditor] render a partir de: ${descreverFonte({ instagramUrl, videoUrl, file: req.file })}`);
+    await obterVideo({ instagramUrl, videoUrl, file: req.file }, rawVideo);
 
     await composeReel({ videoPath: rawVideo, headline, bgPng, output, sid, crop });
-    try { fs.unlinkSync(rawVideoCachePath(instagramUrl.trim())); } catch {}
+    if (instagramUrl?.trim()) { try { fs.unlinkSync(rawVideoCachePath(instagramUrl.trim())); } catch {} }
     cleanTmp();
 
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Disposition', 'attachment; filename="reel_pronto.mp4"');
+    if (caption) {
+      res.setHeader('X-Caption', encodeURIComponent(caption));
+      res.setHeader('Access-Control-Expose-Headers', 'X-Caption');
+    }
 
     // Se o cliente cancelar (fechar aba, perder conexão) no meio do envio, o
     // arquivo temporário não pode ficar órfão em /tmp.
