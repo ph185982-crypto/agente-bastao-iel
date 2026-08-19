@@ -8,7 +8,7 @@
       "maxDuration": 60,
       "memory": 1024,
       "includeFiles": "{node_modules/ffprobe-static/bin/linux/x64/**,backend/assets/**}",
-      "excludeFiles": "node_modules/ffprobe-static/bin/{darwin,win32}/**"
+      "excludeFiles": "{node_modules/ffprobe-static/bin/darwin/**,node_modules/ffprobe-static/bin/win32/**,node_modules/tesseract.js-core/tesseract-core.*,node_modules/tesseract.js-core/tesseract-core-simd.*,node_modules/tesseract.js-core/tesseract-core-relaxedsimd.*}"
     }
   },
   "rewrites": [

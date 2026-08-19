@@ -19,6 +19,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
 const { createCompatClient, friendlyErrorMessage } = require('../lib/llm');
 const { gerarCopyReel } = require('../lib/roboReel');
+const { lerPrint } = require('../lib/lerPrint');
 const { PEDRO_DNA, LINGUAGEM_LEIGO, PROFILE_HANDLE, PROFILE_NAME } = require('../lib/pedroDna');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -45,16 +46,18 @@ const upload = multer({
 
 // multer joga erro próprio quando o arquivo passa do limite; sem isso o usuário
 // via só "Erro 500".
-function tratarUpload(campo) {
+function tratarUpload(campo, oQue = 'vídeo') {
   return (req, res, next) => upload.single(campo)(req, res, err => {
     if (!err) return next();
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({
-        error: `O vídeo passou de ${UPLOAD_MAX_MB} MB, que é o limite de envio do servidor. ` +
-          `Corte um trecho menor, ou cole o link direto do vídeo — por link não há limite de tamanho.`,
+        error: `O ${oQue} passou de ${UPLOAD_MAX_MB} MB, que é o limite de envio do servidor. `
+          + (oQue === 'vídeo'
+            ? 'Corte um trecho menor, ou cole o link direto do vídeo — por link não há limite de tamanho.'
+            : 'Tire o print de novo com qualidade menor.'),
       });
     }
-    return res.status(400).json({ error: 'Não consegui ler o vídeo enviado.' });
+    return res.status(400).json({ error: `Não consegui ler o ${oQue} enviado.` });
   });
 }
 
@@ -1189,6 +1192,44 @@ router.post('/copy', async (req, res) => {
   } catch (e) {
     console.error('[videoEditor/copy]', e.message);
     res.status(500).json({ error: 'Não consegui montar a legenda agora.' });
+  }
+});
+
+// Copy a partir do PRINT do post: lê o gancho escrito em cima do vídeo e a
+// legenda, direto da imagem. Quem lê é o Tesseract, dentro do próprio servidor —
+// não é modelo de linguagem, não tem chave nem cota, e a imagem não sai daqui.
+router.post('/print', tratarUpload('print', 'print'), async (req, res) => {
+  const limpar = () => { try { if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch {} };
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Anexe o print do post.' });
+
+    const n = Number(req.body?.variante);
+    const r = await lerPrint(req.file.path, {
+      handle: PROFILE_HANDLE,
+      tema: req.body?.tema,
+      variante: Number.isFinite(n) ? n : Math.floor(Math.random() * 1e6),
+    });
+    limpar();
+
+    if (!r.headline && !r.caption) {
+      return res.status(422).json({
+        error: 'Não consegui ler texto nesse print. Confira se o gancho e a legenda aparecem inteiros na imagem, '
+          + 'ou escreva o gancho e o assunto na mão.',
+      });
+    }
+
+    console.log(`[videoEditor/print] confiança ${r.confianca}% | gancho: ${r.capturou.gancho} | legenda: ${r.capturou.legenda}`);
+    res.json({
+      headline: r.headline,
+      caption: r.caption,
+      fonte: r.fonte,
+      confianca: r.confianca,
+      capturou: r.capturou,
+    });
+  } catch (e) {
+    limpar();
+    console.error('[videoEditor/print]', e.message);
+    res.status(500).json({ error: 'Não consegui ler esse print. Tente de novo, ou escreva o gancho na mão.' });
   }
 });
 

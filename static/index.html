@@ -724,7 +724,22 @@
                   <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">OPCIONAL</span>
                 </div>
                 <input id="veTemaInput" type="text" maxlength="80" placeholder="ex: vender mais no instagram" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
-                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Sobre o que é o vídeo — é com isso que a legenda é escrita quando a IA não está disponível</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Só é preciso se você NÃO anexar o print. Com o print, o gancho e a legenda vêm prontos de lá.</div>
+              </div>
+
+              <div style="height: 1px; background: #E5E5EA"></div>
+
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                  <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Print do post</span>
+                  <span style="font-size: 10px; font-weight: 600; color: #007AFF; background: rgba(0,122,255,0.12); padding: 3px 8px; border-radius: 6px">LÊ O GANCHO E A LEGENDA</span>
+                </div>
+                <input id="vePrintInput" type="file" accept="image/*" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 14px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
+                <div onClick="{{ veLerPrint }}" style="margin-top: 10px; background: #007AFF; border-radius: 10px; padding: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer" style-active="opacity: 0.85">
+                  <span style="font-size: 14px; font-weight: 700; color: white">Ler o print</span>
+                </div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Anexe o print do post inteiro — com o gancho em cima do vídeo e a legenda embaixo. A leitura é feita no servidor, sem IA.</div>
+                <div style="font-size: 12px; color: #007AFF; margin-top: 6px; font-weight: 600">{{ vePrintStatus }}</div>
               </div>
 
               <div>
@@ -733,7 +748,15 @@
                   <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">OPCIONAL</span>
                 </div>
                 <textarea id="veHeadlineManual" rows="3" maxlength="140" placeholder="Escreva seu gancho aqui..." style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
-                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Deixe em branco que o gancho é escrito pra você — pela IA quando ela estiver disponível, senão pelo robô</div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Vem preenchido do print. Em branco e sem print, o gancho é escrito pra você — pela IA quando ela estiver disponível, senão pelo robô.</div>
+              </div>
+
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px">
+                  <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Legenda</span>
+                  <span style="font-size: 10px; font-weight: 600; color: #34C759; background: rgba(52,199,89,0.12); padding: 3px 8px; border-radius: 6px">OPCIONAL</span>
+                </div>
+                <textarea id="veCaptionManual" rows="5" placeholder="Vem preenchida do print — dá pra editar aqui antes de gerar" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 14px; color: #1D1D1F; background: #F9F9F9; outline: none; resize: vertical; box-sizing: border-box"></textarea>
               </div>
             </div>
 
@@ -1007,6 +1030,7 @@ class Component extends DCLogic {
     veVideoUrl:       null,
     veProgressText:   '',
     veError:          null,
+    vePrintStatus:    '',
   };
 
   _progressTimer = null;
@@ -1079,11 +1103,45 @@ class Component extends DCLogic {
       veProgressText: this.state.veProgressText,
       veCaption:    this.state.veCaption,
       veErrorMsg:   this.state.veError,
+      vePrintStatus: this.state.vePrintStatus,
+
+      // Lê o print do post: o gancho escrito em cima do vídeo e a legenda saem
+      // da própria imagem, então não é preciso digitar nada.
+      veLerPrint: () => {
+        const print = document.getElementById('vePrintInput')?.files?.[0];
+        if (!print) return this.setState({ vePrintStatus: 'Anexe o print primeiro.' });
+        if (print.size > 4 * 1024 * 1024) {
+          return this.setState({ vePrintStatus: 'Print grande demais (limite 4 MB).' });
+        }
+        this.setState({ vePrintStatus: 'Lendo o print...' });
+
+        const form = new FormData();
+        form.append('print', print);
+        fetch('/api/video-editor/print', { method: 'POST', body: form })
+          .then(async res => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Erro ' + res.status);
+            const headEl = document.getElementById('veHeadlineManual');
+            const capEl = document.getElementById('veCaptionManual');
+            if (headEl && data.headline) headEl.value = data.headline;
+            if (capEl && data.caption) capEl.value = data.caption;
+            const partes = [];
+            if (data.headline) partes.push('gancho');
+            if (data.caption) partes.push('legenda');
+            this.setState({
+              vePrintStatus: partes.length
+                ? `Li ${partes.join(' e ')} do print (${data.confianca}% de nitidez). Confira e ajuste se precisar.`
+                : 'Não achei texto nesse print.',
+            });
+          })
+          .catch(e => this.setState({ vePrintStatus: e.message }));
+      },
 
       veGerar: () => {
         const link = document.getElementById('veLinkInput')?.value?.trim() || '';
         const manual = document.getElementById('veHeadlineManual')?.value?.trim() || '';
         const tema = document.getElementById('veTemaInput')?.value?.trim() || '';
+        const captionManual = document.getElementById('veCaptionManual')?.value?.trim() || '';
         const file = document.getElementById('veFileInput')?.files?.[0] || null;
         if (!file && !link) {
           return this.setState({ veStep: 'error', veError: 'Envie o vídeo do aparelho ou cole o link do vídeo.' });
@@ -1099,12 +1157,16 @@ class Component extends DCLogic {
               + 'Corte um trecho menor, ou cole o link direto do arquivo — por link não há limite de tamanho.',
           });
         }
-        // Sem vídeo baixado não há fala pra ouvir; o robô precisa de assunto ou gancho.
-        if (file && !tema && !manual) {
-          return this.setState({ veStep: 'error', veError: 'Escreva o assunto do vídeo (ou o gancho) para eu montar a legenda.' });
+        // Sem vídeo baixado não há fala pra ouvir; o texto precisa vir de algum
+        // lugar — do print (que preenche gancho e legenda), ou escrito à mão.
+        if (file && !tema && !manual && !captionManual) {
+          return this.setState({
+            veStep: 'error',
+            veError: 'Anexe o print do post e toque em "Ler o print", ou escreva o assunto do vídeo.',
+          });
         }
         if (this.state.veStep === 'analyzing' || this.state.veStep === 'rendering') return;
-        this._veGerarTudo({ file, link, manual, tema }).catch(e =>
+        this._veGerarTudo({ file, link, manual, tema, captionManual }).catch(e =>
           this.setState({ veStep: 'error', veError: e.message })
         );
       },
@@ -1124,13 +1186,17 @@ class Component extends DCLogic {
         const headEl = document.getElementById('veHeadlineManual');
         const temaEl = document.getElementById('veTemaInput');
         const fileEl = document.getElementById('veFileInput');
+        const printEl = document.getElementById('vePrintInput');
+        const capEl = document.getElementById('veCaptionManual');
         if (linkEl) linkEl.value = '';
         if (headEl) headEl.value = '';
         if (temaEl) temaEl.value = '';
         if (fileEl) fileEl.value = '';
+        if (printEl) printEl.value = '';
+        if (capEl) capEl.value = '';
         this.setState({
           veStep: 'idle', veCaption: '', veVideoUrl: null,
-          veError: null, veProgressText: '',
+          veError: null, veProgressText: '', vePrintStatus: '',
         });
       },
 
@@ -1323,15 +1389,22 @@ class Component extends DCLogic {
   // depende de serviço pago nenhum — por isso ele pula o /analyze: subir o
   // arquivo duas vezes (uma pra entender, outra pra montar) seria desperdício,
   // então a legenda vem do /copy, que não precisa do vídeo.
-  async _veGerarTudo({ file, link, manual, tema }) {
+  async _veGerarTudo({ file, link, manual, tema, captionManual }) {
     const ehInstagram = /instagram\.com/i.test(link || '');
     const fonte = file
       ? { file }
       : (ehInstagram ? { instagramUrl: link } : { videoUrl: link });
 
+    // Print já lido (ou texto escrito à mão): não há nada a perguntar ao
+    // servidor — vai direto montar o vídeo.
+    const textoPronto = !!(manual && captionManual);
+
     this.setState({
-      veStep: 'analyzing', veLink: link || (file && file.name) || '', veError: null,
-      veProgressText: file ? 'Escrevendo o gancho e a legenda...' : 'Baixando o vídeo...',
+      veStep: textoPronto ? 'rendering' : 'analyzing',
+      veLink: link || (file && file.name) || '', veError: null,
+      veProgressText: textoPronto
+        ? 'Recortando e montando...'
+        : (file ? 'Escrevendo o gancho e a legenda...' : 'Baixando o vídeo...'),
     });
 
     const msgsAnalyze = file
@@ -1345,29 +1418,32 @@ class Component extends DCLogic {
       this.setState({ veProgressText: msgsAnalyze[i] });
     }, 8000);
 
-    let headline, caption, trimNotice, crop;
+    let headline = manual, caption = captionManual, trimNotice = null, crop = null;
     try {
-      const rota = file ? '/api/video-editor/copy' : '/api/video-editor/analyze';
-      const corpo = file
-        ? { tema, headline: manual || '' }
-        : { ...fonte, tema, headline: manual || '' };
+      if (!textoPronto) {
+        const rota = file ? '/api/video-editor/copy' : '/api/video-editor/analyze';
+        const corpo = file
+          ? { tema, headline: manual || '' }
+          : { ...fonte, tema, headline: manual || '' };
 
-      const res = await fetch(rota, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(corpo),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Erro ' + res.status);
+        const res = await fetch(rota, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(corpo),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Erro ' + res.status);
+        }
+        const data = await res.json();
+        headline = manual || data.headline || '';
+        // legenda escrita/lida pelo usuário manda sobre a que o servidor sugeriu
+        caption = captionManual || data.caption || '';
+        crop = data.crop || null;
+        trimNotice = data.willTrim
+          ? `Vídeo tem ${data.durationSec}s — usando os primeiros ${data.maxClipSec}s...`
+          : null;
       }
-      const data = await res.json();
-      headline = data.headline || '';
-      caption = data.caption || '';
-      crop = data.crop || null;
-      trimNotice = data.willTrim
-        ? `Vídeo tem ${data.durationSec}s — usando os primeiros ${data.maxClipSec}s...`
-        : null;
     } finally {
       clearInterval(timer);
     }
