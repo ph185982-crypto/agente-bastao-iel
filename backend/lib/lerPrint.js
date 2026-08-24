@@ -262,6 +262,44 @@ async function obterWorker() {
 }
 
 /**
+ * Só a OCR crua: texto e nitidez, sem interpretar nada. Serve para quem tem
+ * outra estrutura para separar — o clonador de carrossel, por exemplo.
+ * @param {Buffer|string} imagem  buffer ou caminho do arquivo
+ */
+async function lerTexto(imagem) {
+  const worker = await obterWorker();
+  const { data } = await worker.recognize(imagem);
+  return { text: data.text, confidence: data.confidence };
+}
+
+/**
+ * OCR com a ALTURA de cada linha. A altura é o que separa título de corpo numa
+ * tela de carrossel: o título é desenhado bem maior, e essa diferença sobrevive
+ * mesmo quando não há linha em branco entre os dois.
+ * @param {Buffer|string} imagem  buffer ou caminho do arquivo
+ */
+async function lerLinhas(imagem) {
+  const worker = await obterWorker();
+  const { data } = await worker.recognize(imagem, {}, { blocks: true });
+
+  const linhas = [];
+  for (const bloco of data.blocks || []) {
+    for (const par of bloco.paragraphs || []) {
+      for (const l of par.lines || []) {
+        const texto = String(l.text || '').trim();
+        if (!texto) continue;
+        linhas.push({
+          texto,
+          altura: Math.round((l.bbox?.y1 || 0) - (l.bbox?.y0 || 0)),
+          confianca: Math.round(l.confidence || 0),
+        });
+      }
+    }
+  }
+  return { linhas, text: data.text, confidence: data.confidence };
+}
+
+/**
  * Lê um print e devolve gancho e legenda.
  * @param {Buffer|string} imagem  buffer ou caminho do arquivo
  */
@@ -282,6 +320,8 @@ async function lerPrint(imagem, { handle = '@pedro_destrava', tema, variante = 0
 
 module.exports = {
   lerPrint,
+  lerTexto,
+  lerLinhas,
   diagnosticarOcr,
   // exportados para teste
   separarTextoDoPrint,

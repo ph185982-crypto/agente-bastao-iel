@@ -4,15 +4,22 @@
 // viral/conexão em PT-BR e o backend renderiza cada slide como imagem 1080x1350.
 require('../fontSetup');
 const express = require('express');
+const multer  = require('multer');
 const axios   = require('axios');
 const sharp   = require('sharp');
 const fs      = require('fs');
+const os      = require('os');
 const path    = require('path');
 const { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE } = require('../lib/llm');
 const { gerarCarrossel } = require('../lib/roboCopy');
+const { separarTelaDeCarrossel, montarCarrosselDoPrint } = require('../lib/lerCarrossel');
 const { PEDRO_DNA: PEDRO_DNA_BASE } = require('../lib/pedroDna');
 
 const router = express.Router();
+
+// Print de uma tela do carrossel. O teto é o da Vercel (~4,5 MB por
+// requisição); abaixo dele o erro sai explicado em vez de virar 413 cru.
+const uploadPrint = multer({ dest: os.tmpdir(), limits: { fileSize: 4 * 1024 * 1024 } });
 let _llm = null;
 const getOpenAI = () => (_llm ??= createCompatClient());
 
@@ -133,10 +140,15 @@ async function renderViralCover({ slide, handle, bgBuf, circBuf }) {
   const textStartY = pillY - 32 - blockH + fit.fontSize * 0.82;
 
   // Subtitle (optional, above headline)
+  // A folga precisa acompanhar o tamanho do título: textStartY é a LINHA DE
+  // BASE da primeira linha, e as maiúsculas sobem cerca de 0,72 do corpo da
+  // fonte acima dela. Com folga fixa (era 18), título grande passava por cima
+  // do subtítulo — os dois saíam sobrepostos na capa.
   const sub = String(slide.subtitle || '').trim().toUpperCase();
   const subLines = sub ? wrapText(sub, 52) : [];
+  const folgaSub = Math.round(fit.fontSize * 0.78) + 24;
   const subEl = subLines.map((ln, i) =>
-    `<text x="${CW / 2}" y="${textStartY - (subLines.length - i) * 40 - 18}" font-family="${FONT_FAMILY_BODY}" font-size="33" fill="rgba(255,255,255,0.76)" text-anchor="middle" letter-spacing="0.5">${escXml(ln)}</text>`
+    `<text x="${CW / 2}" y="${textStartY - (subLines.length - i) * 40 - folgaSub}" font-family="${FONT_FAMILY_BODY}" font-size="33" fill="rgba(255,255,255,0.76)" text-anchor="middle" letter-spacing="0.5">${escXml(ln)}</text>`
   ).join('');
 
   const textEls = fit.lines.map((ln, i) =>
@@ -2103,6 +2115,96 @@ Retorne JSON: { "slides": [...], "caption": "..." }`,
   } catch (e) {
     console.error('[carousels] generate-trending error:', e.message);
     res.status(e?.status === 429 ? 503 : 500).json({ error: friendlyErrorMessage(e) });
+  }
+});
+
+// ── Clonar carrossel a partir dos prints ──────────────────────────────────────
+// Você printa as telas do carrossel que achou, a ferramenta lê cada uma e
+// remonta o mesmo conteúdo no NOSSO formato: nossa fonte, nossa paleta, nossa
+// numeração — e o CTA final apontando pro nosso perfil, não pro de origem.
+//
+// Por que print e não link: buscar o post pela URL depende da API paga do
+// Instagram na RapidAPI, que não tem assinatura ativa (403 "not subscribed").
+// Pelo print não depende de serviço nenhum e não custa nada.
+//
+// Uma tela por requisição de propósito: a Vercel recusa corpo acima de ~4,5 MB,
+// e um carrossel de 10 telas em print passa disso com folga.
+router.post('/ler-tela', uploadPrint.single('print'), async (req, res) => {
+  const limpar = () => {
+    try { if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch {}
+  };
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Anexe o print da tela.' });
+
+    const { lerLinhas } = require('../lib/lerPrint');
+    const texto = await lerLinhas(req.file.path);
+    limpar();
+
+    const tela = separarTelaDeCarrossel(texto);
+    if (!tela.title && !tela.body) {
+      return res.status(422).json({
+        error: 'Não consegui ler texto nessa tela. Confira se o print pegou a tela inteira.',
+      });
+    }
+    res.json({ ...tela, confianca: Math.round(texto.confidence || 0) });
+  } catch (e) {
+    limpar();
+    console.error('[carousels/ler-tela]', e.message);
+    res.status(500).json({ error: 'Não consegui ler esse print. Tente de novo, ou escreva o texto na mão.' });
+  }
+});
+
+// Recebe as telas já lidas (texto puro, sem imagem) e devolve o carrossel
+// renderizado no nosso formato — mesma resposta do /generate, então o frontend
+// exibe e baixa do mesmo jeito.
+router.post('/clonar', async (req, res) => {
+  try {
+    const { telas, tema, caption, variante } = req.body || {};
+    if (!Array.isArray(telas) || !telas.length) {
+      return res.status(400).json({ error: 'Leia pelo menos uma tela do carrossel antes de gerar.' });
+    }
+
+    let handle = (req.body?.handle || DEFAULT_HANDLE).trim();
+    if (!handle.startsWith('@')) handle = '@' + handle;
+
+    const n = Number(variante);
+    const conteudo = montarCarrosselDoPrint({
+      telas, handle, tema, caption,
+      variante: Number.isFinite(n) ? n : Math.floor(Math.random() * 1e6),
+    });
+    if (!conteudo) return res.status(400).json({ error: 'As telas lidas estão vazias.' });
+
+    const { topic: finalTopic, caption: legenda, slides } = conteudo;
+    const total = slides.length;
+
+    // As fotos do post original NÃO são reaproveitadas: entram imagens livres
+    // sobre o mesmo assunto. Evita republicar imagem de terceiro e evita o
+    // texto do autor, que costuma vir queimado na foto.
+    const busca = tema || finalTopic || 'dramatic inspiring nature landscape';
+    const coverPhotos = await getStoryPhotos(busca, 'dramatic nature landscape inspiring', 2).catch(() => []);
+
+    const buffers = await Promise.all(
+      slides.map((s, i) => renderSlide(s, i + 1, total, handle, coverPhotos))
+    );
+
+    res.json({
+      topic: finalTopic,
+      caption: legenda,
+      handle,
+      slides: slides.map((s, i) => ({
+        index: i + 1,
+        kind: s.kind,
+        title: s.title || '',
+        dataUrl: `data:image/png;base64,${buffers[i].toString('base64')}`,
+      })),
+      review: null,
+      fonte: 'print',
+      telasLidas: conteudo.telasLidas,
+      ctaTrocado: conteudo.ctaTrocado,
+    });
+  } catch (e) {
+    console.error('[carousels/clonar]', e.message);
+    res.status(500).json({ error: 'Não consegui montar o carrossel agora. Tente de novo.' });
   }
 });
 
