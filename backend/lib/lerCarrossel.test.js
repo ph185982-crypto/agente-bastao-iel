@@ -188,6 +188,25 @@ test('tela sem título destacado cai na heurística de texto, sem quebrar', () =
   assert.ok(r.title.split(/\s+/).length <= 12, 'título longo demais');
 });
 
+test('a foto lida em cada tela chega até o slide correspondente', () => {
+  const telas = [
+    { ...separarTelaDeCarrossel(CAPA), foto: 'data:image/jpeg;base64,CAPA_FOTO' },
+    { ...separarTelaDeCarrossel(CONTEUDO), foto: 'data:image/jpeg;base64,TELA2_FOTO' },
+    { ...separarTelaDeCarrossel(COLADO), foto: null }, // sem foto de verdade nesta
+  ];
+  const c = montarCarrosselDoPrint({ telas, handle: HANDLE, tema: 'combustível' });
+
+  assert.strictEqual(c.slides[0].kind, 'cover');
+  assert.strictEqual(c.slides[0].foto, 'data:image/jpeg;base64,CAPA_FOTO');
+
+  const conteudo = c.slides.filter(s => s.kind === 'content');
+  assert.strictEqual(conteudo[0].foto, 'data:image/jpeg;base64,TELA2_FOTO');
+  assert.strictEqual(conteudo[1].foto, null);
+
+  // o CTA é sempre o nosso template — nunca carrega foto do post original
+  assert.ok(!c.slides[c.slides.length - 1].foto, 'CTA não deveria ter foto');
+});
+
 test('aguenta print ilegível e lista vazia sem quebrar', () => {
   for (const entrada of ['', '   ', '22:37\n1/8', '!!!']) {
     const r = separarTelaDeCarrossel(entrada);

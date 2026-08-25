@@ -180,8 +180,12 @@ async function renderViralCover({ slide, handle, bgBuf, circBuf }) {
   // Background
   let base;
   if (bgBuf) {
+    // 'attention' recorta pelo ponto de maior interesse visual da foto (rosto,
+    // objeto, área de mais detalhe) em vez de cortar sempre pelo centro
+    // geométrico — evita cortar o assunto quando a foto é mais larga ou mais
+    // alta que o quadro do slide.
     base = await sharp(bgBuf)
-      .resize(CW, CH, { fit: 'cover', position: 'center' })
+      .resize(CW, CH, { fit: 'cover', position: 'attention' })
       .modulate({ saturation: 1.28, brightness: 1.04 })
       .linear(1.08, -8)
       .sharpen()
@@ -252,7 +256,7 @@ async function renderPhotoContent(slide, photoBuf, idx, total, handle) {
   let base;
   if (photoBuf) {
     base = await sharp(photoBuf)
-      .resize(CW, CH, { fit: 'cover', position: 'center' })
+      .resize(CW, CH, { fit: 'cover', position: 'attention' }) // recorte pelo ponto de maior interesse, não pelo centro cego
       // realça a foto (mais saturada/contrastada) — evita o visual "sem vida" de foto de banco crua
       .modulate({ saturation: 1.28, brightness: 1.04 })
       .linear(1.08, -8)
@@ -2137,7 +2141,15 @@ router.post('/ler-tela', uploadPrint.single('print'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'Anexe o print da tela.' });
 
     const { lerLinhas } = require('../lib/lerPrint');
-    const texto = await lerLinhas(req.file.path);
+    const { extrairFotoDaTela, fotoParaTransporte } = require('../lib/extrairFoto');
+    const buf = fs.readFileSync(req.file.path);
+
+    // Texto e foto são lidos da MESMA imagem, em paralelo — são análises
+    // independentes (OCR de um lado, textura de pixel do outro).
+    const [texto, fotoBuf] = await Promise.all([
+      lerLinhas(req.file.path),
+      extrairFotoDaTela(buf).catch(() => null),
+    ]);
     limpar();
 
     const tela = separarTelaDeCarrossel(texto);
@@ -2146,7 +2158,21 @@ router.post('/ler-tela', uploadPrint.single('print'), async (req, res) => {
         error: 'Não consegui ler texto nessa tela. Confira se o print pegou a tela inteira.',
       });
     }
-    res.json({ ...tela, confianca: Math.round(texto.confidence || 0) });
+
+    // A foto volta comprimida: ela precisa fazer a viagem de volta pro
+    // navegador e, na hora de gerar, voltar de novo pro servidor — sem
+    // comprimir, poucas telas já passariam do limite de corpo da Vercel.
+    let foto = null;
+    if (fotoBuf) {
+      try {
+        const compacta = await fotoParaTransporte(fotoBuf);
+        foto = `data:image/jpeg;base64,${compacta.toString('base64')}`;
+      } catch (e) {
+        console.warn('[carousels/ler-tela] compressão da foto falhou:', e.message);
+      }
+    }
+
+    res.json({ ...tela, foto, confianca: Math.round(texto.confidence || 0) });
   } catch (e) {
     limpar();
     console.error('[carousels/ler-tela]', e.message);
@@ -2154,9 +2180,32 @@ router.post('/ler-tela', uploadPrint.single('print'), async (req, res) => {
   }
 });
 
-// Recebe as telas já lidas (texto puro, sem imagem) e devolve o carrossel
-// renderizado no nosso formato — mesma resposta do /generate, então o frontend
-// exibe e baixa do mesmo jeito.
+// Decodifica a foto que veio como data URL (comprimida em /ler-tela) de volta
+// pra Buffer. undefined/null passam batido — nem toda tela tem foto de verdade.
+function decodificarFoto(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  const m = dataUrl.match(/^data:image\/\w+;base64,(.+)$/);
+  if (!m) return null;
+  try { return Buffer.from(m[1], 'base64'); } catch { return null; }
+}
+
+// Renderiza cada slide do clone usando a FOTO EXTRAÍDA DO PRÓPRIO PRINT — nunca
+// foto de banco. Quando a tela não tinha foto de verdade (card de texto puro,
+// gradiente), usa o template padrão sem forçar imagem nenhuma.
+async function renderSlideClonado(slide, idx, total, handle) {
+  const fotoBuf = decodificarFoto(slide.foto);
+  if (slide.kind === 'cover') {
+    return renderViralCover({ slide, handle, bgBuf: fotoBuf, circBuf: null });
+  }
+  if (slide.kind === 'cta') return renderCta(slide, handle);
+  return fotoBuf
+    ? renderPhotoContent(slide, fotoBuf, idx, total, handle)
+    : renderContent(slide, idx, total, handle);
+}
+
+// Recebe as telas já lidas (texto + foto extraída de cada print) e devolve o
+// carrossel renderizado no nosso formato — mesma resposta do /generate, então
+// o frontend exibe e baixa do mesmo jeito.
 router.post('/clonar', async (req, res) => {
   try {
     const { telas, tema, caption, variante } = req.body || {};
@@ -2177,14 +2226,8 @@ router.post('/clonar', async (req, res) => {
     const { topic: finalTopic, caption: legenda, slides } = conteudo;
     const total = slides.length;
 
-    // As fotos do post original NÃO são reaproveitadas: entram imagens livres
-    // sobre o mesmo assunto. Evita republicar imagem de terceiro e evita o
-    // texto do autor, que costuma vir queimado na foto.
-    const busca = tema || finalTopic || 'dramatic inspiring nature landscape';
-    const coverPhotos = await getStoryPhotos(busca, 'dramatic nature landscape inspiring', 2).catch(() => []);
-
     const buffers = await Promise.all(
-      slides.map((s, i) => renderSlide(s, i + 1, total, handle, coverPhotos))
+      slides.map((s, i) => renderSlideClonado(s, i + 1, total, handle))
     );
 
     res.json({

@@ -224,14 +224,18 @@ function montarCarrosselDoPrint({ telas = [], handle = '@pedro_destrava', tema, 
       kind: 'cover',
       title: capa.title || capa.body || assunto,
       subtitle: capa.title && capa.body ? capa.body : molde.slides[0].subtitle,
+      // A foto vem do PRINT dessa mesma tela — não é buscada em banco nenhum.
+      // undefined quando a tela não tinha foto de verdade (card de texto puro).
+      foto: capa.foto || null,
     },
     ...meio.map((t, i) => ({
       kind: 'content',
       number: String(i + 1).padStart(2, '0'),
       title: t.title || `Ponto ${i + 1}`,
       body: t.body || t.title || '',
+      foto: t.foto || null,
     })),
-    molde.slides[molde.slides.length - 1], // nosso CTA, com o nosso handle
+    molde.slides[molde.slides.length - 1], // nosso CTA, com o nosso handle — sem foto, é sempre o template
   ];
 
   // Legenda: a do post original quando o print dela veio junto; senão a do robô.

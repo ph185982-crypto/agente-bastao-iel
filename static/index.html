@@ -1630,9 +1630,11 @@ class Component extends DCLogic {
     }
     const falhas = lidas.filter(t => t.erro).length;
     const ctas = lidas.filter(t => t.ehCta).length;
+    const fotos = lidas.filter(t => t.foto).length;
     this.setState({
       cloneStatus: `${lidas.length} tela(s) lida(s)`
         + (falhas ? ` — ${falhas} não deu pra ler, preencha na mão` : '')
+        + (fotos ? `. ${fotos} com foto encontrada (recortada da própria imagem, não é foto de banco)` : '')
         + (ctas ? `. A tela de CTA do autor será trocada pela sua.` : '')
         + ' Confira o texto e ajuste se precisar.',
     });
@@ -1668,12 +1670,39 @@ class Component extends DCLogic {
 
       bloco.appendChild(tit);
       bloco.appendChild(cor);
+
+      // A foto vem do PRÓPRIO print — não é busca de banco. Quando o servidor
+      // não achou foto de verdade na tela (card de texto puro), não tem o que
+      // mostrar aqui, e o slide sai com o template padrão.
+      if (t.foto) {
+        const linha = document.createElement('div');
+        linha.style.cssText = 'display:flex;align-items:center;gap:10px;margin-top:2px';
+
+        const img = document.createElement('img');
+        img.src = t.foto;
+        img.style.cssText = 'width:56px;height:70px;object-fit:cover;border-radius:8px;flex-shrink:0';
+
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:12px;color:#1D1D1F;cursor:pointer';
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = true;
+        chk.setAttribute('data-tela-usa-foto', String(i));
+        label.appendChild(chk);
+        label.appendChild(document.createTextNode('Usar a foto desta tela (extraída do print, recortada automaticamente)'));
+
+        linha.appendChild(img);
+        linha.appendChild(label);
+        bloco.appendChild(linha);
+      }
+
       box.appendChild(bloco);
     });
   }
 
   // Lê de volta o que está nos campos — o que vale é o texto revisado por você,
-  // não o que a leitura devolveu.
+  // não o que a leitura devolveu. A foto só entra se o servidor achou uma E o
+  // checkbox continua marcado.
   _telasEditadas() {
     const box = document.getElementById('cloneTelasContainer');
     if (!box) return [];
@@ -1682,9 +1711,16 @@ class Component extends DCLogic {
     box.querySelectorAll('[data-tela-titulo]').forEach(el => {
       const i = Number(el.getAttribute('data-tela-titulo'));
       const corpo = box.querySelector(`[data-tela-corpo="${i}"]`);
+      const usaFoto = box.querySelector(`[data-tela-usa-foto="${i}"]`);
       const title = (el.value || '').trim();
       const body = (corpo?.value || '').trim();
-      if (title || body) out.push({ title, body, ehCta: !!originais[i]?.ehCta });
+      if (title || body) {
+        out.push({
+          title, body,
+          ehCta: !!originais[i]?.ehCta,
+          foto: (usaFoto?.checked && originais[i]?.foto) || null,
+        });
+      }
     });
     return out;
   }
