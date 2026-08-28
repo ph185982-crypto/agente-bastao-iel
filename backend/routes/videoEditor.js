@@ -826,13 +826,40 @@ async function detectMotionRegion(videoPath, vw, vh, sid) {
 // praticamente estático, por exemplo).
 async function readFramePlan(videoPath, vw, vh, sid) {
   const motionRegion = await detectMotionRegion(videoPath, vw, vh, sid);
-
-  const empty = { region: motionRegion, bakedHeadline: '' };
-  if (!process.env.OPENAI_API_KEY) return empty;   // Groq/llama não aceita imagem
-
   const framePath = path.join(os.tmpdir(), `${sid}_plan.jpg`);
+  let bakedHeadline = '';
+
   try {
     await extractFrame(videoPath, 1, framePath);
+
+    // O robô lê primeiro, sem IA: pega a banda que sobra FORA de onde o
+    // movimento já achou a filmagem (texto e faixa de título ficam parados)
+    // e faz OCR nela. Funciona no caso mais comum — título editorial numa
+    // faixa de cor sólida acima ou abaixo do vídeo — sem depender de chave
+    // de IA nenhuma, que era exatamente o que estava faltando antes: sem
+    // OPENAI_API_KEY a leitura do título nem era tentada.
+    try {
+      const { lerTituloQueimado } = require('../lib/lerTituloQueimado');
+      const bruto = await lerTituloQueimado(framePath, vw, vh, motionRegion);
+      bakedHeadline = cleanBakedHeadline(bruto);
+      if (bakedHeadline) console.log('[videoEditor] título lido pelo robô (OCR), sem IA');
+    } catch (e) {
+      console.warn('[videoEditor] leitura do título pelo robô falhou:', e.message?.slice(0, 120));
+    }
+
+    // O robô já resolveu tudo que dava pra resolver sem IA: achou o título E
+    // o recorte já veio do movimento. Não precisa gastar IA nenhuma aqui.
+    if (bakedHeadline && motionRegion) {
+      return { region: motionRegion, bakedHeadline };
+    }
+
+    // Daqui pra frente é reforço de IA — só entra quando falta alguma coisa:
+    // o robô não achou título (fonte estilizada, texto sem faixa sólida) ou o
+    // recorte por movimento não resolveu e precisa do palpite de visão.
+    if (!process.env.OPENAI_API_KEY) {
+      return { region: motionRegion, bakedHeadline };
+    }
+
     const base64 = fs.readFileSync(framePath).toString('base64');
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 25000 });
     const res = await client.chat.completions.create({
@@ -916,19 +943,23 @@ More rules:
       region = null;
     }
 
+    // O robô manda quando achou o título; a IA só preenche o que faltou.
+    if (!bakedHeadline) bakedHeadline = cleanBakedHeadline(p.headline);
+
     // Movimento é medição, visão é palpite: onde o movimento resolveu, ele manda.
     if (motionRegion) {
       console.log('[videoEditor] recorte definido pelo movimento (visão usada só pro gancho)');
-      return { region: motionRegion, bakedHeadline: cleanBakedHeadline(p.headline) };
+      return { region: motionRegion, bakedHeadline };
     }
 
     // Sem movimento utilizável: usa o palpite da visão, conferido uma segunda vez
     if (region) region = await verifyCropIsClean(client, framePath, region, vw, vh);
 
-    return { region, bakedHeadline: cleanBakedHeadline(p.headline) };
+    return { region, bakedHeadline };
   } catch (e) {
     console.warn('[videoEditor] leitura do frame falhou:', e.message);
-    return empty;
+    // O que o robô já tinha lido antes da IA falhar continua valendo.
+    return { region: motionRegion, bakedHeadline };
   } finally {
     try { if (fs.existsSync(framePath)) fs.unlinkSync(framePath); } catch {}
   }
