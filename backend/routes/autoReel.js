@@ -117,7 +117,20 @@ async function buildBackgroundPng(templateBuf, headline, bgPath) {
 }
 
 async function resolveInstagramUrl(instagramUrl) {
-  if (!process.env.RAPIDAPI_KEY) throw new Error('RAPIDAPI_KEY não configurada no servidor');
+  // socialkit.dev é o caminho principal: uma chamada só devolve o link direto
+  // do vídeo. A RapidAPI abaixo fica de reserva.
+  if (process.env.SOCIALKIT_API_KEY) {
+    try {
+      const { resolverViaSocialkit } = require('../lib/socialkit');
+      const info = await resolverViaSocialkit(instagramUrl);
+      return info.videoUrl;
+    } catch (e) {
+      if (!process.env.RAPIDAPI_KEY) throw e;
+      console.warn('[autoReel] socialkit.dev falhou, caindo pro RapidAPI:', e.message?.slice(0, 120));
+    }
+  }
+
+  if (!process.env.RAPIDAPI_KEY) throw new Error('Nenhum serviço de download configurado (SOCIALKIT_API_KEY ou RAPIDAPI_KEY)');
 
   const { data } = await axios.get(
     'https://instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com/convert',

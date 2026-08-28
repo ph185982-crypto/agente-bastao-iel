@@ -30,8 +30,8 @@ Ferramenta web para criar conteúdo para o Instagram em 3 passos:
 - As chaves melhoram o resultado, não destravam o básico:
   - `GROQ_API_KEY` (gratuita) — a IA ouve a fala do vídeo e escreve gancho e
     legenda sobre o conteúdo real, em vez do texto estrutural do robô;
-  - `RAPIDAPI_KEY` (cota paga) — só é usada para baixar vídeo a partir do link
-    de um post do Instagram.
+  - `SOCIALKIT_API_KEY` (cota paga) — baixa o vídeo a partir do link de um post
+    do Instagram. `RAPIDAPI_KEY` é a reserva, se a socialkit.dev falhar.
 
 ### 1. Backend
 
@@ -68,6 +68,7 @@ npm run dev        # inicia em http://localhost:5173
    - **Runtime:** Node
 4. Adicione as variáveis de ambiente em **Environment**:
    - `GROQ_API_KEY`
+   - `SOCIALKIT_API_KEY`
    - `RAPIDAPI_KEY`
    - `FRONTEND_URL` → URL do seu site no Netlify
 5. O `render.yaml` na raiz já documenta essa configuração.
@@ -141,7 +142,8 @@ Testes: `node --test backend/lib/roboCopy.test.js` — rodam sem chave e sem red
 
 | Variável                | Onde     | Descrição                                      |
 |-------------------------|----------|------------------------------------------------|
-| `RAPIDAPI_KEY`          | Backend  | Download de vídeos do Instagram/TikTok (cota paga) |
+| `SOCIALKIT_API_KEY`     | Backend  | Download de Reels do Instagram — principal (cota paga) |
+| `RAPIDAPI_KEY`          | Backend  | Reserva do download do Instagram; download de TikTok/YouTube (cota paga) |
 | `SHOTSTACK_PROD_KEY`    | Backend  | Renderização de vídeo — **pago por render**    |
 | `SHOTSTACK_SANDBOX_KEY` | Backend  | Renderização em sandbox (testes)               |
 | `PEXELS_API_KEY`        | Backend  | Banco de imagens (gratuito)                    |

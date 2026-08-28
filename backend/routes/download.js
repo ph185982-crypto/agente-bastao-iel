@@ -1,9 +1,13 @@
 const express = require('express');
 const axios = require('axios');
+const { resolverViaSocialkit } = require('../lib/socialkit');
 
 const router = express.Router();
 
-// POST /api/download — fetch video info from RapidAPI
+// POST /api/download — resolve o link direto do vídeo de um post do Instagram.
+// socialkit.dev é o caminho principal; a RapidAPI (se configurada) fica de
+// reserva e devolve a resposta bruta dela (formato diferente — nenhum
+// consumidor atual depende do formato exato desta rota).
 router.post('/', async (req, res) => {
   const { url } = req.body;
 
@@ -11,8 +15,20 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'URL do Instagram é obrigatória' });
   }
 
+  if (process.env.SOCIALKIT_API_KEY) {
+    try {
+      const info = await resolverViaSocialkit(url);
+      return res.json({ success: true, data: info });
+    } catch (e) {
+      if (!process.env.RAPIDAPI_KEY) {
+        return res.status(500).json({ error: e.message });
+      }
+      console.warn('[download] socialkit.dev falhou, caindo pro RapidAPI:', e.message?.slice(0, 120));
+    }
+  }
+
   if (!process.env.RAPIDAPI_KEY) {
-    return res.status(500).json({ error: 'RAPIDAPI_KEY não configurada no servidor' });
+    return res.status(500).json({ error: 'Nenhum serviço de download configurado (SOCIALKIT_API_KEY ou RAPIDAPI_KEY)' });
   }
 
   try {

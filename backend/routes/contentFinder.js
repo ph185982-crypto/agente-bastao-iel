@@ -95,6 +95,18 @@ function runFFmpeg(cmd, outputPath, timeoutMs = 300000) {
 }
 
 async function resolveInstagramUrl(url) {
+  // socialkit.dev é o caminho principal: uma chamada só devolve o link direto
+  // do vídeo. As APIs de RapidAPI abaixo ficam de reserva.
+  if (process.env.SOCIALKIT_API_KEY) {
+    try {
+      const { resolverViaSocialkit } = require('../lib/socialkit');
+      const info = await resolverViaSocialkit(url);
+      return info.videoUrl;
+    } catch (e) {
+      console.warn('[resolveIG] socialkit.dev falhou, caindo pro RapidAPI:', e.message?.slice(0, 120));
+    }
+  }
+
   const key = process.env.RAPIDAPI_KEY;
   // Primary: instagram-reels-downloader-api
   try {

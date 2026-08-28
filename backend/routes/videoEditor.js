@@ -326,11 +326,31 @@ function traduzErroDownload(err) {
 const espera = ms => new Promise(r => setTimeout(r, ms));
 
 async function resolveInstagramUrl(instagramUrl) {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw erroDownload('O serviço de download não está configurado no servidor (RAPIDAPI_KEY ausente).');
+  const url = instagramUrl.trim();
+
+  // socialkit.dev é o caminho principal: uma chamada só devolve o link direto
+  // do vídeo, sem a instabilidade que as APIs de download da RapidAPI vinham
+  // tendo (cota, assinatura cancelada, endpoint fora do ar sem aviso).
+  if (process.env.SOCIALKIT_API_KEY) {
+    try {
+      const { resolverViaSocialkit } = require('../lib/socialkit');
+      const info = await resolverViaSocialkit(url);
+      return info.videoUrl;
+    } catch (e) {
+      if (!process.env.RAPIDAPI_KEY) throw e;
+      console.warn('[videoEditor] socialkit.dev falhou, caindo pro RapidAPI:', e.message?.slice(0, 120));
+    }
   }
 
-  const url = instagramUrl.trim();
+  return resolverViaRapidApi(url);
+}
+
+// Reserva: as duas APIs de download que já estavam configuradas. Só entra em
+// cena se a socialkit.dev não tiver chave configurada ou falhar.
+async function resolverViaRapidApi(url) {
+  if (!process.env.RAPIDAPI_KEY) {
+    throw erroDownload('O serviço de download não está configurado no servidor (nem SOCIALKIT_API_KEY nem RAPIDAPI_KEY).');
+  }
 
   // API primária: instagram-reels-downloader-api
   let ultimoErro;
