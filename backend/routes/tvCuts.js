@@ -17,12 +17,14 @@ const ffmpegStatic = require('ffmpeg-static');
 const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
 const { createCompatClient } = require('../lib/llm');
+const { PROFILE_NAME, PROFILE_HANDLE } = require('../lib/pedroDna');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
+require('../fontSetup');
 ffmpeg.setFfmpegPath(ffmpegStatic);
 ffmpeg.setFfprobePath(require('ffprobe-static').path);
 
@@ -51,6 +53,27 @@ function wrapText(text, maxCharsPerLine) {
   }
   if (current) lines.push(current);
   return lines;
+}
+
+// Diminui a fonte até o texto caber na caixa (mesma lógica de videoEditor.js
+// e carousels.js). charRatio 0.58-0.60 é a largura média de caractere do
+// Poppins ExtraBold, fonte geométrica mais larga que o normal.
+function fitText(text, { maxFont, minFont, boxW, boxH, charRatio = 0.60, lineRatio = 1.32 }) {
+  for (let fontSize = maxFont; fontSize >= minFont; fontSize -= 2) {
+    const maxChars = Math.max(6, Math.floor(boxW / (fontSize * charRatio)));
+    const lines = wrapText(text, maxChars);
+    const lineH = fontSize * lineRatio;
+    if (lines.length * lineH <= boxH) return { fontSize, lines, lineH };
+  }
+  const maxChars = Math.max(6, Math.floor(boxW / (minFont * charRatio)));
+  const lineH = minFont * lineRatio;
+  const maxLines = Math.max(1, Math.floor(boxH / lineH));
+  let lines = wrapText(text, maxChars);
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    lines[maxLines - 1] = lines[maxLines - 1].replace(/\s*\S*$/, '').trim() + '…';
+  }
+  return { fontSize: minFont, lines, lineH };
 }
 
 // ── Transcrição (OpenAI whisper-1; fallback Groq whisper-large-v3, inclusive
@@ -683,6 +706,174 @@ async function buildCaptionPng(text, outPath) {
   await sharp(Buffer.from(svg)).png().toFile(outPath);
 }
 
+// ── Template "Viral TV" ─────────────────────────────────────────────────────
+// Cabeçalho com o perfil + linha azul, vídeo no meio, painel de base com foto +
+// gancho, rodapé azul. Proporções vêm do design aprovado (canvas de
+// referência 1080×1920) escaladas para o canvas real deste módulo (720×1280 —
+// "mesmo perfil das rotas existentes", ver comentário no topo do arquivo).
+const VIRAL = (() => {
+  const headerH = Math.round(H * 160 / 1920);
+  const lineH   = Math.round(H * 6 / 1920);
+  const painelH = Math.round(H * 580 / 1920);
+  // videoH precisa ser PAR — libx264 com yuv420p exige dimensão par por causa
+  // da subamostragem de croma; ímpar dá "Invalid argument" e o ffmpeg nem
+  // grava frame nenhum. O rodapé absorve o ajuste de 1px (barra sólida —
+  // nenhuma diferença visível).
+  let videoH = H - headerH - lineH - painelH - Math.round(H * 74 / 1920);
+  if (videoH % 2 !== 0) videoH -= 1;
+  const footerH = H - headerH - lineH - painelH - videoH; // resto exato
+  const videoY  = headerH + lineH;
+  const panelY  = videoY + videoH;
+  const footerY = panelY + painelH;
+  const avatarW = Math.round(W * 300 / 1080);
+  return {
+    headerH, lineH, painelH, footerH, videoH, videoY, panelY, footerY,
+    avatarW, avatarX: 0, avatarY: panelY, avatarH: painelH,
+    dividerX: avatarW + 10,
+    headlineX: avatarW + 40,
+    headlineBoxY0: panelY + 40,
+    headlineBoxY1: footerY - 40,
+    bg: '#0A1B33', blue: '#0052FF', white: '#FFFFFF', handleColor: '#A0B0C8',
+  };
+})();
+
+// Poppins ExtraBold é a fonte de marca já usada em todo o projeto (carrosséis,
+// editor de vídeo) — o design de referência pedia Montserrat, que não está
+// instalada no servidor; Poppins ExtraBold é o equivalente mais próximo já
+// disponível e mantém a mesma identidade visual do resto da ferramenta.
+const VIRAL_FONT_BLACK = "'Poppins ExtraBold', sans-serif";
+const VIRAL_FONT_BODY  = "'Poppins SemiBold', sans-serif";
+
+// Selo verificado — círculo liso, como no design de referência (diferente do
+// selo serrilhado usado no Editor de Vídeo, que é outro estilo).
+function viralBadgeSvg(cx, cy, r) {
+  const c = r * 0.5;
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${VIRAL.blue}"/>` +
+    `<path d="M${(cx - c).toFixed(1)},${cy.toFixed(1)} L${(cx - c * 0.15).toFixed(1)},${(cy + c * 0.62).toFixed(1)} L${(cx + c).toFixed(1)},${(cy - c * 0.55).toFixed(1)}" ` +
+    `stroke="white" stroke-width="${Math.max(2.5, r * 0.24).toFixed(1)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+}
+
+// ── Foto do perfil no painel base ───────────────────────────────────────────
+// Mesma ordem de busca do Editor de Vídeo: backend/assets/avatar.* → AVATAR_URL
+// (cacheada em /tmp) → nada (o painel sai só com a cor de fundo, sem foto).
+//
+// Limitação importante: isto NÃO é um recorte com fundo removido (photo
+// cutout). Remover fundo de verdade exige segmentação por IA, que este projeto
+// não usa para imagem. Em vez disso, a foto é ajustada numa caixa retangular
+// com a borda direita esmaecida em degradê para dentro do painel escuro — dá
+// uma transição suave, mas o fundo original da foto continua visível onde ela
+// não foi esmaecida.
+const VIRAL_AVATAR_CANDIDATES = ['avatar.jpg', 'avatar.jpeg', 'avatar.png', 'avatar.webp']
+  .map(f => path.join(__dirname, '..', 'assets', f));
+const VIRAL_AVATAR_CACHE = path.join(os.tmpdir(), 'profile_avatar_cache');
+
+function findViralAvatarFile() {
+  for (const p of VIRAL_AVATAR_CANDIDATES) {
+    try { if (fs.existsSync(p)) return p; } catch {}
+  }
+  try {
+    if (fs.existsSync(VIRAL_AVATAR_CACHE) && fs.statSync(VIRAL_AVATAR_CACHE).size > 512) return VIRAL_AVATAR_CACHE;
+  } catch {}
+  return null;
+}
+
+async function fetchViralAvatarFromUrl() {
+  if (!process.env.AVATAR_URL) return null;
+  try {
+    const { data } = await axios.get(process.env.AVATAR_URL, {
+      responseType: 'arraybuffer', timeout: 12000, maxContentLength: 8 * 1024 * 1024,
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    const buf = Buffer.from(data);
+    await sharp(buf).metadata();
+    fs.writeFileSync(VIRAL_AVATAR_CACHE, buf);
+    return VIRAL_AVATAR_CACHE;
+  } catch (e) {
+    console.warn('[tvCuts] AVATAR_URL falhou:', e.message?.slice(0, 120));
+    return null;
+  }
+}
+
+// Foto recortada na caixa do painel, com a borda direita esmaecendo pro fundo
+// escuro (dest-in com máscara em degradê) — ver limitação acima.
+async function buildViralAvatarLayer() {
+  const file = findViralAvatarFile() || await fetchViralAvatarFromUrl();
+  if (!file) return null;
+
+  const { avatarW: w, avatarH: h } = VIRAL;
+  const fadeStart = Math.round(w * 0.62);
+  const mask = Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="white" stop-opacity="1"/>
+          <stop offset="${(fadeStart / w).toFixed(3)}" stop-color="white" stop-opacity="1"/>
+          <stop offset="1" stop-color="white" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <rect width="${w}" height="${h}" fill="url(#fade)"/>
+    </svg>`
+  );
+
+  try {
+    return await sharp(file)
+      .resize(w, h, { fit: 'cover', position: 'attention' })
+      .ensureAlpha()
+      .composite([{ input: mask, blend: 'dest-in' }])
+      .png()
+      .toBuffer();
+  } catch (e) {
+    console.warn('[tvCuts] foto do perfil falhou:', e.message);
+    return null;
+  }
+}
+
+// Monta o overlay inteiro (cabeçalho + linha + painel + foto + linha vertical +
+// gancho + rodapé), com a área do vídeo transparente — o vídeo entra por baixo
+// no ffmpeg, exatamente no buraco que sobra entre o cabeçalho e o painel.
+async function buildViralOverlay(headline, outPath) {
+  const V = VIRAL;
+  const nameSize = 34, handleSize = 20;
+  const nameY = Math.round(V.headerH * 0.45), handleY = Math.round(V.headerH * 0.80);
+  const nameW = String(PROFILE_NAME).length * nameSize * 0.60;
+  const badgeR = 15;
+
+  const headline_ = String(headline || '').toUpperCase().trim();
+  const headlineFit = fitText(headline_, {
+    maxFont: 42, minFont: 26,
+    boxW: W - V.headlineX - 40,
+    boxH: V.headlineBoxY1 - V.headlineBoxY0,
+    charRatio: 0.58, lineRatio: 1.22,
+  });
+  const headlineBlockH = headlineFit.lines.length * headlineFit.lineH;
+  const headlineStartY = V.headlineBoxY0 + (V.headlineBoxY1 - V.headlineBoxY0 - headlineBlockH) / 2 + headlineFit.fontSize * 0.85;
+  const headlineEls = headlineFit.lines.map((ln, i) =>
+    `<text x="${V.headlineX}" y="${headlineStartY + i * headlineFit.lineH}" font-family="${VIRAL_FONT_BLACK}" font-size="${headlineFit.fontSize}" fill="${V.white}">${escXml(ln)}</text>`
+  ).join('');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+    <rect x="0" y="0" width="${W}" height="${V.headerH}" fill="${V.bg}"/>
+    <text x="${W / 2}" y="${nameY}" font-family="${VIRAL_FONT_BLACK}" font-size="${nameSize}" fill="${V.white}" text-anchor="middle">${escXml(PROFILE_NAME)}</text>
+    ${viralBadgeSvg(W / 2 + nameW / 2 + badgeR + 10, nameY - nameSize * 0.34, badgeR)}
+    <text x="${W / 2}" y="${handleY}" font-family="${VIRAL_FONT_BODY}" font-size="${handleSize}" fill="${V.handleColor}" text-anchor="middle">${escXml(PROFILE_HANDLE)}</text>
+    <rect x="0" y="${V.headerH}" width="${W}" height="${V.lineH}" fill="${V.blue}"/>
+
+    <rect x="0" y="${V.panelY}" width="${W}" height="${V.painelH}" fill="${V.bg}"/>
+    <rect x="${V.dividerX}" y="${V.panelY + 24}" width="2" height="${V.painelH - 48}" fill="${V.white}" opacity="0.55"/>
+    ${headlineEls}
+
+    <rect x="0" y="${V.footerY}" width="${W}" height="${V.footerH}" fill="${V.blue}"/>
+  </svg>`;
+
+  const avatarBuf = await buildViralAvatarLayer();
+  const composites = avatarBuf ? [{ input: avatarBuf, top: V.avatarY, left: V.avatarX }] : [];
+
+  await sharp(Buffer.from(svg))
+    .composite(composites)
+    .png()
+    .toFile(outPath);
+}
+
 function runFFmpeg(cmd, outputPath, timeoutMs) {
   return new Promise((resolve, reject) => {
     const stderrLines = [];
@@ -706,7 +897,8 @@ router.post('/render-clip', async (req, res) => {
   const tmpFiles = [];
   const output = path.join(os.tmpdir(), `${sid}_reel.mp4`);
   try {
-    const { startSec, endSec, hook, caption, words = [], srcWidth, srcHeight, showHook = true, showCaptions = true } = req.body || {};
+    const { startSec, endSec, hook, caption, words = [], srcWidth, srcHeight, showHook = true, showCaptions = true, template = 'tradicional' } = req.body || {};
+    const viral = template === 'viral';
     const directUrl = await resolveForRequest(req.body);
     if (!directUrl || startSec == null || endSec == null) {
       return res.status(400).json({ error: 'sourceUrl/directUrl, startSec e endSec são obrigatórios' });
@@ -719,27 +911,34 @@ router.post('/render-clip', async (req, res) => {
     const vw = Number(srcWidth) || 1920;
     const vh = Number(srcHeight) || 1080;
 
+    // No template Viral TV o vídeo ocupa só a caixa do meio (menor que o
+    // frame inteiro) — o resto da altura é cabeçalho + painel de base.
+    const targetH = viral ? VIRAL.videoH : H;
+
     // 1. Vision/heurística: onde está o rosto de quem fala
     const centerPct = await detectFaceCenter(ffInput, start + dur / 2, sid);
 
-    // Composição 9:16: fundo desfocado (blur do próprio vídeo) + vídeo
+    // Composição vertical: fundo desfocado (blur do próprio vídeo) + vídeo
     // centralizado no rosto por cima. Estilo profissional de cortes de podcast.
     const srcAR = vw / vh;
-    const outAR = W / H; // 9/16 = 0.5625
-    // Se fonte é mais larga que 9:16 (widescreen), crop centrado no rosto
-    const idealCropW = 2 * Math.round(vh * 9 / 32);
+    // Se fonte é mais larga que a proporção de saída, crop centrado no rosto —
+    // a proporção-alvo muda conforme o template (frame inteiro ou só a caixa
+    // do meio no Viral TV), por isso não é mais fixa em 9:16.
+    const idealCropW = 2 * Math.round((vh * W / targetH) / 2);
     const canCropClean = idealCropW <= vw && srcAR > 1.0;
 
-    // 2. Overlays condicionais: gancho + legendas
+    // 2. Overlays condicionais: gancho + legendas — o Viral TV não usa nenhum
+    // dos dois (o gancho vai no painel de base, não flutuando sobre o vídeo,
+    // e não há espaço reservado pra legenda nesse layout menor).
     let hookPng = null;
-    if (showHook && hook) {
+    if (showHook && hook && !viral) {
       hookPng = path.join(os.tmpdir(), `${sid}_hook.png`);
       tmpFiles.push(hookPng);
       await buildHookPng(hook, hookPng);
     }
 
     const chunks = [];
-    if (showCaptions) {
+    if (showCaptions && !viral) {
       const clipWords = words
         .filter(w => w && w.w && Number.isFinite(Number(w.s)) && Number(w.s) >= start - 0.5 && Number(w.s) <= start + dur)
         .map(w => ({ w: String(w.w), s: Number(w.s), e: Number(w.e) || Number(w.s) + 0.4 }));
@@ -752,13 +951,23 @@ router.post('/render-clip', async (req, res) => {
       }
     }
 
-    // 3. ffmpeg: input-seek + composição 9:16 + overlays
+    // Overlay do template Viral TV: cabeçalho + painel de base com o gancho —
+    // a área do vídeo fica transparente, o vídeo entra por baixo no ffmpeg.
+    let viralPng = null;
+    if (viral) {
+      viralPng = path.join(os.tmpdir(), `${sid}_viral.png`);
+      tmpFiles.push(viralPng);
+      await buildViralOverlay(hook || caption || '', viralPng);
+    }
+
+    // 3. ffmpeg: input-seek + composição vertical + overlays
     const isLocal = ffInput.startsWith('/');
     const inputOpts = ['-ss', String(start), '-t', dur.toFixed(2)];
     if (!isLocal) inputOpts.push('-user_agent', UA);
     const cmd = ffmpeg()
       .input(ffInput)
       .inputOptions(inputOpts);
+    if (viralPng) cmd.input(viralPng);
     if (hookPng) cmd.input(hookPng);
     chunks.forEach(c => cmd.input(c.png));
 
@@ -766,28 +975,38 @@ router.post('/render-clip', async (req, res) => {
 
     const filters = [];
     if (canCropClean) {
-      // Widescreen: crop 9:16 centrado no rosto + escala
+      // Widescreen: crop centrado no rosto + escala pra caixa-alvo
       const cropW = Math.min(vw, idealCropW);
       const cropX = Math.min(vw - cropW, Math.max(0, Math.round(vw * centerPct / 100 - cropW / 2)));
       filters.push(
-        `[0:v]crop=${cropW}:${vh}:${cropX}:0,scale=${W}:${H},setpts=PTS-STARTPTS,` +
+        `[0:v]crop=${cropW}:${vh}:${cropX}:0,scale=${W}:${targetH},setpts=PTS-STARTPTS,` +
           `eq=contrast=1.06:saturation=1.15,unsharp=5:5:0.4,` +
           `fade=t=in:d=0.3,fade=t=out:st=${fadeOutStart}:d=0.3[v0]`
       );
     } else {
       // Fonte estreita/quadrada: fundo blur + vídeo centralizado por cima
       filters.push(
-        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},gblur=sigma=25,setpts=PTS-STARTPTS[bg]`,
-        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,setpts=PTS-STARTPTS[fg]`,
+        `[0:v]scale=${W}:${targetH}:force_original_aspect_ratio=increase,crop=${W}:${targetH},gblur=sigma=25,setpts=PTS-STARTPTS[bg]`,
+        `[0:v]scale=${W}:${targetH}:force_original_aspect_ratio=decrease,setpts=PTS-STARTPTS[fg]`,
         `[bg][fg]overlay=(W-w)/2:(H-h)/2,` +
           `eq=contrast=1.06:saturation=1.15,unsharp=5:5:0.4,` +
           `fade=t=in:d=0.3,fade=t=out:st=${fadeOutStart}:d=0.3[v0]`
       );
     }
 
-    // Overlay hook (se ativado)
     let last = 'v0';
     let inputIdx = 1;
+
+    // Overlay do template Viral TV: o vídeo (já do tamanho da caixa do meio)
+    // entra por cima do overlay, exatamente no buraco transparente entre o
+    // cabeçalho e o painel de base.
+    if (viralPng) {
+      filters.push(`[${inputIdx}:v][${last}]overlay=0:${VIRAL.videoY}[v_viral]`);
+      last = 'v_viral';
+      inputIdx++;
+    }
+
+    // Overlay hook (se ativado)
     if (hookPng) {
       filters.push(`[${last}][${inputIdx}:v]overlay=0:0[v_hook]`);
       last = 'v_hook';

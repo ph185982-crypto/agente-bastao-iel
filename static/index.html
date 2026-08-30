@@ -712,7 +712,20 @@
                 <span style="font-size: 13px; font-weight: 700; color: white">{{ tvDoneCounter }}</span>
               </div>
             </div>
-            <div style="background: #FFFFFF; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 10px">
+            <div style="background: #FFFFFF; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 12px">
+              <div>
+                <span style="font-size: 13px; font-weight: 600; color: #1D1D1F; display: block; margin-bottom: 8px">Formato</span>
+                <div style="display: flex; gap: 8px">
+                  <div onClick="{{ tvSelecionarTemplate }}" data-template="tradicional" style="flex: 1; padding: 10px; border-radius: 10px; text-align: center; cursor: pointer; border: 1.5px solid {{ tvTemplateTradBorder }}; background: {{ tvTemplateTradBg }}">
+                    <span style="font-size: 13px; font-weight: 700; color: {{ tvTemplateTradText }}">Tradicional</span>
+                  </div>
+                  <div onClick="{{ tvSelecionarTemplate }}" data-template="viral" style="flex: 1; padding: 10px; border-radius: 10px; text-align: center; cursor: pointer; border: 1.5px solid {{ tvTemplateViralBorder }}; background: {{ tvTemplateViralBg }}">
+                    <span style="font-size: 13px; font-weight: 700; color: {{ tvTemplateViralText }}">🔥 Viral TV</span>
+                  </div>
+                </div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">{{ tvTemplateDesc }}</div>
+              </div>
+              <div style="height: 1px; background: #F2F2F7"></div>
               <div style="display: flex; align-items: center; justify-content: space-between">
                 <span style="font-size: 13px; font-weight: 600; color: #1D1D1F">Gancho (headline)</span>
                 <label style="position: relative; display: inline-block; width: 44px; height: 26px">
@@ -1056,6 +1069,7 @@ class Component extends DCLogic {
     tvProgressText:   '',
     tvProgressPct:    0,
     tvDoneCount:      0,
+    tvTemplate:       'tradicional',
     veStep:           'idle',
     veLink:           '',
     veCaption:        '',
@@ -1215,6 +1229,22 @@ class Component extends DCLogic {
       tvErrorMsg: this.state.tvError || 'Erro desconhecido',
       tvResultsTitle: `${this.state.tvMoments.length} cortes encontrados`,
       tvDoneCounter: `${this.state.tvDoneCount}/${this.state.tvMoments.length} prontos`,
+
+      // ── Formato do corte: Tradicional (atual) ou Viral TV (novo) ─────────
+      tvTemplateTradBorder: this.state.tvTemplate === 'tradicional' ? '#AF52DE' : '#E5E5EA',
+      tvTemplateTradBg: this.state.tvTemplate === 'tradicional' ? 'rgba(175,82,222,0.08)' : '#FFFFFF',
+      tvTemplateTradText: this.state.tvTemplate === 'tradicional' ? '#AF52DE' : '#86868B',
+      tvTemplateViralBorder: this.state.tvTemplate === 'viral' ? '#0052FF' : '#E5E5EA',
+      tvTemplateViralBg: this.state.tvTemplate === 'viral' ? 'rgba(0,82,255,0.08)' : '#FFFFFF',
+      tvTemplateViralText: this.state.tvTemplate === 'viral' ? '#0052FF' : '#86868B',
+      tvTemplateDesc: this.state.tvTemplate === 'viral'
+        ? 'Estilo noticiário: header com seu nome, vídeo no meio, foto + gancho embaixo'
+        : 'Formato atual — gancho flutuando sobre o vídeo',
+      tvSelecionarTemplate: (e) => {
+        const template = e.currentTarget.getAttribute('data-template');
+        this.setState({ tvTemplate: template });
+      },
+
       analisarPrograma: () => {
         const link = document.getElementById('tvLinkInput')?.value?.trim();
         if (!link) { document.getElementById('tvLinkInput')?.focus(); return; }
@@ -2299,6 +2329,7 @@ class Component extends DCLogic {
           words: clipWords,
           srcWidth: src.width, srcHeight: src.height,
           showHook, showCaptions,
+          template: this.state.tvTemplate,
         }),
       });
       if (!res.ok) {
