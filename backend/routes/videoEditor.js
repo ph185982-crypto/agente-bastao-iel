@@ -98,11 +98,12 @@ const MAX_CLIP_SEC = 45;
 const TEMPLATE_VIRAL_PATH = path.join(__dirname, '..', 'assets', 'template-editor-viral.png');
 const TV = {
   W: 1080, H: 1920,
-  // Retângulo branco onde o vídeo entra. Altura NÃO vai até o fim da área
-  // branca (que seria y=1276): o cabelo da foto sobe até y≈1182 dentro dessa
-  // área (medido pixel a pixel) — descer a caixa até lá cobriria o topo da
-  // cabeça com o vídeo. Corta em y=1160, com folga de segurança.
-  videoBox: { x: 0, y: 264, w: 1080, h: 896 },
+  // Retângulo branco onde o vídeo entra — a área branca inteira, sem sobrar
+  // faixa nenhuma. O cabelo da foto sobe até y≈1182 dentro dessa área (medido
+  // pixel a pixel); em vez de encolher a caixa pra desviar dele, o cabelo é
+  // desenhado NUMA CAMADA POR CIMA do vídeo (ver getViralHairOverlay) — o
+  // efeito de "a foto estoura o quadro" é assim mesmo de propósito.
+  videoBox: { x: 0, y: 264, w: 1080, h: 1013 },
   // Área vaga ao lado da foto (depois da linha divisória branca em x≈465),
   // dentro do painel escuro, onde o gancho é desenhado.
   headlineBox: { x: 495, y: 1317, w: 545, h: 349 },
@@ -1419,7 +1420,7 @@ router.post('/analyze', async (req, res) => {
 // gera o MP4 final. Compartilhado pelos dois templates — o que muda entre
 // eles é só QUAL fundo é passado e QUAL retângulo o vídeo precisa preencher;
 // a lógica de recorte/enquadramento do vídeo em si é idêntica.
-async function overlayVideoNoFundo({ videoPath, bgPng, crop, sid, targetW, targetH, videoY, availableH, output }) {
+async function overlayVideoNoFundo({ videoPath, bgPng, crop, sid, targetW, targetH, videoY, availableH, output, extraOverlay }) {
   const { width: vw, height: vh, hasAudio, duration } = await getVideoInfo(videoPath);
   const clipDur = Math.min(duration, MAX_CLIP_SEC).toFixed(3);
 
@@ -1453,10 +1454,15 @@ async function overlayVideoNoFundo({ videoPath, bgPng, crop, sid, targetW, targe
     ? `${prep},scale=${targetW}:-2,crop=${targetW}:${videoH}:0:(ih-${videoH})*0.25[vid]`
     : `${prep},scale=${targetW}:${videoH}[vid]`;
 
+  // extraOverlay (opcional): uma camada extra POR CIMA do vídeo já encaixado
+  // — usada no template Viral pro cabelo da foto ficar por cima do vídeo em
+  // vez de ser coberto por ele (ver getViralHairOverlayPath).
   const filterGraph = [
     `[1:v]loop=loop=-1:size=1:start=0,scale=${targetW}:${targetH}[bg]`,
     videoChain,
-    `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
+    extraOverlay
+      ? `[bg][vid]overlay=0:${videoY}:eof_action=endall[com_video];[com_video][2:v]overlay=0:0[out]`
+      : `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
   ].join(';');
 
   const outputOpts = [
@@ -1472,9 +1478,9 @@ async function overlayVideoNoFundo({ videoPath, bgPng, crop, sid, targetW, targe
 
   const cmd = ffmpeg()
     .input(videoPath).inputOptions([`-t ${clipDur}`])
-    .input(bgPng)
-    .complexFilter(filterGraph)
-    .outputOptions(outputOpts);
+    .input(bgPng);
+  if (extraOverlay) cmd.input(extraOverlay);
+  cmd.complexFilter(filterGraph).outputOptions(outputOpts);
 
   await runFFmpeg(cmd, output, 45000);
   return output;
@@ -1510,6 +1516,62 @@ async function getViralTemplateHoled() {
   return _viralTemplateHoledCache;
 }
 
+// Recorta, da imagem ORIGINAL (sem buraco), só os pixels do cabelo que ficam
+// dentro da área do vídeo — todo o resto vira transparente. É essa camada que
+// entra por cima do vídeo no ffmpeg, criando o efeito de "a foto estoura o
+// quadro": o vídeo preenche a caixa inteira, e o cabelo aparece por cima dele,
+// exatamente onde já estava no design original.
+//
+// Cacheada em arquivo (não só em memória): precisa ser um INPUT de verdade do
+// ffmpeg, não só um Buffer intermediário — diferente do getViralTemplateHoled,
+// que só é usado dentro de sharp.
+const VIRAL_HAIR_CACHE_PATH = path.join(os.tmpdir(), 'viral_editor_hair_overlay.png');
+let _viralHairOverlayPromise = null;
+async function getViralHairOverlayPath() {
+  if (_viralHairOverlayPromise) return _viralHairOverlayPromise;
+  _viralHairOverlayPromise = (async () => {
+    const { data, info } = await sharp(TEMPLATE_VIRAL_PATH)
+      .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width, height, channels } = info; // channels = 4 (RGBA)
+    const { y: boxY, h: boxH } = TV.videoBox;
+    // Corte SECO por brilho — pele (~180-220 de brilho médio) é claramente
+    // mais escura que o fundo branco (>225), então esse limiar já separa os
+    // dois direito. Uma versão em rampa suave (testada e descartada) tratava
+    // a pele como "zona de transição" e deixava a testa semitransparente,
+    // vazando a cor do vídeo por cima do rosto — muito pior que o problema
+    // que devia resolver.
+    const LIMIAR_BRANCO = 225;
+    for (let row = 0; row < height; row++) {
+      const dentroDaCaixa = row >= boxY && row < boxY + boxH;
+      for (let col = 0; col < width; col++) {
+        const idx = (row * width + col) * channels;
+        if (!dentroDaCaixa) { data[idx + 3] = 0; continue; } // fora da caixa: nada aqui, quem desenha é a camada de baixo
+        const branco = data[idx] > LIMIAR_BRANCO && data[idx + 1] > LIMIAR_BRANCO && data[idx + 2] > LIMIAR_BRANCO;
+        data[idx + 3] = branco ? 0 : 255;
+      }
+    }
+
+    // O corte seco classifica certo (pele opaca, fundo transparente), mas
+    // deixa a borda entre os dois serrilhada — um pixel de anti-serrilhamento
+    // da imagem original, nem branco nem cor de cabelo, vira uma linha fina
+    // de cor errada bem no contorno. Desfoca só o CANAL ALFA (a opacidade),
+    // não o RGB: a pele continua exatamente com a cor certa por dentro, só a
+    // borda entre opaco e transparente fica suave em vez de um degrau seco.
+    const alphaSuave = await sharp(data, { raw: { width, height, channels } })
+      .extractChannel(3)
+      .blur(1.4)
+      .toBuffer();
+
+    await sharp(data, { raw: { width, height, channels } })
+      .removeAlpha()
+      .joinChannel(alphaSuave, { raw: { width, height, channels: 1 } })
+      .png()
+      .toFile(VIRAL_HAIR_CACHE_PATH);
+    return VIRAL_HAIR_CACHE_PATH;
+  })();
+  return _viralHairOverlayPromise;
+}
+
 // Desenha o gancho na área vaga ao lado da foto, por cima do template já com
 // o buraco do vídeo, e salva o resultado — é esse arquivo que entra no ffmpeg.
 async function buildViralEditorOverlay(headline, outPath) {
@@ -1533,12 +1595,15 @@ async function buildViralEditorOverlay(headline, outPath) {
 async function composeReelTemplateViral({ videoPath, headline, output, sid, crop }) {
   const bgPng = path.join(os.tmpdir(), `${sid}_bg_viral.png`);
   try {
-    await buildViralEditorOverlay(headline, bgPng);
+    const [, hairOverlay] = await Promise.all([
+      buildViralEditorOverlay(headline, bgPng),
+      getViralHairOverlayPath(),
+    ]);
     return await overlayVideoNoFundo({
       videoPath, bgPng, crop, sid,
       targetW: TV.W, targetH: TV.H,
       videoY: TV.videoBox.y, availableH: TV.videoBox.h,
-      output,
+      output, extraOverlay: hairOverlay,
     });
   } finally {
     try { if (fs.existsSync(bgPng)) fs.unlinkSync(bgPng); } catch {}
