@@ -775,6 +775,21 @@
 
             <div style="background: #FFFFFF; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); display: flex; flex-direction: column; gap: 16px">
               <div>
+                <span style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px">Formato</span>
+                <div style="display: flex; gap: 8px">
+                  <div onClick="{{ veSelecionarTemplate }}" data-template="padrao" style="flex: 1; padding: 10px; border-radius: 10px; text-align: center; cursor: pointer; border: 1.5px solid {{ veTemplatePadraoBorder }}; background: {{ veTemplatePadraoBg }}">
+                    <span style="font-size: 13px; font-weight: 700; color: {{ veTemplatePadraoText }}">Padrão</span>
+                  </div>
+                  <div onClick="{{ veSelecionarTemplate }}" data-template="viral" style="flex: 1; padding: 10px; border-radius: 10px; text-align: center; cursor: pointer; border: 1.5px solid {{ veTemplateViralBorder }}; background: {{ veTemplateViralBg }}">
+                    <span style="font-size: 13px; font-weight: 700; color: {{ veTemplateViralText }}">🔥 Viral</span>
+                  </div>
+                </div>
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">{{ veTemplateDesc }}</div>
+              </div>
+
+              <div style="height: 1px; background: #F2F2F7"></div>
+
+              <div>
                 <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Link do vídeo</div>
                 <input id="veLinkInput" type="text" placeholder="Link do Reels ou link direto do .mp4" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
                 <div style="font-size: 11px; color: #86868B; margin-top: 6px">Link do Instagram precisa de post público. Link direto do arquivo não tem limite de tamanho.</div>
@@ -1078,6 +1093,7 @@ class Component extends DCLogic {
     veError:          null,
     vePrintStatus:    '',
     veCaptionLida:    '',
+    veTemplate:       'padrao',
   };
 
   _progressTimer = null;
@@ -1151,6 +1167,21 @@ class Component extends DCLogic {
       veCaption:    this.state.veCaption,
       veErrorMsg:   this.state.veError,
       vePrintStatus: this.state.vePrintStatus,
+
+      // ── Template: Padrão (montado por código) ou Viral (imagem pronta) ────
+      veTemplatePadraoBorder: this.state.veTemplate === 'padrao' ? '#34C759' : '#E5E5EA',
+      veTemplatePadraoBg: this.state.veTemplate === 'padrao' ? 'rgba(52,199,89,0.08)' : '#FFFFFF',
+      veTemplatePadraoText: this.state.veTemplate === 'padrao' ? '#34C759' : '#86868B',
+      veTemplateViralBorder: this.state.veTemplate === 'viral' ? '#0052FF' : '#E5E5EA',
+      veTemplateViralBg: this.state.veTemplate === 'viral' ? 'rgba(0,82,255,0.08)' : '#FFFFFF',
+      veTemplateViralText: this.state.veTemplate === 'viral' ? '#0052FF' : '#86868B',
+      veTemplateDesc: this.state.veTemplate === 'viral'
+        ? 'Layout pronto: cabeçalho, sua foto e o gancho ao lado dela'
+        : 'Layout padrão — cabeçalho simples com o gancho em cima do vídeo',
+      veSelecionarTemplate: (e) => {
+        const template = e.currentTarget.getAttribute('data-template');
+        this.setState({ veTemplate: template });
+      },
 
       // Lê o print do post: o gancho escrito em cima do vídeo e a legenda saem
       // da própria imagem, então não é preciso digitar nada. A legenda não tem
@@ -1524,7 +1555,7 @@ class Component extends DCLogic {
       const res = await fetch('/api/video-editor/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...fonte, headline, caption, crop }),
+        body: JSON.stringify({ ...fonte, headline, caption, crop, template: this.state.veTemplate }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

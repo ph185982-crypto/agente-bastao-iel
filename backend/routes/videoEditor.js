@@ -88,6 +88,23 @@ const W = 720;
 const H = 1280;
 const MAX_CLIP_SEC = 45;
 
+// ── Template "Viral" (imagem pronta enviada pelo usuário) ─────────────────────
+// Diferente do template padrão (montado por código, ver buildFramePng), este
+// usa um PNG fixo como base — cabeçalho, foto e rodapé já vêm prontos na
+// imagem. O que entra por cima: o vídeo (no retângulo branco) e o gancho (na
+// área vazia ao lado da foto). As coordenadas abaixo foram medidas pixel a
+// pixel na imagem enviada (backend/assets/template-editor-viral.png,
+// 1080×1920) — não são um chute; ver o histórico de desenvolvimento.
+const TEMPLATE_VIRAL_PATH = path.join(__dirname, '..', 'assets', 'template-editor-viral.png');
+const TV = {
+  W: 1080, H: 1920,
+  // Retângulo branco onde o vídeo entra.
+  videoBox: { x: 0, y: 264, w: 1080, h: 1013 },
+  // Área vaga ao lado da foto (depois da linha divisória branca em x≈465),
+  // dentro do painel escuro, onde o gancho é desenhado.
+  headlineBox: { x: 495, y: 1317, w: 545, h: 349 },
+};
+
 const FONT_BLACK = "'Poppins ExtraBold', sans-serif";
 const FONT_BOLD  = "'Poppins', sans-serif";
 const FONT_BODY  = "'Poppins SemiBold', sans-serif";
@@ -1395,7 +1412,11 @@ router.post('/analyze', async (req, res) => {
 
 // Monta o reel final: recorta a região de conteúdo do vídeo e encaixa no frame
 // (cabeçalho + gancho). Devolve o caminho do MP4 gerado.
-async function composeReel({ videoPath, headline, bgPng, output, sid, crop }) {
+// Encaixa o vídeo no retângulo (videoY, availableH) de um fundo já pronto e
+// gera o MP4 final. Compartilhado pelos dois templates — o que muda entre
+// eles é só QUAL fundo é passado e QUAL retângulo o vídeo precisa preencher;
+// a lógica de recorte/enquadramento do vídeo em si é idêntica.
+async function overlayVideoNoFundo({ videoPath, bgPng, crop, sid, targetW, targetH, videoY, availableH, output }) {
   const { width: vw, height: vh, hasAudio, duration } = await getVideoInfo(videoPath);
   const clipDur = Math.min(duration, MAX_CLIP_SEC).toFixed(3);
 
@@ -1403,23 +1424,21 @@ async function composeReel({ videoPath, headline, bgPng, output, sid, crop }) {
   const preset = sanitizeCropRegion(crop, vw, vh);
   const { cropW, cropH, cropX, cropY } = preset || await detectContentRegion(videoPath, vw, vh, sid);
   if (preset) console.log('[videoEditor] usando recorte vindo do /analyze');
-  const { videoY } = await buildFramePng(headline, bgPng);
-  const availableH = H - videoY - BOTTOM_GAP;
 
   // REGRA: o vídeo SEMPRE ocupa a largura inteira. Nunca tarja preta nem
   // borrada nas laterais — isso é reenquadrar, não recortar.
-  //  - Cabe na altura disponível → entra inteiro, sobra branco embaixo
+  //  - Cabe na altura disponível → entra inteiro, sobra fundo embaixo
   //    (é o visual de post: mídia cheia no topo, respiro embaixo).
   //  - Não cabe → corta em cima/embaixo, puxando pro topo, que é onde
   //    normalmente estão rosto e começo do conteúdo.
   const even = n => Math.max(2, Math.round(n / 2) * 2);
-  const naturalH = Math.round(W * cropH / cropW);   // altura em largura cheia
+  const naturalH = Math.round(targetW * cropH / cropW);   // altura em largura cheia
   const needsVerticalCrop = naturalH > availableH;
   const videoH = even(needsVerticalCrop ? availableH : naturalH);
 
   console.log(
     `[videoEditor] clip=${clipDur}s src=${vw}x${vh} crop=${cropW}x${cropH}@${cropX},${cropY} ` +
-    `→ ${W}x${videoH} (natural ${W}x${naturalH}, disponível ${availableH}) ` +
+    `→ ${targetW}x${videoH} (natural ${targetW}x${naturalH}, disponível ${availableH}) ` +
     `${needsVerticalCrop ? `corte vertical -${(100 - availableH / naturalH * 100).toFixed(0)}%` : 'inteiro'}`
   );
 
@@ -1428,11 +1447,11 @@ async function composeReel({ videoPath, headline, bgPng, output, sid, crop }) {
 
   const videoChain = needsVerticalCrop
     // largura cheia e corta o excesso de altura, ancorado mais pro topo
-    ? `${prep},scale=${W}:-2,crop=${W}:${videoH}:0:(ih-${videoH})*0.25[vid]`
-    : `${prep},scale=${W}:${videoH}[vid]`;
+    ? `${prep},scale=${targetW}:-2,crop=${targetW}:${videoH}:0:(ih-${videoH})*0.25[vid]`
+    : `${prep},scale=${targetW}:${videoH}[vid]`;
 
   const filterGraph = [
-    `[1:v]loop=loop=-1:size=1:start=0,scale=${W}:${H}[bg]`,
+    `[1:v]loop=loop=-1:size=1:start=0,scale=${targetW}:${targetH}[bg]`,
     videoChain,
     `[bg][vid]overlay=0:${videoY}:eof_action=endall[out]`,
   ].join(';');
@@ -1458,6 +1477,71 @@ async function composeReel({ videoPath, headline, bgPng, output, sid, crop }) {
   return output;
 }
 
+async function composeReel({ videoPath, headline, bgPng, output, sid, crop }) {
+  const { videoY } = await buildFramePng(headline, bgPng);
+  const availableH = H - videoY - BOTTOM_GAP;
+  return overlayVideoNoFundo({ videoPath, bgPng, crop, sid, targetW: W, targetH: H, videoY, availableH, output });
+}
+
+// ── Template "Viral": monta o overlay a partir da imagem enviada ─────────────
+// Cacheado — a versão com o buraco no retângulo do vídeo é a mesma pra
+// qualquer gancho, então só precisa ser calculada uma vez por processo.
+let _viralTemplateHoledCache = null;
+async function getViralTemplateHoled() {
+  if (_viralTemplateHoledCache) return _viralTemplateHoledCache;
+  const { x, y, w, h } = TV.videoBox;
+  // Máscara branca (opaco) em tudo, preta (transparente via dest-in) só no
+  // retângulo do vídeo — o vídeo entra por baixo no ffmpeg, exatamente nesse
+  // buraco.
+  const mask = Buffer.from(
+    `<svg width="${TV.W}" height="${TV.H}">
+      <rect width="${TV.W}" height="${TV.H}" fill="white"/>
+      <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="black"/>
+    </svg>`
+  );
+  _viralTemplateHoledCache = await sharp(TEMPLATE_VIRAL_PATH)
+    .ensureAlpha()
+    .composite([{ input: mask, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+  return _viralTemplateHoledCache;
+}
+
+// Desenha o gancho na área vaga ao lado da foto, por cima do template já com
+// o buraco do vídeo, e salva o resultado — é esse arquivo que entra no ffmpeg.
+async function buildViralEditorOverlay(headline, outPath) {
+  const holed = await getViralTemplateHoled();
+  const { x, y, w, h } = TV.headlineBox;
+  const text = stripEmoji(String(headline || '')).toUpperCase().trim();
+
+  const fit = fitText(text, {
+    maxFont: 64, minFont: 38, boxW: w, boxH: h, charRatio: 0.58, lineRatio: 1.22,
+  });
+  const blockH = fit.lines.length * fit.lineH;
+  const startY = y + (h - blockH) / 2 + fit.fontSize * 0.85;
+  const textEls = fit.lines.map((ln, i) =>
+    `<text x="${x}" y="${startY + i * fit.lineH}" font-family="${FONT_BLACK}" font-size="${fit.fontSize}" fill="#FFFFFF">${escXml(ln)}</text>`
+  ).join('');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${TV.W}" height="${TV.H}">${textEls}</svg>`;
+  await sharp(holed).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).png().toFile(outPath);
+}
+
+async function composeReelTemplateViral({ videoPath, headline, output, sid, crop }) {
+  const bgPng = path.join(os.tmpdir(), `${sid}_bg_viral.png`);
+  try {
+    await buildViralEditorOverlay(headline, bgPng);
+    return await overlayVideoNoFundo({
+      videoPath, bgPng, crop, sid,
+      targetW: TV.W, targetH: TV.H,
+      videoY: TV.videoBox.y, availableH: TV.videoBox.h,
+      output,
+    });
+  } finally {
+    try { if (fs.existsSync(bgPng)) fs.unlinkSync(bgPng); } catch {}
+  }
+}
+
 // Aceita o vídeo por multipart (arquivo do aparelho) ou por JSON (link). O
 // multer ignora corpo que não seja multipart, então as duas formas passam aqui.
 router.post('/render', tratarUpload('video'), async (req, res) => {
@@ -1472,7 +1556,7 @@ router.post('/render', tratarUpload('video'), async (req, res) => {
   const cleanOutput = () => { try { if (fs.existsSync(output)) fs.unlinkSync(output); } catch {} };
 
   try {
-    const { instagramUrl, videoUrl, headline, caption } = req.body || {};
+    const { instagramUrl, videoUrl, headline, caption, template = 'padrao' } = req.body || {};
     // Vindo por multipart, todo campo chega como texto — o recorte volta a ser objeto.
     let { crop } = req.body || {};
     if (typeof crop === 'string') { try { crop = JSON.parse(crop); } catch { crop = null; } }
@@ -1483,10 +1567,14 @@ router.post('/render', tratarUpload('video'), async (req, res) => {
     if (!String(headline || '').trim()) return res.status(400).json({ error: 'O gancho é obrigatório' });
     if (!stripEmoji(headline).trim()) return res.status(400).json({ error: 'O gancho não pode ser só emoji — adicione texto.' });
 
-    console.log(`[videoEditor] render a partir de: ${descreverFonte({ instagramUrl, videoUrl, file: req.file })}`);
+    console.log(`[videoEditor] render a partir de: ${descreverFonte({ instagramUrl, videoUrl, file: req.file })} | template: ${template}`);
     await obterVideo({ instagramUrl, videoUrl, file: req.file }, rawVideo);
 
-    await composeReel({ videoPath: rawVideo, headline, bgPng, output, sid, crop });
+    if (template === 'viral') {
+      await composeReelTemplateViral({ videoPath: rawVideo, headline, output, sid, crop });
+    } else {
+      await composeReel({ videoPath: rawVideo, headline, bgPng, output, sid, crop });
+    }
     if (instagramUrl?.trim()) { try { fs.unlinkSync(rawVideoCachePath(instagramUrl.trim())); } catch {} }
     cleanTmp();
 
