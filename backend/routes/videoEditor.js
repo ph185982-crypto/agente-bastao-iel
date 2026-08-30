@@ -98,8 +98,11 @@ const MAX_CLIP_SEC = 45;
 const TEMPLATE_VIRAL_PATH = path.join(__dirname, '..', 'assets', 'template-editor-viral.png');
 const TV = {
   W: 1080, H: 1920,
-  // Retângulo branco onde o vídeo entra.
-  videoBox: { x: 0, y: 264, w: 1080, h: 1013 },
+  // Retângulo branco onde o vídeo entra. Altura NÃO vai até o fim da área
+  // branca (que seria y=1276): o cabelo da foto sobe até y≈1182 dentro dessa
+  // área (medido pixel a pixel) — descer a caixa até lá cobriria o topo da
+  // cabeça com o vídeo. Corta em y=1160, com folga de segurança.
+  videoBox: { x: 0, y: 264, w: 1080, h: 896 },
   // Área vaga ao lado da foto (depois da linha divisória branca em x≈465),
   // dentro do painel escuro, onde o gancho é desenhado.
   headlineBox: { x: 495, y: 1317, w: 545, h: 349 },
