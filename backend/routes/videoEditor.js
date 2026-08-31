@@ -103,7 +103,11 @@ const TV = {
   // pixel a pixel); em vez de encolher a caixa pra desviar dele, o cabelo é
   // desenhado NUMA CAMADA POR CIMA do vídeo (ver getViralHairOverlay) — o
   // efeito de "a foto estoura o quadro" é assim mesmo de propósito.
-  videoBox: { x: 0, y: 264, w: 1080, h: 1013 },
+  // h precisa ser PAR: overlayVideoNoFundo arredonda a altura do vídeo pro
+  // par mais próximo (exigência do libx264/yuv420p) — se o buraco da máscara
+  // ficasse ímpar, o vídeo saía 1px mais alto que o buraco e essa linha extra
+  // vazava crua por cima da foto do painel, bem na altura do rosto.
+  videoBox: { x: 0, y: 264, w: 1080, h: 1012 },
   // Área vaga ao lado da foto (depois da linha divisória branca em x≈465),
   // dentro do painel escuro, onde o gancho é desenhado.
   headlineBox: { x: 495, y: 1317, w: 545, h: 349 },
