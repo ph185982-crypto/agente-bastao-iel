@@ -350,8 +350,22 @@ function traduzErroDownload(err) {
 
 const espera = ms => new Promise(r => setTimeout(r, ms));
 
+// O campo se chama "instagramUrl" por herança, mas hoje aceita link de post
+// do Instagram OU do Facebook — a plataforma é detectada pelo próprio link.
+function ehLinkFacebook(url) {
+  try {
+    return /(^|\.)(facebook\.com|fb\.watch)$/i.test(new URL(url).hostname);
+  } catch { return false; }
+}
+
 async function resolveInstagramUrl(instagramUrl) {
   const url = instagramUrl.trim();
+
+  if (ehLinkFacebook(url)) {
+    const { resolverViaFacebook } = require('../lib/facebookDownloader');
+    const info = await resolverViaFacebook(url);
+    return info.videoUrl;
+  }
 
   // socialkit.dev é o caminho principal: uma chamada só devolve o link direto
   // do vídeo, sem a instabilidade que as APIs de download da RapidAPI vinham
@@ -454,7 +468,10 @@ function ehHostInstagram(url) {
   } catch { return false; }
 }
 
-function streamDownload(url, destPath, timeoutMs = 45000) {
+// fbcdn.net é o CDN da Meta, compartilhado por Instagram e Facebook — não dá
+// pra saber só pela URL do CDN de qual das duas plataformas o vídeo veio, por
+// isso o chamador pode informar o Referer certo (ver getOrDownloadVideo).
+function streamDownload(url, destPath, timeoutMs = 45000, referer) {
   return new Promise((resolve, reject) => {
     axios.get(url, {
       responseType: 'stream',
@@ -462,7 +479,7 @@ function streamDownload(url, destPath, timeoutMs = 45000) {
       maxRedirects: 5,
       headers: {
         'User-Agent': 'Mozilla/5.0',
-        ...(ehHostInstagram(url) ? { Referer: 'https://www.instagram.com/' } : {}),
+        ...(referer ? { Referer: referer } : ehHostInstagram(url) ? { Referer: 'https://www.instagram.com/' } : {}),
       },
     }).then(resp => {
       const writer = fs.createWriteStream(destPath);
@@ -513,7 +530,8 @@ async function getOrDownloadVideo(instagramUrl, destPath) {
   } catch {}
 
   const cdnUrl = await resolveInstagramUrl(instagramUrl);
-  await streamDownload(cdnUrl, destPath);
+  const referer = ehLinkFacebook(instagramUrl) ? 'https://www.facebook.com/' : undefined;
+  await streamDownload(cdnUrl, destPath, 45000, referer);
   try { fs.copyFileSync(destPath, cachePath); } catch {}
 }
 
@@ -521,13 +539,14 @@ async function getOrDownloadVideo(instagramUrl, destPath) {
 // Três caminhos, do mais barato para o mais caro:
 //   1. arquivo enviado do aparelho — não custa nada e não depende de serviço nenhum;
 //   2. link direto do arquivo de vídeo — o servidor baixa, sem limite de tamanho;
-//   3. link de post do Instagram — precisa da API paga de download (RAPIDAPI_KEY).
+//   3. link de post do Instagram ou do Facebook — precisa de API paga de
+//      download (SOCIALKIT_API_KEY/RAPIDAPI_KEY ou RAPIDAPI_KEY_FACEBOOK).
 // Existir os dois primeiros é o que mantém o editor de pé quando a cota da API
 // de download acaba.
 function descreverFonte({ instagramUrl, videoUrl, file }) {
   if (file) return 'arquivo enviado';
   if (videoUrl) return 'link direto';
-  if (instagramUrl) return 'link do Instagram';
+  if (instagramUrl) return ehLinkFacebook(instagramUrl) ? 'link do Facebook' : 'link do Instagram';
   return 'nenhuma';
 }
 
@@ -555,7 +574,7 @@ async function obterVideo({ instagramUrl, videoUrl, file }, destPath) {
 
   if (instagramUrl) return getOrDownloadVideo(instagramUrl.trim(), destPath);
 
-  throw erroDownload('Envie o vídeo do aparelho, cole o link direto do arquivo ou o link do post do Instagram.');
+  throw erroDownload('Envie o vídeo do aparelho, cole o link direto do arquivo ou o link do post do Instagram ou Facebook.');
 }
 
 function getVideoInfo(videoPath) {
@@ -1634,7 +1653,7 @@ router.post('/render', tratarUpload('video'), async (req, res) => {
     if (typeof crop === 'string') { try { crop = JSON.parse(crop); } catch { crop = null; } }
 
     if (!req.file && !String(instagramUrl || '').trim() && !String(videoUrl || '').trim()) {
-      return res.status(400).json({ error: 'Envie o vídeo do aparelho, cole o link direto do arquivo ou o link do post do Instagram.' });
+      return res.status(400).json({ error: 'Envie o vídeo do aparelho, cole o link direto do arquivo ou o link do post do Instagram ou Facebook.' });
     }
     if (!String(headline || '').trim()) return res.status(400).json({ error: 'O gancho é obrigatório' });
     if (!stripEmoji(headline).trim()) return res.status(400).json({ error: 'O gancho não pode ser só emoji — adicione texto.' });

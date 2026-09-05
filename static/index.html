@@ -791,8 +791,8 @@
 
               <div>
                 <div style="font-size: 12px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">Link do vídeo</div>
-                <input id="veLinkInput" type="text" placeholder="Link do Reels ou link direto do .mp4" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
-                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Link do Instagram precisa de post público. Link direto do arquivo não tem limite de tamanho.</div>
+                <input id="veLinkInput" type="text" placeholder="Link do Reels do Instagram/Facebook ou link direto do .mp4" style="width: 100%; padding: 12px 14px; border: 1.5px solid #E5E5EA; border-radius: 10px; font-family: inherit; font-size: 15px; color: #1D1D1F; background: #F9F9F9; outline: none; box-sizing: border-box" />
+                <div style="font-size: 11px; color: #86868B; margin-top: 6px">Link do Instagram ou Facebook precisa de post público. Link direto do arquivo não tem limite de tamanho.</div>
               </div>
 
               <div>
@@ -1493,13 +1493,13 @@ class Component extends DCLogic {
   // Um clique só: entende o vídeo + escreve gancho/legenda + monta o reel,
   // sem parar numa tela de confirmação no meio do caminho.
   //
-  // O vídeo sempre vem por link agora (Instagram ou link direto do arquivo).
+  // O vídeo sempre vem por link agora (Instagram, Facebook ou link direto do arquivo).
   // O /analyze baixa o vídeo, lê o título queimado nele por OCR (sem IA — ver
   // lerTituloQueimado.js no backend) e só recorre à IA/robô de texto quando
   // não achou nada. O gancho digitado ou lido do print manda sobre tudo isso.
   async _veGerarTudo({ link, manual, captionManual }) {
-    const ehInstagram = /instagram\.com/i.test(link || '');
-    const fonte = ehInstagram ? { instagramUrl: link } : { videoUrl: link };
+    const ehPost = /instagram\.com|facebook\.com|fb\.watch/i.test(link || '');
+    const fonte = ehPost ? { instagramUrl: link } : { videoUrl: link };
 
     this.setState({
       veStep: 'analyzing', veLink: link, veError: null,
