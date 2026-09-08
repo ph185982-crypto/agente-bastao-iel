@@ -376,7 +376,7 @@ async function resolveInstagramUrl(instagramUrl) {
       const info = await resolverViaSocialkit(url);
       return info.videoUrl;
     } catch (e) {
-      if (!process.env.RAPIDAPI_KEY) throw e;
+      if (!rapidApiKeyInstagram()) throw e;
       console.warn('[videoEditor] socialkit.dev falhou, caindo pro RapidAPI:', e.message?.slice(0, 120));
     }
   }
@@ -384,11 +384,19 @@ async function resolveInstagramUrl(instagramUrl) {
   return resolverViaRapidApi(url);
 }
 
-// Reserva: as duas APIs de download que já estavam configuradas. Só entra em
-// cena se a socialkit.dev não tiver chave configurada ou falhar.
+// Chave dedicada pro Instagram na RapidAPI — cai pra RAPIDAPI_KEY genérica se
+// não tiver uma específica configurada (mesmo padrão de RAPIDAPI_KEY_IG120 e
+// RAPIDAPI_KEY_TIKTOK em outros arquivos deste projeto).
+function rapidApiKeyInstagram() {
+  return process.env.RAPIDAPI_KEY_INSTAGRAM || process.env.RAPIDAPI_KEY;
+}
+
+// Reserva: três APIs de download por trás da mesma chave. Só entra em cena se
+// a socialkit.dev não tiver chave configurada ou falhar.
 async function resolverViaRapidApi(url) {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw erroDownload('O serviço de download não está configurado no servidor (nem SOCIALKIT_API_KEY nem RAPIDAPI_KEY).');
+  const key = rapidApiKeyInstagram();
+  if (!key) {
+    throw erroDownload('O serviço de download não está configurado no servidor (nem SOCIALKIT_API_KEY nem RAPIDAPI_KEY_INSTAGRAM/RAPIDAPI_KEY).');
   }
 
   // API primária: instagram-reels-downloader-api
@@ -401,7 +409,7 @@ async function resolverViaRapidApi(url) {
           params: { url },
           headers: {
             'x-rapidapi-host': 'instagram-reels-downloader-api.p.rapidapi.com',
-            'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+            'x-rapidapi-key': key,
           },
           timeout: 25000,
         }
@@ -434,7 +442,7 @@ async function resolverViaRapidApi(url) {
           params: { url },
           headers: {
             'x-rapidapi-host': 'instagram-downloader-download-instagram-stories-videos4.p.rapidapi.com',
-            'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+            'x-rapidapi-key': key,
           },
           timeout: 25000,
         }
@@ -457,7 +465,43 @@ async function resolverViaRapidApi(url) {
       await espera(pausa);
     }
   }
-  throw traduzErroDownload(ultimoErroFallback);
+
+  // Terceira reserva: instagram-post-reels-stories-downloader-api. Devolve um
+  // "result" com um item por mídia encontrada — às vezes só a foto de capa
+  // (type "image/..."), às vezes o vídeo de verdade (type "video/..."); por
+  // isso procura explicitamente por um item de vídeo em vez de pegar o primeiro.
+  console.warn('[videoEditor] API de fallback falhou, tentando terceira reserva:', ultimoErroFallback?.message?.slice(0, 80));
+  let ultimoErroTerceira;
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    try {
+      const { data } = await axios.get(
+        'https://instagram-post-reels-stories-downloader-api.p.rapidapi.com/instagram/',
+        {
+          params: { url },
+          headers: {
+            'x-rapidapi-host': 'instagram-post-reels-stories-downloader-api.p.rapidapi.com',
+            'x-rapidapi-key': key,
+          },
+          timeout: 25000,
+        }
+      );
+      if (data?.status && Array.isArray(data?.result)) {
+        const video = data.result.find(m => /^video\//.test(m?.type || '') && m.url);
+        if (video) return video.url;
+      }
+      throw erroDownload('Nenhum vídeo encontrado nesse link. Confirme que o post é público.');
+    } catch (err) {
+      if (err?.isDownloadError) throw err;
+      ultimoErroTerceira = err;
+      const status = err?.response?.status ?? err?.status;
+      const vaiTentarDeNovo = (status === 429 || status >= 500) && tentativa < 3;
+      if (!vaiTentarDeNovo) break;
+      const pausa = tentativa * 1500;
+      console.warn(`[videoEditor] download API3 falhou (${status}), tentativa ${tentativa}/3 — repetindo em ${pausa}ms`);
+      await espera(pausa);
+    }
+  }
+  throw traduzErroDownload(ultimoErroTerceira);
 }
 
 // O Referer do Instagram é obrigatório no CDN deles, mas faz outros servidores
