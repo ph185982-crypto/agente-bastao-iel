@@ -1059,7 +1059,7 @@ async function generateCarouselContent({ theme, topic, reference, slideCount = 7
     model: 'gpt-4o',
     temperature: 0.8,
     response_format: { type: 'json_object' },
-    max_tokens: 1600,
+    max_tokens: 4000, // modelos com raciocínio (gpt-oss) gastam parte disso antes do JSON,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT.replace(/@pedro_destrava/g, handle) },
       { role: 'user', content: `${brief}\n\nGere EXATAMENTE ${n} telas no total: 1 capa + ${contentSlides} telas de conteúdo + 1 CTA. Numere as telas de conteúdo a partir de "01".` },

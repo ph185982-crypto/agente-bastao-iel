@@ -184,6 +184,14 @@ function heuristicPautas(candidates, pillars) {
   return [...ranked, ...extras].slice(0, 10);
 }
 
+// IA tende a devolver sempre "padrao"; a regra fixa corrige quando o tema
+// pede um tipo específico (boas notícias, segredo, lançamento).
+function escolherTipoCarrossel(p) {
+  const pedido = CAROUSEL_ENDPOINTS[p.carousel_type] ? p.carousel_type : 'padrao';
+  if (pedido !== 'padrao') return pedido;
+  return core.suggestFormat({ title: p.title, summary: p.summary, pillar: p.pillar }).carousel_type || 'padrao';
+}
+
 async function llmPautas(candidates, pillars, performance) {
   const lista = candidates.map((c, i) => `${i}. [${c.kind}] ${c.title} — ${c.summary.slice(0, 160)} (fonte: ${c.source_name}${c.views ? `, ${c.views} views` : ''})`).join('\n');
   const perf = performance
@@ -222,7 +230,7 @@ Responda APENAS JSON: {"pautas":[{"title":"","summary":"","pillar":"","score":0,
       pillar: p.pillar || pillarFor(p.title || '', pillars),
       score: Math.max(0, Math.min(100, Number(p.score) || 50)),
       format,
-      carousel_type: format === 'carrossel' ? (CAROUSEL_ENDPOINTS[p.carousel_type] ? p.carousel_type : 'padrao') : null,
+      carousel_type: format === 'carrossel' ? escolherTipoCarrossel(p) : null,
       source_name: ref?.source_name || 'Sugestão da IA',
       source_url: ref?.source_url || '',
       video_url: format === 'corte_tv' ? ref.video_url : '',
@@ -253,6 +261,7 @@ router.post('/suggest', async (req, res) => {
     }
     pautas = pautas
       .filter((p) => !exclude.has(p.title.toLowerCase()))
+      .sort((a, b) => b.score - a.score)
       .map((p, i) => ({ id: `pauta-${Date.now()}-${i}`, ...p }));
 
     res.json({ pautas, fonte, fontes: { temas: temas.length, videos: videos.length } });
@@ -332,7 +341,7 @@ async function gerarRoteiro(item) {
       model: 'gpt-4o-mini',
       temperature: 0.7,
       response_format: { type: 'json_object' },
-      max_tokens: 1200,
+      max_tokens: 3000,
       messages: [{
         role: 'user',
         content: `${PEDRO_DNA}\n\n${LINGUAGEM_LEIGO}\n\nEscreva um roteiro curto (30 a 45 segundos) para o Pedro gravar falando para a câmera, lido em teleprompter.
@@ -346,8 +355,15 @@ Também escreva a legenda do post (2 parágrafos curtos, até 4 hashtags no fim)
 Responda APENAS JSON: {"hook":"","blocos":[""],"cta":"","caption":""}`,
       }],
     });
-    const d = JSON.parse(ai.choices[0].message.content || '{}');
-    if (!d.hook || !Array.isArray(d.blocos) || !d.blocos.length) throw new Error('roteiro incompleto');
+    const raw = ai.choices[0].message.content || '{}';
+    const d = JSON.parse(raw);
+    // Modelos variam: blocos às vezes vem como texto corrido ou em outra chave.
+    let blocos = d.blocos || d.desenvolvimento || d.blocks;
+    if (typeof blocos === 'string') blocos = blocos.split(/\n+/);
+    blocos = Array.isArray(blocos) ? blocos.map((b) => String(b).trim()).filter(Boolean) : [];
+    d.hook = d.hook || d.gancho;
+    d.blocos = blocos;
+    if (!d.hook || !blocos.length) throw new Error(`roteiro incompleto: ${raw.slice(0, 160)}`);
     return { hook: d.hook, blocos: d.blocos.slice(0, 7), cta: d.cta || roteiroRobo(item).cta, caption: d.caption || '', fonte: 'ia' };
   } catch (e) {
     console.warn('[queue/roteiro] IA falhou, usando robô:', e.message?.slice(0, 120));
