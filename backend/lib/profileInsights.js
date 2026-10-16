@@ -10,7 +10,9 @@ const TIPO = { 1: 'imagem', 2: 'video', 8: 'carrossel' };
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 
 const apiKey = () => process.env.RAPIDAPI_KEY_INSTAGRAM || process.env.RAPIDAPI_KEY;
-const username = () => String(process.env.PROFILE_HANDLE || '@pedro_destrava').replace('@', '').trim();
+// Usuário do Instagram que a ferramenta estuda. Separado do PROFILE_HANDLE
+// (que só aparece impresso nos posts) pra um erro lá não fazer ler a conta errada.
+const username = () => String(process.env.INSTAGRAM_USERNAME || 'pedro_destrava').replace('@', '').trim();
 
 async function looter(path, params) {
   const { data } = await axios.get(`https://${HOST}/${path}`, {

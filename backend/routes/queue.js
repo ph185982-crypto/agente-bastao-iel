@@ -318,7 +318,7 @@ const isThirdParty = (item) => {
 };
 
 function buildCaptionPack(item, rawCaption) {
-  const raw = String(rawCaption || '');
+  const raw = String(rawCaption || '').replace(/\*\*/g, '');
   const found = raw.match(/#[\p{L}\p{N}_]+/gu) || [];
   const body = formatForMobile(raw.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/[ \t]+\n/g, '\n'));
   const pillarTags = (PILLAR_TAGS.find(([re]) => re.test(String(item.pillar || '').toLowerCase())) || [null, []])[1];

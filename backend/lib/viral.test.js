@@ -50,7 +50,7 @@ test('leitura do perfil: acha o post campeão, o melhor formato e os padrões', 
 
 test('quebra de linha mantém pontuação colada no destaque', () => {
   const linha = wrap('Hoje passa de **R$ 6**. E dobrou!', 40, 1000, 0.6)[0];
-  const txt = linha.map((t, i) => (i && !t.glue ? ' ' : '') + t.t).join('');
+  const txt = linha.map((t, i) => (i && !t.glue ? ' ' : '') + t.t).join('').replace(/\u00A0/g, ' ');
   assert.strictEqual(txt, 'Hoje passa de R$ 6. E dobrou!');
 });
 
@@ -70,10 +70,14 @@ test('render: cada modelo gera PNG 1080x1350 e o número certo de telas', async 
 });
 
 test('redator: escolhe o gancho com número e coloca na capa', () => {
-  const h = pickHook([{ tipo: 'x', texto: 'Descubra o segredo incrível da inflação' }, { tipo: 'numero_choque', texto: 'Seus R$ 100 de 1994 valem R$ 11,19 hoje.' }], 'antes_agora');
-  assert.match(h.texto, /R\$ 100/);
+  const h = pickHook([
+    { tipo: 'x', texto: 'Descubra o segredo incrível da inflação' },
+    { tipo: 'copia', texto: 'Seus R$ 100 de 1994 valem R$ 11,19 hoje.' }, // exemplo do playbook: proibido
+    { tipo: 'numero_choque', texto: 'Seus R$ 50 de 2000 compram metade hoje.' },
+  ], 'antes_agora');
+  assert.match(h.texto, /R\$ 50/);
   const c = normalizar('antes_agora', {
-    ganchos: [{ tipo: 'numero_choque', texto: 'Seus **R$ 100** de 1994 valem R$ 11,19 hoje.' }],
+    ganchos: [{ tipo: 'numero_choque', texto: 'Seus **R$ 100** de 1995 compram um terço hoje.' }],
     slides: [{ texto: 'Em 1994 a gasolina…', foto: 'gas' }, { texto: 'Em 2000…' }, { texto: 'Hoje…' }],
     licao: 'l', caption: 'c', fontes: ['IBGE'],
   });
@@ -85,4 +89,9 @@ test('robô sem IA não inventa número: vira Print com a pauta', () => {
   const r = robo({ title: 'Promoção quase nunca é desconto', summary: 'Preço sobe antes da Black Friday.' }, 'antes_agora');
   assert.strictEqual(r.template, 'print');
   assert.ok(r.conteudo.frases.length >= 1);
+});
+
+test('R$ nunca fica sozinho no fim da linha', () => {
+  const linhas = wrap('A conta de luz hoje chega a **R$ 150** por mês', 60, 560, 0.6);
+  for (const l of linhas) assert.notStrictEqual(l[l.length - 1].t, 'R$');
 });

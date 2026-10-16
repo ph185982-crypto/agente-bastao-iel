@@ -468,7 +468,9 @@
     } else {
       body += `<div class="es-preview-slot" data-preview="${it.id}"></div>`;
       body += scoreBlock(it);
-      if ((it.fontes || []).length) body += `<div class="es-warn">Confira os números antes de postar. Fonte: ${esc(it.fontes.join(', '))}</div>`;
+      if (['antes_agora', 'noticia', 'lista'].includes(it.carousel_type) || (it.fontes || []).length) {
+        body += `<div class="es-warn">A IA escreveu esses fatos e números. Confira cada um antes de postar${(it.fontes || []).length ? `. Fontes citadas: ${esc(it.fontes.join(', '))}` : ''}.</div>`;
+      }
       if (it.third_party) body += '<div class="es-warn">Conteúdo de terceiros: confira o direito de uso antes de postar.</div>';
       body += `<div class="es-actions">
         <button class="es-btn" data-action="download" data-id="${it.id}">Baixar</button>

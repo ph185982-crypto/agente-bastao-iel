@@ -25,7 +25,7 @@
       referencia: 'Fatos Desconhecidos: 0,75% de mediana, 212 mil curtidas no topo',
     },
     lista: {
-      nome: 'Lista editorial', telas: [6, 10], numero: false,
+      nome: 'Lista editorial', telas: [4, 7], numero: false,
       quando: 'lições, erros ou sinais numerados, com caso real em cada item',
       referencia: 'Sahil Bloom: 452 mil curtidas num carrossel de 9 telas',
     },
@@ -104,11 +104,13 @@
     'antes_agora', 'print', 'lista', 'noticia', 'roteiro',
   ];
 
+  const exemplosDeGancho = () => Object.values(GANCHOS).map((g) => g.exemplo.toLowerCase());
+
   function resumoParaPrompt() {
     const tpls = Object.entries(TEMPLATES).map(([k, t]) => `- ${k} (${t.nome}, ${t.telas[0]}-${t.telas[1]} telas): ${t.quando}. Referência: ${t.referencia}.`).join('\n');
     const gs = Object.values(GANCHOS).map((g) => `- ${g.nome}: "${g.exemplo}"`).join('\n');
-    return `COMO O ALGORITMO DISTRIBUI:\n${ALGORITMO.map((a) => `- ${a}`).join('\n')}\n\nMODELOS QUE VIRALIZAM:\n${tpls}\n\nTIPOS DE GANCHO:\n${gs}\n\nPROIBIDO: ${CLICHES.join(', ')}.`;
+    return `(Os exemplos abaixo só ilustram o mecanismo: NUNCA copie um exemplo como gancho.)\n\nCOMO O ALGORITMO DISTRIBUI:\n${ALGORITMO.map((a) => `- ${a}`).join('\n')}\n\nMODELOS QUE VIRALIZAM:\n${tpls}\n\nTIPOS DE GANCHO:\n${gs}\n\nPROIBIDO: ${CLICHES.join(', ')}.`;
   }
 
-  return { TEMPLATES, ALGORITMO, GANCHOS, CTAS, CLICHES, MIX_SEMANAL, viralScore, resumoParaPrompt, temNumero };
+  return { TEMPLATES, ALGORITMO, GANCHOS, CTAS, CLICHES, MIX_SEMANAL, viralScore, resumoParaPrompt, temNumero, exemplosDeGancho };
 });

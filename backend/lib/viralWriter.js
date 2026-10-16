@@ -20,14 +20,16 @@ Regras: 4 a 6 slides. O PRIMEIRO slide é o gancho escolhido, já com a primeira
 Regras: cada frase sozinha precisa fazer sentido e caber em 3 a 5 linhas (até 28 palavras). Coloque **destaque** em 2 a 4 palavras-chave. 1 frase = post único; 4 a 6 frases = carrossel de prints sobre o mesmo tema.`,
   noticia: `{"ganchos":[{"tipo":"historia_humana","texto":""},{"tipo":"","texto":""},{"tipo":"","texto":""}],
  "manchete":"a manchete escolhida com **número em destaque**","rotulo":"BOAS NOTÍCIAS|HISTÓRIA REAL|NEGÓCIOS","foto":"busca de foto em inglês (pessoas, cena real)","caption":"a história completa em 3 parágrafos curtos + a estratégia por trás + CTA","fontes":["veículo/fonte"]}
-Regras: manchete com pessoa ou empresa real, emoção e um número, até 22 palavras. Só fatos verificáveis.`,
+Regras: manchete até 18 palavras, com emoção e um número. A história TEM QUE SER REAL E DOCUMENTADA: pessoa ou empresa com nome completo que você conhece de fato (ex.: fundadores e empresas brasileiras famosas). NUNCA invente personagem, nome, valor ou fonte. Em "fontes" só cite veículo que você tem certeza que publicou; se não tiver, deixe [].`,
   lista: `{"ganchos":[{"tipo":"autoridade","texto":""},{"tipo":"","texto":""},{"tipo":"","texto":""}],
  "titulo":"título da lista (o gancho escolhido) com **destaque**","subtitulo":"1 linha que promete o que a pessoa ganha","itens":[{"titulo":"até 6 palavras","texto":"caso real em 1-2 frases curtas"}],"licao":"pergunta ou lição final","cta":"CTA","caption":"legenda","fontes":[]}
 Regras: 6 a 9 itens, cada um com um caso real (empresa, marca, pessoa). Nada genérico.`,
 };
 
 function pickHook(ganchos, template) {
-  const opts = (ganchos || []).map((g) => (typeof g === 'string' ? { texto: g } : g)).filter((g) => g && g.texto);
+  const copiados = new Set(PB.exemplosDeGancho().map((e) => e.replace(/[*.]/g, '').trim()));
+  const opts = (ganchos || []).map((g) => (typeof g === 'string' ? { texto: g } : g))
+    .filter((g) => g && g.texto && !copiados.has(String(g.texto).toLowerCase().replace(/[*.]/g, '').trim()));
   if (!opts.length) return null;
   const nota = (g) => PB.viralScore({ template, hook: g.texto, slides: [], caption: 'Manda pra alguém.' }).checks
     .filter((c) => c.ok && /Gancho|clichê/i.test(c.label)).reduce((s, c) => s + c.peso, 0);
@@ -80,7 +82,9 @@ Contexto: ${item.summary || '—'}
 Pilar: ${item.pillar || '—'}
 ${item.source_name && !/sugest|tend/i.test(item.source_name) ? `Fonte da pauta: ${item.source_name} ${item.source_url || ''}` : ''}
 
-Gere 3 ganchos de tipos diferentes e use o mais forte. Marque com **duas estrelas** o trecho de destaque (número ou palavra-chave).
+Data de hoje: ${new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}. "Hoje" = esse período.
+REGRA DE OURO DOS FATOS: só escreva número, nome ou acontecimento que você tem certeza que é real. Na dúvida, troque por outro fato que você conhece ou use comparação relativa (metade, o dobro). Número errado destrói a credibilidade do perfil.
+Gere 3 ganchos de tipos diferentes, específicos desta pauta, e use o mais forte. Marque com **duas estrelas** o trecho de destaque (número ou palavra-chave).
 Legenda: primeira linha forte, até 600 caracteres, termina com UM CTA ("Manda pra alguém que…" ou "Comenta PALAVRA…"), no máximo 3 hashtags no fim. Sem emoji dentro do texto das telas.
 ${feedback ? `\nA VERSÃO ANTERIOR FALHOU NISSO, CORRIJA:\n${feedback}\n` : ''}
 Responda APENAS JSON no formato:

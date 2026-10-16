@@ -36,6 +36,12 @@ function tokens(texto) {
     prevSpace = /\s$/.test(clean);
     clean.split(/\s+/).filter(Boolean).forEach((t, i) => out.push({ t, hi, glue: i === 0 && gluedStart }));
   });
+  // "R$" e "US$" nunca ficam no fim da linha separados do valor.
+  for (let i = out.length - 2; i >= 0; i--) {
+    if (/^(R|US|U\$)?\$$/.test(out[i].t) || /^(R\$|US\$)$/.test(out[i].t)) {
+      out.splice(i, 2, { ...out[i], t: `${out[i].t}\u00A0${out[i + 1].t}`, hi: out[i].hi || out[i + 1].hi });
+    }
+  }
   return out;
 }
 
@@ -73,7 +79,19 @@ function textBlock(lines, { x, y, fs, lineH, family, weight = 700, color = '#fff
 }
 
 // ── Fotos (Pexels) ───────────────────────────────────────────────────────────
+// Busca a foto; se a busca exata não achar nada, tenta com menos palavras.
 async function pexels(query) {
+  const q = String(query || '').trim();
+  if (!q) return null;
+  const palavras = q.split(/\s+/);
+  for (const tentativa of [q, palavras.slice(-2).join(' '), palavras[0]]) {
+    const buf = await pexelsUma(tentativa);
+    if (buf) return buf;
+  }
+  return null;
+}
+
+async function pexelsUma(query) {
   const key = process.env.PEXELS_API_KEY;
   if (!key || !query) return null;
   try {
