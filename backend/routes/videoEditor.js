@@ -1496,21 +1496,24 @@ async function overlayVideoNoFundo({ videoPath, bgPng, crop, sid, targetW, targe
   const { cropW, cropH, cropX, cropY } = preset || await detectContentRegion(videoPath, vw, vh, sid);
   if (preset) console.log('[videoEditor] usando recorte vindo do /analyze');
 
-  // REGRA: o vídeo SEMPRE ocupa a largura inteira. Nunca tarja preta nem
-  // borrada nas laterais — isso é reenquadrar, não recortar.
-  //  - Cabe na altura disponível → entra inteiro, sobra fundo embaixo
-  //    (é o visual de post: mídia cheia no topo, respiro embaixo).
-  //  - Não cabe → corta em cima/embaixo, puxando pro topo, que é onde
-  //    normalmente estão rosto e começo do conteúdo.
+  // REGRA: o vídeo SEMPRE preenche a caixa inteira (largura x altura
+  // disponível) — nunca sobra fundo vazio/branco embaixo, nem tarja preta ou
+  // borrada nas laterais. Isso é reenquadrar (cover), não "caber" (contain).
+  //  - Vídeo "alto" (não cabe na altura disponível em largura cheia) → corta
+  //    em cima/embaixo, puxando pro topo, que é onde normalmente estão rosto
+  //    e começo do conteúdo.
+  //  - Vídeo "curto"/largo (sobraria altura se só coubesse na largura) → dá
+  //    zoom pela altura (em vez de deixar espaço vazio embaixo) e corta o
+  //    excesso dos lados, centralizado.
   const even = n => Math.max(2, Math.round(n / 2) * 2);
   const naturalH = Math.round(targetW * cropH / cropW);   // altura em largura cheia
   const needsVerticalCrop = naturalH > availableH;
-  const videoH = even(needsVerticalCrop ? availableH : naturalH);
+  const videoH = even(availableH);
 
   console.log(
     `[videoEditor] clip=${clipDur}s src=${vw}x${vh} crop=${cropW}x${cropH}@${cropX},${cropY} ` +
     `→ ${targetW}x${videoH} (natural ${targetW}x${naturalH}, disponível ${availableH}) ` +
-    `${needsVerticalCrop ? `corte vertical -${(100 - availableH / naturalH * 100).toFixed(0)}%` : 'inteiro'}`
+    `${needsVerticalCrop ? `corte vertical -${(100 - availableH / naturalH * 100).toFixed(0)}%` : 'zoom + corte horizontal (vídeo curto demais pra altura)'}`
   );
 
   const prep = `[0:v]crop=${cropW}:${cropH}:${cropX}:${cropY},` +
@@ -1519,7 +1522,8 @@ async function overlayVideoNoFundo({ videoPath, bgPng, crop, sid, targetW, targe
   const videoChain = needsVerticalCrop
     // largura cheia e corta o excesso de altura, ancorado mais pro topo
     ? `${prep},scale=${targetW}:-2,crop=${targetW}:${videoH}:0:(ih-${videoH})*0.25[vid]`
-    : `${prep},scale=${targetW}:${videoH}[vid]`;
+    // altura cheia (zoom) e corta o excesso de largura, centralizado
+    : `${prep},scale=-2:${videoH},crop=${targetW}:${videoH}:(iw-${targetW})*0.5:0[vid]`;
 
   // extraOverlay (opcional): uma camada extra POR CIMA do vídeo já encaixado
   // — usada no template Viral pro cabelo da foto ficar por cima do vídeo em
