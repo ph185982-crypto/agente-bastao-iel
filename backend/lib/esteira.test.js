@@ -95,3 +95,9 @@ test('targetWeek: sexta usa a semana atual; sábado pula pra próxima', () => {
   assert.strictEqual(core.targetWeek(core.DEFAULT_CONFIG, '2026-10-16'), '2026-10-12');
   assert.strictEqual(core.targetWeek(core.DEFAULT_CONFIG, '2026-10-17'), '2026-10-19');
 });
+
+test('hashtag com e sem acento não duplica', () => {
+  const pack = q.buildCaptionPack({ format: 'roteiro', pillar: 'negócios e vendas online', title: 't' }, 'Texto. #negócios #Vendas');
+  assert.strictEqual(pack.hashtags.filter((h) => /neg/.test(h)).length, 1);
+  assert.strictEqual(pack.hashtags.filter((h) => /vendas/.test(h)).length, 1);
+});

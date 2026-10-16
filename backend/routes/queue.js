@@ -305,7 +305,13 @@ function buildCaptionPack(item, rawCaption) {
   const found = raw.match(/#[\p{L}\p{N}_]+/gu) || [];
   const body = formatForMobile(raw.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/[ \t]+\n/g, '\n'));
   const pillarTags = (PILLAR_TAGS.find(([re]) => re.test(String(item.pillar || '').toLowerCase())) || [null, []])[1];
-  const hashtags = [...new Set([...found.map((h) => h.toLowerCase()), ...pillarTags.map((h) => h.toLowerCase())])].slice(0, 8);
+  // #negócios e #negocios contam como a mesma; fica a primeira que apareceu.
+  const semAcento = (h) => h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const vistos = new Set();
+  const hashtags = [...found, ...pillarTags]
+    .map((h) => h.toLowerCase())
+    .filter((h) => !vistos.has(semAcento(h)) && vistos.add(semAcento(h)))
+    .slice(0, 8);
   const thirdParty = isThirdParty(item);
   const source_credit = thirdParty ? `Fonte: ${item.source_name}` : '';
   const caption = [body || item.title, source_credit, hashtags.join(' ')].filter(Boolean).join('\n\n');
