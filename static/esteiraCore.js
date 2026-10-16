@@ -9,13 +9,20 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   const FORMATS = ['carrossel', 'corte_tv', 'roteiro'];
 
+  // Os 4 primeiros são os modelos virais (static/viralPlaybook.js); os demais
+  // são os tipos antigos do módulo de carrossel.
   const CAROUSEL_TYPES = {
+    antes_agora: 'Antes × Agora',
+    print: 'Print do Pedro',
+    noticia: 'Notícia humana',
+    lista: 'Lista editorial',
     padrao: 'Padrão',
     arquivo: 'Arquivo Secreto',
     boas_noticias: 'Boas Notícias',
     comecou: 'Começou',
     trending: 'Em alta',
   };
+  const VIRAL_TYPES = ['antes_agora', 'print', 'noticia', 'lista'];
 
   const DEFAULT_CONFIG = {
     pillars: [
@@ -104,19 +111,18 @@
     return out;
   }
 
-  // Sugestão de formato quando a IA não está disponível.
+  // Sugestão de formato quando a IA não está disponível. Prefere os modelos
+  // virais; os tipos antigos ficam pros temas que pedem o visual deles.
   function suggestFormat(pauta) {
     const text = `${pauta.title || ''} ${pauta.summary || ''}`.toLowerCase();
     const pillar = String(pauta.pillar || '').toLowerCase();
     if (pauta.video_url) return { format: 'corte_tv', carousel_type: null };
-    if (/\b(eu|minha|meu|opini|bastidor|aprendi|erro que|como eu)\b/.test(text)) {
-      return { format: 'roteiro', carousel_type: null };
-    }
-    let carousel_type = 'padrao';
-    if (/boas not[ií]cias/.test(pillar) || /\b(recorde|conquista|aprovad|inaugur|cresce)\w*/.test(text)) carousel_type = 'boas_noticias';
-    else if (/\b(segredo|proibid|oculto|secreto|escondid|mist[eé]rio)\w*/.test(text)) carousel_type = 'arquivo';
-    else if (/\b(come[çc]ou|lan[çc]a|estreia|chegou)\w*/.test(text)) carousel_type = 'comecou';
-    return { format: 'carrossel', carousel_type };
+    if (/\b(eu|minha|meu|bastidor|aprendi|como eu)\b/.test(text)) return { format: 'roteiro', carousel_type: null };
+    if (/\b(segredo|proibid|oculto|secreto|escondid|mist[eé]rio)\w*/.test(text)) return { format: 'carrossel', carousel_type: 'arquivo' };
+    if (/\b(19\d\d|20\d\d|r\$|pre[çc]o|caro|infla[çc]|sal[aá]rio|antes|hoje|custa)/.test(text)) return { format: 'carrossel', carousel_type: 'antes_agora' };
+    if (/\b(erros|li[çc][õo]es|sinais|motivos|maneiras|h[aá]bitos|regras|marcas que)\b/.test(text) || /^\d+\s/.test(text)) return { format: 'carrossel', carousel_type: 'lista' };
+    if (/boas not[ií]cias/.test(pillar) || /\b(fam[ií]lia|hist[oó]ria|recusad|conseguiu|virou dono|dona de)\w*/.test(text)) return { format: 'carrossel', carousel_type: 'noticia' };
+    return { format: 'carrossel', carousel_type: 'print' };
   }
 
   // Semana que recebe pauta aprovada hoje: a atual, se ainda tiver dia de
@@ -160,7 +166,7 @@
   }
 
   return {
-    FORMATS, CAROUSEL_TYPES, DEFAULT_CONFIG,
+    FORMATS, CAROUSEL_TYPES, VIRAL_TYPES, DEFAULT_CONFIG,
     toISODate, parseISODate, weekStart, weekDays, addDays,
     distribute, targetWeek, suggestFormat, summarizeWeek, performanceSummary,
   };

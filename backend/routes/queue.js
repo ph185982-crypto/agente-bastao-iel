@@ -10,6 +10,8 @@ const { invokeRoute } = require('../lib/invokeRoute');
 const { createCompatClient, hasLlmKey, friendlyErrorMessage } = require('../lib/llm');
 const { PEDRO_DNA, LINGUAGEM_LEIGO, PROFILE_HANDLE } = require('../lib/pedroDna');
 const core = require('../../static/esteiraCore');
+const PB = require('../../static/viralPlaybook');
+const insightsLib = require('../lib/profileInsights');
 
 const router = express.Router();
 let _llm = null;
@@ -186,13 +188,14 @@ function heuristicPautas(candidates, pillars) {
 
 // IA tende a devolver sempre "padrao"; a regra fixa corrige quando o tema
 // pede um tipo específico (boas notícias, segredo, lançamento).
+const tipoValido = (t) => !!(CAROUSEL_ENDPOINTS[t] || PB.TEMPLATES[t]);
 function escolherTipoCarrossel(p) {
-  const pedido = CAROUSEL_ENDPOINTS[p.carousel_type] ? p.carousel_type : 'padrao';
+  const pedido = tipoValido(p.carousel_type) ? p.carousel_type : 'padrao';
   if (pedido !== 'padrao') return pedido;
   return core.suggestFormat({ title: p.title, summary: p.summary, pillar: p.pillar }).carousel_type || 'padrao';
 }
 
-async function llmPautas(candidates, pillars, performance) {
+async function llmPautas(candidates, pillars, performance, insights) {
   const lista = candidates.map((c, i) => `${i}. [${c.kind}] ${c.title} — ${c.summary.slice(0, 160)} (fonte: ${c.source_name}${c.views ? `, ${c.views} views` : ''})`).join('\n');
   const perf = performance
     ? `\nDESEMPENHO RECENTE (use pra priorizar): melhores formatos ${performance.formatos?.map((f) => f.chave).join(', ')}; melhores pilares ${performance.pilares?.map((p) => p.chave).join(', ')}.`
@@ -204,19 +207,20 @@ async function llmPautas(candidates, pillars, performance) {
     max_tokens: 2200,
     messages: [{
       role: 'user',
-      content: `${PEDRO_DNA}\n\nPILARES DE CONTEÚDO: ${pillars.join('; ')}.${perf}
+      content: `${PEDRO_DNA}\n\n${PB.resumoParaPrompt()}\n\n${insightsLib.insightsParaPrompt(insights)}\n\nPILARES DE CONTEÚDO: ${pillars.join('; ')}.${perf}
 
 CANDIDATOS (temas em alta e vídeos virais de terceiros):
 ${lista || '(nenhum — crie pautas próprias a partir dos pilares)'}
 
-Monte 10 pautas para a semana do @pedro_destrava. Cubra pelo menos 3 pilares diferentes. Pode adaptar um candidato ao pilar ou criar pauta nova a partir do pilar.
+Monte 10 pautas para a semana do @pedro_destrava, pensando como arquiteto de conteúdo viral: cada pauta precisa de um MECANISMO de viralização claro (número que choca, contradição, história humana, lista de casos reais). Cubra pelo menos 3 pilares. Pode adaptar um candidato ao pilar ou criar pauta nova.
+Na semana, busque esta mistura: ${PB.MIX_SEMANAL.join(', ')}.
 Formato:
-- "carrossel": fatos, listas, curiosidades, comparações. Escolha carousel_type entre padrao, arquivo (segredos/lugares proibidos), boas_noticias, comecou (algo que começou/foi lançado), trending.
+- "carrossel" (post estático). carousel_type PREFERIDO entre os modelos virais: antes_agora (comparação com número), print (frase que contraria o senso comum), noticia (história humana real), lista (casos reais numerados). Use padrao/arquivo/boas_noticias/comecou/trending só se nenhum viral servir.
 - "corte_tv": SÓ quando a pauta vem de um candidato [video] (use source_ref).
 - "roteiro": pautas que pedem a cara do Pedro falando (opinião, explicação de estratégia).
-Título curto e forte, em português simples. Resumo de 1 linha. score 0-100 = potencial de alcance.
+Título = o gancho do post (curto, com número ou contradição, sem clichê). Resumo de 1 linha com o ângulo. "mecanismo": em 6 palavras, por que vai ser enviado/salvo. score 0-100 = potencial de alcance, seja exigente.
 
-Responda APENAS JSON: {"pautas":[{"title":"","summary":"","pillar":"","score":0,"format":"carrossel","carousel_type":"padrao","source_ref":null}]}`,
+Responda APENAS JSON: {"pautas":[{"title":"","summary":"","pillar":"","score":0,"format":"carrossel","carousel_type":"antes_agora","mecanismo":"","source_ref":null}]}`,
     }],
   });
   const data = JSON.parse(ai.choices[0].message.content || '{}');
@@ -231,6 +235,7 @@ Responda APENAS JSON: {"pautas":[{"title":"","summary":"","pillar":"","score":0,
       score: Math.max(0, Math.min(100, Number(p.score) || 50)),
       format,
       carousel_type: format === 'carrossel' ? escolherTipoCarrossel(p) : null,
+      mecanismo: String(p.mecanismo || '').slice(0, 80),
       source_name: ref?.source_name || 'Sugestão da IA',
       source_url: ref?.source_url || '',
       video_url: format === 'corte_tv' ? ref.video_url : '',
@@ -250,7 +255,7 @@ router.post('/suggest', async (req, res) => {
     let fonte = 'ia';
     if (hasLlmKey()) {
       try {
-        pautas = await llmPautas(candidates, pillars, req.body?.performance || null);
+        pautas = await llmPautas(candidates, pillars, req.body?.performance || null, req.body?.insights || insightsLib.lastInsights());
       } catch (e) {
         console.warn('[queue/suggest] IA falhou, usando regra fixa:', e.message?.slice(0, 120));
       }
@@ -268,6 +273,18 @@ router.post('/suggest', async (req, res) => {
   } catch (e) {
     console.error('[queue/suggest]', e.message);
     res.status(500).json({ error: friendlyErrorMessage(e) });
+  }
+});
+
+// ── Leitura do perfil ───────────────────────────────────────────────────────
+// Gasta 2 chamadas da cota grátis (150/mês); o front só pede de 3 em 3 dias
+// ou quando o Pedro toca em "Ler meu perfil agora".
+router.get('/insights', async (req, res) => {
+  try {
+    res.json(await insightsLib.getInsights({ force: req.query.force === '1' }));
+  } catch (e) {
+    console.error('[queue/insights]', e.message);
+    res.status(502).json({ error: `Não consegui ler o perfil agora: ${e.message}` });
   }
 });
 
@@ -311,10 +328,13 @@ function buildCaptionPack(item, rawCaption) {
   const hashtags = [...found, ...pillarTags]
     .map((h) => h.toLowerCase())
     .filter((h) => !vistos.has(semAcento(h)) && vistos.add(semAcento(h)))
-    .slice(0, 8);
+    .slice(0, 3); // líderes usam 0 a 3; hashtag quase não distribui mais
   const thirdParty = isThirdParty(item);
   const source_credit = thirdParty ? `Fonte: ${item.source_name}` : '';
-  const caption = [body || item.title, source_credit, hashtags.join(' ')].filter(Boolean).join('\n\n');
+  // Sem pedido de ação, o post perde o sinal mais forte (envio por DM).
+  const temCta = /\b(manda|envia|compartilha|marca|comenta|salva)\b/i.test(body);
+  const corpo = temCta ? body : [body || item.title, PB.CTAS.envio].join('\n\n');
+  const caption = [corpo, source_credit, hashtags.join(' ')].filter(Boolean).join('\n\n');
   return { caption, hashtags, source_credit, third_party: thirdParty && item.format === 'corte_tv' };
 }
 
@@ -380,7 +400,27 @@ Responda APENAS JSON: {"hook":"","blocos":[""],"cta":"","caption":""}`,
 const roteiroTexto = (r) => [`GANCHO (0-3s)\n${r.hook}`, `DESENVOLVIMENTO\n${r.blocos.join('\n')}`, `CTA\n${r.cta}`].join('\n\n');
 
 // ── Produção de UM item por chamada ──────────────────────────────────────────
-async function produce(item) {
+async function produceViral(item, insights) {
+  const { escrever } = require('../lib/viralWriter');
+  const { render } = require('../lib/viralRender');
+  const r = await escrever(item, item.carousel_type, { insights, prazoMs: 32000 });
+  const bufs = await render(r.template, r.conteudo);
+  const assets = bufs.map((b, i) => ({ type: 'image', url: `data:image/png;base64,${b.toString('base64')}`, name: `${r.template}-${String(i + 1).padStart(2, '0')}.png` }));
+  const pack = buildCaptionPack(item, r.conteudo.caption);
+  const viral = r.nota ? { ...r.nota, checks: r.nota.checks } : null;
+  if (viral) {
+    // A nota final considera a legenda já ajustada (CTA e hashtags).
+    const recalc = require('../lib/viralWriter').nota(r.template, { ...r.conteudo, caption: pack.caption });
+    Object.assign(viral, recalc);
+  }
+  return {
+    assets, ...pack, viral, template: r.template, fonte: r.fonte,
+    fontes: r.conteudo.fontes || [], gancho: r.conteudo.gancho || '', ganchos: r.conteudo.ganchos || [],
+  };
+}
+
+async function produce(item, insights) {
+  if (item.format === 'carrossel' && PB.TEMPLATES[item.carousel_type]) return produceViral(item, insights);
   if (item.format === 'carrossel') {
     const path = CAROUSEL_ENDPOINTS[item.carousel_type] || CAROUSEL_ENDPOINTS.padrao;
     const data = await invokeRoute(routes.carousels(), 'POST', path, { topic: item.title, handle: PROFILE_HANDLE }, { timeoutMs: 55000 });
@@ -390,10 +430,12 @@ async function produce(item) {
   }
   if (item.format === 'roteiro') {
     const r = await gerarRoteiro(item);
+    const pack = buildCaptionPack(item, r.caption || item.summary);
     return {
       assets: [{ type: 'text', name: 'roteiro.txt', text: roteiroTexto(r) }],
       roteiro: { hook: r.hook, blocos: r.blocos, cta: r.cta },
-      ...buildCaptionPack(item, r.caption || item.summary),
+      ...pack,
+      viral: PB.viralScore({ template: 'roteiro', hook: r.hook, slides: [...r.blocos, r.cta].map((t) => ({ texto: t })), caption: pack.caption }),
     };
   }
   if (item.format === 'corte_tv') {
@@ -410,7 +452,7 @@ async function handleProduce(req, res) {
   const item = req.body?.item;
   if (!item?.title || !item?.format) return res.status(400).json({ error: 'Item incompleto (título e formato)' });
   try {
-    const result = await produce(item);
+    const result = await produce(item, req.body?.insights || null);
     if (store.enabled() && req.params.id) {
       await store.updateItem(req.params.id, {
         status: 'pronto', caption: result.caption, hashtags: result.hashtags,

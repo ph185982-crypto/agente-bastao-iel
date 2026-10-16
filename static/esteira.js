@@ -6,7 +6,7 @@
 (function () {
   'use strict';
   const C = window.EsteiraCore;
-  const FORMAT_LABEL = { carrossel: 'Carrossel', corte_tv: 'Corte TV', roteiro: 'Roteiro' };
+  const FORMAT_LABEL = { carrossel: 'Post', corte_tv: 'Corte TV', roteiro: 'Roteiro' };
   const STATUS_LABEL = { aguardando: 'Aguardando', produzindo: 'Produzindo', pronto: 'Pronto', postado: 'Postado', erro: 'Erro' };
   const DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   const CRIAR_MODULES = [
@@ -64,6 +64,10 @@
     pautasAt: null,
     pautasLoading: false,
     pautasError: null,
+    insights: null,
+    insightsLoading: false,
+    insightsError: null,
+    openScore: null,
     producing: false,
     moving: null,
     linkEditing: null,
@@ -92,6 +96,8 @@
       state.items = (await DB.all('items')) || [];
       const cfg = await DB.get('kv', 'config');
       if (cfg) state.config = { ...C.DEFAULT_CONFIG, ...cfg };
+      const ins = await DB.get('kv', 'insights');
+      if (ins) state.insights = ins;
       const p = await DB.get('kv', 'pautas');
       if (p) { state.pautas = p.list || []; state.pautasAt = p.at || null; }
     } catch (e) {
@@ -212,6 +218,52 @@
     render();
   }
 
+  // ── Leitura do perfil e aprendizado ──────────────────────────────────────
+  // A API grátis tem 150 consultas/mês: lê sozinho no máximo a cada 3 dias.
+  const INSIGHTS_TTL = 3 * 24 * 3600e3;
+  const insightsVelho = () => !state.insights || Date.now() - Date.parse(state.insights.atualizado_em || 0) > INSIGHTS_TTL;
+  const insightsCompacto = () => {
+    if (!state.insights) return null;
+    const { posts, ...rest } = state.insights;
+    void posts;
+    return rest;
+  };
+
+  async function fetchInsights(force = false) {
+    if (state.insightsLoading) return;
+    state.insightsLoading = true;
+    state.insightsError = null;
+    render();
+    try {
+      state.insights = await api(`/api/queue/insights${force ? '?force=1' : ''}`);
+      if (state.dbOk) await DB.put('kv', state.insights, 'insights').catch(() => {});
+      const n = await aprenderMetricas();
+      if (n) toast(`Aprendi com ${n} post(s) publicado(s).`);
+    } catch (e) {
+      state.insightsError = e.message;
+    } finally {
+      state.insightsLoading = false;
+      render();
+    }
+  }
+
+  // Preenche views/curtidas dos itens postados casando a legenda com os
+  // posts reais do perfil. É assim que a fila aprende sem digitação.
+  const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  async function aprenderMetricas() {
+    const posts = state.insights?.posts || [];
+    let n = 0;
+    for (const it of state.items.filter((i) => i.status === 'postado' && !(i.metrics && i.metrics.manual))) {
+      const chave = norm(String(it.caption || it.title).split('\n')[0]).slice(0, 40);
+      if (chave.length < 12) continue;
+      const post = posts.find((p) => norm(p.legenda).startsWith(chave) || norm(p.legenda).includes(chave));
+      if (!post) continue;
+      const metrics = { views: post.views || 0, likes: post.likes || 0, comments: post.comments || 0, url: post.url, auto: true };
+      if (JSON.stringify(metrics) !== JSON.stringify(it.metrics)) { await saveItem({ ...it, metrics }); n += 1; }
+    }
+    return n;
+  }
+
   async function fetchPautas() {
     if (state.pautasLoading) return;
     state.pautasLoading = true;
@@ -220,7 +272,7 @@
     try {
       const exclude_titles = state.items.map((i) => i.title);
       const performance = C.performanceSummary(state.items);
-      const r = await api('/api/queue/suggest', { method: 'POST', body: { pillars: state.config.pillars, exclude_titles, performance } });
+      const r = await api('/api/queue/suggest', { method: 'POST', body: { pillars: state.config.pillars, exclude_titles, performance, insights: insightsCompacto() } });
       state.pautas = r.pautas || [];
       state.pautasAt = Date.now();
       if (state.dbOk) await DB.put('kv', { list: state.pautas, at: state.pautasAt }, 'pautas').catch(() => {});
@@ -255,7 +307,7 @@
   }
 
   async function produceViaQueue(item) {
-    const r = await api('/api/queue/produce', { method: 'POST', body: { item: { ...item, assets: undefined } } });
+    const r = await api('/api/queue/produce', { method: 'POST', body: { item: { ...item, assets: undefined }, insights: insightsCompacto() } });
     const assets = [];
     for (const a of r.assets || []) {
       if (a.type === 'image') assets.push({ type: 'image', name: a.name, blob: await dataUrlToBlob(a.url) });
@@ -265,6 +317,8 @@
     return {
       caption: r.caption, hashtags: r.hashtags || [], source_credit: r.source_credit || '',
       third_party: !!r.third_party, roteiro: r.roteiro || null,
+      viral: r.viral || null, fontes: r.fontes || [], gancho: r.gancho || '', ganchos: r.ganchos || [],
+      carousel_type: r.template && item.format === 'carrossel' ? r.template : item.carousel_type,
       assets: assets.map((a) => ({ type: a.type, name: a.name })),
     };
   }
@@ -376,6 +430,20 @@
     return { dow: DOW[d.getDay()], label: `${d.getDate()}/${String(d.getMonth() + 1).padStart(2, '0')}`, num: d.getDay() };
   }
 
+  // Nota de viralização (0-100) com o porquê de cada ponto.
+  function scoreBlock(it) {
+    const v = it.viral;
+    if (!v) return '';
+    const cls = v.score >= 80 ? 'alta' : v.score >= 60 ? 'media' : 'baixa';
+    const aberto = state.openScore === it.id;
+    const falhas = v.checks.filter((c) => !c.ok);
+    return `<button class="es-score ${cls}" data-action="toggle-score" data-id="${it.id}" aria-expanded="${aberto}">
+        <b>${v.score}</b><span>nota de viralização${falhas.length ? ` · ${falhas.length} ajuste(s)` : ' · tudo certo'}</span><i>${aberto ? '▴' : '▾'}</i>
+      </button>
+      ${aberto ? `<ul class="es-checks">${v.checks.map((c) => `<li class="${c.ok ? 'ok' : 'no'}"><b>${c.ok ? '✓' : '✗'} ${esc(c.label)}</b>${c.ok ? '' : `<span>${esc(c.dica)}</span>`}</li>`).join('')}
+        ${(it.ganchos || []).length > 1 ? `<li class="alt"><b>Outros ganchos que a IA pensou</b>${it.ganchos.filter((g) => g !== it.gancho).map((g) => `<span>“${esc(g.replace(/\*\*/g, ''))}”</span>`).join('')}</li>` : ''}</ul>` : ''}`;
+  }
+
   function itemCard(it) {
     const chips = `<div class="es-row" style="flex-wrap:wrap">
       <span class="es-chip ${it.format}">${FORMAT_LABEL[it.format]}${it.format === 'carrossel' && it.carousel_type ? ' · ' + esc(C.CAROUSEL_TYPES[it.carousel_type] || it.carousel_type) : ''}</span>
@@ -399,6 +467,8 @@
       body += `<div class="es-row" style="margin-top:12px;color:var(--es-primary);font-size:14px;font-weight:600"><span class="es-spin"></span> Produzindo… pode levar até 1 minuto</div>`;
     } else {
       body += `<div class="es-preview-slot" data-preview="${it.id}"></div>`;
+      body += scoreBlock(it);
+      if ((it.fontes || []).length) body += `<div class="es-warn">Confira os números antes de postar. Fonte: ${esc(it.fontes.join(', '))}</div>`;
       if (it.third_party) body += '<div class="es-warn">Conteúdo de terceiros: confira o direito de uso antes de postar.</div>';
       body += `<div class="es-actions">
         <button class="es-btn" data-action="download" data-id="${it.id}">Baixar</button>
@@ -435,6 +505,8 @@
     </article>`;
   }
 
+  const melhorHorario = () => state.insights?.melhores_horarios?.[0]?.chave || '';
+
   function screenSemana() {
     const items = weekItems();
     const sum = C.summarizeWeek(items);
@@ -450,9 +522,9 @@
       const f = fmtDay(d);
       const its = items.filter((i) => i.scheduled_date === d);
       const posting = (state.config.posting_days || []).includes(f.num);
-      if (!its.length && !posting) return '';
+      if (!its.length && (!posting || d < today)) return '';
       return `<section class="es-day">
-        <div class="es-day-head ${d === today ? 'today' : ''}"><b>${f.dow} ${f.label}</b><span>${d === today ? 'hoje' : posting ? '' : 'sem postagem'}</span></div>
+        <div class="es-day-head ${d === today ? 'today' : ''}"><b>${f.dow} ${f.label}</b><span>${d === today ? 'hoje' : posting ? '' : 'sem postagem'}${its.length && melhorHorario() ? ` · postar ${melhorHorario()}` : ''}</span></div>
         <div class="es-stack">${its.length ? its.map(itemCard).join('') : '<div class="es-empty-day">Nada agendado. Aprove uma pauta.</div>'}</div>
       </section>`;
     }).join('');
@@ -483,6 +555,33 @@
     `;
   }
 
+  function painelPerfil() {
+    const ins = state.insights;
+    const FMT = { imagem: 'imagem única', carrossel: 'carrossel', video: 'vídeo' };
+    if (!ins) {
+      return `<div class="es-card hero" style="margin-bottom:18px">
+        <div style="font-size:16px;font-weight:800">Seu perfil ainda não foi lido</div>
+        <div class="es-sub" style="margin:6px 0 12px">A ferramenta aprende com seus posts reais: o que rendeu, que gancho funcionou, melhor dia e horário.</div>
+        <button class="es-btn" data-action="insights" ${state.insightsLoading ? 'disabled' : ''}>${state.insightsLoading ? '<span class="es-spin"></span> Lendo seus posts…' : 'Ler meu perfil agora'}</button>
+        ${state.insightsError ? `<div class="es-errbox">${esc(state.insightsError)}</div>` : ''}
+      </div>`;
+    }
+    const top = ins.top?.[0];
+    const quando = new Date(ins.atualizado_em);
+    return `<div class="es-card hero" style="margin-bottom:18px">
+      <div class="es-between"><div style="font-size:16px;font-weight:800">Seu perfil agora</div>
+        <button class="es-chip" style="background:rgba(255,255,255,.12);color:#fff" data-action="insights" ${state.insightsLoading ? 'disabled' : ''}>${state.insightsLoading ? 'Lendo…' : 'Atualizar'}</button></div>
+      <div class="es-kpis">
+        <div><b>${(ins.seguidores / 1000).toFixed(0)} mil</b><span>seguidores</span></div>
+        <div><b>${FMT[ins.melhor_formato] || '—'}</b><span>formato que mais rende</span></div>
+        <div><b>${esc(ins.melhores_dias?.[0]?.chave || '—')}</b><span>melhor dia</span></div>
+      </div>
+      ${top ? `<div class="es-sub" style="margin:10px 0 0">Campeão: “${esc(top.gancho.slice(0, 90))}” · <b style="color:#fff">${String(top.eng).replace('.', ',')}%</b> dos seguidores, ${top.vezes_mediana}x a sua média. As pautas e os textos usam esse mecanismo.</div>` : ''}
+      <div class="es-sub" style="margin:8px 0 0;font-size:11px">Lido em ${quando.toLocaleDateString('pt-BR')} · ${ins.amostra} posts</div>
+      ${state.insightsError ? `<div class="es-errbox">${esc(state.insightsError)}</div>` : ''}
+    </div>`;
+  }
+
   function screenPautas() {
     const at = state.pautasAt ? new Date(state.pautasAt) : null;
     const cards = state.pautas.map((p) => `
@@ -496,6 +595,7 @@
         </div>
         <div class="es-title">${esc(p.title)}</div>
         <div class="es-text">${esc(p.summary)}</div>
+        ${p.mecanismo ? `<div class="es-mec">Por que viraliza: ${esc(p.mecanismo)}</div>` : ''}
         <div class="es-text" style="margin-top:4px">Fonte: ${esc(p.source_name || '—')}</div>
         ${p.format === 'carrossel' ? `<select class="es-select" style="margin-top:10px" data-action="pauta-type" data-id="${p.id}">
           ${Object.entries(C.CAROUSEL_TYPES).map(([k, v]) => `<option value="${k}" ${p.carousel_type === k ? 'selected' : ''}>Carrossel ${esc(v)}</option>`).join('')}
@@ -508,6 +608,7 @@
       </article>`).join('');
 
     return `
+      ${painelPerfil()}
       <div class="es-h1">Pautas</div>
       <div class="es-sub">${at ? `Atualizado ${at.toLocaleDateString('pt-BR')} às ${at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'Sugestões a partir dos seus pilares'}</div>
       <button class="es-btn" data-action="fetch-pautas" ${state.pautasLoading ? 'disabled' : ''}>
@@ -630,6 +731,7 @@
         state.tab = btn.dataset.tab;
         state.moving = null;
         if (state.tab === 'criar') switchOld(state.criarModule);
+        if (state.tab === 'pautas' && insightsVelho() && !state.insightsLoading) fetchInsights(false);
         if (state.tab === 'pautas' && !state.pautas.length && !state.pautasLoading && (!state.pautasAt || Date.now() - state.pautasAt > 12 * 3600e3)) fetchPautas();
         root.querySelector('.es-main') && (root.querySelector('.es-main').scrollTop = 0);
         return render();
@@ -666,7 +768,7 @@
       case 'save-metrics': {
         const v = root.querySelector(`[data-metric="views"][data-id="${id}"]`)?.value;
         const l = root.querySelector(`[data-metric="likes"][data-id="${id}"]`)?.value;
-        await saveItem({ ...item, metrics: { views: Number(v) || 0, likes: Number(l) || 0 } });
+        await saveItem({ ...item, metrics: { views: Number(v) || 0, likes: Number(l) || 0, manual: true } });
         toast('Resultado salvo.');
         return render();
       }
@@ -677,6 +779,8 @@
         await removeItem(id);
         return render();
       case 'fetch-pautas': return fetchPautas();
+      case 'insights': return fetchInsights(true);
+      case 'toggle-score': state.openScore = state.openScore === id ? null : id; return render();
       case 'approve': await approvePauta(id); return render();
       case 'discard': return dropPauta(id);
       case 'pauta-format': {

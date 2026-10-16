@@ -142,7 +142,7 @@ button.es-chip { border: 0; cursor: pointer; height: 32px; padding: 0 12px; font
 .es-preview { margin-top: 10px; border-radius: 12px; overflow: hidden; background: #000; }
 .es-preview video { width: 100%; display: block; max-height: 420px; }
 .es-thumbs { display: flex; gap: 6px; overflow-x: auto; margin-top: 10px; }
-.es-thumbs img { width: 92px; height: 115px; object-fit: cover; border-radius: 8px; flex-shrink: 0; background: var(--es-bg); }
+.es-thumbs img { width: 92px; height: 115px; object-fit: cover; border-radius: 8px; flex-shrink: 0; background: var(--es-bg); border: 1px solid var(--es-line); }
 .es-script { margin-top: 10px; background: var(--es-bg); border-radius: 12px; padding: 12px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
 
 .es-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 10px; }
@@ -168,3 +168,29 @@ button.es-chip { border: 0; cursor: pointer; height: 32px; padding: 0 12px; font
 .es-metrics .es-btn { width: auto; }
 .es-list-item { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .es-list-item .es-input { flex: 1; }
+
+/* Nota de viralização */
+.es-score {
+  margin-top: 12px; width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px;
+  border-radius: 12px; border: 1.5px solid var(--es-line); background: var(--es-white); padding: 0 12px; cursor: pointer; text-align: left;
+}
+.es-score b { font-size: 22px; font-weight: 800; min-width: 38px; }
+.es-score span { flex: 1; font-size: 13px; font-weight: 600; color: var(--es-muted); }
+.es-score i { font-style: normal; color: var(--es-muted); }
+.es-score.alta b { color: var(--es-ok); }
+.es-score.media b { color: #C98A00; }
+.es-score.baixa b { color: var(--es-err); }
+.es-checks { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.es-checks li { font-size: 13px; background: var(--es-bg); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.es-checks li b { font-weight: 700; }
+.es-checks li.ok b { color: #0A7A3B; }
+.es-checks li.no b { color: var(--es-err); }
+.es-checks li span { color: var(--es-muted); }
+.es-checks li.alt b { color: var(--es-dark); }
+
+/* Painel do perfil e mecanismo da pauta */
+.es-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.es-kpis div { background: rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.es-kpis b { font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+.es-kpis span { font-size: 11px; color: #A9B8D0; }
+.es-mec { margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--es-primary); }
