@@ -36,7 +36,7 @@
 <div style="width: 100%; max-width: 430px; margin: 0 auto; height: 100vh; background: #F2F2F7; display: flex; flex-direction: column; position: relative; overflow: hidden">
 
   <!-- Header -->
-  <div style="background: #FFFFFF; padding: 8px 20px 16px; border-bottom: 0.5px solid rgba(0,0,0,0.08)">
+  <div id="pico-old-header" style="background: #FFFFFF; padding: 8px 20px 16px; border-bottom: 0.5px solid rgba(0,0,0,0.08)">
     <div style="display: flex; justify-content: space-between; align-items: center">
       <div style="display: flex; align-items: center; gap: 10px">
         <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #007AFF, #5856D6); display: flex; align-items: center; justify-content: center">
@@ -900,7 +900,7 @@
   </div>
 
   <!-- Bottom Tab Bar -->
-  <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 83px; background: rgba(255,255,255,0.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 0.5px solid rgba(0,0,0,0.12); display: flex; align-items: flex-start; padding-top: 10px">
+  <div id="pico-old-tabbar" style="position: absolute; bottom: 0; left: 0; right: 0; height: 83px; background: rgba(255,255,255,0.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 0.5px solid rgba(0,0,0,0.12); display: flex; align-items: flex-start; padding-top: 10px">
 
     <div onClick="{{ switchToCarousels }}" style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; padding: 0 4px" style-active="opacity: 0.6">
       <div style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center">
@@ -1110,6 +1110,10 @@ class Component extends DCLogic {
       carouselCaption, carouselReview, carouselError, carouselViewIndex,
       trendingTopics, trendingLoading,
     } = this.state;
+
+    // A esteira (static/esteira.js) troca o módulo visível na aba "Criar".
+    if (!this._switchTab) this._switchTab = (tab) => this.setState({ activeTab: tab });
+    window.__picoSwitchTab = this._switchTab;
 
     if (!this._avatarListenerAdded) {
       this._avatarListenerAdded = true;
@@ -2382,5 +2386,9 @@ class Component extends DCLogic {
   }
 }
 </script>
+<link rel="stylesheet" href="./esteira.css">
+<div id="esteira"></div>
+<script src="./esteiraCore.js"></script>
+<script src="./esteira.js"></script>
 </body>
 </html>
