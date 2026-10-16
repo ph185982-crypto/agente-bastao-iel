@@ -110,6 +110,7 @@ function normalizar(template, d) {
     if (!c.frases.length) throw new Error('sem frase');
   } else if (template === 'noticia') {
     c.manchete = String(d.manchete || hook?.texto || '');
+    c.rotulo = String(d.rotulo || 'HISTÓRIA REAL').split('|')[0].trim() || 'HISTÓRIA REAL';
     if (!c.manchete) throw new Error('sem manchete');
   } else if (template === 'lista') {
     c.titulo = String(d.titulo || hook?.texto || '');
