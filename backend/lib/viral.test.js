@@ -40,12 +40,12 @@ test('leitura do perfil: acha o post campeão, o melhor formato e os padrões', 
     mk(5, 1, 450, 'frase curta', t + 4 * 86400),
     mk(6, 2, 90, 'outro vídeo', t + 5 * 86400),
   ];
-  const ins = computeInsights(posts, 100000);
+  const ins = computeInsights(posts, 100000, { agora: t + 30 * 86400 });
   assert.strictEqual(ins.top[0].gancho, 'Seus R$ 100 de 1994 valem R$ 11');
-  assert.strictEqual(ins.melhor_formato, 'carrossel');
+  assert.ok(ins.hipoteses.every((h) => h.suficiente === false), 'amostra de 6 posts não sustenta conclusão de formato');
   assert.ok(ins.por_formato.video.eng_mediana < ins.por_formato.imagem.eng_mediana);
   assert.ok(ins.top[0].vezes_mediana > 10);
-  assert.match(insightsParaPrompt(ins), /POSTS QUE MAIS RENDERAM/);
+  assert.match(insightsParaPrompt(ins), /POSTS COM MAIOR ENGAJAMENTO/);
 });
 
 test('quebra de linha mantém pontuação colada no destaque', () => {

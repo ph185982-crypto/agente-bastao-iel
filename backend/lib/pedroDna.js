@@ -5,8 +5,10 @@
 // ciência e história. Está migrando GRADUALMENTE pra também construir
 // autoridade em negócios/marketing, sem romper com a audiência que já existe.
 
-const PROFILE_HANDLE = process.env.PROFILE_HANDLE || '@pedro_destrava';
-const PROFILE_NAME   = process.env.PROFILE_NAME   || 'Pedro Martins';
+// Identidade fixa em lib/account.js: o ambiente já teve o @ de outra conta.
+const { ACCOUNT } = require('./account');
+const PROFILE_HANDLE = ACCOUNT.handle;
+const PROFILE_NAME   = ACCOUNT.nome;
 
 const PEDRO_DNA = `CONTEXTO: o perfil tem ~175 mil seguidores construídos com curiosidades, ciência, história e fatos surpreendentes. Está migrando GRADUALMENTE pra também construir autoridade em negócios/marketing — SEM abandonar o que fez o perfil crescer.
 

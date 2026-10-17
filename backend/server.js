@@ -31,6 +31,11 @@ app.use(cors({
 
 app.use(express.json({ limit: '20mb' }));
 
+// Acesso por código (só quando APP_ACCESS_CODE está definido) + login.
+const access = require('./lib/access');
+access.registrarRotas(app);
+app.use('/api', access.exigeAcesso);
+
 // Routes
 app.use('/api/download', require('./routes/download'));
 app.use('/api/ocr', require('./routes/ocr'));
@@ -47,6 +52,8 @@ app.use('/api/trending', require('./routes/trending'));
 app.use('/api/tv-cuts', require('./routes/tvCuts'));
 app.use('/api/video-editor', require('./routes/videoEditor'));
 app.use('/api/queue', require('./routes/queue'));
+app.use('/api/content', require('./routes/content'));
+app.use('/api/account', require('./routes/account'));
 
 app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })

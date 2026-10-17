@@ -158,7 +158,10 @@ async function tryModel(provider, model, opts, requestOptions) {
   const client = clientFor(provider);
   const res = await client.chat.completions.create({ ...opts, model }, requestOptions);
   _lastGood = { provider: provider.name, model };
-  return opts?.response_format?.type === 'json_object' ? withSanitizedJson(res) : res;
+  const out = opts?.response_format?.type === 'json_object' ? withSanitizedJson(res) : res;
+  // Quem usou a resposta pode registrar qual provedor/modelo a produziu.
+  try { Object.defineProperty(out, '__llm', { value: { provider: provider.name, model: res?.model || model }, enumerable: false }); } catch { /* resposta congelada */ }
+  return out;
 }
 
 // Percorre provedores × modelos até um responder.

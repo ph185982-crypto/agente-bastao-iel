@@ -1,18 +1,37 @@
-// Leitura do próprio perfil (@pedro_destrava) pela API pública instagram-looter2.
-// Aprende com os posts reais: qual formato rende, quais ganchos venceram e
-// em que dia/hora o público responde melhor. Isso alimenta pautas e redator.
-// Cota grátis da API é 150 chamadas/mês: cada leitura gasta 2 (perfil em
-// cache) e o resultado fica guardado em memória e no aparelho.
+// Leitura do próprio perfil pela API pública instagram-looter2.
+//
+// Regras desta camada (todas nasceram de falhas reais):
+//  - Só entra dado de uma conta CONFIRMADA (username + id numérico). Todo
+//    resultado carrega a origem (conta, id, quando, versão do esquema).
+//  - O cache é por identidade+versão. Cache sem origem não é usado.
+//  - Colaborações de outra conta não entram na conta do Pedro.
+//  - Posts jovens (menos de 72 h) não entram em comparações: ainda estão
+//    acumulando curtidas.
+//  - O que a API não entrega fica listado como indisponível. Ausência não é zero.
+//  - Comparações com amostra pequena ou desbalanceada viram hipótese marcada
+//    como insuficiente, nunca "vencedor".
+// Cota grátis da API: 150 chamadas/mês. Uma leitura gasta 2 a 3.
 const axios = require('axios');
+const { ACCOUNT, SCHEMA_VERSION, confirmAccount } = require('./account');
 
 const HOST = 'instagram-looter2.p.rapidapi.com';
 const TIPO = { 1: 'imagem', 2: 'video', 8: 'carrossel' };
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+const JANELA_MADURA_S = 72 * 3600;
+const MIN_POR_GRUPO = 5;
 
 const apiKey = () => process.env.RAPIDAPI_KEY_INSTAGRAM || process.env.RAPIDAPI_KEY;
-// Usuário do Instagram que a ferramenta estuda. Separado do PROFILE_HANDLE
-// (que só aparece impresso nos posts) pra um erro lá não fazer ler a conta errada.
-const username = () => String(process.env.INSTAGRAM_USERNAME || 'pedro_destrava').replace('@', '').trim();
+
+const CAMPOS = {
+  disponiveis: [
+    { campo: 'curtidas', definicao: 'like_count no momento da leitura', origem: 'instagram-looter2/user-feeds' },
+    { campo: 'comentarios', definicao: 'comment_count no momento da leitura', origem: 'instagram-looter2/user-feeds' },
+    { campo: 'visualizacoes_video', definicao: 'play_count (só vídeos)', origem: 'instagram-looter2/user-feeds' },
+    { campo: 'reposts', definicao: 'media_repost_count; não confirmei se inclui envios por DM', origem: 'instagram-looter2/user-feeds' },
+    { campo: 'seguidores', definicao: 'contagem atual do perfil (não o valor na data do post)', origem: 'instagram-looter2/profile' },
+  ],
+  indisponiveis: ['alcance', 'impressões', 'salvamentos', 'envios por DM', 'visitas ao perfil', 'seguidores atribuídos a cada post', 'impulsionamento'],
+};
 
 async function looter(path, params) {
   const { data } = await axios.get(`https://${HOST}/${path}`, {
@@ -24,17 +43,10 @@ async function looter(path, params) {
   return data;
 }
 
-let _perfil = null;
-async function perfil() {
-  if (_perfil) return _perfil;
-  const d = await looter('profile', { username: username() });
-  _perfil = { id: d.id, seguidores: d.edge_followed_by?.count || 0, nome: d.full_name, bio: d.biography };
-  return _perfil;
-}
-
-// Converte um item cru da API no formato que o resto do código usa.
+// Converte um item cru da API no formato interno.
 function normalizePost(it) {
   const cap = (it.caption && it.caption.text) || '';
+  const autor = it.user?.username || null;
   return {
     id: String(it.pk || it.id),
     code: it.code,
@@ -43,29 +55,33 @@ function normalizePost(it) {
     likes: Number(it.like_count) || 0,
     comments: Number(it.comment_count) || 0,
     views: Number(it.play_count || it.ig_play_count) || 0,
+    reposts: it.media_repost_count == null ? null : Number(it.media_repost_count),
     telas: Number(it.carousel_media_count) || (it.media_type === 1 ? 1 : 0),
     taken_at: Number(it.taken_at) || 0,
     pinned: Array.isArray(it.timeline_pinned_user_ids) && it.timeline_pinned_user_ids.length > 0,
+    autor,
+    // Sem autor informado, assume a própria conta; com autor diferente é colaboração.
+    colab: !!autor && autor.toLowerCase() !== ACCOUNT.username,
+    coautores: (it.coauthor_producers || []).map((c) => c.username).filter(Boolean),
     caption: cap,
     gancho: cap.split('\n').map((l) => l.trim()).find(Boolean) || '',
   };
 }
 
-async function fetchPosts(pages = 2) {
+async function fetchPosts(profile, pages = 2) {
   const t0 = Date.now();
-  const p = await perfil();
   const posts = [];
   let maxId = null;
   for (let i = 0; i < pages; i++) {
     // A Vercel corta em 60s: segunda página só se ainda houver folga.
     if (i > 0 && Date.now() - t0 > 28000) break;
-    const d = await looter('user-feeds', maxId ? { id: p.id, max_id: maxId } : { id: p.id });
+    const d = await looter('user-feeds', maxId ? { id: profile.id, max_id: maxId } : { id: profile.id });
     posts.push(...(d.items || []).map(normalizePost));
     maxId = d.next_max_id;
     if (!d.more_available || !maxId) break;
   }
   const seen = new Set();
-  return { seguidores: p.seguidores, posts: posts.filter((x) => !seen.has(x.id) && seen.add(x.id)) };
+  return posts.filter((x) => !seen.has(x.id) && seen.add(x.id));
 }
 
 const median = (arr) => {
@@ -82,15 +98,20 @@ function horaSP(ts) {
   return { dia: d.getUTCDay(), hora: d.getUTCHours() };
 }
 
-// Pura: recebe posts normalizados + seguidores e devolve o que aprendeu.
-function computeInsights(posts, seguidores) {
+// Pura: recebe posts normalizados e seguidores atuais.
+// agora (segundos) é parâmetro só pra teste ser determinístico.
+function computeInsights(posts, seguidores, { agora = Math.floor(Date.now() / 1000) } = {}) {
   const fol = Math.max(1, seguidores || 1);
   const eng = (p) => ((p.likes + p.comments) / fol) * 100;
-  const base = posts.filter((p) => p.tipo !== 'outro');
+
+  const proprios = posts.filter((p) => p.tipo !== 'outro' && !p.colab);
+  const colabs = posts.filter((p) => p.colab);
+  const maduros = proprios.filter((p) => agora - p.taken_at >= JANELA_MADURA_S);
+  const imaturos = proprios.length - maduros.length;
 
   const porFormato = {};
   for (const tipo of ['imagem', 'carrossel', 'video']) {
-    const ps = base.filter((p) => p.tipo === tipo);
+    const ps = maduros.filter((p) => p.tipo === tipo);
     if (!ps.length) continue;
     porFormato[tipo] = {
       n: ps.length,
@@ -99,84 +120,111 @@ function computeInsights(posts, seguidores) {
       telas_mediana: tipo === 'carrossel' ? median(ps.map((p) => p.telas)) : null,
     };
   }
-  const melhorFormato = Object.entries(porFormato).sort((a, b) => b[1].eng_mediana - a[1].eng_mediana)[0]?.[0] || null;
 
-  const medGeral = median(base.map(eng)) || 0.0001;
-  const ranked = [...base].sort((a, b) => eng(b) - eng(a));
+  const medGeral = median(maduros.map(eng)) || 0.0001;
+  const ranked = [...maduros].sort((a, b) => eng(b) - eng(a));
   const top = ranked.slice(0, 5).map((p) => ({
     tipo: p.tipo, gancho: p.gancho.slice(0, 180), likes: p.likes, comments: p.comments, telas: p.telas,
-    eng: round(eng(p), 2), vezes_mediana: Math.round(eng(p) / medGeral), url: p.url,
+    reposts: p.reposts, eng: round(eng(p), 2), vezes_mediana: Math.round(eng(p) / medGeral), url: p.url,
+    publicado_em: new Date(p.taken_at * 1000).toISOString().slice(0, 10),
   }));
-  const piores = ranked.slice(-3).reverse().map((p) => ({ tipo: p.tipo, gancho: p.gancho.slice(0, 140), eng: round(eng(p), 3) }));
+  const piores = ranked.slice(-3).reverse().map((p) => ({ tipo: p.tipo, gancho: p.gancho.slice(0, 140), eng: round(eng(p), 3), url: p.url }));
 
-  // Dia e faixa de horário: mediana de engajamento por grupo (mín. 2 posts).
-  const grupo = (keyFn) => {
-    const g = {};
-    for (const p of base.filter((x) => x.taken_at && !x.pinned)) {
-      const k = keyFn(horaSP(p.taken_at));
-      (g[k] ||= []).push(eng(p));
-    }
-    return Object.entries(g).filter(([, v]) => v.length >= 2)
-      .map(([k, v]) => ({ chave: k, n: v.length, eng_mediana: round(median(v)) }))
-      .sort((a, b) => b.eng_mediana - a.eng_mediana);
-  };
-  const faixa = ({ hora }) => (hora < 6 ? 'madrugada' : hora < 12 ? 'manhã (6h-12h)' : hora < 18 ? 'tarde (12h-18h)' : 'noite (18h-24h)');
-  const dias = grupo(({ dia }) => DIAS[dia]);
-  const horarios = grupo(faixa);
+  // Hipóteses: cada uma diz quantos posts a sustentam e se a amostra basta.
+  const hipoteses = [];
+  const formatos = Object.entries(porFormato);
+  if (formatos.length >= 2) {
+    const ord = [...formatos].sort((a, b) => b[1].eng_mediana - a[1].eng_mediana);
+    const suficiente = ord.every(([, v]) => v.n >= MIN_POR_GRUPO);
+    hipoteses.push({
+      id: 'formato',
+      texto: `Maior mediana de engajamento: ${ord[0][0]} (${ord[0][1].eng_mediana}%), contra ${ord[ord.length - 1][0]} (${ord[ord.length - 1][1].eng_mediana}%).`,
+      evidencia: Object.fromEntries(formatos.map(([k, v]) => [k, { n: v.n, mediana: v.eng_mediana }])),
+      suficiente,
+      limitacoes: suficiente
+        ? 'Janela curta, temas diferentes por formato e sem separar impulsionamento.'
+        : `Amostra insuficiente: algum formato tem menos de ${MIN_POR_GRUPO} posts. Não trate como resultado.`,
+    });
+  }
+  const dias = {};
+  for (const p of maduros.filter((x) => !x.pinned)) (dias[DIAS[horaSP(p.taken_at).dia]] ||= []).push(eng(p));
+  const diasArr = Object.entries(dias).map(([k, v]) => ({ chave: k, n: v.length, mediana: round(median(v)) })).sort((a, b) => b.mediana - a.mediana);
+  if (diasArr.length >= 2) {
+    const suficiente = diasArr.every((d) => d.n >= MIN_POR_GRUPO);
+    hipoteses.push({
+      id: 'dia',
+      texto: `Dia com maior mediana: ${diasArr[0].chave} (${diasArr[0].mediana}%, ${diasArr[0].n} posts).`,
+      evidencia: Object.fromEntries(diasArr.map((d) => [d.chave, { n: d.n, mediana: d.mediana }])),
+      suficiente,
+      limitacoes: suficiente ? 'Não separa tema nem formato.' : `Amostra insuficiente: dias com menos de ${MIN_POR_GRUPO} posts. Não escolha o dia por isso.`,
+    });
+  }
 
-  // O que os vencedores têm em comum.
-  const topN = ranked.slice(0, Math.max(3, Math.ceil(ranked.length / 4)));
-  const restoN = ranked.slice(topN.length);
-  const pct = (arr, fn) => (arr.length ? Math.round((arr.filter(fn).length / arr.length) * 100) : 0);
-  const comNumero = (p) => /\d|r\$|%/i.test(p.gancho);
-  const ganchoCurto = (p) => p.gancho.split(/\s+/).length <= 14;
-  const padroes = {
-    gancho_com_numero: { vencedores: pct(topN, comNumero), demais: pct(restoN, comNumero) },
-    gancho_curto: { vencedores: pct(topN, ganchoCurto), demais: pct(restoN, ganchoCurto) },
-  };
-
-  const ts = base.filter((p) => p.taken_at && !p.pinned).map((p) => p.taken_at).sort();
+  const ts = maduros.filter((p) => !p.pinned).map((p) => p.taken_at).sort();
   const semanas = ts.length > 1 ? Math.max(1, (ts[ts.length - 1] - ts[0]) / (7 * 86400)) : 1;
 
   return {
+    schema: SCHEMA_VERSION,
     atualizado_em: new Date().toISOString(),
     seguidores: fol,
-    amostra: base.length,
+    amostra: maduros.length,
+    excluidos: { colaboracoes: colabs.length, com_menos_de_72h: imaturos },
+    periodo: ts.length ? { de: new Date(ts[0] * 1000).toISOString().slice(0, 10), ate: new Date(ts[ts.length - 1] * 1000).toISOString().slice(0, 10) } : null,
     posts_por_semana: round(ts.length / semanas, 1),
     eng_mediana_geral: round(medGeral),
     por_formato: porFormato,
-    melhor_formato: melhorFormato,
     top,
     piores,
-    melhores_dias: dias.slice(0, 3),
-    melhores_horarios: horarios.slice(0, 2),
-    padroes,
+    hipoteses,
+    campos: CAMPOS,
+    metodo: 'engajamento = (curtidas + comentários) ÷ seguidores atuais, em posts com 72 h ou mais, só da própria conta',
   };
 }
 
-// Resumo em texto pro prompt da IA.
+// Texto pro prompt: só o que a amostra sustenta.
 function insightsParaPrompt(ins) {
   if (!ins || !ins.top?.length) return '';
-  const top = ins.top.slice(0, 3).map((t) => `- [${t.tipo}${t.telas > 1 ? `, ${t.telas} telas` : ''}] "${t.gancho}" → ${t.eng}% dos seguidores (${t.vezes_mediana}x a mediana)`).join('\n');
+  const top = ins.top.slice(0, 3).map((t) => `- [${t.tipo}${t.telas > 1 ? `, ${t.telas} telas` : ''}] "${t.gancho}" (${t.eng}% dos seguidores, ${t.vezes_mediana}x a mediana)`).join('\n');
   const piores = (ins.piores || []).map((t) => `- [${t.tipo}] "${t.gancho}"`).join('\n');
-  return `DADOS REAIS DO PERFIL (${ins.seguidores} seguidores, mediana ${ins.eng_mediana_geral}%):
-POSTS QUE MAIS RENDERAM (imite o mecanismo, não o tema):
+  const hip = (ins.hipoteses || []).filter((h) => h.suficiente).map((h) => `- ${h.texto} (${h.limitacoes})`).join('\n');
+  return `DADOS REAIS DO PERFIL ${ACCOUNT.handle} (${ins.seguidores} seguidores; ${ins.amostra} posts de ${ins.periodo?.de} a ${ins.periodo?.ate}):
+POSTS COM MAIOR ENGAJAMENTO (observe o mecanismo, não copie o tema):
 ${top}
-POSTS QUE MENOS RENDERAM (evite esse tipo):
+POSTS COM MENOR ENGAJAMENTO:
 ${piores}
-Melhor formato hoje: ${ins.melhor_formato || 'sem dado'}. Ganchos com número: ${ins.padroes?.gancho_com_numero?.vencedores ?? '?'}% dos vencedores vs ${ins.padroes?.gancho_com_numero?.demais ?? '?'}% dos demais.`;
+${hip ? `PADRÕES COM AMOSTRA SUFICIENTE:\n${hip}` : 'Nenhum padrão de formato/dia tem amostra suficiente ainda; não afirme que algo "funciona melhor".'}`;
 }
 
+// Cache por identidade + versão do esquema. Cache sem origem não é aceito.
 let _cache = null;
+const cacheKey = () => `${ACCOUNT.ig_id}:v${SCHEMA_VERSION}`;
+
 async function getInsights({ force = false } = {}) {
-  if (!force && _cache && Date.now() - _cache.at < 6 * 3600e3) return _cache.data;
-  if (!apiKey()) throw new Error('Chave da API do Instagram não configurada (RAPIDAPI_KEY_INSTAGRAM).');
-  const { seguidores, posts } = await fetchPosts(2);
-  const data = { ...computeInsights(posts, seguidores), posts: posts.map(({ caption, ...p }) => ({ ...p, legenda: caption.slice(0, 300) })) };
-  _cache = { at: Date.now(), data };
+  if (!force && _cache && _cache.key === cacheKey() && Date.now() - _cache.at < 6 * 3600e3) return _cache.data;
+  if (!apiKey()) throw new Error('Chave da API do Instagram não configurada.');
+  const profile = await looter('profile', { username: ACCOUNT.username });
+  // Confirma ANTES de ler posts: se a conta não bate, nada é lido.
+  const conta = await confirmAccount({ force: true, getProfile: async () => profile });
+  const posts = await fetchPosts(profile, 2);
+  const ins = computeInsights(posts, conta.seguidores);
+  const data = {
+    ...ins,
+    conta,
+    posts: posts.map(({ caption, ...p }) => ({ ...p, legenda: caption.slice(0, 300) })),
+  };
+  _cache = { key: cacheKey(), at: Date.now(), data };
   return data;
 }
 
-const lastInsights = () => _cache?.data || null;
+const lastInsights = () => (_cache && _cache.key === cacheKey() ? _cache.data : null);
 
-module.exports = { getInsights, lastInsights, computeInsights, insightsParaPrompt, normalizePost };
+// Valida um insights vindo de fora (ex.: guardado no navegador).
+function insightsValido(ins) {
+  return !!(ins && ins.schema === SCHEMA_VERSION && ins.conta && ins.conta.ok === true
+    && ins.conta.ig_id === ACCOUNT.ig_id && String(ins.conta.username).toLowerCase() === ACCOUNT.username);
+}
+
+// Só usa dado com origem confirmada: o que veio do cliente sem origem é ignorado.
+const insightsConfiaveis = (ins) => (insightsValido(ins) ? ins : lastInsights());
+
+module.exports = { insightsConfiaveis, getInsights, lastInsights, computeInsights, insightsParaPrompt, insightsValido, normalizePost, CAMPOS };
