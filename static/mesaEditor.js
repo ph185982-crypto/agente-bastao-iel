@@ -552,7 +552,7 @@
     if (!r) return '<div class="ed-thumb vazio">Arte ainda não gerada</div>';
     const velha = r.texto_hash !== M.hashRender(s);
     const nao = r.metrics && r.metrics.cabe === false;
-    return `<div class="ed-thumb"><img data-render="${esc(r.blob_key)}" alt="Arte do slide ${r.indice}" ${velha ? 'style="opacity:.4"' : ''}>${velha ? '<span class="mz-chip warn">Arte desatualizada</span>' : ''}${nao ? '<span class="mz-chip err">Texto não cabe</span>' : ''}${(r.elementos || []).includes('encerramento_tipografico') ? '<span class="mz-chip warn">Sem o arquivo de encerramento aprovado: usei um encerramento só de texto</span>' : ''}</div>`;
+    return `<div class="ed-thumb"><img data-render="${esc(r.blob_key)}" alt="Arte do slide ${r.indice}" ${velha ? 'style="opacity:.4"' : ''}>${velha ? '<span class="mz-chip warn">Arte desatualizada</span>' : ''}${nao ? '<span class="mz-chip err">Texto não cabe</span>' : ''}${(r.elementos || []).includes('encerramento_tipografico') ? '<span class="mz-chip warn">PROVISÓRIO: encerramento só de texto até você enviar o arquivo aprovado (Ajustes)</span>' : ''}${(r.elementos || []).includes('arquivo_aprovado') ? '<span class="mz-chip ok">Encerramento aprovado (arquivo original)</span>' : ''}${(r.elementos || []).includes('foto_baixa_resolucao') ? `<span class="mz-chip warn">Foto pequena (${r.metrics?.foto?.largura}×${r.metrics?.foto?.altura}): ampliada ${r.metrics?.foto?.ampliacao}×</span>` : ''}</div>`;
   }
 
   function cartaoSlide(c, v, s, i) {

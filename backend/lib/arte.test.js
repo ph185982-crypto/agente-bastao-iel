@@ -114,3 +114,21 @@ test('número com unidade não se separa entre linhas ("R$ 140 mil", "2 milhões
   assert.deepStrictEqual(palavras('teto de **R$ 140 mil**.').map((p) => p.t), ['teto', 'de', 'R$ 140 mil', '.']);
   assert.deepStrictEqual(palavras('são 2 milhões de pessoas').map((p) => p.t), ['são', '2 milhões', 'de', 'pessoas']);
 });
+
+test('foto: ampliada demais é sinalizada; orientação da câmera respeitada; sem distorção', async () => {
+  const sharp = require('sharp');
+  const { renderizarSlide } = require('./arte');
+  const pequena = await sharp({ create: { width: 320, height: 320, channels: 3, background: '#888' } }).jpeg().toBuffer();
+  const r1 = await renderizarSlide({ layout: 'capa_foto', texto: 'Teste' }, { imagem: pequena });
+  assert.ok(r1.metrics.elementos.includes('foto_baixa_resolucao'));
+  assert.strictEqual(r1.metrics.foto.ampliacao, 4.22);
+  const grande = await sharp({ create: { width: 1200, height: 1600, channels: 3, background: '#888' } }).jpeg().toBuffer();
+  const r2 = await renderizarSlide({ layout: 'capa_foto', texto: 'Teste' }, { imagem: grande });
+  assert.ok(!r2.metrics.elementos.includes('foto_baixa_resolucao'));
+  // foto de celular "deitada" no arquivo, com EXIF dizendo para girar 90°
+  const deitada = await sharp({ create: { width: 1600, height: 1200, channels: 3, background: '#888' } }).jpeg().withMetadata({ orientation: 6 }).toBuffer();
+  const r3 = await renderizarSlide({ layout: 'capa_foto', texto: 'Teste' }, { imagem: deitada });
+  assert.deepStrictEqual([r3.metrics.foto.largura, r3.metrics.foto.altura], [1200, 1600], 'lida já na orientação certa');
+  const meta = await sharp(r3.png).metadata();
+  assert.deepStrictEqual([meta.width, meta.height], [1080, 1350]);
+});

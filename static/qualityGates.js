@@ -244,6 +244,13 @@
       if (img && img.tipo !== 'tipografica' && ['baixa', 'desconhecida', undefined].includes(img.relevancia)) out.push(sugestao('imagem_pouco_relevante', 'arte', 'Imagem pouco relevante', `A imagem do slide ${i + 1} não foi confirmada como pertinente ao assunto. Se não servir, use composição só com texto.`, { slide: s.id }));
     });
 
+    // Foto ampliada demais (fica borrada) e encerramento provisório
+    const rendersV = (c.arte?.renders || []).filter((r) => r.versao === v.id);
+    rendersV.forEach((r) => {
+      if ((r.elementos || []).includes('foto_baixa_resolucao')) out.push(sugestao('foto_baixa_resolucao', 'arte', 'Foto em baixa resolução', `A foto da capa tem ${r.metrics?.foto?.largura}×${r.metrics?.foto?.altura} px e foi ampliada ${r.metrics?.foto?.ampliacao}× para 1080×1350: deve ficar borrada. Use uma foto maior (ideal: 1080×1350 ou mais).`, { slide: r.slide_id }));
+      if ((r.elementos || []).includes('encerramento_tipografico')) out.push(sugestao('encerramento_provisorio', 'arte', 'Encerramento provisório', 'O último slide usa um encerramento só de texto porque o arquivo aprovado ainda não foi enviado (Ajustes → Encerramento).', { slide: r.slide_id }));
+    });
+
     // Igual a posts recentes
     const recentes = (ctx && ctx.recentes) || [];
     if (capa && recentes.length) {

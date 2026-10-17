@@ -250,13 +250,20 @@ function resumo(b, alt) { return { tam: b.tam, minimo: b.minimo, cabe: b.cabe, l
 async function renderCapaFoto(s, ctx, imagemBuf) {
   const t = ajustar({ texto: s.texto, k: 'display', larg: LARG, alt: 560, max: 92, min: 58, entrelinha: 1.12, papel: 'titulo_capa' });
   const y0 = H - 150 - t.altura;
-  const grad = `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0.28" stop-color="${COR.marinho}" stop-opacity="0"/><stop offset="0.78" stop-color="${COR.marinho}" stop-opacity="0.9"/><stop offset="1" stop-color="${COR.marinho}" stop-opacity="0.96"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#g)"/>`;
+  // Degradê embaixo (texto) e uma faixa suave no topo: o @ e a numeração continuam
+  // legíveis mesmo sobre fundo claro.
+  const grad = `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0.28" stop-color="${COR.marinho}" stop-opacity="0"/><stop offset="0.78" stop-color="${COR.marinho}" stop-opacity="0.9"/><stop offset="1" stop-color="${COR.marinho}" stop-opacity="0.96"/></linearGradient><linearGradient id="t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${COR.marinho}" stop-opacity="0.72"/><stop offset="1" stop-color="${COR.marinho}" stop-opacity="0"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#g)"/><rect width="${W}" height="230" fill="url(#t)"/>`;
   let inner = grad + chrome({ ...ctx, cor: COR.marfim });
   inner += textoSvg(t, { x: MARGEM, y: y0, k: 'display', cor: COR.marfim, marcador: false, corDestaque: COR.mostarda });
   if (ctx.total > 1) inner += rotuloSvg('Arraste →', { x: MARGEM, y: H - 96, tam: 26, cor: COR.marfim, espaco: 2 });
-  const base = await sharp(imagemBuf).resize(W, H, { fit: 'cover', position: 'attention' }).toBuffer();
+  // Fidelidade: respeita a orientação da câmera (EXIF), não distorce (cover) e não
+  // aplica filtro algum na foto; o degradê só escurece a parte de baixo para o texto.
+  const meta = await sharp(imagemBuf).rotate().metadata();
+  const lado = meta.orientation && meta.orientation >= 5 ? { w: meta.height, h: meta.width } : { w: meta.width, h: meta.height };
+  const ampliacao = Math.max(W / lado.w, H / lado.h);
+  const base = await sharp(imagemBuf).rotate().resize(W, H, { fit: 'cover', position: 'attention' }).toBuffer();
   const png = await sharp(base).composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${inner}</svg>`), top: 0, left: 0 }]).png().toBuffer();
-  return { png, blocos: [{ nome: 'titulo', ...resumo(t) }] };
+  return { png, blocos: [{ nome: 'titulo', ...resumo(t) }], foto: { largura: lado.w, altura: lado.h, ampliacao: Math.round(ampliacao * 100) / 100 } };
 }
 
 // ── Entrada principal ──────────────────────────────────────────────────────
@@ -278,7 +285,9 @@ async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, ar
   if (layout === 'capa_foto') {
     if (imagem) {
       const x = await renderCapaFoto(slide, ctx, imagem);
-      return { png: x.png, metrics: resumirMetricas(x.blocos, layout, ['imagem_do_pedro']) };
+      const m = resumirMetricas(x.blocos, layout, ['imagem_do_pedro', ...(x.foto.ampliacao > 1.5 ? ['foto_baixa_resolucao'] : [])]);
+      m.foto = x.foto;
+      return { png: x.png, metrics: m };
     }
     layout = 'capa_tipografica';
     elementos.push('sem_imagem_usou_tipografica');
