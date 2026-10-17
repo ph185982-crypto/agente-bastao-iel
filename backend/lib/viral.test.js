@@ -95,3 +95,18 @@ test('R$ nunca fica sozinho no fim da linha', () => {
   const linhas = wrap('A conta de luz hoje chega a **R$ 150** por mês', 60, 560, 0.6);
   for (const l of linhas) assert.notStrictEqual(l[l.length - 1].t, 'R$');
 });
+
+test('nenhum gerador desenha selo de verificado para uma conta não verificada', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const { ACCOUNT } = require('./account');
+  assert.strictEqual(ACCOUNT.verified, false);
+  const tv = fs.readFileSync(path.join(__dirname, '..', 'routes', 'tvCuts.js'), 'utf8');
+  const ve = fs.readFileSync(path.join(__dirname, '..', 'routes', 'videoEditor.js'), 'utf8');
+  const vr = fs.readFileSync(path.join(__dirname, 'viralRender.js'), 'utf8');
+  // toda chamada de desenho do selo precisa estar condicionada à conta verificada
+  const chamadasTv = [...tv.matchAll(/\$\{([^}]*)viralBadgeSvg\(/g)].map((m) => m[1]);
+  assert.ok(chamadasTv.length && chamadasTv.every((pre) => /ACCOUNT\.verified \?/.test(pre)), 'cortes de TV');
+  assert.match(ve, /const PROFILE_VERIFIED = ACCOUNT\.verified === true;/, 'editor de vídeo não liga o selo por variável de ambiente');
+  assert.ok(!/1D9BF0/.test(vr), 'template Print sem o círculo azul');
+});

@@ -79,9 +79,10 @@ function safeErrorMessage(e) {
   return e?.message || 'Não foi possível processar o vídeo agora. Tente novamente.';
 }
 
-// Selo de verificado no cabeçalho. Ligado por padrão (o perfil é verificado);
-// dá pra desligar com PROFILE_VERIFIED=false.
-const PROFILE_VERIFIED = String(process.env.PROFILE_VERIFIED || 'true').toLowerCase() !== 'false';
+// Selo de verificado: só se a conta for verificada de verdade. Vem do código
+// (ACCOUNT.verified = false para @pedro_destrava); variável de ambiente não liga.
+const { ACCOUNT } = require('../lib/account');
+const PROFILE_VERIFIED = ACCOUNT.verified === true;
 
 // ── Layout (mesmo perfil de saída das outras rotas de vídeo) ──────────────────
 const W = 720;
