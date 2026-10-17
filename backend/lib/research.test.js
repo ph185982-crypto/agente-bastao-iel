@@ -271,3 +271,12 @@ test('busca web opcional: só acha links; a página é lida e o trecho conferido
   assert.strictEqual(r.claim.estado, 'sustentada', r.claim.motivo_estado);
   if (antes.t) process.env.TAVILY_API_KEY = antes.t; if (antes.b) process.env.BRAVE_SEARCH_API_KEY = antes.b;
 });
+
+test('extrator: <article> pequeno de aviso não esconde o texto da matéria (caso real do portal do Senado)', () => {
+  const html = `<html><head><title>Congresso promulga</title></head><body><article><p>Quer receber notificações do portal Senado Notícias?</p></article>
+  <div id="textoMateria"><p>O Congresso Nacional promulgou nesta sexta-feira (16), em sessão solene, duas emendas à Constituição que ampliam direitos dos trabalhadores.</p>
+  <p>A cerimônia foi conduzida pelo presidente do Senado e do Congresso Nacional, com a presença do presidente da República e de parlamentares.</p>
+  <p>O texto prevê uma transição para as empresas, com prazos definidos na própria emenda constitucional promulgada pelo Congresso.</p></div></body></html>`;
+  const a = extrairArtigo(html, 'https://www12.senado.leg.br/noticias/materias/2026/10/16/x');
+  assert.ok(a.texto.includes('promulgou nesta sexta-feira (16)'), a.texto);
+});

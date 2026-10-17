@@ -50,8 +50,19 @@ function textoDoCorpo(html) {
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(script|style|noscript|svg|iframe|form|template|button|select|picture|figure|figcaption)\b[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<(nav|header|footer|aside)\b[\s\S]*?<\/\1>/gi, ' ');
-  const pega = (tag) => { const m = h.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, 'i')); return m ? m[1] : null; };
-  const corpo = pega('article') || pega('main') || pega('body') || h;
+  const todos = (tag) => [...h.matchAll(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, 'gi'))].map((m) => m[1]);
+  // Candidatos: cada <article>, <main> e o <body>. Fica o que rende mais texto
+  // corrido: há portais (ex.: Senado) com um <article> pequeno de aviso e o texto
+  // da matéria fora dele.
+  const principais = [...todos('article'), ...todos('main')];
+  let melhor = '';
+  for (const c of principais) { const t = paragrafos(c); if (t.length > melhor.length) melhor = t; }
+  if (melhor.length >= 1500) return melhor; // <article>/<main> com texto de verdade: não mistura o resto da página
+  for (const c of [...todos('body'), h]) { const t = paragrafos(c); if (t.length > melhor.length * 1.15) melhor = t; }
+  return melhor;
+}
+
+function paragrafos(corpo) {
   const blocos = [];
   const re = /<(h[1-4]|p|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   let m;
@@ -59,6 +70,8 @@ function textoDoCorpo(html) {
     const texto = decodifica(m[2].replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
     const titulo = /^h/i.test(m[1]);
     if (!texto) continue;
+    // Fim da matéria: daqui pra baixo são chamadas para outras notícias.
+    if (/^(mais not[íi]cias|leia (tamb[ée]m|mais)|veja tamb[ée]m|not[íi]cias relacionadas|relacionadas)\b/i.test(texto) && blocos.length >= 3) break;
     if (!titulo && texto.length < 40) continue;
     if (LIXO.test(texto)) continue;
     blocos.push(titulo ? `## ${texto}` : texto);
