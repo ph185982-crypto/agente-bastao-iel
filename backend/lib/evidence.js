@@ -76,7 +76,33 @@ function agrupar(evidencias, textoPrincipal) {
   return evidencias;
 }
 
+// Autoridade da fonte, decidida por código (explicável, sem IA):
+//  - 'primaria': dado oficial consultado na API do órgão, ou página do próprio
+//    poder público (gov.br, leg.br, jus.br, mp.br…);
+//  - 'republicacao': cópia/reprodução da matéria de origem (não é independente);
+//  - 'reportagem': matéria jornalística original.
+const OFICIAIS = /(^|\.)(gov\.br|leg\.br|jus\.br|mp\.br|def\.br|mil\.br|bcb\.gov\.br|ibge\.gov\.br)$/i;
+function autoridadeDe({ via, dominio, republicacao }) {
+  if (via && via !== 'artigo') return 'primaria';
+  if (republicacao) return 'republicacao';
+  if (dominio && OFICIAIS.test(dominio)) return 'primaria';
+  return 'reportagem';
+}
+
+const CORRESP = ['integral', 'parcial', 'nao_sustenta', 'contradiz'];
+const RELACAO_DE = { integral: 'sustenta', parcial: 'parcial', nao_sustenta: 'neutra', contradiz: 'contradiz' };
+const CORRESP_DE = { sustenta: 'integral', parcial: 'parcial', neutra: 'nao_sustenta', contradiz: 'contradiz' };
+
+// Números da afirmação que não aparecem no trecho: o trecho não sustenta a afirmação INTEIRA.
+function numerosAusentes(textoAfirmacao, trecho) {
+  const { extrairNumeros, exigeOrigem, igual } = require('../../static/contentModel');
+  const doTrecho = extrairNumeros(trecho).map((n) => n.valor);
+  return extrairNumeros(textoAfirmacao).filter(exigeOrigem).filter((n) => !doTrecho.some((v) => igual(v, n.valor))).map((n) => n.raw);
+}
+
 // Cria um registro de evidência completo e validado.
+// Três camadas SEPARADAS: (1) trecho encontrado no documento; (2) correspondência
+// entre o trecho e a afirmação; (3) qualidade e limites da fonte.
 function novaEvidencia(d) {
   const consultada = d.consultada_em || new Date().toISOString();
   const e = {
@@ -96,13 +122,22 @@ function novaEvidencia(d) {
     unidade: d.unidade || null,
     abrangencia: d.abrangencia || null,
     limitacoes: d.limitacoes || null,
-    relacao: ['sustenta', 'contradiz', 'parcial', 'neutra'].includes(d.relacao) ? d.relacao : 'neutra',
+    // (1) trecho
+    trecho_encontrado: d.trecho_encontrado !== false,
+    // (2) correspondência
+    correspondencia: CORRESP.includes(d.correspondencia) ? d.correspondencia : (CORRESP_DE[d.relacao] || 'nao_sustenta'),
+    falta: d.falta ? String(d.falta).slice(0, 300) : null,
+    // (3) qualidade
+    autoridade: ['primaria', 'reportagem', 'republicacao', 'texto_colado'].includes(d.autoridade) ? d.autoridade : autoridadeDe({ via: d.via, dominio: d.dominio || dominioRegistravel(d.url || ''), republicacao: d.republicacao_da_fonte_principal }),
+    relacao: null,
     explicacao: d.explicacao ? String(d.explicacao).slice(0, 400) : null,
     desatualizada: !!d.desatualizada,
     republicacao_da_fonte_principal: !!d.republicacao_da_fonte_principal,
     grupo: d.grupo || null,
     llm: d.llm || null,
   };
+  e.relacao = RELACAO_DE[e.correspondencia];
+  if (e.tipo === 'secundaria' && e.autoridade === 'primaria') e.tipo = 'primaria';
   return e;
 }
 
@@ -120,4 +155,4 @@ function validarEvidenciaDeArtigo(e, textoLido) {
   return { ok: true };
 }
 
-module.exports = { acharTrecho, normaliza, dominioRegistravel, similaridade, agrupar, novaEvidencia, marcarDesatualizada, validarEvidenciaDeArtigo, citaAgencia };
+module.exports = { autoridadeDe, numerosAusentes, CORRESP, RELACAO_DE, CORRESP_DE, acharTrecho, normaliza, dominioRegistravel, similaridade, agrupar, novaEvidencia, marcarDesatualizada, validarEvidenciaDeArtigo, citaAgencia };

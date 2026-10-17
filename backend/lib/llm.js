@@ -154,19 +154,23 @@ function modelsFor(provider, requestedModel) {
   return requestedModel === 'gpt-4o-mini' ? provider.small : provider.large;
 }
 
-async function tryModel(provider, model, opts, requestOptions) {
+async function tryModel(provider, model, opts, requestOptions, cont) {
+  if (cont) cont.n += 1;
   const client = clientFor(provider);
   const res = await client.chat.completions.create({ ...opts, model }, requestOptions);
   _lastGood = { provider: provider.name, model };
   const out = opts?.response_format?.type === 'json_object' ? withSanitizedJson(res) : res;
   // Quem usou a resposta pode registrar qual provedor/modelo a produziu.
-  try { Object.defineProperty(out, '__llm', { value: { provider: provider.name, model: res?.model || model }, enumerable: false }); } catch { /* resposta congelada */ }
+  const u = res?.usage;
+  const tokens = u ? { entrada: u.prompt_tokens ?? null, saida: u.completion_tokens ?? null, total: u.total_tokens ?? null } : null;
+  try { Object.defineProperty(out, '__llm', { value: { provider: provider.name, model: res?.model || model, pago: !!provider.paid, tokens, tentativas_provedor: cont ? cont.n : 1 }, enumerable: false }); } catch { /* resposta congelada */ }
   return out;
 }
 
 // Percorre provedores × modelos até um responder.
 async function cascade(opts, requestOptions) {
   const providers = availableProviders();
+  const cont = { n: 0 };
   if (!providers.length) throw new Error('Nenhuma chave de IA configurada (GROQ_API_KEY, GEMINI_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY ou OPENAI_API_KEY)');
 
   let lastErr;
@@ -176,7 +180,7 @@ async function cascade(opts, requestOptions) {
     const p = providers.find(x => x.name === _lastGood.provider);
     if (p) {
       try {
-        return await tryModel(p, _lastGood.model, opts, requestOptions);
+        return await tryModel(p, _lastGood.model, opts, requestOptions, cont);
       } catch (err) {
         if (errorScope(err) === 'fatal') throw err;
         lastErr = err;
@@ -192,7 +196,7 @@ async function cascade(opts, requestOptions) {
     let providerDown = false;
     for (const model of fixed) {
       try {
-        return await tryModel(provider, model, opts, requestOptions);
+        return await tryModel(provider, model, opts, requestOptions, cont);
       } catch (err) {
         const scope = errorScope(err);
         lastErr = err;
@@ -207,7 +211,7 @@ async function cascade(opts, requestOptions) {
     const discovered = (await discoverModels(provider)).filter(id => !fixed.includes(id));
     for (const model of discovered.slice(0, 6)) {
       try {
-        return await tryModel(provider, model, opts, requestOptions);
+        return await tryModel(provider, model, opts, requestOptions, cont);
       } catch (err) {
         const scope = errorScope(err);
         lastErr = err;

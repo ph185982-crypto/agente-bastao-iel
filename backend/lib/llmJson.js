@@ -5,7 +5,19 @@
 //     (citações conferidas no texto real, números conferidos, ids conhecidos).
 //  2. Cada resposta registra provedor e modelo que a produziu.
 //  3. Falha vira erro explícito. Nunca vira um resultado fictício.
+const { AsyncLocalStorage } = require('async_hooks');
 const { createCompatClient, hasLlmKey } = require('./llm');
+
+// Consumo por etapa: toda chamada feita dentro de comConsumo() é registrada
+// (provedor, modelo, tokens quando o provedor informa, duração, tentativas).
+// Custo: nenhum provedor devolve preço na resposta, então fica "desconhecido"
+// até haver uma tabela de preços confirmada para o plano em uso.
+const registro = new AsyncLocalStorage();
+async function comConsumo(fn) {
+  const store = { chamadas: [], inicio: Date.now() };
+  const resultado = await registro.run(store, fn);
+  return { resultado, consumo: { chamadas: store.chamadas, duracao_ms: Date.now() - store.inicio, custo: 'desconhecido' } };
+}
 
 let _llm = null;
 const llm = () => (_llm ??= createCompatClient());
@@ -39,7 +51,9 @@ async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3
     budget.usados += 1;
   }
   let ultimoErro;
+  const store = registro.getStore();
   for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    const t0 = Date.now();
     try {
       const res = await llm().chat.completions.create({
         model: modelo,
@@ -48,9 +62,16 @@ async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3
         max_tokens: maxTokens,
         messages: [{ role: 'system', content: sistema }, { role: 'user', content: usuario }],
       });
-      const dados = extraiJson(res.choices?.[0]?.message?.content);
-      return { dados, llm: res.__llm || { provider: 'desconhecido', model: res.model || 'desconhecido' }, tentativas: tentativa };
+      const info = res.__llm || { provider: 'desconhecido', model: res.model || 'desconhecido' };
+      let dados;
+      try { dados = extraiJson(res.choices?.[0]?.message?.content); } catch (e) {
+        store?.chamadas.push({ ...info, duracao_ms: Date.now() - t0, ok: false, erro: 'resposta não era JSON' });
+        throw e;
+      }
+      store?.chamadas.push({ ...info, duracao_ms: Date.now() - t0, ok: true });
+      return { dados, llm: { ...info, tentativas_json: tentativa }, tentativas: tentativa };
     } catch (e) {
+      if (!/JSON/.test(e.message)) store?.chamadas.push({ provider: 'falhou', model: null, duracao_ms: Date.now() - t0, ok: false, erro: String(e.message).slice(0, 160) });
       ultimoErro = e;
       if (/JSON/.test(e.message) && tentativa < 2) continue;
       break;
@@ -59,4 +80,4 @@ async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3
   throw ultimoErro;
 }
 
-module.exports = { pedirJson, dado, REGRAS_DADOS, hasLlmKey };
+module.exports = { pedirJson, dado, REGRAS_DADOS, hasLlmKey, comConsumo };

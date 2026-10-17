@@ -276,25 +276,102 @@
   }
 
   // ── Estado de uma afirmação a partir das evidências ───────────────────────
-  // evidencias: lista de { id, tipo:'primaria'|'secundaria', grupo (independência),
-  //   relacao:'sustenta'|'contradiz'|'parcial'|'neutra' }
+  // Três perguntas, nesta ordem, e só a terceira olha a fonte:
+  //  1. o trecho foi encontrado no documento acessado?  (trecho_encontrado)
+  //  2. o trecho sustenta a afirmação INTEIRA?           (correspondencia)
+  //  3. a fonte é adequada para ESTE tipo de afirmação? (autoridade × natureza)
+  // Ausência de segunda fonte não rebaixa sozinha: uma fonte primária adequada
+  // basta; duas republicações contam como uma; duas reportagens independentes
+  // reforçam, mas uma fonte primária que contradiz prevalece.
+  const NATUREZAS = ['fato', 'dado', 'anuncio', 'declaracao', 'previsao', 'opiniao'];
+  const naturezaDe = (c) => (NATUREZAS.includes(c.natureza) ? c.natureza : c.tipo === 'declaracao' ? 'declaracao' : c.tipo === 'calculo' ? 'dado' : c.tipo === 'opiniao' ? 'opiniao' : 'fato');
+  // Afirmações que só podem ir a público com quem disse / condição explícita.
+  const EXIGE_ATRIBUICAO = new Set(['anuncio', 'declaracao', 'previsao']);
+  const CORR_DE_REL = { sustenta: 'integral', parcial: 'parcial', neutra: 'nao_sustenta', contradiz: 'contradiz' };
+  const corr = (e) => e.correspondencia || CORR_DE_REL[e.relacao] || 'nao_sustenta';
+  const autoridade = (e) => e.autoridade || (e.tipo === 'primaria' ? 'primaria' : e.republicacao_da_fonte_principal ? 'republicacao' : 'reportagem');
+
   function avaliarAfirmacao(claim, evidencias) {
-    const ev = (claim.evidencias || []).map((id) => evidencias.find((e) => e.id === id)).filter(Boolean)
-      .filter((e) => e.relacao !== 'neutra');
-    if (!ev.length) return { estado: 'nao_verificada', motivo: 'Nenhuma fonte consultada sustenta ou contradiz esta afirmação.' };
-    const grupos = (rel, tipo) => new Set(ev.filter((e) => e.relacao === rel && (!tipo || e.tipo === tipo)).map((e) => e.grupo || e.id));
-    const sustPrim = grupos('sustenta', 'primaria').size;
-    const sustTodas = grupos('sustenta').size;
-    const contraPrim = grupos('contradiz', 'primaria').size;
-    const contraTodas = grupos('contradiz').size;
-    const parcial = grupos('parcial').size;
-    if (contraPrim > 0) return { estado: 'contradita', motivo: 'Uma fonte primária contradiz esta afirmação.' };
-    if (contraTodas > 0 && contraTodas >= sustTodas) return { estado: 'contradita', motivo: 'As fontes consultadas contradizem mais do que sustentam.' };
-    if (contraTodas > 0) return { estado: 'parcialmente_sustentada', motivo: 'Há fontes que sustentam e fontes que divergem.' };
-    if (sustPrim >= 1) return { estado: 'sustentada', motivo: 'Sustentada por fonte primária.' };
-    if (sustTodas >= 2) return { estado: 'sustentada', motivo: `Sustentada por ${sustTodas} fontes independentes.` };
-    if (sustTodas === 1 || parcial > 0) return { estado: 'parcialmente_sustentada', motivo: sustTodas === 1 ? 'Só uma fonte secundária sustenta.' : 'As fontes sustentam só parte da afirmação.' };
-    return { estado: 'nao_verificada', motivo: 'Sem evidência utilizável.' };
+    const nat = naturezaDe(claim);
+    const exige_atribuicao = EXIGE_ATRIBUICAO.has(nat);
+    const r = (estado, motivo, extra) => ({ estado, motivo, natureza: nat, exige_atribuicao, ...(extra || {}) });
+    const todas = (claim.evidencias || []).map((id) => evidencias.find((e) => e.id === id)).filter(Boolean);
+    const ev = todas.filter((e) => e.trecho_encontrado !== false && e.trecho);
+    // Texto colado ou print prova o que está escrito nele, não que seja verdade.
+    if (ev.length && ev.every((e) => autoridade(e) === 'texto_colado') && naturezaDe(claim) !== 'opiniao') return r('nao_verificada', 'Só o texto colado diz isso. Ele prova o que está escrito, não que seja verdade: precisa de uma fonte acessada.');
+    if (!ev.length) return r('nao_verificada', todas.length ? 'Nenhum trecho das fontes acessadas foi localizado para esta afirmação.' : 'Nenhuma fonte acessada trata desta afirmação.');
+    if (nat === 'opiniao') return r('nao_verificada', 'Opinião: não se verifica; as premissas factuais é que são conferidas.');
+
+    const grupos = (lista) => new Set(lista.map((e) => e.grupo || e.id));
+    const integ = ev.filter((e) => corr(e) === 'integral');
+    const parc = ev.filter((e) => corr(e) === 'parcial');
+    const contra = ev.filter((e) => corr(e) === 'contradiz');
+    const prim = (l) => l.filter((e) => autoridade(e) === 'primaria');
+    const indep = (l) => grupos(l.filter((e) => autoridade(e) !== 'republicacao')).size + (l.some((e) => autoridade(e) === 'republicacao') && !l.some((e) => autoridade(e) !== 'republicacao') ? 1 : 0);
+    const faltas = parc.map((e) => e.falta).filter(Boolean);
+
+    if (prim(contra).length) return r('contradita', `Fonte primária contradiz: ${prim(contra)[0].origem}.`);
+    if (contra.length) {
+      if (prim(integ).length) return r('parcialmente_sustentada', `Fonte primária sustenta, mas ${contra[0].origem} diverge. Confira antes de publicar.`, { divergencia: true });
+      if (indep(contra) >= indep(integ)) return r('contradita', `${contra[0].origem} contradiz e não há fonte mais forte a favor.`);
+      return r('parcialmente_sustentada', `Fontes divergem (${contra[0].origem} contradiz).`, { divergencia: true });
+    }
+    if (prim(integ).length) return r('sustentada', `Fonte primária sustenta a afirmação inteira (${prim(integ)[0].origem}).`, { forca: 'primaria' });
+    if (integ.length && (nat === 'anuncio' || nat === 'declaracao')) {
+      return r('sustentada', `A reportagem registra o ${nat === 'anuncio' ? 'anúncio' : 'que foi dito'}. Isso comprova que foi ${nat === 'anuncio' ? 'anunciado' : 'dito'}, não que seja verdade ou que vá acontecer.`, { forca: 'reportagem' });
+    }
+    if (integ.length && nat === 'previsao') return r('sustentada', 'A fonte registra a previsão. Só pode ir a público como estimativa de quem a fez.', { forca: 'reportagem' });
+    if (indep(integ) >= 2) return r('sustentada', `${indep(integ)} reportagens independentes sustentam a afirmação inteira (não substitui a fonte primária).`, { forca: 'multiplas' });
+    if (integ.length) {
+      // Uma reportagem original: basta para fato de baixo risco; dado estatístico e
+      // assunto sensível pedem a fonte do dado ou confirmação.
+      if (integ.every((e) => autoridade(e) === 'republicacao')) return r('parcialmente_sustentada', 'Só há reproduções da mesma matéria: não é confirmação independente.');
+      if (nat === 'dado') return r('parcialmente_sustentada', `O número vem de ${integ[0].origem}, que não é quem produz o dado. Confira na fonte do dado ou publique atribuindo.`);
+      if (claim.risco === 'alto') return r('parcialmente_sustentada', 'Assunto sensível com uma única reportagem: confirme em fonte primária ou publique atribuindo.');
+      return r('sustentada', `Sustentada pela reportagem de ${integ[0].origem}; fonte primária não consultada.`, { forca: 'reportagem' });
+    }
+    if (parc.length) return r('parcialmente_sustentada', faltas.length ? `O trecho cobre só parte: ${faltas[0]}` : 'Os trechos cobrem só parte da afirmação.');
+    return r('nao_verificada', 'Os trechos encontrados não sustentam esta afirmação.');
+  }
+
+  // ── Decisão do Pedro sobre uma afirmação que não está sustentada ────────────
+  // Não existe "aceitar com ressalva" genérico. Cada decisão é específica e fica
+  // no histórico: corrigir o texto (volta para conferência), publicar com
+  // atribuição/condição explícita (a frase precisa aparecer no texto público),
+  // retirar (não pode ser usada) ou manter em revisão (continua bloqueando).
+  const DECISOES = ['corrigir', 'atribuir', 'retirar', 'em_revisao'];
+  const temTrechoUtil = (c, cl) => (cl.evidencias || []).some((id) => {
+    const e = c.evidencias.find((x) => x.id === id);
+    return e && e.trecho && e.trecho_encontrado !== false && ['integral', 'parcial'].includes(corr(e));
+  });
+  function decidirAfirmacao(c, claimId, { tipo, condicao, texto_novo, justificativa } = {}, { quem = 'pedro' } = {}) {
+    const cl = c.claims.find((x) => x.id === claimId);
+    if (!cl) throw new Error('Afirmação não encontrada.');
+    if (!DECISOES.includes(tipo)) throw new Error('Decisão inválida.');
+    const agora = agoraISO();
+    if (tipo === 'corrigir') {
+      const t = String(texto_novo || '').trim();
+      if (t.length < 12) throw new Error('Escreva a afirmação corrigida.');
+      cl.textos_anteriores = [...(cl.textos_anteriores || []), { texto: cl.texto, ate: agora }];
+      cl.texto = t;
+      cl.estado = 'nao_verificada';
+      cl.motivo_estado = 'Texto corrigido: precisa ser conferido de novo nas fontes.';
+      cl.precisa_conferir = true;
+    }
+    if (tipo === 'atribuir') {
+      const cond = String(condicao || '').trim();
+      if (cond.length < 4) throw new Error('Escreva a atribuição ou condição que vai no texto (ex.: "segundo o governo", "ainda depende de aprovação").');
+      if (cl.estado === 'contradita') throw new Error('Afirmação contradita não pode ir a público só com atribuição: corrija ou retire.');
+      if (!temTrechoUtil(c, cl)) throw new Error('Nenhuma fonte acessada traz isso: não há a quem atribuir. Corrija ou retire.');
+    }
+    cl.decisao = tipo === 'em_revisao' ? null : { tipo, condicao: tipo === 'atribuir' ? String(condicao).trim() : null, justificativa: justificativa || null, em: agora, por: quem };
+    if (c.revisao.aprovada_versao) {
+      c.revisao = { aprovada_versao: null, aprovada_em: null, hash_aprovado: null, reaberta_em: agora };
+      if (['aprovado', 'exportado'].includes(c.status)) c.status = 'em_revisao';
+    }
+    const rot = { corrigir: 'Corrigiu a afirmação', atribuir: `Decidiu publicar com atribuição/condição: “${cl.decisao?.condicao}”`, retirar: 'Retirou a afirmação', em_revisao: 'Manteve a afirmação em revisão' }[tipo];
+    registrar(c, quem, 'decisao', rot, { claim: claimId });
+    return cl;
   }
 
   // ── Texto de um slide/legenda → o que pode ser conferido ───────────────────
@@ -412,7 +489,7 @@
     hash, hashRender, linhaDeFonte, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
     novoConteudo, criarVersao, versaoAtiva, conteudoDaVersao, efeitoDaEdicao,
     editarSlide, editarLegenda, reordenarSlides, escolherCapa, alternarBloqueio, desfazer, ativarVersao,
-    avaliarAfirmacao, valoresPermitidos, migrarItemLegado, aprovar, registrarExportacao, registrarPublicacao,
+    avaliarAfirmacao, decidirAfirmacao, DECISOES, naturezaDe, NATUREZAS, EXIGE_ATRIBUICAO, valoresPermitidos, migrarItemLegado, aprovar, registrarExportacao, registrarPublicacao,
     registrar, resumoParaLista,
   };
 });

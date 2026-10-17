@@ -111,8 +111,12 @@ test('afirmações: trecho inventado pela IA é descartado; o literal vira evid�
   assert.strictEqual(r.claims.length, 2, 'a afirmação com trecho que não existe na página foi descartada');
   assert.strictEqual(r.descartadas.length, 1);
   assert.ok(r.claims.every((c) => c.evidencias.length === 1 && r.evidencias.find((e) => e.id === c.evidencias[0]).trecho));
-  assert.strictEqual(r.claims[0].estado, 'parcialmente_sustentada', 'uma matéria sozinha não basta');
-  assert.match(r.claims[0].motivo_estado, /uma fonte secundária/i);
+  assert.strictEqual(r.claims[0].estado, 'sustentada', 'fato de baixo risco numa reportagem original: sustentado, com a força dita');
+  assert.match(r.claims[0].motivo_estado, /primária não consultada/);
+  assert.strictEqual(r.claims[1].natureza, 'declaracao');
+  assert.strictEqual(r.claims[1].exige_atribuicao, true, 'declaração só vai a público atribuída');
+  const ev0 = r.evidencias[0];
+  assert.ok(ev0.trecho_encontrado && ev0.correspondencia === 'integral' && ev0.autoridade === 'reportagem', 'as três camadas ficam separadas na evidência');
 });
 
 test('verificar: segunda matéria independente sustenta; republicação NÃO; trecho falso é recusado', async () => {
@@ -147,20 +151,22 @@ test('verificar: segunda matéria independente sustenta; republicação NÃO; tr
   const portal = r.evidencias.find((e) => e.origem === 'Portal Z');
   assert.strictEqual(portal.grupo, 'g0', 'texto copiado da fonte principal é a mesma origem');
   assert.strictEqual(r.claim.estado, 'sustentada', `${r.claim.motivo_estado} | ${origens.join(' | ')}`);
-  assert.match(r.claim.motivo_estado, /2 fontes independentes/);
+  assert.match(r.claim.motivo_estado, /2 reportagens independentes/);
+  assert.strictEqual(portal.autoridade, 'republicacao');
   assert.ok(r.evidencias.every((e) => e.consultada_em && e.url_consultada && e.trecho), 'cada evidência guarda quando e onde foi consultada');
 
-  // IA que "inventa" um trecho: o julgamento é descartado e a afirmação fica parcial.
+  // IA que "inventa" um trecho: o julgamento é descartado (trecho não encontrado não conta).
   const d2 = { ...d, llmJson: { ...llmReal, pedirJson: async ({ usuario }) => ({ llm: { provider: 'teste', model: 'falso' }, dados: { materias: [...usuario.matchAll(/MATERIA_(\d+)>>>/g)].map((m) => ({ i: Number(m[1]), relacao: 'sustenta', trecho: 'o limite foi elevado para R$ 180 mil', explicacao: 'x' })) } }) } };
   const r2 = await verificarAfirmacao(claim, fonte, base.evidencias, d2);
-  assert.strictEqual(r2.claim.estado, 'parcialmente_sustentada');
+  assert.ok(r2.evidencias.every((e) => e.trecho_encontrado === false));
+  assert.match(r2.claim.motivo_estado, /Jornal X/, 'o estado vem só da matéria de origem; os trechos inventados não entram');
   assert.ok(r2.log.some((l) => /não está na matéria/.test(l)));
 });
 
-test('verificar: sem nenhuma outra fonte nos feeds, continua não confirmada (não finge)', async () => {
+test('verificar: dado estatístico só numa reportagem, sem outras fontes, não vira sustentado (não finge)', async () => {
   const fonte = { legivel: true, texto: 'x', dominio: 'jornalx.com.br', url_final: 'https://jornalx.com.br/m', acessada_em: 'x' };
-  const claim = { id: 'a1', texto: 'A Selic caiu para 9 por cento ao ano em outubro de 2026 segundo o comitê.', tipo: 'fato', central: true, evidencias: ['e0'] };
-  const e0 = { id: 'e0', via: 'artigo', tipo: 'secundaria', relacao: 'sustenta', grupo: 'g0', fonte_principal: true };
+  const claim = { id: 'a1', texto: 'A Selic caiu para 9 por cento ao ano em outubro de 2026 segundo o comitê.', tipo: 'fato', natureza: 'dado', central: true, evidencias: ['e0'] };
+  const e0 = { id: 'e0', via: 'artigo', autoridade: 'reportagem', correspondencia: 'integral', trecho: 'a Selic caiu para 9% ao ano', origem: 'Jornal X', grupo: 'g0', fonte_principal: true };
   const r = await verificarAfirmacao(claim, fonte, [e0], { feeds: feedsFalso([]), llmJson: llmFalso([{}]), agora: () => 0 });
   assert.strictEqual(r.claim.estado, 'parcialmente_sustentada');
   assert.ok(r.log.some((l) => /0 matérias parecidas/.test(l)));
@@ -168,7 +174,7 @@ test('verificar: sem nenhuma outra fonte nos feeds, continua não confirmada (n�
 
 test('verificar com fonte primária: BCB confere o valor dito', async () => {
   const claim = { id: 'a1', texto: 'O IPCA de setembro de 2026 foi de 0,82%.', tipo: 'fato', central: true, evidencias: ['e0'], conector: { tipo: 'bcb', serie: 433, periodo: '2026-09', valor_dito: 0.82 } };
-  const e0 = { id: 'e0', via: 'artigo', tipo: 'secundaria', relacao: 'sustenta', grupo: 'g0', fonte_principal: true };
+  const e0 = { id: 'e0', via: 'artigo', autoridade: 'reportagem', correspondencia: 'integral', trecho: 'o IPCA de setembro foi de 0,82%', origem: 'Jornal X', grupo: 'g0', fonte_principal: true };
   const connectors = {
     ...require('./connectors'),
     evidenciaSerieBcb: async () => ({ valor: 0.82, evidencia: Ev.novaEvidencia({ via: 'api_bcb', tipo: 'primaria', url: 'https://api.bcb.gov.br/x', origem: 'Banco Central, SGS 433', trecho: 'IPCA em 01/09/2026: 0.82', periodo: '01/09/2026', unidade: '% ao mês' }) }),
@@ -198,4 +204,43 @@ test('feeds: parser de RSS com CDATA e entidades; filtro por palavras e janela',
   assert.strictEqual(itens[0].resumo, 'O teto do MEI é discutido.');
   const f = feedsLib.filtrar([...itens, { titulo: 'Velha', resumo: 'teto mei', url: 'https://x.test/b', publicada_em: '2026-09-01T00:00:00Z' }], { palavras: ['teto', 'MEI'], dias: 3, agora: Date.parse('2026-10-17T00:00:00Z') });
   assert.strictEqual(f.length, 1);
+});
+
+test('E. números de períodos ou unidades diferentes não viram contradição', async () => {
+  const { diferePeriodoOuUnidade } = require('./research');
+  const claim = { id: 'a1', texto: 'O desemprego ficou em 6,1% no trimestre encerrado em agosto de 2026.', tipo: 'fato', natureza: 'dado', central: true, evidencias: ['e0'],
+    valores: [{ valor: 6.1, unidade: '%', periodo: 'trimestre encerrado em agosto de 2026' }] };
+  assert.ok(diferePeriodoOuUnidade(claim, { periodo: 'julho de 2026', unidade: '%' }));
+  assert.ok(!diferePeriodoOuUnidade(claim, { periodo: 'trimestre encerrado em agosto de 2026', unidade: '%' }));
+  const fonte = { legivel: true, texto: 'x', dominio: 'jornalx.com.br', url_final: 'https://jornalx.com.br/m', acessada_em: 'x' };
+  const e0 = { id: 'e0', via: 'artigo', autoridade: 'reportagem', correspondencia: 'integral', trecho: 'desemprego ficou em 6,1% no trimestre', origem: 'Jornal X', grupo: 'g0', fonte_principal: true };
+  const pagina = HTML('<p>A taxa de desocupação foi de 5,8% em julho de 2026, segundo a série mensal dessazonalizada calculada por uma consultoria privada que acompanha o mercado de trabalho.</p><p>Texto extra suficientemente longo para a página ser legível pelo extrator do sistema de checagem editorial.</p><p>Mais um parágrafo comprido para passar do mínimo de caracteres exigido pela leitura de páginas.</p><p>O levantamento usa metodologia própria, diferente da pesquisa oficial, e tem margem de erro maior em meses de feriado.</p>').replaceAll('Jornal X', 'Diario Y');
+  const d = {
+    feeds: feedsFalso([{ titulo: 'Desemprego trimestre agosto 2026 taxa ficou', url: 'https://diarioy.com.br/d', resumo: 'desemprego ficou trimestre encerrado agosto 2026 taxa', publicada_em: '2026-10-15T16:00:00Z', origem: 'Diario Y' }]),
+    safeFetch: async (u) => ({ url_final: u, status: 200, corpo: pagina, acessada_em: '2026-10-17T10:05:00Z', redirecionamentos: [] }),
+    agora: () => Date.parse('2026-10-17T10:00:00Z'),
+    llmJson: llmFalso([{ materias: [{ i: 0, correspondencia: 'contradiz', trecho: 'A taxa de desocupação foi de 5,8% em julho de 2026', periodo: 'julho de 2026', unidade: '%', explicacao: 'número diferente' }] }]),
+  };
+  const r = await verificarAfirmacao(claim, fonte, [e0], d);
+  const ev = r.evidencias.find((e) => e.origem === 'Diario Y');
+  assert.ok(ev, r.log.join(' | '));
+  assert.strictEqual(ev.correspondencia, 'parcial', 'a IA disse "contradiz", mas o período é outro');
+  assert.match(ev.falta, /não é contradição/);
+  assert.notStrictEqual(r.claim.estado, 'contradita');
+});
+
+test('C. conferir afirmação do Pedro: trecho real que NÃO sustenta a interpretação', async () => {
+  const { conferirAfirmacao } = require('./research');
+  const fonte = { texto: 'A equipe econômica estuda oferecer linhas de crédito para empresas afetadas pelo fim da escala 6x1, disse o ministro nesta sexta.', titulo: 'Governo estuda crédito', veiculo: 'Agência X', url_final: 'https://agx.com.br/a', acessada_em: '2026-10-17T10:00:00Z', dominio: 'agx.com.br' };
+  const e0 = Ev.novaEvidencia({ via: 'artigo', url: fonte.url_final, origem: 'Agência X', trecho: 'estuda oferecer linhas de crédito', correspondencia: 'integral', grupo: 'g0' }); e0.fonte_principal = true;
+  const claim = { id: 'p1', texto: 'As linhas de crédito para empresas afetadas pelo fim da 6x1 já estão em vigor.', tipo: 'fato', central: true, evidencias: [] };
+  const r = await conferirAfirmacao({ claim, fonte, evidencias: [e0] }, { llmJson: llmFalso([{ natureza: 'fato', fontes: [{ i: 0, correspondencia: 'parcial', trecho: 'A equipe econômica estuda oferecer linhas de crédito para empresas afetadas pelo fim da escala 6x1', falta: 'a fonte diz que o governo estuda; a afirmação diz que já está em vigor' }] }]) });
+  assert.strictEqual(r.claim.estado, 'parcialmente_sustentada');
+  assert.match(r.claim.motivo_estado, /estuda; a afirmação diz que já está em vigor/);
+  const ev = r.evidencias[0];
+  assert.ok(ev.trecho_encontrado && ev.correspondencia === 'parcial', 'trecho encontrado ≠ trecho que sustenta');
+  // IA que cita um trecho que não existe: nada entra
+  const r2 = await conferirAfirmacao({ claim, fonte, evidencias: [e0] }, { llmJson: llmFalso([{ natureza: 'fato', fontes: [{ i: 0, correspondencia: 'integral', trecho: 'as linhas de crédito já estão em vigor desde segunda' }] }]) });
+  assert.strictEqual(r2.evidencias.length, 0);
+  assert.strictEqual(r2.claim.estado, 'nao_verificada');
 });

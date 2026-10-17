@@ -6,7 +6,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { limita, unica } = require('../lib/access');
 const feeds = require('../lib/feeds');
-const { pedirJson, dado, REGRAS_DADOS, hasLlmKey } = require('../lib/llmJson');
+const { pedirJson, dado, REGRAS_DADOS, hasLlmKey, comConsumo } = require('../lib/llmJson');
 const Editorial = require('../../static/editorial');
 
 const router = express.Router();
@@ -124,7 +124,10 @@ const arr = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
 const etapa = (nome, max, fn) => router.post(`/${nome}`, porMinuto(max, nome), async (req, res) => {
   try {
     const rid = req.body?.request_id ? `${nome}:${txt(req.body.request_id, 80)}` : null;
-    res.json(await unica(rid, () => fn(req.body || {})));
+    res.json(await unica(rid, async () => {
+      const { resultado, consumo } = await comConsumo(() => fn(req.body || {}));
+      return { ...resultado, consumo: { etapa: nome, ...consumo } };
+    }));
   } catch (e) { if (!res.headersSent) erroJson(res, e); }
 });
 
@@ -152,6 +155,14 @@ etapa('verify', 12, async (b) => {
   const claim = claimsDoCorpo([b.claim])[0];
   if (!claim) throw Object.assign(new Error('Falta a afirmação.'), { code: 'ENTRADA' });
   return research.verificarAfirmacao(claim, fonteDoCorpo(b.fonte), evidsDoCorpo(b.evidencias));
+});
+
+// Afirmação escrita ou corrigida pelo Pedro: confere no que já foi acessado.
+etapa('conferir', 12, async (b) => {
+  exigeIA();
+  const claim = claimsDoCorpo([b.claim])[0];
+  if (!claim) throw Object.assign(new Error('Falta a afirmação.'), { code: 'ENTRADA' });
+  return research.conferirAfirmacao({ claim, fonte: fonteDoCorpo(b.fonte), evidencias: evidsDoCorpo(b.evidencias) });
 });
 
 etapa('briefing', 8, async (b) => {

@@ -15,15 +15,20 @@ const deps = (d = {}) => ({ llmJson: d.llmJson || require('./llmJson') });
 const resumoClaim = (c, evid) => {
   const evs = (c.evidencias || []).map((id) => evid.find((e) => e.id === id)).filter(Boolean);
   return {
-    id: c.id, tipo: c.tipo, texto: c.texto, central: !!c.central, estado: c.estado, motivo: c.motivo_estado || '', risco: c.risco, mutavel: !!c.mutavel,
+    id: c.id, tipo: c.tipo, natureza: M.naturezaDe(c), texto: c.texto, central: !!c.central, estado: c.estado, motivo: c.motivo_estado || '', risco: c.risco, mutavel: !!c.mutavel,
+    precisa_atribuicao: !!(c.exige_atribuicao || c.decisao?.tipo === 'atribuir'),
+    condicao_obrigatoria: c.decisao?.tipo === 'atribuir' ? c.decisao.condicao : undefined,
     valores: c.valores || [], calculo: c.calculo ? { formula: c.calculo.formula, resultado: c.calculo.resultado, entradas: c.calculo.entradas } : undefined,
     fontes: evs.map((e) => ({ origem: e.origem, relacao: e.relacao, publicada_em: e.publicada_em, limitacoes: e.limitacoes })).slice(0, 4),
   };
 };
 
 // ── Briefing ───────────────────────────────────────────────────────────────
-async function gerarBriefing({ fonte, claims, evidencias, recentes = [], objetivo, formato }, d0) {
+const utilizaveis = (claims) => claims.filter((c) => c.decisao?.tipo !== 'retirar');
+
+async function gerarBriefing({ fonte, claims: todas, evidencias, recentes = [], objetivo, formato }, d0) {
   const d = deps(d0);
+  const claims = utilizaveis(todas);
   const lista = claims.map((c) => resumoClaim(c, evidencias));
   const f = d.llmJson.dado('FONTE_PRINCIPAL', `${fonte.titulo}\n${fonte.veiculo} · ${fonte.publicada_em || 'sem data'}\n\n${String(fonte.texto || '').slice(0, 5000)}`, 6000);
   const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 8).join('\n'), 2500);
@@ -148,8 +153,9 @@ function provisorio({ claims, evidencias, fonte, versao, opinioes }) {
   return c;
 }
 
-async function gerarCopia({ briefing, fonte, claims, evidencias, recentes = [], formato = 'carrossel', instrucoes = '' }, d0) {
+async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', instrucoes = '' }, d0) {
   const d = deps(d0);
+  const claims = utilizaveis(todas);
   const lista = claims.map((c) => resumoClaim(c, evidencias));
   const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 8).join('\n'), 2500);
   const budget = { max: 2, usados: 0 };
@@ -168,6 +174,7 @@ ${JSON.stringify(lista, null, 1)}
 REGRAS DE FATOS (inegociáveis):
 1. Todo número, data, nome ou acontecimento vem de uma afirmação listada; o slide aponta o(s) id(s) em claim_ids. Nenhum número que não esteja na afirmação ou no cálculo ligado a ela.
 2. Afirmação "sustentada": pode ser dita como fato. "parcialmente_sustentada" ou "nao_verificada": só com atribuição ("segundo o ${fonte.veiculo || 'veículo'}…") e sem apresentar como certeza. "contradita": não use como fato.
+2b. Afirmação com precisa_atribuicao (anúncio, declaração, previsão): o slide que a usa DIZ quem anunciou/disse/estimou ou a condição ("o governo anunciou…", "ainda depende de aprovação", "é uma estimativa do ministério"). Se houver condicao_obrigatoria, use essa expressão. Nunca tire ressalvas para deixar o texto mais forte — isso vale também para a capa.
 3. Citação entre aspas só se for cópia exata de texto das afirmações. Não atribua fala a ninguém que a afirmação não atribua.
 4. Opinião do Pedro deve parecer opinião ("na minha leitura…") e marque o slide com "opiniao": true; nele, claim_ids são as premissas factuais.
 5. Não crie experiência pessoal nem história que o Pedro não contou.
@@ -194,7 +201,7 @@ Responda APENAS JSON:
   let r = await pedir('');
   let m = montarVersao({ dados: r.dados, claims, evidencias, formato });
   let prov = provisorio({ claims, evidencias, fonte, versao: m.versao, opinioes: m.opinioes });
-  const fatosProblemas = (c) => G.bloqueios(c, { conta: M.ACCOUNT_PIN }).filter((b) => ['numero_sem_origem', 'numero_sem_afirmacao', 'citacao_sem_origem', 'atribuicao_sem_origem', 'valores_divergentes'].includes(b.id));
+  const fatosProblemas = (c) => G.bloqueios(c, { conta: M.ACCOUNT_PIN }).filter((b) => ['numero_sem_origem', 'numero_sem_afirmacao', 'citacao_sem_origem', 'atribuicao_sem_origem', 'valores_divergentes', 'ressalva_ausente'].includes(b.id));
   let falhas = fatosProblemas(prov);
   let tentativas = 1;
   if ((falhas.length || m.problemas.length) && budget.usados < budget.max) {

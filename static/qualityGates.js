@@ -43,6 +43,10 @@
     return [...ids].map((id) => c.claims.find((x) => x.id === id)).filter(Boolean);
   }
 
+  // Marcas de atribuição ou condição que mantêm uma ressalva pública.
+  const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|anunciam|anunciado|anunciada|prop[õo]e|prop[ôo]s|proposta|projeto|prev[êe]|previsto|prevista|estima|estimativa|pretende|planeja|promete|prometeu|deve|pode|poder[áa]|depende|se (for )?aprovad[ao]|em discuss[ãa]o|em an[áa]lise|estuda|estudo|quer)(?!\p{L})/iu;
+  const ondeUsa = (textos, id) => textos.filter((t) => (t.claim_ids || []).includes(id)).map(rotuloOnde).join(', ') || 'ao conteúdo';
+
   const bloqueio = (id, eixo, titulo, detalhe, onde, acao) => ({ id, eixo, titulo, detalhe, onde: onde || null, acao: acao || null });
   const sugestao = (id, eixo, titulo, detalhe, onde) => ({ id, eixo, titulo, detalhe, onde: onde || null });
 
@@ -76,23 +80,41 @@
     const usadas = claimsUsadas(c, textos);
     for (const cl of usadas) {
       const rev = cl.revisao || {};
+      const dec = cl.decisao?.tipo || null;
       const central = cl.central !== false;
-      if (cl.tipo === 'opiniao') {
+      if (dec === 'retirar') {
+        out.push(bloqueio('afirmacao_retirada_em_uso', 'fatos', 'Afirmação retirada ainda está no texto', `Você retirou “${cl.texto}”, mas ela continua ligada ${ondeUsa(textos, cl.id)}.`, { claim: cl.id }, 'Tirar do texto'));
+        continue;
+      }
+      if (cl.tipo === 'opiniao' || cl.natureza === 'opiniao') {
         (cl.premissas || []).forEach((pid) => {
           const p = c.claims.find((x) => x.id === pid);
-          if (p && p.estado !== 'sustentada') out.push(bloqueio('premissa_pendente', 'fatos', 'Opinião com premissa factual pendente', `“${cl.texto}” depende de “${p.texto}”, que está ${rotuloEstado(p.estado)}.`, { claim: cl.id }, 'Verificar a premissa'));
+          if (p && p.estado !== 'sustentada' && p.decisao?.tipo !== 'atribuir') out.push(bloqueio('premissa_pendente', 'fatos', 'Opinião apoiada em fato ainda pendente', `“${cl.texto}” depende de “${p.texto}”, que está ${rotuloEstado(p.estado)}.`, { claim: cl.id }, 'Decidir sobre a premissa'));
         });
         continue;
       }
-      if (cl.estado === 'contradita' && !rev.resolvido) {
-        out.push(bloqueio('contradicao_nao_resolvida', 'fatos', 'Fonte contradiz a afirmação', `“${cl.texto}”: ${cl.motivo_estado || 'as fontes contradizem'}. Corrija a afirmação ou marque como resolvida com justificativa.`, { claim: cl.id }, 'Rever afirmação'));
-      } else if (central && (cl.estado === 'nao_verificada' || !cl.estado)) {
-        out.push(bloqueio('afirmacao_sem_sustentacao', 'fatos', 'Afirmação central sem fonte', `“${cl.texto}” não foi confirmada por nenhuma fonte consultada.`, { claim: cl.id }, 'Buscar fonte ou remover'));
-      } else if (central && cl.estado === 'parcialmente_sustentada' && !rev.aceito_com_ressalva) {
-        out.push(bloqueio('afirmacao_parcial', 'fatos', 'Afirmação central só em parte sustentada', `“${cl.texto}”: ${cl.motivo_estado || 'as fontes cobrem só parte'}. Ajuste o texto ao que a fonte diz ou aceite com ressalva.`, { claim: cl.id }, 'Ajustar ou aceitar com ressalva'));
+      if (cl.precisa_conferir) {
+        out.push(bloqueio('afirmacao_corrigida_sem_conferencia', 'fatos', 'Afirmação corrigida ainda não conferida', `“${cl.texto}” foi reescrita e precisa ser conferida nas fontes.`, { claim: cl.id }, 'Conferir'));
+      } else if (cl.estado === 'contradita') {
+        out.push(bloqueio('contradicao_nao_resolvida', 'fatos', 'Fonte contradiz a afirmação', `“${cl.texto}”: ${cl.motivo_estado || 'as fontes contradizem'} Corrija ou retire.`, { claim: cl.id }, 'Corrigir ou retirar'));
+      } else if (central && (cl.estado === 'nao_verificada' || !cl.estado) && dec !== 'atribuir') {
+        out.push(bloqueio('afirmacao_sem_sustentacao', 'fatos', 'Afirmação central sem sustentação', `“${cl.texto}”: ${cl.motivo_estado || 'nenhuma fonte acessada sustenta'}`, { claim: cl.id }, 'Corrigir, atribuir ou retirar'));
+      } else if (central && cl.estado === 'parcialmente_sustentada' && dec !== 'atribuir') {
+        out.push(bloqueio('afirmacao_parcial', 'fatos', 'Afirmação central só em parte sustentada', `“${cl.texto}”: ${cl.motivo_estado || 'as fontes cobrem só parte'}`, { claim: cl.id }, 'Corrigir, publicar com atribuição/condição ou retirar'));
       }
       if (cl.risco === 'alto' && !rev.confirmada_por_pedro && cl.estado !== 'contradita') {
         out.push(bloqueio('revisao_humana_pendente', 'fatos', 'Assunto sensível: confirme você mesmo', `“${cl.texto}” envolve pessoas, acusações ou impacto alto. Leia a fonte e confirme.`, { claim: cl.id }, 'Confirmar'));
+      }
+      // Ressalva pública: anúncio, declaração, previsão ou decisão de atribuir.
+      const exige = dec === 'atribuir' || cl.exige_atribuicao || M.EXIGE_ATRIBUICAO.has(M.naturezaDe(cl));
+      if (exige) {
+        const cond = dec === 'atribuir' ? norm(cl.decisao.condicao) : null;
+        textos.filter((t) => (t.claim_ids || []).includes(cl.id) && t.tipo !== 'cta').forEach((t) => {
+          const ok = cond ? norm(t.texto).includes(cond) : MARCA_ATRIBUICAO.test(t.texto);
+          if (!ok) out.push(bloqueio('ressalva_ausente', 'fatos', 'Falta a atribuição ou condição no texto', cond
+            ? `${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} usa “${cl.texto}” sem “${cl.decisao.condicao}”.`
+            : `${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} apresenta como fato “${cl.texto}”, que é ${({ anuncio: 'um anúncio', declaracao: 'uma declaração', previsao: 'uma previsão' })[M.naturezaDe(cl)] || 'atribuído'}: diga quem anunciou/disse ou a condição.`, t.onde, 'Recolocar a atribuição ou condição'));
+        });
       }
     }
 

@@ -47,11 +47,27 @@
   }
   const progresso = async (x, c, nome, texto) => { c.pipeline[nome].progresso = texto; await x.persistir(c); x.render(); };
 
+  // Consumo por conteúdo: cada etapa devolve as chamadas de IA que fez.
+  function registrarConsumo(c, consumo) {
+    if (!consumo) return;
+    c.consumo = [...(c.consumo || []), { etapa: consumo.etapa, em: new Date().toISOString(), duracao_ms: consumo.duracao_ms, chamadas: consumo.chamadas || [], custo: consumo.custo || 'desconhecido' }];
+  }
+  function resumoConsumo(c) {
+    const ch = (c.consumo || []).flatMap((x) => x.chamadas);
+    const soma = (k) => ch.reduce((n, x) => n + (x.tokens?.[k] || 0), 0);
+    const semTokens = ch.filter((x) => x.ok && !x.tokens).length;
+    const modelos = [...new Set(ch.filter((x) => x.ok).map((x) => `${x.provider}/${x.model}`))];
+    return { chamadas: ch.length, falhas: ch.filter((x) => !x.ok).length, entrada: soma('entrada'), saida: soma('saida'), semTokens, modelos,
+      tentativas_extra: ch.reduce((n, x) => n + Math.max(0, (x.tentativas_provedor || 1) - 1), 0),
+      tempo_s: Math.round((c.consumo || []).reduce((n, x) => n + (x.duracao_ms || 0), 0) / 1000), etapas: (c.consumo || []).length, pago: ch.some((x) => x.pago) };
+  }
+
   const corpoFonte = (c) => (c.origem?.tipo === 'texto' ? { texto: c.origem.texto_bruto } : { url: c.origem?.url });
 
   async function etapaLeitura(x, c) {
     const r = await x.api('/api/content/ingest', { method: 'POST', body: { ...corpoFonte(c), request_id: x.novoId() } });
     c.fonte_principal = r.fonte;
+    registrarConsumo(c, r.consumo);
     if (r.fonte.titulo && /^https?:/.test(c.titulo || '')) c.titulo = r.fonte.titulo.slice(0, 140);
     if (!r.fonte.legivel) {
       const e = new Error(r.fonte.observacoes?.[0] || 'Não consegui ler esta fonte.');
@@ -63,6 +79,7 @@
   async function etapaAfirmacoes(x, c) {
     const r = await x.api('/api/content/claims', { method: 'POST', body: { fonte: c.fonte_principal, request_id: x.novoId() } });
     c.claims = r.claims; c.evidencias = r.evidencias;
+    registrarConsumo(c, r.consumo);
     return { descartadas: r.descartadas, llm: r.llm };
   }
 
@@ -79,8 +96,22 @@
   async function verificarUma(x, c, claim) {
     const r = await x.api('/api/content/verify', { method: 'POST', body: { claim, fonte: c.fonte_principal, evidencias: c.evidencias, request_id: x.novoId() } });
     mesclar(c, r.claim, r.evidencias);
+    registrarConsumo(c, r.consumo);
     c.pesquisa_log = { ...(c.pesquisa_log || {}), [claim.id]: { log: r.log, consulta: r.consulta, janela_dias: r.janela_dias, em: new Date().toISOString() } };
     return r;
+  }
+
+  async function conferirUma(x, c, k) {
+    if (rodando[c.id]) return;
+    rodando[c.id] = true; x.render();
+    try {
+      const r = await x.api('/api/content/conferir', { method: 'POST', body: { claim: k, fonte: c.fonte_principal, evidencias: c.evidencias, request_id: x.novoId() } });
+      mesclar(c, r.claim, r.evidencias);
+      registrarConsumo(c, r.consumo);
+      reabrirAprovacao(c);
+      M.registrar(c, 'sistema', 'conferencia', `Conferiu “${k.texto.slice(0, 60)}”: ${r.claim.estado}`);
+      x.toast(`Resultado: ${(ESTADO_CLAIM[r.claim.estado] || [, r.claim.estado])[1]}. ${r.claim.motivo_estado || ''}`);
+    } catch (e) { x.toast(e.message); } finally { fim(x, c); await x.persistir(c); x.render(); }
   }
 
   async function etapaPesquisa(x, c) {
@@ -105,6 +136,7 @@
       objetivo: p?.objetivo_sugerido || '', formato: p?.formato_sugerido === 'estatico' ? 'estatico' : '', request_id: x.novoId(),
     } });
     c.briefing = r.briefing;
+    registrarConsumo(c, r.consumo);
     return { llm: r.briefing.llm };
   }
 
@@ -122,6 +154,7 @@
     versao.slides.forEach((s) => { s.claim_ids = troca(s.claim_ids); });
     c.claims.push(...r.opinioes.map((o) => ({ ...o, id: mapa[o.id] })));
     c.formato = versao.formato === 'estatico' ? 'estatico' : 'carrossel';
+    registrarConsumo(c, r.consumo);
     if (c.status === 'rascunho') c.status = 'em_revisao';
     M.criarVersao(c, versao, { quem: 'ia', rotulo: instrucoes ? `Texto gerado (${instrucoes.slice(0, 40)})` : 'Texto gerado' });
     return { llm: r.llm, tentativas: r.tentativas, problemas_de_forma: r.problemas_de_forma };
@@ -159,6 +192,7 @@
         slide: s, indice: i + 1, total, imagem: img ? await blobParaDataUrl(img) : undefined,
         encerramento: s.layout === 'encerramento' && enc ? await blobParaDataUrl(enc) : undefined, request_id: x.novoId(),
       } });
+      registrarConsumo(c, r.consumo);
       const key = `render:${c.id}:${s.id}:${h}:${i + 1}/${total}:${encEm || '-'}`;
       await S.salvarBlob(key, await dataUrlParaBlob(r.png), { content_id: c.id });
       c.arte.renders = [...c.arte.renders.filter((y) => !(y.versao === v.id && y.slide_id === s.id)), { slide_id: s.id, versao: v.id, texto_hash: h, indice: i + 1, total, blob_key: key, metrics: r.metrics, elementos: r.metrics.elementos || [], gerada_em: new Date().toISOString(), enc_em: encEm }];
@@ -185,7 +219,7 @@
         const fn = { leitura: etapaLeitura, afirmacoes: etapaAfirmacoes, pesquisa: etapaPesquisa, briefing: etapaBriefing, copy: etapaCopy, arte: etapaArte }[nome];
         await passo(x, c, nome, () => fn(x, c));
       }
-    } catch (e) { x.toast(e.message || 'Algo deu errado.'); } finally { delete rodando[c.id]; x.render(); }
+    } catch (e) { x.toast(e.message || 'Algo deu errado.'); } finally { fim(x, c); x.render(); }
   }
   const ATE_BRIEFING = ['leitura', 'afirmacoes', 'pesquisa', 'briefing'];
   const TEXTO_E_ARTE = ['copy', 'arte'];
@@ -196,21 +230,28 @@
     try {
       await passo(x, c, 'copy', () => etapaCopy(x, c, instrucoes));
       await passo(x, c, 'arte', () => etapaArte(x, c));
-    } catch (e) { x.toast(e.message || 'Algo deu errado.'); } finally { delete rodando[c.id]; x.render(); }
+    } catch (e) { x.toast(e.message || 'Algo deu errado.'); } finally { fim(x, c); x.render(); }
   }
 
   // ── Edições (sempre criam versão; nada é sobrescrito) ───────────────────────
-  async function aposEdicao(x, c, efeito, msg) {
+  // Edição feita enquanto outra etapa roda: a arte é atualizada quando ela terminar.
+  const artePendente = {};
+  function fim(x, c) {
+    delete rodando[c.id];
+    if (artePendente[c.id]) { delete artePendente[c.id]; aposEdicao(x, c, null, null, { silencioso: true }); }
+  }
+
+  async function aposEdicao(x, c, efeito, msg, { silencioso = false } = {}) {
     const n = (efeito?.afirmacoes || []).length;
     await x.persistir(c); x.render();
-    x.toast(msg || (n ? `Mudou número ou fonte: ${n} afirmação(ões) voltaram para conferência.` : 'Salvo como nova versão.'));
-    if (rodando[c.id]) return;
+    if (!silencioso) x.toast(msg || (n ? `Mudou número ou fonte: ${n} afirmação(ões) voltaram para conferência.` : 'Salvo como nova versão.'));
+    if (rodando[c.id]) { artePendente[c.id] = true; return; }
     rodando[c.id] = true;
     try {
       marca(c, 'arte', 'em_andamento', { erro: null }); x.render();
       await atualizarArte(x, c);
       marca(c, 'arte', 'concluida', { erro: null, progresso: null });
-    } catch (e) { marca(c, 'arte', 'erro', { erro: e.message }); x.toast(`Arte não atualizada: ${e.message}`); } finally { delete rodando[c.id]; await x.persistir(c); x.render(); }
+    } catch (e) { marca(c, 'arte', 'erro', { erro: e.message }); x.toast(`Arte não atualizada: ${e.message}`); } finally { fim(x, c); await x.persistir(c); x.render(); }
   }
 
   function reabrirAprovacao(c) {
@@ -270,11 +311,11 @@
     const linhas = [`FICHA DE FONTES — ${c.titulo}`, `Conta: ${c.conta.handle || '@pedro_destrava'} · versão ${v.id} · aprovada em ${quando(c.revisao.aprovada_em)}`, ''];
     c.claims.filter((k) => usadas.has(k.id)).forEach((k) => {
       linhas.push(`• ${k.texto}`, `  Tipo: ${k.tipo} · Estado: ${(ESTADO_CLAIM[k.estado] || [, k.estado])[1]}${k.motivo_estado ? ` — ${k.motivo_estado}` : ''}`);
-      if (k.revisao?.aceito_com_ressalva) linhas.push('  Aceita com ressalva pelo Pedro.');
-      if (k.revisao?.resolvido) linhas.push(`  Contradição marcada como resolvida: ${k.revisao.resolvido.justificativa}`);
+      if (k.decisao) linhas.push(`  Decisão do Pedro: ${DECISAO[k.decisao.tipo]}${k.decisao.condicao ? ` — “${k.decisao.condicao}”` : ''} (${quando(k.decisao.em)})`);
       if (k.calculo) linhas.push(`  Cálculo: ${k.calculo.formula}; entradas ${(k.calculo.entradas || []).map((e) => `${e.nome}=${e.valor}`).join(', ')}; resultado ${k.calculo.resultado}`);
       (k.evidencias || []).map((id) => c.evidencias.find((e) => e.id === id)).filter(Boolean).forEach((e) => {
-        linhas.push(`  – ${e.origem} (${e.tipo}, ${RELACAO[e.relacao] || e.relacao})`, `    ${e.titulo || ''}`, `    ${e.url || ''}`, `    Publicada: ${dia(e.publicada_em)} · Consultada: ${quando(e.consultada_em)}${e.periodo ? ` · Período: ${e.periodo}` : ''}`);
+        const co = e.correspondencia || ({ sustenta: 'integral', parcial: 'parcial', contradiz: 'contradiz', neutra: 'nao_sustenta' })[e.relacao];
+        linhas.push(`  – ${e.origem} (${AUTORIDADE[e.autoridade] || e.autoridade || e.tipo}; ${(CORRESP[co] || [, co])[1]}${e.falta ? `; falta: ${e.falta}` : ''})`, `    ${e.titulo || ''}`, `    ${e.url || ''}`, `    Publicada: ${dia(e.publicada_em)} · Consultada: ${quando(e.consultada_em)}${e.periodo ? ` · Período: ${e.periodo}` : ''}`);
         if (e.trecho) linhas.push(`    Trecho: “${e.trecho}”`);
         if (e.limitacoes) linhas.push(`    Limites: ${e.limitacoes}`);
       });
@@ -365,31 +406,58 @@
       </div>`;
   }
 
+  const NATUREZA = { fato: 'Fato', dado: 'Dado', anuncio: 'Anúncio', declaracao: 'Declaração', previsao: 'Previsão', opiniao: 'Opinião' };
+  const CORRESP = { integral: ['ok', 'sustenta a afirmação inteira'], parcial: ['warn', 'sustenta só parte'], contradiz: ['err', 'contradiz'], nao_sustenta: ['neutro', 'não sustenta'] };
+  const AUTORIDADE = { primaria: 'fonte oficial / primária', reportagem: 'reportagem', republicacao: 'reprodução da mesma matéria (não é independente)', texto_colado: 'texto colado (prova só o que está escrito)' };
+  const DECISAO = { corrigir: 'Corrigida', atribuir: 'Publicar com atribuição/condição', retirar: 'Retirada', em_revisao: 'Em revisão' };
+  let decidindo = null; // { id, tipo }
+
+  function cartaoEvidencia(e) {
+    const co = e.correspondencia || ({ sustenta: 'integral', parcial: 'parcial', contradiz: 'contradiz', neutra: 'nao_sustenta' })[e.relacao] || 'nao_sustenta';
+    const au = e.autoridade || (e.tipo === 'primaria' ? 'primaria' : 'reportagem');
+    return `<div class="mz-bloco ed-ev"><b>${esc(e.origem)}${e.fonte_principal ? ' · a matéria que você trouxe' : ''}</b>
+      <span>1. Trecho: ${e.trecho_encontrado === false ? '<b class="ed-mal">não encontrado no documento</b>' : 'encontrado no documento'}${e.trecho ? ` — “${esc(e.trecho)}”` : ''}</span>
+      <span>2. Correspondência: <b class="ed-${CORRESP[co][0]}">${CORRESP[co][1]}</b>${e.falta ? ` — falta: ${esc(e.falta)}` : ''}</span>
+      <span>3. Qualidade: ${esc(AUTORIDADE[au] || au)} · publicada ${esc(dia(e.publicada_em))} · consultada ${esc(quando(e.consultada_em))}${e.periodo ? ` · período ${esc(e.periodo)}` : ''}${e.unidade ? ` · ${esc(e.unidade)}` : ''}${e.abrangencia ? ` · abrange: ${esc(e.abrangencia)}` : ''}${e.limitacoes ? ` · limites: ${esc(e.limitacoes)}` : ''}${e.desatualizada ? ' · <b>pode estar desatualizada</b>' : ''}</span>
+      ${e.url ? `<span><a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">abrir fonte</a></span>` : ''}</div>`;
+  }
+
+  function painelDecisao(c, k) {
+    const precisa = k.precisa_conferir || ['parcialmente_sustentada', 'nao_verificada', 'contradita'].includes(k.estado) || k.decisao;
+    if (!precisa) return '';
+    const sugestao = (() => { const e = (k.evidencias || []).map((id) => c.evidencias.find((x) => x.id === id)).find((x) => x && x.trecho_encontrado !== false && x.trecho); return e ? `segundo ${e.origem}` : ''; })();
+    const aberto = decidindo && decidindo.id === k.id ? decidindo.tipo : null;
+    const tipos = ['corrigir', ...(k.estado === 'contradita' ? [] : ['atribuir']), 'retirar', 'em_revisao'];
+    return `<div class="ed-decisao">
+      ${k.decisao ? `<div class="es-text"><b>Sua decisão:</b> ${esc(DECISAO[k.decisao.tipo])}${k.decisao.condicao ? ` — “${esc(k.decisao.condicao)}”` : ''} (${esc(quando(k.decisao.em))})</div>` : '<div class="es-text"><b>O que fazer com esta afirmação?</b></div>'}
+      <div class="es-actions" style="flex-wrap:wrap">${tipos.map((t) => `<button class="es-btn ${aberto === t ? '' : 'ghost'} sm" data-action="ed-decidir" data-id="${esc(k.id)}" data-tipo="${t}">${{ corrigir: 'Corrigir o texto', atribuir: 'Publicar com atribuição ou condição', retirar: 'Retirar', em_revisao: 'Manter em revisão' }[t]}</button>`).join('')}</div>
+      ${aberto === 'corrigir' ? `<textarea id="ed-dec-valor" class="es-input" rows="2">${esc(k.texto)}</textarea><button class="es-btn" data-action="ed-decidir-ok" data-id="${esc(k.id)}">Salvar e conferir nas fontes</button>` : ''}
+      ${aberto === 'atribuir' ? `<input id="ed-dec-valor" class="es-input" value="${esc(sugestao)}" placeholder="ex.: segundo o governo; ainda depende de aprovação; é uma estimativa"><div class="es-text">Essa expressão terá de aparecer em cada slide e na legenda que usarem a afirmação.</div><button class="es-btn" data-action="ed-decidir-ok" data-id="${esc(k.id)}">Confirmar</button>` : ''}
+    </div>`;
+  }
+
   function cartaoClaim(c, k) {
-    const [cls, rot] = k.tipo === 'opiniao' ? ['neutro', 'Opinião'] : (ESTADO_CLAIM[k.estado] || ESTADO_CLAIM.nao_verificada);
+    const opin = k.tipo === 'opiniao' || k.natureza === 'opiniao';
+    const [cls, rot] = opin ? ['neutro', 'Opinião'] : (ESTADO_CLAIM[k.estado] || ESTADO_CLAIM.nao_verificada);
     const ev = (k.evidencias || []).map((id) => c.evidencias.find((e) => e.id === id)).filter(Boolean);
     const rev = k.revisao || {};
     const log = c.pesquisa_log?.[k.id];
     const aberto = abertos.has(`k:${k.id}`);
-    return `<div class="es-card ed-claim">
-      <div class="es-row" style="flex-wrap:wrap;gap:6px"><span class="mz-chip ${cls}">${rot}</span>${k.central ? '<span class="mz-chip neutro">Central</span>' : ''}${k.risco === 'alto' ? '<span class="mz-chip err">Sensível</span>' : ''}${k.mutavel ? '<span class="mz-chip warn">Pode mudar</span>' : ''}${rev.reaberta_em && !rev.confirmada_por_pedro ? '<span class="mz-chip warn">Reaberta por edição</span>' : ''}${rev.aceito_com_ressalva ? '<span class="mz-chip ok">Aceita com ressalva</span>' : ''}${rev.confirmada_por_pedro ? '<span class="mz-chip ok">Você confirmou</span>' : ''}${rev.resolvido ? '<span class="mz-chip ok">Contradição resolvida</span>' : ''}</div>
+    const nat = M.naturezaDe(k);
+    return `<div class="es-card ed-claim" data-claim="${esc(k.id)}">
+      <div class="es-row" style="flex-wrap:wrap;gap:6px"><span class="mz-chip ${cls}">${rot}</span>${opin ? '' : `<span class="mz-chip neutro">${NATUREZA[nat]}</span>`}${k.central ? '<span class="mz-chip neutro">Central</span>' : ''}${k.risco === 'alto' ? '<span class="mz-chip err">Sensível</span>' : ''}${k.mutavel ? '<span class="mz-chip warn">Pode mudar</span>' : ''}${M.EXIGE_ATRIBUICAO.has(nat) ? '<span class="mz-chip warn">No texto: dizer quem anunciou/disse</span>' : ''}${k.origem === 'pedro' ? '<span class="mz-chip neutro">Sua afirmação</span>' : ''}${rev.reaberta_em && !rev.confirmada_por_pedro ? '<span class="mz-chip warn">Reaberta por edição</span>' : ''}${rev.confirmada_por_pedro ? '<span class="mz-chip ok">Você confirmou</span>' : ''}</div>
       <div class="es-text" style="margin-top:6px;color:var(--es-dark)">${esc(k.texto)}</div>
-      ${k.motivo_estado && k.tipo !== 'opiniao' ? `<div class="es-text">${esc(k.motivo_estado)}</div>` : ''}
-      ${k.tipo === 'opiniao' ? `<div class="es-text">Opinião sua. Premissas factuais: ${(k.premissas || []).map((id) => esc(c.claims.find((x) => x.id === id)?.texto || id)).join('; ') || '—'}</div>` : ''}
-      <details class="mz-det" data-aberto="k:${esc(k.id)}" ${aberto ? 'open' : ''}><summary>${ev.length} fonte(s) e como foi conferida</summary>
-        ${ev.map((e) => `<div class="mz-bloco"><b>${esc(e.origem)} · ${e.tipo === 'primaria' ? 'fonte primária' : 'matéria'} · ${esc(RELACAO[e.relacao] || e.relacao)}${e.fonte_principal ? ' · é a matéria que você trouxe' : ''}${e.grupo === 'g0' && !e.fonte_principal ? ' · mesma origem da matéria (não conta como independente)' : ''}</b>
-          <span>${esc(e.titulo || '')}</span>
-          ${e.trecho ? `<span>“${esc(e.trecho)}”</span>` : ''}
-          <span>Publicada ${esc(dia(e.publicada_em))} · consultada ${esc(quando(e.consultada_em))}${e.periodo ? ` · período ${esc(e.periodo)}` : ''}${e.unidade ? ` · ${esc(e.unidade)}` : ''}</span>
-          ${e.abrangencia ? `<span>Abrange: ${esc(e.abrangencia)}</span>` : ''}${e.limitacoes ? `<span>Limites: ${esc(e.limitacoes)}</span>` : ''}${e.desatualizada ? '<span><b>Pode estar desatualizada.</b></span>' : ''}
-          ${e.url ? `<span><a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">abrir fonte</a></span>` : ''}</div>`).join('')}
-        ${log ? `<div class="mz-bloco"><b>Como a conferência foi feita (${esc(quando(log.em))})</b>${(log.log || []).map((l) => `<span>${esc(l)}</span>`).join('')}</div>` : ''}
+      ${k.motivo_estado && !opin ? `<div class="es-text">${esc(k.motivo_estado)}</div>` : ''}
+      ${opin ? `<div class="es-text">Opinião sua. Premissas factuais: ${(k.premissas || []).map((id) => esc(c.claims.find((x) => x.id === id)?.texto || id)).join('; ') || '—'}</div>` : ''}
+      ${(k.textos_anteriores || []).length ? `<div class="es-text">Antes: “${esc(k.textos_anteriores[k.textos_anteriores.length - 1].texto)}”</div>` : ''}
+      <details class="mz-det" data-aberto="k:${esc(k.id)}" ${aberto ? 'open' : ''}><summary>${ev.length} fonte(s): trecho, correspondência e qualidade</summary>
+        ${ev.map(cartaoEvidencia).join('') || '<div class="es-text">Nenhum trecho localizado nas fontes acessadas.</div>'}
+        ${log ? `<div class="mz-bloco"><b>Como a busca foi feita (${esc(quando(log.em))})</b>${(log.log || []).map((l) => `<span>${esc(l)}</span>`).join('')}</div>` : ''}
       </details>
-      ${k.tipo === 'opiniao' ? '' : `<div class="es-actions" style="flex-wrap:wrap">
-        <button class="es-btn ghost sm" data-action="ed-verificar" data-id="${esc(k.id)}" ${rodando[c.id] ? 'disabled' : ''}>Conferir de novo</button>
-        ${k.estado === 'parcialmente_sustentada' && !rev.aceito_com_ressalva ? `<button class="es-btn ghost sm" data-action="ed-ressalva" data-id="${esc(k.id)}">Aceitar com ressalva</button>` : ''}
+      ${opin ? '' : painelDecisao(c, k)}
+      ${opin ? '' : `<div class="es-actions" style="flex-wrap:wrap">
+        ${k.precisa_conferir ? `<button class="es-btn sm" data-action="ed-conferir" data-id="${esc(k.id)}" ${rodando[c.id] ? 'disabled' : ''}>Conferir o texto corrigido</button>` : `<button class="es-btn ghost sm" data-action="ed-verificar" data-id="${esc(k.id)}" ${rodando[c.id] ? 'disabled' : ''}>Buscar outras fontes</button>`}
         ${k.risco === 'alto' && !rev.confirmada_por_pedro ? `<button class="es-btn ghost sm" data-action="ed-confirmar" data-id="${esc(k.id)}">Li a fonte e confirmo</button>` : ''}
-        ${k.estado === 'contradita' && !rev.resolvido ? `<button class="es-btn ghost sm" data-action="ed-resolver" data-id="${esc(k.id)}">Marcar como resolvida</button>` : ''}
       </div>`}
     </div>`;
   }
@@ -400,7 +468,12 @@
     return `<div class="es-label">Conferência dos fatos</div>
       <div class="es-text" style="margin-bottom:8px">${c.claims.filter((k) => k.estado === 'sustentada').length} sustentada(s) · ${c.claims.filter((k) => k.estado === 'parcialmente_sustentada').length} em parte · ${c.claims.filter((k) => k.estado === 'contradita').length} contradita(s) · ${c.claims.filter((k) => k.estado === 'nao_verificada' && k.tipo !== 'opiniao').length} não verificada(s). As fontes são mostradas em cada afirmação.</div>
       ${(c.pipeline.afirmacoes?.descartadas || []).length ? `<div class="es-text">${c.pipeline.afirmacoes.descartadas.length} afirmação(ões) sugerida(s) pela IA foram descartadas porque o trecho citado não existe na matéria.</div>` : ''}
-      <div class="es-stack">${fatos.map((k) => cartaoClaim(c, k)).join('')}</div>`;
+      <div class="es-stack">${fatos.map((k) => cartaoClaim(c, k)).join('')}</div>
+      <details class="mz-det" data-aberto="nova" ${abertos.has('nova') ? 'open' : ''}><summary>Conferir uma afirmação sua</summary>
+        <div class="es-text">Escreva o que você quer dizer. O sistema confere no que já foi lido e mostra se o trecho sustenta a afirmação inteira.</div>
+        <textarea id="ed-nova-afirmacao" class="es-input" rows="2" placeholder="Ex.: a medida já está em vigor"></textarea>
+        <button class="es-btn ghost" data-action="ed-nova-afirmacao" ${rodando[c.id] ? 'disabled' : ''}>Conferir</button>
+      </details>`;
   }
 
   const opcoes = (obj, atual) => Object.entries(obj).map(([k, v]) => `<option value="${esc(k)}" ${k === atual ? 'selected' : ''}>${esc(typeof v === 'string' ? v : v.nome || v.rotulo || k)}</option>`).join('');
@@ -508,7 +581,7 @@
     return `<div class="es-label">Revisão</div>
       <div class="es-card">
         <div class="mz-top">${chip(r.conta === 'ok', 'Conta: ' + (r.conta === 'ok' ? '@pedro_destrava' : 'incorreta'))}${chip(r.fatos === 'ok', 'Fatos: ' + (r.fatos === 'ok' ? 'ok' : r.fatos === 'contradicao' ? 'contradição' : 'pendências'))}${chip(r.arte === 'ok', 'Arte: ' + (r.arte === 'ok' ? 'ok' : 'pendências'))}${chip(r.redacao === 'ok', 'Redação: ' + (r.redacao === 'ok' ? 'sem sugestões' : g.sugestoes.length + ' sugestão(ões)'))}</div>
-        ${g.bloqueios.length ? `<b>Impedem aprovar (${g.bloqueios.length})</b>${agrupar(g.bloqueios).map((gr) => `<div class="ed-bloq"><b>${esc(gr.titulo)}${gr.itens.length > 1 ? ` (${gr.itens.length})` : ''}</b>${gr.itens.length === 1 ? `<br>${esc(gr.itens[0].detalhe)}` : `<ul>${gr.itens.map((b) => `<li>${esc(b.detalhe)}</li>`).join('')}</ul>`}${gr.acao ? `<br><small>${esc(gr.acao)}</small>` : ''}${gr.id === 'afirmacao_parcial' ? '<br><button class="es-btn ghost sm" style="margin-top:6px;width:auto" data-action="ed-ressalva-todas">Li as fontes e aceito com ressalva</button>' : ''}</div>`).join('')}` : '<div class="es-text"><b>Nenhum bloqueio.</b> Fatos, conta e arte estão em ordem.</div>'}
+        ${g.bloqueios.length ? `<b>Impedem aprovar (${g.bloqueios.length})</b>${agrupar(g.bloqueios).map((gr) => `<div class="ed-bloq"><b>${esc(gr.titulo)}${gr.itens.length > 1 ? ` (${gr.itens.length})` : ''}</b>${gr.itens.length === 1 ? `<br>${esc(gr.itens[0].detalhe)}` : `<ul>${gr.itens.map((b) => `<li>${esc(b.detalhe)}</li>`).join('')}</ul>`}${gr.acao ? `<br><small>${esc(gr.acao)}</small>` : ''}${gr.itens.some((b) => b.onde?.claim) ? '<br><small>Decida em cada afirmação, na seção “Conferência dos fatos”.</small>' : ''}</div>`).join('')}` : '<div class="es-text"><b>Nenhum bloqueio.</b> Fatos, conta e arte estão em ordem.</div>'}
         ${g.sugestoes.length ? `<details class="mz-det" data-aberto="sug" ${abertos.has('sug') ? 'open' : ''}><summary>Sugestões de redação (não impedem nada)</summary>${g.sugestoes.map((b) => `<div class="mz-bloco"><b>${esc(b.titulo)}</b><span>${esc(b.detalhe)}</span></div>`).join('')}</details>` : ''}
         ${aprovado ? `<div class="es-text" style="margin-top:8px"><b>Aprovada</b> em ${esc(quando(c.revisao.aprovada_em))} (versão ${esc(v.id)}).</div>` : `<button class="es-btn" style="margin-top:10px" data-action="ed-aprovar" ${g.bloqueios.length ? 'disabled' : ''}>Aprovar esta versão</button>`}
         ${aprovado ? '<button class="es-btn" data-action="ed-exportar">Exportar arquivos (PNG, legenda e fontes)</button>' : ''}
@@ -524,6 +597,7 @@
     return `<details class="mz-det" data-aberto="ver" ${abertos.has('ver') ? 'open' : ''}><summary>Versões (${c.copia.versoes.length}) e histórico</summary>
       ${c.copia.versoes.slice().reverse().map((v) => `<div class="mz-bloco"><b>${esc(v.id)}${v.id === ativa ? ' · ativa' : ''}${c.revisao.aprovada_versao === v.id ? ' · aprovada' : ''} — ${esc(v.rotulo || '')}</b><span>${esc(quando(v.criada_em))} · por ${esc(v.origem)}</span><span>Capa: ${esc((v.slides[0]?.texto || '').slice(0, 90))}</span>
         ${v.id !== ativa ? `<button class="es-btn ghost sm" data-action="ed-ativar" data-v="${esc(v.id)}">Voltar para esta versão</button>` : ''}</div>`).join('')}
+      ${(() => { const k = resumoConsumo(c); return `<div class="mz-bloco"><b>Consumo deste conteúdo</b><span>${k.chamadas} chamada(s) de IA${k.falhas ? ` (${k.falhas} falharam)` : ''} em ${k.etapas} etapa(s) · ${esc(k.modelos.join(', ') || '—')}</span><span>Tokens: ${k.entrada} de entrada, ${k.saida} de saída${k.semTokens ? ` (${k.semTokens} chamada(s) sem contagem do provedor)` : ''} · tentativas extras de provedor: ${k.tentativas_extra} · tempo de servidor: ${k.tempo_s}s</span><span>Custo: desconhecido — o provedor não informa preço na resposta${k.pago ? '; houve chamada a provedor PAGO' : ''}.</span></div>`; })()}
       <div class="mz-bloco"><b>Últimos eventos</b>${c.historico.slice(-8).reverse().map((h) => `<span>${esc(quando(h.em))} · ${esc(h.resumo)}</span>`).join('')}</div>
     </details>`;
   }
@@ -602,22 +676,34 @@
           reabrirAprovacao(c);
           marca(c, 'pesquisa', 'concluida', { progresso: null }); M.registrar(c, 'pedro', 'pesquisa', 'Conferiu uma afirmação de novo');
         } catch (e) { marca(c, 'pesquisa', estadoAntes === 'concluida' ? 'concluida' : 'erro', { erro: e.message }); x.toast(e.message); }
-        delete rodando[c.id]; await x.persistir(c); x.render(); return true;
+        fim(x, c); await x.persistir(c); x.render(); return true;
       }
-      case 'ed-ressalva': claim().revisao = { ...claim().revisao, aceito_com_ressalva: true }; reabrirAprovacao(c); M.registrar(c, 'pedro', 'revisao', 'Aceitou afirmação com ressalva'); await x.persistir(c); x.render(); return true;
-      case 'ed-ressalva-todas': {
-        const g = G.avaliar(c, { conta: M.ACCOUNT_PIN });
-        const ids = new Set(g.bloqueios.filter((b) => b.id === 'afirmacao_parcial').map((b) => b.onde?.claim));
-        ids.forEach((cid) => { const k = c.claims.find((q) => q.id === cid); if (k) k.revisao = { ...k.revisao, aceito_com_ressalva: true }; });
-        reabrirAprovacao(c); M.registrar(c, 'pedro', 'revisao', `Aceitou ${ids.size} afirmação(ões) com ressalva`); await x.persistir(c); x.render(); return true;
+      case 'ed-decidir': {
+        const tipo = el.dataset.tipo;
+        if (tipo === 'corrigir' || tipo === 'atribuir') { decidindo = decidindo && decidindo.id === id && decidindo.tipo === tipo ? null : { id, tipo }; x.render(); return true; }
+        if (tipo === 'retirar' && !window.confirm('Retirar esta afirmação? Ela não poderá ser usada no texto.')) return true;
+        try { M.decidirAfirmacao(c, id, { tipo }); } catch (e) { x.toast(e.message); return true; }
+        decidindo = null; await x.persistir(c); x.render(); x.toast(tipo === 'retirar' ? 'Afirmação retirada. Tire-a do texto onde aparecer.' : 'Mantida em revisão.'); return true;
+      }
+      case 'ed-decidir-ok': {
+        const valor = document.getElementById('ed-dec-valor')?.value || '';
+        const tipo = decidindo?.tipo;
+        try { M.decidirAfirmacao(c, id, tipo === 'corrigir' ? { tipo, texto_novo: valor } : { tipo, condicao: valor }); } catch (e) { x.toast(e.message); return true; }
+        decidindo = null; await x.persistir(c); x.render();
+        if (tipo === 'corrigir') await conferirUma(x, c, c.claims.find((q) => q.id === id));
+        else x.toast('Decisão registrada. A expressão precisa aparecer no texto público.');
+        return true;
+      }
+      case 'ed-conferir': await conferirUma(x, c, claim()); return true;
+      case 'ed-nova-afirmacao': {
+        const t = document.getElementById('ed-nova-afirmacao')?.value.trim() || '';
+        if (t.length < 12) { x.toast('Escreva a afirmação completa.'); return true; }
+        const n = c.claims.filter((q) => q.origem === 'pedro').length + 1;
+        const nova = { id: `p${n}`, texto: t, tipo: 'fato', central: true, risco: 'baixo', evidencias: [], origem: 'pedro', estado: 'nao_verificada', revisao: {}, criada_em: new Date().toISOString() };
+        c.claims.push(nova); M.registrar(c, 'pedro', 'afirmacao', 'Escreveu uma afirmação para conferir');
+        await x.persistir(c); await conferirUma(x, c, nova); return true;
       }
       case 'ed-confirmar': claim().revisao = { ...claim().revisao, confirmada_por_pedro: true, confirmada_em: new Date().toISOString() }; reabrirAprovacao(c); M.registrar(c, 'pedro', 'revisao', 'Confirmou assunto sensível após ler a fonte'); await x.persistir(c); x.render(); return true;
-      case 'ed-resolver': {
-        const j = window.prompt('Por que a contradição não impede o post? (fica registrado)');
-        if (!j || j.trim().length < 8) { x.toast('Escreva a justificativa (pelo menos uma frase).'); return true; }
-        claim().revisao = { ...claim().revisao, resolvido: { justificativa: j.trim(), em: new Date().toISOString() } };
-        reabrirAprovacao(c); M.registrar(c, 'pedro', 'revisao', 'Marcou contradição como resolvida'); await x.persistir(c); x.render(); return true;
-      }
       case 'ed-mover': {
         const v = M.versaoAtiva(c); const ids = v.slides.map((s) => s.id); const i = ids.indexOf(id); const d = Number(el.dataset.d);
         const ultimoMovel = v.slides[ids.length - 1].layout === 'encerramento' ? ids.length - 2 : ids.length - 1;
@@ -636,8 +722,8 @@
         const ef = novaVersaoCom(c, (d) => { d.slides = d.slides.filter((s) => s.id !== id); }, 'Slide removido');
         await aposEdicao(x, c, ef); return true;
       }
-      case 'ed-refazer-arte': { marca(c, 'arte', 'em_andamento'); rodando[c.id] = true; x.render(); try { await atualizarArte(x, c, { soSlide: id }); marca(c, 'arte', 'concluida'); } catch (e) { marca(c, 'arte', 'erro', { erro: e.message }); x.toast(e.message); } delete rodando[c.id]; await x.persistir(c); x.render(); return true; }
-      case 'ed-arte-todas': { rodando[c.id] = true; marca(c, 'arte', 'em_andamento'); x.render(); try { await atualizarArte(x, c, { todos: true }); marca(c, 'arte', 'concluida', { progresso: null }); } catch (e) { marca(c, 'arte', 'erro', { erro: e.message }); x.toast(e.message); } delete rodando[c.id]; await x.persistir(c); x.render(); return true; }
+      case 'ed-refazer-arte': { marca(c, 'arte', 'em_andamento'); rodando[c.id] = true; x.render(); try { await atualizarArte(x, c, { soSlide: id }); marca(c, 'arte', 'concluida'); } catch (e) { marca(c, 'arte', 'erro', { erro: e.message }); x.toast(e.message); } fim(x, c); await x.persistir(c); x.render(); return true; }
+      case 'ed-arte-todas': { rodando[c.id] = true; marca(c, 'arte', 'em_andamento'); x.render(); try { await atualizarArte(x, c, { todos: true }); marca(c, 'arte', 'concluida', { progresso: null }); } catch (e) { marca(c, 'arte', 'erro', { erro: e.message }); x.toast(e.message); } fim(x, c); await x.persistir(c); x.render(); return true; }
       case 'ed-ativar': M.ativarVersao(c, el.dataset.v); aposEdicao(x, c, null, `Voltou para a versão ${el.dataset.v}.`); return true;
       case 'ed-desfazer': M.desfazer(c); await aposEdicao(x, c, null, 'Voltou para a versão anterior.'); return true;
       case 'ed-aprovar': {

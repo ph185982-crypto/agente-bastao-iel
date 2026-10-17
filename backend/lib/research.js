@@ -88,8 +88,10 @@ async function levantarAfirmacoes(fonte, d0, { max = 8 } = {}) {
     temperatura: 0.1, maxTokens: 4500,
     sistema: `Você é um checador de fatos cuidadoso. Extrai afirmações do texto e NUNCA acrescenta nada que não esteja nele.\n${d.llmJson.REGRAS_DADOS}`,
     usuario: `Do texto abaixo, liste as afirmações FACTUAIS e CHECÁVEIS (no máximo ${max}). Para cada uma:
-- texto: frase completa e autônoma (sem pronomes ambíguos), com os números exatos do texto;
-- tipo: "fato", "calculo", "declaracao" (alguém DISSE algo: escreva "Fulano disse que…" e crie à parte a afirmação de fundo como "fato") ou "opiniao";
+- texto: frase completa e autônoma (sem pronomes ambíguos), com os números exatos do texto. NÃO fortaleça o que o texto diz: se o texto fala em proposta, estudo, intenção ou previsão, a afirmação diz isso ("O governo anunciou que pretende…", "O ministro estima que…"), nunca "a medida está em vigor" ou "a medida vai gerar";
+- tipo: "fato", "calculo", "declaracao" (alguém DISSE algo: escreva "Fulano disse que…") ou "opiniao";
+- natureza: "fato" (algo que aconteceu ou está em vigor), "dado" (número/estatística), "anuncio" (proposta, plano, intenção anunciada), "declaracao" (o que alguém disse), "previsao" (efeito futuro estimado) ou "opiniao";
+- correspondencia: o trecho sustenta a afirmação INTEIRA ("integral") ou só parte ("parcial")? Se parcial, diga em "falta" o que não está no trecho;
 - central: true só nas 3 ou 4 que sustentam a notícia;
 - trecho: cópia EXATA e literal (até 300 caracteres) do texto que contém a afirmação. Não resuma, não corrija, não una pedaços;
 - quando: data do acontecimento, só se o texto disser (senão null);
@@ -100,7 +102,7 @@ async function levantarAfirmacoes(fonte, d0, { max = 8 } = {}) {
 
 ${entrada.bloco}
 
-Responda APENAS JSON: {"afirmacoes":[{"texto":"","tipo":"fato","central":true,"trecho":"","quando":null,"mutavel":false,"risco":"baixo","valores":[],"conector":null}]}`,
+Responda APENAS JSON: {"afirmacoes":[{"texto":"","tipo":"fato","natureza":"fato","correspondencia":"integral","falta":"","central":true,"trecho":"","quando":null,"mutavel":false,"risco":"baixo","valores":[],"conector":null}]}`,
   });
 
   const descartadas = [];
@@ -113,18 +115,27 @@ Responda APENAS JSON: {"afirmacoes":[{"texto":"","tipo":"fato","central":true,"t
     const achou = Ev.acharTrecho(fonte.texto, a.trecho);
     if (!achou.ok) { descartadas.push({ texto: String(a.texto).slice(0, 120), motivo: achou.motivo }); return; }
     const tipo = ['fato', 'calculo', 'declaracao', 'opiniao'].includes(a.tipo) ? a.tipo : 'fato';
+    const natureza = M.NATUREZAS.includes(a.natureza) ? a.natureza : M.naturezaDe({ tipo });
     const id = `a${claims.length + 1}`;
+    // Correspondência: a IA diz se o trecho cobre tudo; o código confere os números.
+    let correspondencia = a.correspondencia === 'parcial' ? 'parcial' : 'integral';
+    let falta = a.falta ? String(a.falta) : null;
+    const ausentes = Ev.numerosAusentes(a.texto, a.trecho);
+    if (ausentes.length) { correspondencia = 'parcial'; falta = `o trecho não traz ${ausentes.join(', ')}`; }
+    const colado = fonte.tipo === 'texto';
     const e = Ev.novaEvidencia({
-      via: 'artigo', tipo: 'secundaria', url: fonte.url_final || fonte.url, titulo: fonte.titulo, origem: fonte.veiculo,
+      via: colado ? 'texto_colado' : 'artigo', url: fonte.url_final || fonte.url, titulo: fonte.titulo, origem: fonte.veiculo,
       trecho: String(a.trecho).slice(0, 400), publicada_em: fonte.publicada_em, consultada_em: fonte.acessada_em,
-      abrangencia: tipo === 'declaracao' ? 'Prova que a declaração foi feita, não que seja verdadeira' : 'O que a matéria afirma',
-      limitacoes: 'Fonte única até aqui: uma matéria não confirma a si mesma.', relacao: tipo === 'opiniao' ? 'neutra' : 'sustenta',
+      abrangencia: natureza === 'declaracao' || natureza === 'anuncio' ? 'Prova que foi dito/anunciado, não que seja verdade ou que vá acontecer' : 'O que o texto afirma',
+      limitacoes: colado ? 'Texto colado: prova o que está escrito nele, não que seja verdadeiro.' : null,
+      correspondencia: tipo === 'opiniao' ? 'nao_sustenta' : correspondencia, falta,
+      autoridade: colado ? 'texto_colado' : undefined,
       grupo: grupoPrincipal, dominio: fonte.dominio, via_fonte_principal: true,
     });
     e.fonte_principal = true;
     evidFonte.push(e);
     claims.push({
-      id, texto: String(a.texto).slice(0, 400), tipo, central: !!a.central, risco: a.risco === 'alto' ? 'alto' : 'baixo',
+      id, texto: String(a.texto).slice(0, 400), tipo, natureza, central: !!a.central, risco: a.risco === 'alto' ? 'alto' : 'baixo',
       quando: a.quando || null, mutavel: !!a.mutavel, valores: (Array.isArray(a.valores) ? a.valores : []).filter((v) => v && Number.isFinite(Number(v.valor))).map((v) => ({ valor: Number(v.valor), unidade: String(v.unidade || ''), periodo: String(v.periodo || '') })),
       conector: validaConector(a.conector), evidencias: [e.id], origem: 'fonte_principal', criada_em: hoje, revisao: {},
     });
@@ -136,13 +147,22 @@ Responda APENAS JSON: {"afirmacoes":[{"texto":"","tipo":"fato","central":true,"t
   if (!claims.length) throw Object.assign(new Error('Não consegui extrair afirmações verificáveis desse texto.'), { code: 'SEM_AFIRMACOES', descartadas });
   claims.forEach((c) => {
     const r = M.avaliarAfirmacao(c, evidFonte);
-    c.estado = c.tipo === 'opiniao' ? 'nao_verificada' : r.estado;
+    c.estado = r.estado;
     c.motivo_estado = r.motivo;
+    c.exige_atribuicao = r.exige_atribuicao;
   });
   return { claims, evidencias: evidFonte, descartadas, llm };
 }
 
 // ── 3. Verificar uma afirmação ─────────────────────────────────────────────
+const normPer = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+function diferePeriodoOuUnidade(claim, m) {
+  const pers = (claim.valores || []).map((v) => normPer(v.periodo)).filter(Boolean);
+  const unis = (claim.valores || []).map((v) => normPer(v.unidade)).filter(Boolean);
+  const pm = normPer(m.periodo); const um = normPer(m.unidade);
+  return (pm && pers.length && !pers.some((p) => p === pm || p.includes(pm) || pm.includes(p))) || (um && unis.length && !unis.some((u) => u === um || u.includes(um) || um.includes(u)));
+}
+
 const STOP_EXTRA = new Set(['segundo', 'disse', 'afirmou', 'afirma', 'ainda', 'tambem', 'outro', 'outra', 'sobre', 'entre', 'apos', 'desde', 'quando', 'governo', 'federal']);
 
 function consultaDe(claim, feeds) {
@@ -171,8 +191,9 @@ async function verificarAfirmacao(claim, fonte, evidenciasAtuais, d0, { maxCandi
         const e = r.evidencia;
         if (con.valor_dito != null) {
           e.relacao = d.connectors.compararNumero(con.valor_dito, r.valor);
+          e.correspondencia = e.relacao === 'sustenta' ? 'integral' : 'contradiz';
           e.explicacao = e.relacao === 'sustenta' ? `O valor dito (${con.valor_dito}) confere com o oficial (${r.valor}).` : `O valor dito (${con.valor_dito}) difere do oficial (${r.valor}).`;
-        } else { e.relacao = 'neutra'; e.explicacao = 'Há dado oficial, mas a afirmação não traz valor para comparar.'; }
+        } else { e.relacao = 'neutra'; e.correspondencia = 'nao_sustenta'; e.explicacao = 'Há dado oficial, mas a afirmação não traz valor para comparar.'; }
         novas.push(e);
         log.push(`Banco Central (SGS ${con.serie}, ${con.periodo}): ${r.valor}`);
       } else log.push(`Banco Central: sem valor para ${con.periodo}`);
@@ -181,7 +202,7 @@ async function verificarAfirmacao(claim, fonte, evidenciasAtuais, d0, { maxCandi
   if (con?.tipo === 'camara') {
     try {
       const r = await d.connectors.proposicaoCamara({ sigla: con.sigla, numero: con.numero, ano: con.ano });
-      if (r) { r.evidencia.relacao = 'neutra'; r.evidencia.explicacao = 'Situação oficial na Câmara (compare com o que a matéria diz).'; novas.push(r.evidencia); log.push(`Câmara: ${con.sigla} ${con.numero}/${con.ano} está "${r.situacao}"`); }
+      if (r) { r.evidencia.relacao = 'neutra'; r.evidencia.correspondencia = 'nao_sustenta'; r.evidencia.explicacao = 'Situação oficial na Câmara (compare com o que a matéria diz).'; novas.push(r.evidencia); log.push(`Câmara: ${con.sigla} ${con.numero}/${con.ano} está "${r.situacao}"`); }
       else log.push(`Câmara: ${con.sigla} ${con.numero}/${con.ano} não encontrada`);
     } catch (e) { log.push(`Câmara indisponível: ${e.message}`); }
   }
@@ -221,33 +242,47 @@ async function verificarAfirmacao(claim, fonte, evidenciasAtuais, d0, { maxCandi
         sistema: `Você compara matérias com uma afirmação e é rigoroso: só diz que uma matéria "sustenta" se ela afirma, com as mesmas grandezas, o que a afirmação diz.\n${d.llmJson.REGRAS_DADOS}`,
         usuario: `AFIRMAÇÃO A VERIFICAR: ${claim.texto}
 Para cada MATERIA_i abaixo responda:
-- relacao: "sustenta" (afirma o mesmo, com os mesmos números/pessoas), "contradiz" (afirma algo incompatível), "parcial" (cobre só parte, ou números/período diferentes) ou "neutra" (não trata do assunto);
-- trecho: cópia EXATA e literal (até 300 caracteres) da matéria que fundamenta a relação (vazio se neutra);
+- correspondencia: "integral" (o trecho afirma o mesmo, com os mesmos números, pessoas, período e status), "parcial" (cobre só parte, ou o status é outro: proposta × aprovado × em vigor), "contradiz" (afirma algo incompatível NO MESMO período e unidade) ou "nao_sustenta" (não trata disso);
+- trecho: cópia EXATA e literal (até 300 caracteres) da matéria que fundamenta a resposta (vazio se nao_sustenta);
+- falta: se parcial, o que a afirmação diz e o trecho não;
 - explicacao: 1 frase;
-- periodo, abrangencia, limitacoes: o que o trecho cobre e o que NÃO cobre (ex.: só um estado, só um mês, só a Câmara).
+- periodo, unidade, abrangencia, limitacoes: o que o trecho cobre e o que NÃO cobre (ex.: só um estado, só um mês, só a Câmara).
+Números diferentes de períodos, bases ou unidades diferentes NÃO são contradição: são "parcial".
 Não use conhecimento externo.
 
 ${blocos}
 
-Responda APENAS JSON: {"materias":[{"i":0,"relacao":"neutra","trecho":"","explicacao":"","periodo":"","abrangencia":"","limitacoes":""}]}`,
+Responda APENAS JSON: {"materias":[{"i":0,"correspondencia":"nao_sustenta","trecho":"","falta":"","explicacao":"","periodo":"","unidade":"","abrangencia":"","limitacoes":""}]}`,
       });
       for (const m of dados.materias || []) {
         const p = legiveis[m.i];
         if (!p) continue;
-        let relacao = ['sustenta', 'contradiz', 'parcial', 'neutra'].includes(m.relacao) ? m.relacao : 'neutra';
+        let correspondencia = Ev.CORRESP.includes(m.correspondencia) ? m.correspondencia : (Ev.CORRESP_DE[m.relacao] || 'nao_sustenta');
         let trecho = String(m.trecho || '');
-        if (relacao !== 'neutra') {
+        let falta = m.falta ? String(m.falta) : null;
+        let encontrado = true;
+        if (correspondencia !== 'nao_sustenta') {
           const ok = Ev.acharTrecho(p.texto, trecho);
-          if (!ok.ok) { relacao = 'neutra'; trecho = ''; log.push(`${p.veiculo}: o trecho citado não está na matéria; descartei o julgamento`); }
+          if (!ok.ok) { encontrado = false; log.push(`${p.veiculo || p.origem}: o trecho citado não está na matéria; o julgamento foi descartado`); }
+        }
+        if (encontrado && correspondencia === 'integral') {
+          const ausentes = Ev.numerosAusentes(claim.texto, trecho);
+          if (ausentes.length) { correspondencia = 'parcial'; falta = `o trecho não traz ${ausentes.join(', ')}`; }
+        }
+        // Números de períodos/unidades diferentes não são contradição.
+        if (correspondencia === 'contradiz' && diferePeriodoOuUnidade(claim, m)) {
+          correspondencia = 'parcial';
+          falta = `compara período/unidade diferentes (${[m.periodo, m.unidade].filter(Boolean).join(', ')}): não é contradição`;
         }
         const e = Ev.novaEvidencia({
-          via: 'artigo', tipo: 'secundaria', url: p.url, titulo: p.titulo, origem: p.veiculo || p.origem, trecho, publicada_em: p.publicada_em, consultada_em: p.consultada_em,
-          periodo: m.periodo || null, abrangencia: m.abrangencia || null, limitacoes: m.limitacoes || null, relacao, explicacao: m.explicacao, dominio: p.dominio, llm,
+          via: 'artigo', url: p.url, titulo: p.titulo, origem: p.veiculo || p.origem, trecho, publicada_em: p.publicada_em, consultada_em: p.consultada_em,
+          periodo: m.periodo || null, unidade: m.unidade || null, abrangencia: m.abrangencia || null, limitacoes: m.limitacoes || null,
+          correspondencia, falta, trecho_encontrado: encontrado, explicacao: m.explicacao, dominio: p.dominio, llm,
         });
         e.texto_completo = p.texto;
         Ev.marcarDesatualizada(e, { mutavel: claim.mutavel, agora: hoje });
         novas.push(e);
-        log.push(`${e.origem}: ${relacao}`);
+        log.push(`${e.origem}: ${encontrado ? correspondencia : 'trecho não encontrado'}`);
       }
     } catch (e) { log.push(`Comparação por IA indisponível: ${e.message}`); }
   } else if (candidatos.length) {
@@ -257,16 +292,76 @@ Responda APENAS JSON: {"materias":[{"i":0,"relacao":"neutra","trecho":"","explic
 
   // Independência: mesmo domínio ou texto muito parecido = mesmo grupo.
   Ev.agrupar(novas, { dominio: dominioFonte, texto: fonte.texto });
-  novas.forEach((e) => { delete e.texto_completo; });
+  novas.forEach((e) => {
+    delete e.texto_completo;
+    if (e.via === 'artigo' && e.grupo === 'g0') { e.autoridade = 'republicacao'; e.limitacoes = [e.limitacoes, 'Reproduz a mesma matéria de origem: não é confirmação independente.'].filter(Boolean).join(' '); }
+  });
 
   const todas = [...evidFonte, ...novas];
   const claimIds = [...evidFonte.map((e) => e.id), ...novas.map((e) => e.id)];
   const atualizada = { ...claim, evidencias: claimIds };
   const r = M.avaliarAfirmacao(atualizada, todas.map((e) => ({ ...e, grupo: e.grupo || (e.fonte_principal ? 'g0' : e.id) })));
-  atualizada.estado = atualizada.tipo === 'opiniao' ? 'nao_verificada' : r.estado;
+  atualizada.estado = r.estado;
   atualizada.motivo_estado = r.motivo;
+  atualizada.exige_atribuicao = r.exige_atribuicao;
   atualizada.verificada_em = new Date(hoje).toISOString();
   return { claim: atualizada, evidencias: novas, log, consulta: q, janela_dias: 10 };
 }
 
-module.exports = { lerFonte, levantarAfirmacoes, verificarAfirmacao, validaConector, consultaDe, REDES_SOCIAIS };
+// ── 4. Conferir uma afirmação escrita/corrigida pelo Pedro ─────────────────
+// Usa só o que já foi acessado: o texto da matéria principal e os trechos
+// guardados das outras fontes. Responde, separadamente, se há trecho, se ele
+// sustenta a afirmação inteira e o que falta. Não pesquisa de novo.
+async function conferirAfirmacao({ claim, fonte, evidencias = [] }, d0) {
+  const d = deps(d0);
+  const outras = evidencias.filter((e) => !e.fonte_principal && e.trecho && e.trecho_encontrado !== false).slice(0, 8);
+  const blocos = [d.llmJson.dado('FONTE_0', String(fonte.texto || '').slice(0, 20000), 20000).bloco,
+    ...outras.map((e, i) => d.llmJson.dado(`FONTE_${i + 1}`, `${e.origem}: ${e.trecho}`, 1200).bloco)].join('\n');
+  const { dados, llm } = await d.llmJson.pedirJson({
+    temperatura: 0.1, maxTokens: 1800,
+    sistema: `Você confere se textos sustentam uma afirmação. É rigoroso com status (proposta × aprovado × em vigor), quem disse, números, período e abrangência.\n${d.llmJson.REGRAS_DADOS}`,
+    usuario: `AFIRMAÇÃO: ${claim.texto}
+Para cada FONTE_i, responda:
+- correspondencia: "integral", "parcial", "contradiz" ou "nao_sustenta";
+- trecho: cópia EXATA e literal (até 300 caracteres) que fundamenta a resposta (vazio se nao_sustenta);
+- falta: se parcial, o que a afirmação diz e a fonte não (ex.: "a fonte fala em proposta; a afirmação diz que está em vigor").
+Também classifique a natureza da afirmação: "fato", "dado", "anuncio", "declaracao", "previsao" ou "opiniao".
+
+${blocos}
+
+Responda APENAS JSON: {"natureza":"fato","fontes":[{"i":0,"correspondencia":"nao_sustenta","trecho":"","falta":""}]}`,
+  });
+  const base = evidencias.find((e) => e.fonte_principal) || {};
+  const novas = [];
+  for (const f of dados.fontes || []) {
+    const i = Number(f.i);
+    const ref = i === 0 ? null : outras[i - 1];
+    if (i !== 0 && !ref) continue;
+    let correspondencia = Ev.CORRESP.includes(f.correspondencia) ? f.correspondencia : 'nao_sustenta';
+    const trecho = String(f.trecho || '');
+    let falta = f.falta ? String(f.falta) : null;
+    const textoRef = i === 0 ? fonte.texto : ref.trecho;
+    const achou = correspondencia === 'nao_sustenta' ? { ok: !!trecho } : Ev.acharTrecho(textoRef, trecho);
+    if (correspondencia === 'integral' && achou.ok) {
+      const aus = Ev.numerosAusentes(claim.texto, trecho);
+      if (aus.length) { correspondencia = 'parcial'; falta = `o trecho não traz ${aus.join(', ')}`; }
+    }
+    const meta = i === 0 ? base : ref;
+    const e = Ev.novaEvidencia({
+      via: meta.via || 'artigo', url: meta.url || fonte.url_final || fonte.url, titulo: meta.titulo || fonte.titulo, origem: meta.origem || fonte.veiculo,
+      trecho: trecho.slice(0, 400), publicada_em: meta.publicada_em || fonte.publicada_em, consultada_em: meta.consultada_em || fonte.acessada_em,
+      periodo: meta.periodo, unidade: meta.unidade, abrangencia: meta.abrangencia, limitacoes: meta.limitacoes,
+      correspondencia, falta, trecho_encontrado: !!achou.ok, autoridade: meta.autoridade, grupo: meta.grupo || (i === 0 ? 'g0' : null), dominio: meta.dominio || fonte.dominio, llm,
+    });
+    if (i === 0) e.fonte_principal = true;
+    if (e.trecho_encontrado && e.trecho) novas.push(e);
+  }
+  const natureza = M.NATUREZAS.includes(dados.natureza) ? dados.natureza : (claim.natureza || 'fato');
+  const atualizada = { ...claim, natureza, evidencias: novas.map((e) => e.id), precisa_conferir: false };
+  const r = M.avaliarAfirmacao(atualizada, novas);
+  atualizada.estado = r.estado; atualizada.motivo_estado = r.motivo; atualizada.exige_atribuicao = r.exige_atribuicao;
+  atualizada.verificada_em = new Date(d.agora()).toISOString();
+  return { claim: atualizada, evidencias: novas, llm };
+}
+
+module.exports = { conferirAfirmacao, diferePeriodoOuUnidade, lerFonte, levantarAfirmacoes, verificarAfirmacao, validaConector, consultaDe, REDES_SOCIAIS };

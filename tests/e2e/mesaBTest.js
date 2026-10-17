@@ -70,7 +70,9 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   ok(c.conta.ig_id === '74541076144' && c.conta.username === 'pedro_destrava', 'conteúdo ligado à conta correta');
   ok(await p.locator('text=Sustentada').count() > 0, 'estado da afirmação visível');
   ok(await p.locator('text=abrir fonte').count() >= 0, 'fonte abre em link');
-  ok(/mesma origem|é a matéria que você trouxe/.test(await p.textContent('.ed-claim')), 'a matéria de origem aparece marcada como tal (não conta como independente)');
+  const cl = await p.textContent('.ed-claim');
+  ok(/a matéria que você trouxe/.test(cl), 'a matéria de origem aparece marcada como tal');
+  ok(/1\. Trecho: encontrado no documento/.test(cl) && /2\. Correspondência:/.test(cl) && /3\. Qualidade:/.test(cl), 'trecho, correspondência e qualidade aparecem separados');
   await p.screenshot({ path: `${SP}/b_1_briefing.png`, fullPage: false });
 
   console.log('2. Texto e arte');
@@ -238,14 +240,24 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   await p.click('[data-action="ed-gerar-texto"]');
   await p.waitForSelector('.ed-slide', { timeout: 15000 }); await arteOk(p, 5);
   await p.check('input[data-ed-capa="k_acontecimento"]'); await arteOk(p, 5);
-  let bq = await p.textContent('.es-card:has([data-action="ed-ressalva-todas"])');
-  ok(/Afirmação central só em parte sustentada/.test(bq), 'única fonte: afirmação central fica bloqueada (não vira "sustentada" sozinha)');
+  let bq = await p.textContent('.es-card:has([data-action="ed-aprovar"])');
+  ok(/Afirmação central só em parte sustentada/.test(bq), 'afirmação central só em parte sustentada bloqueia');
   ok(await p.locator('[data-action="ed-aprovar"]').isDisabled(), 'e não dá para aprovar');
-  await p.click('[data-action="ed-ressalva-todas"]');
-  await p.waitForFunction(() => !document.querySelector('[data-action="ed-ressalva-todas"]'));
-  ok(!(await p.locator('[data-action="ed-aprovar"]').isDisabled()), 'depois de aceitar com ressalva (decisão do Pedro, registrada) a aprovação libera');
+  ok(await p.locator('[data-action="ed-ressalva-todas"], [data-action="ed-ressalva"]').count() === 0, 'não existe mais "aceitar com ressalva" genérico');
+  await p.click('[data-action="ed-decidir"][data-id="a1"][data-tipo="atribuir"]');
+  await p.fill('#ed-dec-valor', 'segundo o Jornal X');
+  await p.click('[data-action="ed-decidir-ok"][data-id="a1"]');
+  await p.waitForFunction(() => /Falta a atribuição/.test(document.body.textContent));
+  bq = await p.textContent('.es-card:has([data-action="ed-aprovar"])');
+  ok(!/só em parte sustentada/.test(bq) && /Falta a atribuição ou condição/.test(bq), 'decidir "atribuir" troca o bloqueio: agora a frase precisa estar no texto');
+  ok(await p.locator('[data-action="ed-aprovar"]').isDisabled(), 'sem a frase no texto, continua sem aprovar');
+  for (const [sel, txt] of [['[data-ed-texto="s1"]', 'Segundo o Jornal X, o Senado aprovou teto de **R$ 140 mil** para o MEI'], ['[data-ed-texto="s2"]', 'Segundo o Jornal X, o Senado aprovou o teto de **R$ 140 mil**.'], ['[data-ed-legenda="legenda"]', 'Segundo o Jornal X, o Senado aprovou o novo teto do MEI.']]) {
+    await p.fill(sel, txt); await p.locator(sel).blur(); await esperaToast(p, /Salvo|conferência/); await arteOk(p, 5);
+  }
+  ok(!(await p.locator('[data-action="ed-aprovar"]').isDisabled()), 'com a atribuição no texto, a aprovação libera');
   c = await conteudo(p);
-  ok(c.historico.some((h) => /com ressalva/.test(h.resumo)), 'a decisão fica no histórico');
+  ok(c.historico.some((h) => h.tipo === 'decisao' && /segundo o Jornal X/.test(h.resumo)), 'a decisão fica no histórico');
+  ok(c.consumo && c.consumo.length >= 5 && c.consumo.every((x) => x.etapa && Number.isFinite(x.duracao_ms)), `consumo registrado por etapa (${(c.consumo || []).map((x) => x.etapa).join(',')})`);
   await ctx.close();
 
   await browser.close();

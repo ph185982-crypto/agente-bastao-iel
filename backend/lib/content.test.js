@@ -90,14 +90,59 @@ test('número sem afirmação ligada bloqueia; contagem pequena não', () => {
   assert.ok(!r.bloqueios.some((b) => /“3”|"3"/.test(b.detalhe)), 'contagem "3 erros" não exige origem');
 });
 
-test('fonte inexistente: afirmação central não verificada bloqueia; parcial exige ressalva', () => {
+test('fonte inexistente: central não verificada bloqueia; parcial exige DECISÃO específica', () => {
   const c = exemplo();
   c.claims[1].estado = 'nao_verificada';
   assert.ok(ids(G.avaliar(c)).includes('afirmacao_sem_sustentacao'));
   c.claims[1].estado = 'parcialmente_sustentada';
   assert.ok(ids(G.avaliar(c)).includes('afirmacao_parcial'));
-  c.claims[1].revisao = { aceito_com_ressalva: { em: 'hoje', nota: 'ok' } };
-  assert.ok(!ids(G.avaliar(c)).includes('afirmacao_parcial'));
+  // o antigo "aceito com ressalva" genérico não libera mais nada
+  c.claims[1].revisao = { aceito_com_ressalva: true };
+  assert.ok(ids(G.avaliar(c)).includes('afirmacao_parcial'));
+  // manter em revisão continua bloqueando
+  M.decidirAfirmacao(c, 'a2', { tipo: 'em_revisao' });
+  assert.ok(ids(G.avaliar(c)).includes('afirmacao_parcial'));
+});
+
+test('decisão "atribuir": exige a frase no texto público; tirar a ressalva volta a bloquear', () => {
+  const c = exemplo();
+  c.claims[1].estado = 'parcialmente_sustentada';
+  assert.throws(() => M.decidirAfirmacao(c, 'a2', { tipo: 'atribuir', condicao: '' }), /atribuição ou condição/);
+  M.decidirAfirmacao(c, 'a2', { tipo: 'atribuir', condicao: 'segundo o Banco Central' });
+  let r = ids(G.avaliar(c));
+  assert.ok(!r.includes('afirmacao_parcial'));
+  assert.ok(r.includes('ressalva_ausente'), 'o slide 2 e a legenda ainda não trazem "segundo o Banco Central"');
+  M.editarSlide(c, 's2', { texto: 'Hoje, segundo o Banco Central, ele é de **R$ 1.621,00**.' });
+  M.editarLegenda(c, { legenda: 'O salário mínimo saiu de R$ 64,79 para R$ 1.621,00, segundo o Banco Central.' });
+  r = ids(G.avaliar(c));
+  assert.ok(!r.includes('ressalva_ausente'), JSON.stringify(G.avaliar(c).bloqueios.filter((b) => b.id === 'ressalva_ausente')));
+  // edição que remove a ressalva para "deixar mais forte"
+  M.editarSlide(c, 's2', { texto: 'Hoje ele é de **R$ 1.621,00**.' });
+  assert.ok(ids(G.avaliar(c)).includes('ressalva_ausente'));
+  assert.ok(c.historico.some((h) => h.tipo === 'decisao' && /segundo o Banco Central/.test(h.resumo)), 'decisão registrada');
+});
+
+test('decisões: retirar bloqueia enquanto estiver no texto; contradita não aceita atribuição; corrigir exige nova conferência', () => {
+  const c = exemplo();
+  M.decidirAfirmacao(c, 'a2', { tipo: 'retirar' });
+  assert.ok(ids(G.avaliar(c)).includes('afirmacao_retirada_em_uso'));
+  M.editarSlide(c, 's2', { texto: 'O que mudou desde então.', claim_ids: [] });
+  M.editarLegenda(c, { legenda: 'O salário mínimo de 1994 era R$ 64,79.', legenda_claim_ids: ['a1'] });
+  assert.ok(!ids(G.avaliar(c)).includes('afirmacao_retirada_em_uso'));
+  c.claims[0].estado = 'contradita';
+  assert.throws(() => M.decidirAfirmacao(c, 'a1', { tipo: 'atribuir', condicao: 'segundo a matéria' }), /corrija ou retire/);
+  M.decidirAfirmacao(c, 'a1', { tipo: 'corrigir', texto_novo: 'Em julho de 1994 o salário mínimo era de R$ 64,79 por mês.' });
+  assert.ok(ids(G.avaliar(c)).includes('afirmacao_corrigida_sem_conferencia'));
+  assert.strictEqual(c.claims[0].textos_anteriores[0].texto, 'Em julho de 1994 o salário mínimo era de R$ 64,79.');
+});
+
+test('anúncio, declaração ou previsão: o texto público precisa dizer quem anunciou/disse', () => {
+  const c = exemplo();
+  c.claims[1].natureza = 'anuncio'; c.claims[1].texto = 'O governo anunciou que o salário mínimo será de R$ 1.621,00.';
+  assert.ok(ids(G.avaliar(c)).includes('ressalva_ausente'), 'slide 2 diz como fato consumado');
+  M.editarSlide(c, 's2', { texto: 'O governo anunciou que ele será de **R$ 1.621,00**.' });
+  M.editarLegenda(c, { legenda: 'O salário mínimo de R$ 64,79 deve ir a R$ 1.621,00, segundo o governo.' });
+  assert.ok(!ids(G.avaliar(c)).includes('ressalva_ausente'), JSON.stringify(G.avaliar(c).bloqueios));
 });
 
 test('contradição fica bloqueada até ser resolvida; sensível exige confirmação humana', () => {
@@ -194,18 +239,48 @@ test('trecho bloqueado não é editado por engano', () => {
   assert.throws(() => M.editarSlide(c, 's1', { texto: 'x' }), /bloqueado/);
 });
 
-test('estado da afirmação: independência, primária e contradição', () => {
+test('estado da afirmação: trecho, correspondência e qualidade avaliados em separado', () => {
+  const T = 'trecho literal';
   const ev = [
-    { id: 'p', tipo: 'primaria', grupo: 'bcb', relacao: 'sustenta' },
-    { id: 's1', tipo: 'secundaria', grupo: 'g1', relacao: 'sustenta' },
-    { id: 's2', tipo: 'secundaria', grupo: 'g1', relacao: 'sustenta' }, // republicação do mesmo grupo
-    { id: 'c', tipo: 'primaria', grupo: 'ibge', relacao: 'contradiz' },
+    { id: 'p', autoridade: 'primaria', grupo: 'ibge', correspondencia: 'integral', trecho: T, origem: 'IBGE' },
+    { id: 'r1', autoridade: 'reportagem', grupo: 'g0', correspondencia: 'integral', trecho: T, origem: 'Jornal X' },
+    { id: 'rep', autoridade: 'republicacao', grupo: 'g0', correspondencia: 'integral', trecho: T, origem: 'Portal Z' },
+    { id: 'r2', autoridade: 'reportagem', grupo: 'g2', correspondencia: 'integral', trecho: T, origem: 'Diário Y' },
+    { id: 'parc', autoridade: 'reportagem', grupo: 'g3', correspondencia: 'parcial', falta: 'o trecho fala em proposta, não em medida em vigor', trecho: T, origem: 'W' },
+    { id: 'cp', autoridade: 'primaria', grupo: 'bcb', correspondencia: 'contradiz', trecho: T, origem: 'BCB' },
+    { id: 'cr', autoridade: 'reportagem', grupo: 'g4', correspondencia: 'contradiz', trecho: T, origem: 'K' },
+    { id: 'naoachou', autoridade: 'primaria', grupo: 'x', correspondencia: 'integral', trecho: T, trecho_encontrado: false, origem: 'Z' },
+    { id: 'colado', autoridade: 'texto_colado', grupo: 'c', correspondencia: 'integral', trecho: T, origem: 'Texto colado' },
   ];
-  assert.strictEqual(M.avaliarAfirmacao({ evidencias: ['p'] }, ev).estado, 'sustentada');
-  assert.strictEqual(M.avaliarAfirmacao({ evidencias: ['s1', 's2'] }, ev).estado, 'parcialmente_sustentada', 'republicação não vale como 2 fontes');
-  assert.strictEqual(M.avaliarAfirmacao({ evidencias: ['p', 'c'] }, ev).estado, 'contradita');
-  assert.strictEqual(M.avaliarAfirmacao({ evidencias: [] }, ev).estado, 'nao_verificada');
-  assert.strictEqual(M.avaliarAfirmacao({ evidencias: ['s1'] }, [{ id: 's1', tipo: 'secundaria', relacao: 'neutra' }]).estado, 'nao_verificada');
+  const est = (claim, ids) => M.avaliarAfirmacao({ ...claim, evidencias: ids }, ev);
+  // A. fonte primária única basta
+  assert.strictEqual(est({ natureza: 'dado' }, ['p']).estado, 'sustentada');
+  // B. duas páginas reproduzindo a mesma matéria = uma origem
+  assert.strictEqual(est({ natureza: 'dado' }, ['r1', 'rep']).estado, 'parcialmente_sustentada', 'republicação não vira segunda fonte');
+  assert.strictEqual(est({ natureza: 'fato' }, ['rep']).estado, 'parcialmente_sustentada', 'só reprodução não basta');
+  // duas reportagens independentes reforçam
+  assert.match(est({ natureza: 'dado' }, ['r1', 'r2']).motivo, /2 reportagens independentes/);
+  // uma reportagem original de fato de baixo risco: sustentada, com a força explícita
+  const um = est({ natureza: 'fato', risco: 'baixo' }, ['r1']);
+  assert.strictEqual(um.estado, 'sustentada'); assert.strictEqual(um.forca, 'reportagem'); assert.match(um.motivo, /primária não consultada/);
+  // mas não para assunto sensível nem para dado estatístico
+  assert.strictEqual(est({ natureza: 'fato', risco: 'alto' }, ['r1']).estado, 'parcialmente_sustentada');
+  assert.strictEqual(est({ natureza: 'dado' }, ['r1']).estado, 'parcialmente_sustentada');
+  // anúncio registrado: sustentado COMO anúncio e exige atribuição
+  const an = est({ natureza: 'anuncio' }, ['r1']);
+  assert.strictEqual(an.estado, 'sustentada'); assert.strictEqual(an.exige_atribuicao, true); assert.match(an.motivo, /não que seja verdade/);
+  // C. trecho real que só cobre parte
+  assert.match(est({ natureza: 'fato' }, ['parc']).motivo, /proposta, não em medida em vigor/);
+  // contradição
+  assert.strictEqual(est({ natureza: 'dado' }, ['p', 'cp']).estado, 'contradita', 'primária que contradiz prevalece');
+  assert.strictEqual(est({ natureza: 'dado' }, ['p', 'cr']).estado, 'parcialmente_sustentada', 'primária a favor + reportagem contra = divergência a conferir');
+  assert.strictEqual(est({ natureza: 'dado' }, ['r1', 'r2', 'cp']).estado, 'contradita', 'dois veículos independentes não vencem a fonte primária');
+  // trecho não encontrado não conta; texto colado não prova a si mesmo
+  assert.strictEqual(est({ natureza: 'fato' }, ['naoachou']).estado, 'nao_verificada');
+  assert.strictEqual(est({ natureza: 'fato' }, ['colado']).estado, 'nao_verificada');
+  assert.strictEqual(est({ natureza: 'fato' }, []).estado, 'nao_verificada');
+  // compatibilidade com registros antigos (relacao/tipo)
+  assert.strictEqual(M.avaliarAfirmacao({ evidencias: ['o'] }, [{ id: 'o', tipo: 'primaria', relacao: 'sustenta', trecho: T }]).estado, 'sustentada');
 });
 
 test('números em texto PT-BR', () => {
