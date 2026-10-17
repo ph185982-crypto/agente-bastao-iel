@@ -170,7 +170,7 @@ etapa('verify', 12, async (b) => {
   exigeIA();
   const claim = claimsDoCorpo([b.claim])[0];
   if (!claim) throw Object.assign(new Error('Falta a afirmação.'), { code: 'ENTRADA' });
-  return research.verificarAfirmacao(claim, fonteDoCorpo(b.fonte), evidsDoCorpo(b.evidencias));
+  return research.verificarAfirmacao(claim, fonteDoCorpo(b.fonte), evidsDoCorpo(b.evidencias), undefined, { links: arr(b.links, 3).map((u) => txt(u, 2000)) });
 });
 
 // Afirmação escrita ou corrigida pelo Pedro: confere no que já foi acessado.

@@ -117,8 +117,8 @@
     c.evidencias = c.evidencias.filter((e) => usadas.has(e.id));
   }
 
-  async function verificarUma(x, c, claim) {
-    const r = await chamarEtapa(x, c, 'pesquisa', `verify:${claim.id}`, '/api/content/verify', { claim, fonte: c.fonte_principal, evidencias: c.evidencias });
+  async function verificarUma(x, c, claim, links) {
+    const r = await chamarEtapa(x, c, 'pesquisa', `verify:${claim.id}${links ? ':link' : ''}`, '/api/content/verify', { claim, fonte: c.fonte_principal, evidencias: c.evidencias, links: links || [] });
     mesclar(c, r.claim, r.evidencias);
     registrarConsumo(c, r.consumo);
     c.pesquisa_log = { ...(c.pesquisa_log || {}), [claim.id]: { log: r.log, consulta: r.consulta, janela_dias: r.janela_dias, cobertura: r.cobertura, em: new Date().toISOString() } };
@@ -495,6 +495,7 @@
       ${opin ? '' : painelDecisao(c, k)}
       ${opin ? '' : `<div class="es-actions" style="flex-wrap:wrap">
         ${k.precisa_conferir ? `<button class="es-btn sm" data-action="ed-conferir" data-id="${esc(k.id)}" ${rodando[c.id] ? 'disabled' : ''}>Conferir o texto corrigido</button>` : `<button class="es-btn ghost sm" data-action="ed-verificar" data-id="${esc(k.id)}" ${rodando[c.id] ? 'disabled' : ''}>Buscar outras fontes</button>`}
+        <details class="mz-det" data-aberto="l:${esc(k.id)}" ${abertos.has(`l:${k.id}`) ? 'open' : ''} style="width:100%"><summary>Conferir com outro link</summary><input class="es-input" id="ed-link-${esc(k.id)}" inputmode="url" placeholder="https://… (outra matéria ou a fonte oficial)"><button class="es-btn ghost sm" data-action="ed-verificar-link" data-id="${esc(k.id)}" ${rodando[c.id] ? 'disabled' : ''}>Ler e comparar</button></details>
         ${k.risco === 'alto' && !rev.confirmada_por_pedro ? `<button class="es-btn ghost sm" data-action="ed-confirmar" data-id="${esc(k.id)}">Li a fonte e confirmo</button>` : ''}
       </div>`}
     </div>`;
@@ -719,6 +720,14 @@
       case 'ed-regerar': {
         const ins = document.getElementById('ed-instrucao')?.value.trim() || '';
         await regerarTexto(x, c, ins); return true;
+      }
+      case 'ed-verificar-link': {
+        const u = document.getElementById(`ed-link-${id}`)?.value.trim();
+        if (!/^https?:\/\/\S+$/i.test(u || '')) { x.toast('Cole um link que comece com http:// ou https://'); return true; }
+        if (rodando[c.id]) return true;
+        rodando[c.id] = true; x.render();
+        try { const r = await verificarUma(x, c, claim(), [u]); reabrirAprovacao(c); M.registrar(c, 'pedro', 'pesquisa', `Conferiu com o link ${u}`); x.toast(`Resultado: ${(ESTADO_CLAIM[r.claim.estado] || [, r.claim.estado])[1]}. ${r.claim.motivo_estado || ''}`); } catch (e) { x.toast(e.message); }
+        fim(x, c); await x.persistir(c); x.render(); return true;
       }
       case 'ed-verificar': {
         if (rodando[c.id]) return true;

@@ -173,7 +173,7 @@ function consultaDe(claim, feeds) {
   return { palavras: unicas, numeros: nums.slice(0, 3) };
 }
 
-async function verificarAfirmacao(claim, fonte, evidenciasAtuais, d0, { maxCandidatos = 3 } = {}) {
+async function verificarAfirmacao(claim, fonte, evidenciasAtuais, d0, { maxCandidatos = 3, links = [] } = {}) {
   const d = deps(d0);
   const log = [];
   const novas = [];
@@ -215,9 +215,19 @@ async function verificarAfirmacao(claim, fonte, evidenciasAtuais, d0, { maxCandi
   const candidatosBrutos = d.feeds.filtrar(lidos.itens, { palavras: q.palavras, dias: 10, agora: hoje, minimo: Math.max(4, q.palavras.length) });
   const vistos = new Set([dominioFonte]);
   const candidatos = [];
+  // Links que o Pedro mandou conferir: entram primeiro (mesmo domínio da fonte também,
+  // para mostrar quando é reprodução da mesma matéria).
+  for (const u of (links || []).slice(0, 3)) {
+    try {
+      const url = require('./safeFetch').validaUrl(u).toString();
+      const dom = Ev.dominioRegistravel(url);
+      if (url === fonte.url_final || url === fonte.url) continue;
+      candidatos.push({ titulo: '', url, publicada_em: null, origem: dom, dominio: dom, via_link: true });
+    } catch (e) { log.push(`Link recusado (${u}): ${e.message}`); }
+  }
   for (const c of candidatosBrutos) {
     const dom = Ev.dominioRegistravel(c.url);
-    if (vistos.has(dom) || c.url === fonte.url_final) continue;
+    if (vistos.has(dom) || c.url === fonte.url_final || candidatos.some((x) => x.dominio === dom)) continue;
     vistos.add(dom);
     candidatos.push({ ...c, dominio: dom });
     if (candidatos.length >= maxCandidatos) break;

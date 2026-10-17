@@ -280,3 +280,22 @@ test('extrator: <article> pequeno de aviso não esconde o texto da matéria (cas
   const a = extrairArtigo(html, 'https://www12.senado.leg.br/noticias/materias/2026/10/16/x');
   assert.ok(a.texto.includes('promulgou nesta sexta-feira (16)'), a.texto);
 });
+
+test('B. link mandado pelo Pedro: reprodução da mesma matéria em outro site não conta como fonte independente', async () => {
+  const texto = 'O dólar comercial fechou a sessão em alta de 0,74%, cotado a R$ 5,023, no primeiro pregão depois do feriado. A bolsa caiu 1,04%. Com informações da Agência Brasil. O Banco Central cancelou um leilão previsto para o dia.';
+  const fonte = { legivel: true, texto, dominio: 'opovo.com.br', url_final: 'https://www.opovo.com.br/d', acessada_em: 'x' };
+  const e0 = { id: 'e0', via: 'artigo', autoridade: 'reportagem', correspondencia: 'integral', trecho: 'fechou a sessão em alta de 0,74%, cotado a R$ 5,023', origem: 'O Povo', grupo: 'g0', fonte_principal: true };
+  const claim = { id: 'a1', texto: 'O dólar fechou em alta de 0,74%, cotado a R$ 5,023.', tipo: 'fato', natureza: 'dado', central: true, evidencias: ['e0'] };
+  const pagina = HTML(`<p>${texto}</p><p>O Ibovespa recuou depois de uma sequência de recordes, puxado por ações de bancos e de empresas exportadoras, segundo operadores ouvidos pela reportagem.</p><p>Parágrafo final da reprodução com texto suficiente para a leitura da página do veículo que republica a agência.</p>`).replaceAll('Jornal X', 'Folha PE');
+  const r = await verificarAfirmacao(claim, fonte, [e0], {
+    feeds: feedsFalso([]), busca: { provedor: () => null, cobertura: () => 'sem busca' }, agora: () => 0,
+    safeFetch: async (u) => ({ url_final: u, status: 200, corpo: pagina, acessada_em: '2026-10-17T10:05:00Z', redirecionamentos: [] }),
+    llmJson: llmFalso([{ materias: [{ i: 0, correspondencia: 'integral', trecho: 'fechou a sessão em alta de 0,74%, cotado a R$ 5,023' }] }]),
+  }, { links: ['https://www.folhape.com.br/d', 'http://127.0.0.1/interno'] });
+  const ev = r.evidencias.find((e) => /folhape/.test(e.url));
+  assert.ok(ev, r.log.join(' | '));
+  assert.strictEqual(ev.autoridade, 'republicacao');
+  assert.strictEqual(ev.grupo, 'g0');
+  assert.strictEqual(r.claim.estado, 'parcialmente_sustentada', 'duas páginas com o mesmo texto = uma origem');
+  assert.ok(r.log.some((l) => /Link recusado/.test(l)), 'endereço interno recusado');
+});
