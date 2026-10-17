@@ -2,9 +2,12 @@
 //
 // Acesso: um código único (APP_ACCESS_CODE, só no servidor). O login troca o
 // código por um token assinado (HMAC) com validade; o código nunca volta pro
-// navegador. Sem APP_ACCESS_CODE configurado o acesso fica ABERTO e a API
-// avisa isso (status.protected=false), porque travar a ferramenta no deploy
-// sem o Pedro ter definido o código o deixaria de fora.
+// navegador. Trocar o código invalida todos os tokens emitidos.
+//
+// Em ambiente publicado (Vercel ou NODE_ENV=production), sem código válido a API
+// privada fica FECHADA com "configuração necessária" (503): nada que consuma
+// IA, leia URLs ou guarde dados roda aberto. Só no computador de quem
+// desenvolve (sem VERCEL) a ausência do código deixa a API aberta.
 //
 // Limites e dedupe são em memória por instância da função: protegem de
 // loop/duplo clique, não são uma cota global.
@@ -12,9 +15,12 @@ const crypto = require('crypto');
 
 const TOKEN_TTL_S = 14 * 24 * 3600;
 
+const MIN_CODIGO = 10;
 const code = () => process.env.APP_ACCESS_CODE || '';
+const publicado = () => !!process.env.VERCEL || process.env.NODE_ENV === 'production';
+const codigoValido = () => code().length >= MIN_CODIGO;
 const secret = () => crypto.createHash('sha256').update(`pico|${code()}|${process.env.APP_TOKEN_SALT || ''}`).digest();
-const protegido = () => !!code();
+const protegido = () => codigoValido();
 
 const b64 = (b) => Buffer.from(b).toString('base64url');
 
@@ -65,11 +71,20 @@ function registraFalha(ip) {
 
 // ── Middleware ──────────────────────────────────────────────────────────────
 const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//];
+// Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
+const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/];
+
+const estadoAcesso = () => (codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
 
 function exigeAcesso(req, res, next) {
-  if (!protegido()) return next();
-  const path = req.path.startsWith('/api') ? req.path : req.originalUrl.split('?')[0];
+  const path = (req.originalUrl || req.path || req.url || '').split('?')[0];
   if (ROTAS_LIVRES.some((r) => r.test(path))) return next();
+  const est = estadoAcesso();
+  if (est === 'aberto_local') return next();
+  if (est === 'nao_configurado') {
+    return res.status(503).json({ error: `Configuração necessária: o servidor está sem código de acesso válido (APP_ACCESS_CODE com pelo menos ${MIN_CODIGO} caracteres). Até isso ser definido, operações privadas ficam bloqueadas.`, code: 'ACCESS_NOT_CONFIGURED' });
+  }
+  if (process.env.CRON_SECRET && ROTAS_CRON.some((r) => r.test(path)) && req.headers?.authorization === `Bearer ${process.env.CRON_SECRET}`) return next();
   if (verify(tokenDe(req))) return next();
   return res.status(401).json({ error: 'Acesso restrito. Entre com o código de acesso.', code: 'AUTH_REQUIRED' });
 }
@@ -111,10 +126,13 @@ function registrarRotas(app) {
   const express = require('express');
   const r = express.Router();
   r.get('/status', (req, res) => {
-    res.json({ protected: protegido(), authenticated: protegido() ? !!verify(tokenDe(req)) : true });
+    const est = estadoAcesso();
+    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : est === 'aberto_local' });
   });
   r.post('/login', (req, res) => {
-    if (!protegido()) return res.json({ protected: false });
+    const est = estadoAcesso();
+    if (est === 'nao_configurado') return res.status(503).json({ error: 'Configuração necessária: defina APP_ACCESS_CODE no servidor.', code: 'ACCESS_NOT_CONFIGURED' });
+    if (est === 'aberto_local') return res.json({ protected: false });
     const ip = ipDe(req);
     if (loginBloqueado(ip)) return res.status(429).json({ error: 'Muitas tentativas. Tente de novo em 15 minutos.' });
     if (!codigoConfere(req.body?.code)) {
@@ -128,4 +146,4 @@ function registrarRotas(app) {
   app.use('/api/auth', r);
 }
 
-module.exports = { exigeAcesso, limita, unica, registrarRotas, protegido, sign, verify, codigoConfere };
+module.exports = { exigeAcesso, limita, unica, registrarRotas, protegido, estadoAcesso, sign, verify, codigoConfere, MIN_CODIGO };

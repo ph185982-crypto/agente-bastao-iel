@@ -22,6 +22,7 @@
     }
     return originalFetch(input, opts).then((res) => {
       if (res.status === 401 && !/\/api\/auth\//.test(url)) pedirCodigo();
+      if (res.status === 503) res.clone().json().then((d) => { if (d.code === 'ACCESS_NOT_CONFIGURED') naoConfigurado(); }).catch(() => {});
       return res;
     });
   };
@@ -61,12 +62,28 @@
     });
   }
 
+  function naoConfigurado() {
+    if (mostrando) return;
+    mostrando = true;
+    const el = document.createElement('div');
+    el.id = 'pico-login';
+    el.setAttribute('role', 'alertdialog');
+    el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0A1B33;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Montserrat,system-ui,sans-serif';
+    el.innerHTML = `<div style="width:100%;max-width:380px;background:#fff;border-radius:20px;padding:24px;display:flex;flex-direction:column;gap:12px;color:#0A1B33">
+      <div style="font-size:20px;font-weight:800">Configuração necessária</div>
+      <div style="font-size:14px;line-height:1.5;color:#3B4A60">Este endereço está sem código de acesso definido no servidor. Por segurança, pesquisa, geração e leitura de dados ficam bloqueadas até o código ser configurado.</div>
+      <div style="font-size:13px;line-height:1.5;color:#5B6B82">Na Vercel: projeto → Settings → Environment Variables → <b>APP_ACCESS_CODE</b> (pelo menos 10 caracteres), no ambiente deste endereço. Depois, faça um novo deploy.</div>
+    </div>`;
+    document.body.appendChild(el);
+  }
+
   // Descobre no carregamento se precisa de código.
   originalFetch('/api/auth/status', { headers: lerToken() ? { Authorization: `Bearer ${lerToken()}` } : {} })
     .then((r) => r.json())
     .then((s) => {
       window.__picoAuth = s;
-      if (s.protected && !s.authenticated) pedirCodigo();
+      if (s.configured === false) naoConfigurado();
+      else if (s.protected && !s.authenticated) pedirCodigo();
     })
     .catch(() => { window.__picoAuth = { protected: null }; });
 

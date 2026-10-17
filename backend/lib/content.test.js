@@ -315,7 +315,7 @@ test('SSRF: redirecionamento para rede interna é barrado a cada salto', async (
 });
 
 // ── Acesso ──────────────────────────────────────────────────────────────────
-test('acesso: sem código configurado fica aberto; com código exige token assinado', () => {
+test('acesso: no computador local sem código fica aberto; com código exige token assinado', () => {
   const res = () => { const r = { code: 200, body: null, status(c) { r.code = c; return r; }, json(b) { r.body = b; return r; }, set() { return r; } }; return r; };
   delete process.env.APP_ACCESS_CODE;
   let passou = false;
