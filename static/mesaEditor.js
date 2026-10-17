@@ -10,6 +10,7 @@
   const S = window.Store;
 
   const ctx = () => window.Mesa.ctx();
+  const x0 = ctx;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const dia = (iso) => { if (!iso) return '—'; const d = new Date(iso); return Number.isNaN(d.getTime()) ? '—' : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`; };
   const quando = (iso) => { if (!iso) return '—'; const d = new Date(iso); return Number.isNaN(d.getTime()) ? '—' : `${dia(iso)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -64,6 +65,29 @@
 
   const corpoFonte = (c) => (c.origem?.tipo === 'texto' ? { texto: c.origem.texto_bruto } : { url: c.origem?.url });
 
+  // Etapas que custam IA guardam o request_id no conteúdo ANTES de chamar.
+  // Se a aba fechar, ao continuar o mesmo request_id é reenviado: com a cópia no
+  // servidor, o resultado já pronto volta sem nova chamada de IA.
+  const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function chamarEtapa(x, c, nome, chave, rota, corpo) {
+    const p = c.pipeline[nome] || (c.pipeline[nome] = {});
+    p.rids = p.rids || {};
+    let rid = p.rids[chave];
+    if (!rid) { rid = x.novoId(); p.rids[chave] = rid; await x.persistir(c); }
+    let r = await x.api(rota, { method: 'POST', body: { ...corpo, request_id: rid, conteudo_id: c.id } });
+    for (let i = 0; r?.em_andamento && i < 36; i++) {
+      if (c.pipeline[nome]) { c.pipeline[nome].progresso = 'Ainda rodando no servidor (pedido feito antes)…'; x.render(); }
+      await espera(2500);
+      const j = await x.api(`/api/jobs/${encodeURIComponent(r.rid)}`).catch(() => null);
+      if (j?.estado === 'concluido') r = j.resultado;
+      else if (j?.estado === 'erro') throw new Error(j.erro || 'A etapa falhou no servidor.');
+    }
+    if (r?.em_andamento) throw new Error('A etapa ainda está rodando no servidor. Tente continuar em instantes.');
+    if (r?.reaproveitado) M.registrar(c, 'sistema', 'reaproveitado', `${ROTULO[nome] || nome}: resultado já pronto no servidor reaproveitado (sem nova chamada de IA)`);
+    delete p.rids[chave];
+    return r;
+  }
+
   async function etapaLeitura(x, c) {
     const r = await x.api('/api/content/ingest', { method: 'POST', body: { ...corpoFonte(c), request_id: x.novoId() } });
     c.fonte_principal = r.fonte;
@@ -77,7 +101,7 @@
   }
 
   async function etapaAfirmacoes(x, c) {
-    const r = await x.api('/api/content/claims', { method: 'POST', body: { fonte: c.fonte_principal, request_id: x.novoId() } });
+    const r = await chamarEtapa(x, c, 'afirmacoes', 'claims', '/api/content/claims', { fonte: c.fonte_principal });
     c.claims = r.claims; c.evidencias = r.evidencias;
     registrarConsumo(c, r.consumo);
     return { descartadas: r.descartadas, llm: r.llm };
@@ -94,7 +118,7 @@
   }
 
   async function verificarUma(x, c, claim) {
-    const r = await x.api('/api/content/verify', { method: 'POST', body: { claim, fonte: c.fonte_principal, evidencias: c.evidencias, request_id: x.novoId() } });
+    const r = await chamarEtapa(x, c, 'pesquisa', `verify:${claim.id}`, '/api/content/verify', { claim, fonte: c.fonte_principal, evidencias: c.evidencias });
     mesclar(c, r.claim, r.evidencias);
     registrarConsumo(c, r.consumo);
     c.pesquisa_log = { ...(c.pesquisa_log || {}), [claim.id]: { log: r.log, consulta: r.consulta, janela_dias: r.janela_dias, em: new Date().toISOString() } };
@@ -105,7 +129,7 @@
     if (rodando[c.id]) return;
     rodando[c.id] = true; x.render();
     try {
-      const r = await x.api('/api/content/conferir', { method: 'POST', body: { claim: k, fonte: c.fonte_principal, evidencias: c.evidencias, request_id: x.novoId() } });
+      const r = await chamarEtapa(x, c, 'pesquisa', `conferir:${k.id}`, '/api/content/conferir', { claim: k, fonte: c.fonte_principal, evidencias: c.evidencias });
       mesclar(c, r.claim, r.evidencias);
       registrarConsumo(c, r.consumo);
       reabrirAprovacao(c);
@@ -131,20 +155,20 @@
 
   async function etapaBriefing(x, c) {
     const p = c.origem?.pauta;
-    const r = await x.api('/api/content/briefing', { method: 'POST', body: {
+    const r = await chamarEtapa(x, c, 'briefing', 'briefing', '/api/content/briefing', {
       fonte: c.fonte_principal, claims: c.claims, evidencias: c.evidencias, recentes: x.recentesParaPrompt(),
-      objetivo: p?.objetivo_sugerido || '', formato: p?.formato_sugerido === 'estatico' ? 'estatico' : '', request_id: x.novoId(),
-    } });
+      objetivo: p?.objetivo_sugerido || '', formato: p?.formato_sugerido === 'estatico' ? 'estatico' : '',
+    });
     c.briefing = r.briefing;
     registrarConsumo(c, r.consumo);
     return { llm: r.briefing.llm };
   }
 
   async function etapaCopy(x, c, instrucoes = '') {
-    const r = await x.api('/api/content/copy', { method: 'POST', body: {
+    const r = await chamarEtapa(x, c, 'copy', 'copy', '/api/content/copy', {
       briefing: c.briefing, fonte: c.fonte_principal, claims: c.claims, evidencias: c.evidencias, recentes: x.recentesParaPrompt(),
-      formato: c.briefing.formato === 'estatico' ? 'estatico' : 'carrossel', instrucoes, request_id: x.novoId(),
-    } });
+      formato: c.briefing.formato === 'estatico' ? 'estatico' : 'carrossel', instrucoes,
+    });
     // Opiniões ganham ids únicos por versão (as versões antigas continuam apontando para as suas).
     const n = c.copia.versoes.length + 1;
     const mapa = {};
@@ -186,7 +210,9 @@
     let feitos = 0;
     for (const q of plano.filter((y) => !y.existente)) {
       const { s, i, h } = q;
-      const img = s.imagem_id ? (await S.obterBlob(`img:${s.imagem_id}`))?.blob : null;
+      let img = s.imagem_id ? (await S.obterBlob(`img:${s.imagem_id}`))?.blob : null;
+      if (s.imagem_id && !img && window.Sync) { img = await window.Sync.baixarArquivo(`img:${s.imagem_id}`); if (img) await S.salvarBlob(`img:${s.imagem_id}`, img, { content_id: c.id, origem: 'servidor' }); }
+      if (s.imagem_id && !img) throw new Error(`A foto do slide ${i + 1} não está neste aparelho nem no servidor. Envie de novo.`);
       if (c.pipeline.arte) { c.pipeline.arte.progresso = `Desenhando slide ${i + 1} de ${total}…`; x.render(); }
       const r = await x.api('/api/content/render-slide', { method: 'POST', body: {
         slide: s, indice: i + 1, total, imagem: img ? await blobParaDataUrl(img) : undefined,
@@ -346,8 +372,17 @@
     await S.snapshot(c, 'exportado');
     await x.persistir(c);
     const nomeZip = `pedro-destrava-${(c.titulo || 'post').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/^-|-$/g, '') || 'post'}-${v.id}.zip`;
-    await x.entregarArquivo(montarZip(arquivos), nomeZip);
-    x.toast('Arquivos exportados. Publique no Instagram você mesmo.');
+    const zip = montarZip(arquivos);
+    await x.entregarArquivo(zip, nomeZip);
+    let guardado = '';
+    if (x.state.servidor?.configurado && window.Sync) {
+      try {
+        const r = await window.Sync.enviarArquivo(`export:${c.id}:${v.id}`, zip);
+        c.exportacoes[c.exportacoes.length - 1].servidor = { chave: `export:${c.id}:${v.id}`, sha256: r.sha256, tamanho: r.tamanho };
+        await x.persistir(c); guardado = ' Cópia do ZIP guardada no servidor.';
+      } catch (e) { guardado = ` O ZIP NÃO foi guardado no servidor (${e.message}); ele está só no seu aparelho.`; }
+    }
+    x.toast(`Arquivos exportados.${guardado} Publique no Instagram você mesmo.`);
   }
 
   // ── Telas ───────────────────────────────────────────────────────────────────
@@ -388,7 +423,10 @@
         ${colar ? '<textarea id="ed-colar" class="es-input" rows="6" placeholder="Cole aqui o texto da matéria"></textarea><button class="es-btn" data-action="ed-colar">Usar este texto</button>' : ''}
         <button class="es-btn ${colar ? 'ghost' : ''}" data-action="ed-continuar">Tentar de novo</button>`;
     }
-    if (st.estado === 'em_andamento') return `<div class="es-warn">A etapa “${esc(ROTULO[atual])}” foi interrompida (conexão ou página fechada). Nada foi perdido.</div><button class="es-btn" data-action="ed-continuar">Continuar de onde parou</button>`;
+    if (st.estado === 'em_andamento') {
+      const duravel = x0().state.servidor?.configurado && ['afirmacoes', 'pesquisa', 'briefing', 'copy'].includes(atual);
+      return `<div class="es-warn">A etapa “${esc(ROTULO[atual])}” foi interrompida (conexão ou página fechada). O que já estava pronto continua salvo. ${duravel ? 'Ao continuar, se o servidor já tiver terminado, o resultado é recuperado sem nova chamada de IA.' : atual === 'arte' ? 'Ao continuar, só os slides que faltaram são desenhados de novo.' : 'Ao continuar, esta etapa recomeça (sem cópia no servidor, o pedido anterior não pode ser recuperado).'}</div><button class="es-btn" data-action="ed-continuar">Continuar de onde parou</button>`;
+    }
     if (ATE_BRIEFING.includes(atual)) return `<button class="es-btn" data-action="ed-continuar">Continuar: ${esc(ROTULO[atual])}</button>`;
     return '';
   }
@@ -608,8 +646,23 @@
       <div class="es-actions" style="margin-top:14px"><button class="es-btn danger" data-action="arquivar" data-id="${esc(c.id)}">Arquivar</button></div>`;
   }
 
+  // Arte que ficou para trás (aba fechada no meio, outro aparelho): desenhar o que
+  // falta não usa IA e é determinístico, então é retomado sozinho ao abrir.
+  const retomadas = new Set();
+  function retomarArte() {
+    const x = ctx(); const c = x.conteudoAtual();
+    if (!c || rodando[c.id] || retomadas.has(c.id)) return;
+    const v = M.versaoAtiva(c);
+    if (!v || !feito(c, 'copy')) return;
+    const falta = v.slides.some((s) => { const r = c.arte.renders.find((q) => q.slide_id === s.id && q.versao === v.id); return !r || r.texto_hash !== M.hashRender(s); });
+    if (!falta) return;
+    retomadas.add(c.id);
+    aposEdicao(x, c, null, null, { silencioso: true });
+  }
+
   // Miniaturas: carrega do banco local para o <img>.
   async function aposRender(root) {
+    setTimeout(retomarArte, 0);
     root.querySelectorAll('img[data-render]').forEach(async (img) => {
       const key = img.dataset.render;
       if (!urls.has(key)) { const b = await S.obterBlob(key); if (!b?.blob) return; urls.set(key, URL.createObjectURL(b.blob)); }
@@ -766,6 +819,7 @@
         if (f.size > 6 * 1024 * 1024) { x.toast('A foto passa de 6 MB. Reduza e envie de novo.'); return; }
         const imgId = M.uid('img');
         await S.salvarBlob(`img:${imgId}`, f, { content_id: c.id, nome: f.name });
+        if (x.state.servidor?.configurado && window.Sync) await window.Sync.enviarArquivo(`img:${imgId}`, f).catch((e) => x.toast(`Foto guardada só neste aparelho: ${e.message}`));
         c.imagens.push({ id: imgId, tipo: 'foto_pedro', origem: 'Foto enviada pelo Pedro', credito: '@pedro_destrava', licenca: 'Imagem do próprio perfil', relevancia: 'alta', arquivo: f.name, enviada_em: new Date().toISOString() });
         const r = M.editarSlide(c, d.edFoto, { imagem_id: imgId, layout: 'capa_foto' });
         return aposEdicao(x, c, r.efeito);

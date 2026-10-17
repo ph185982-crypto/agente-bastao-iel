@@ -46,6 +46,9 @@
     resultadoImport: null,
     verJson: null,
     encerramento: null,
+    servidor: null,            // estado da cópia no servidor
+    syncMeta: {},              // id → { rev, conferido, conflito, erro }
+    sincronizando: false,
   };
 
   // ── API ─────────────────────────────────────────────────────────────────────
@@ -150,6 +153,7 @@
     const i = state.contents.findIndex((x) => x.id === c.id);
     if (i === -1) state.contents.unshift(c); else state.contents[i] = c;
     state.contents.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+    if (window.Sync && state.servidor?.configurado) window.Sync.agendar(c);
   }
 
   async function entregarArquivo(blob, nome) {
@@ -177,6 +181,15 @@
     if (c.confirmada) return `<span class="mz-chip ok">${esc(M.ACCOUNT_PIN.handle)} · confirmada na API</span>`;
     return `<span class="mz-chip neutro">${esc(M.ACCOUNT_PIN.handle)} · fixa no código</span>`;
   }
+  function chipServidor(c) {
+    if (!state.servidor) return '';
+    if (!state.servidor.configurado) return '<span class="mz-chip warn">Só neste navegador</span>';
+    const m = state.syncMeta[c.id] || {};
+    if (m.conflito) return '<span class="mz-chip err">Conflito com outro aparelho</span>';
+    if (m.conferido) return `<span class="mz-chip ok">No servidor (rev. ${m.rev})</span>`;
+    return '<span class="mz-chip warn">Ainda não enviado</span>';
+  }
+
   function chipArmazenamento() {
     if (!S.ok || !state.storage.ok) return '<span class="mz-chip err">Sem salvamento neste navegador</span>';
     if (state.storage.persistente === false) return '<span class="mz-chip warn">Salvo neste aparelho (o navegador pode limpar)</span>';
@@ -275,7 +288,7 @@
     if (!c) return '<div class="es-empty-day">Conteúdo não encontrado.</div>';
     const al = S.puro.alertasDoConteudo(c);
     const topo = `<button class="es-btn ghost sm" style="width:auto" data-action="voltar">‹ Mesa</button>
-      <div class="mz-top" style="margin-top:12px"><span class="mz-status ${c.status}">${STATUS_ROTULO[c.status]}</span>${chipConta()}</div>
+      <div class="mz-top" style="margin-top:12px"><span class="mz-status ${c.status}">${STATUS_ROTULO[c.status]}</span>${chipConta()}${chipServidor(c)}</div>
       <div class="es-h1">${esc(c.titulo)}</div>`;
     if (c.legado) return topo + telaLegado(c, al);
     return topo + (window.MesaEditor ? window.MesaEditor.render(c, { state, esc, fmtData }) : '<div class="es-empty-day">Editor em preparação.</div>');
@@ -358,18 +371,64 @@
       : `<button class="es-btn ${cls} sm" data-action="${k}">${txt}</button>`);
     return `<div class="es-card" style="margin-top:12px">
       <div class="es-title" style="margin-top:0">Armazenamento e recuperação</div>
-      <div class="es-text">Tudo fica <b>neste aparelho</b> (IndexedDB), gravado a cada alteração. ${st.persistente === true ? 'O navegador marcou como persistente.' : 'O navegador não garantiu persistência: ele pode limpar os dados se faltar espaço.'}${st.uso ? ` Em uso: ${(st.uso / 1048576).toFixed(1)} MB.` : ''}</div>
-      <div class="es-text" style="margin-top:6px">Para trocar de aparelho ou se proteger de perda, baixe o backup. Sincronização entre aparelhos ainda não existe (precisa de um banco no servidor).</div>
+      ${secaoServidor()}
+      <div class="es-label">Cópia neste navegador</div>
+      <div class="es-text">Tudo é gravado <b>neste navegador</b> (IndexedDB) a cada alteração. ${st.persistente === true ? 'O navegador marcou como persistente.' : 'O navegador não garantiu persistência: ele pode limpar os dados se faltar espaço.'}${st.uso ? ` Em uso: ${(st.uso / 1048576).toFixed(1)} MB.` : ''}</div>
+      <div class="es-text" style="margin-top:6px">“Baixar backup” gera um arquivo que fica com você, fora do navegador e do servidor.</div>
       <div class="es-actions">
-        <button class="es-btn" data-action="exportar-backup">Baixar backup</button>
+        <button class="es-btn" data-action="exportar-backup">Baixar backup (arquivo)</button>
         <label class="es-btn ghost" style="cursor:pointer">Importar backup<input type="file" accept="application/json,.json" id="import-backup" hidden></label>
       </div>
       ${state.resultadoImport ? `<div class="es-warn">Importado: ${state.resultadoImport.adicionados} novo(s), ${state.resultadoImport.substituidos} atualizado(s) (o anterior ficou guardado), ${state.resultadoImport.mantidos} mantido(s) por serem mais recentes aqui.</div>` : ''}
-      <div class="es-label">Backups automáticos (diário, últimos 7)</div>
+      <div class="es-label">Backups locais automáticos (só neste navegador: diário, últimos 7)</div>
       ${state.backups.length ? state.backups.map((b) => `<div class="es-between" style="margin-bottom:8px"><span class="es-text">${esc(fmtData(b.em))} · ${esc(b.motivo)} · ${b.n} conteúdo(s)</span>
         ${state.confirmando === `restaurar-${b.id}` ? `<span class="es-row"><button class="es-btn danger sm" style="width:auto" data-action="restaurar-sim" data-id="${b.id}">Restaurar</button><button class="es-btn ghost sm" style="width:auto" data-action="cancelar-confirmacao">Não</button></span>` : `<button class="es-btn ghost sm" style="width:auto" data-action="restaurar" data-id="${b.id}">Restaurar</button>`}</div>`).join('') : '<div class="es-text">Nenhum ainda. O primeiro é criado quando houver conteúdo.</div>'}
       <button class="es-btn ghost sm" style="margin-top:8px" data-action="backup-agora">Criar backup agora</button>
     </div>`;
+  }
+
+  function secaoServidor() {
+    const sv = state.servidor;
+    if (!sv) return '<div class="es-text">Verificando a cópia no servidor…</div>';
+    if (!sv.configurado) return `<div class="es-warn"><b>Sem cópia no servidor.</b> A única cópia está neste navegador. Se ele for limpo ou o aparelho for perdido, o trabalho só volta pelo arquivo de backup.</div>`;
+    const metas = Object.values(state.syncMeta);
+    const conferidos = state.contents.filter((c) => state.syncMeta[c.id]?.conferido && !state.syncMeta[c.id]?.conflito).length;
+    const conflitos = state.contents.filter((c) => state.syncMeta[c.id]?.conflito);
+    const u = state.servidor.ultimo;
+    return `<div class="es-label">Cópia no servidor</div>
+      <div class="es-text"><b>Conectada</b> (${esc(sv.tipo)}). ${conferidos} de ${state.contents.length} conteúdo(s) gravados e conferidos lá.${u ? ` Última sincronização: ${esc(fmtData(u.em))} — ${u.enviados} enviado(s), ${u.trazidos || 0} trazido(s), ${u.erros + (u.nao_conferidos || 0)} com erro.` : ''}</div>
+      ${metas.some((m) => m.erro && !m.conferido) ? '<div class="es-warn">Alguns conteúdos não foram confirmados no servidor. Eles continuam salvos aqui.</div>' : ''}
+      ${conflitos.map((c) => `<div class="es-warn"><b>Conflito em “${esc(c.titulo)}”:</b> outro aparelho gravou uma versão diferente. Nenhuma foi perdida.<div class="es-actions"><button class="es-btn ghost sm" data-action="conflito" data-id="${c.id}" data-escolha="servidor">Usar a do servidor (a daqui vira snapshot)</button><button class="es-btn ghost sm" data-action="conflito" data-id="${c.id}" data-escolha="local">Manter a deste aparelho (a do servidor fica no histórico de lá)</button></div></div>`).join('')}
+      <button class="es-btn ghost sm" style="margin:8px 0" data-action="sincronizar" ${state.sincronizando ? 'disabled' : ''}>${state.sincronizando ? '<span class="es-spin"></span> Sincronizando…' : 'Sincronizar agora'}</button>`;
+  }
+
+  async function carregarSync() {
+    if (!window.Sync) return;
+    state.servidor = await window.Sync.status(true);
+    if (state.servidor.configurado) {
+      state.servidor.ultimo = await S.cfgGet('sync_ultimo');
+      for (const c of state.contents) state.syncMeta[c.id] = (await window.Sync.meta(c.id)) || {};
+      // Encerramento aprovado enviado de outro aparelho.
+      if (!state.encerramento) {
+        const b = await window.Sync.baixarArquivo('upload:encerramento').catch(() => null);
+        if (b) {
+          await S.salvarBlob('upload:encerramento', b, { origem: 'servidor' });
+          const bmp = await createImageBitmap(b).catch(() => null);
+          state.encerramento = { nome: 'encerramento (do servidor)', largura: bmp?.width, altura: bmp?.height, em: new Date().toISOString(), tipo: b.type };
+          await S.cfgSet('encerramento_aprovado', state.encerramento);
+        }
+      }
+    }
+  }
+
+  async function sincronizar() {
+    if (state.sincronizando) return;
+    state.sincronizando = true; render();
+    try {
+      const r = await window.Sync.sincronizarTudo();
+      await carregar(); await carregarSync();
+      if (r.configurado) toast(`Servidor: ${r.enviados} enviado(s) e conferido(s), ${r.trazidos} trazido(s)${r.conflitos ? `, ${r.conflitos} conflito(s)` : ''}${r.erros ? `, ${r.erros} erro(s)` : ''}.`);
+    } catch (e) { toast(`Sincronização falhou: ${e.message}. Nada local foi alterado.`); } finally { state.sincronizando = false; render(); }
   }
 
   function secaoQuarentena() {
@@ -477,6 +536,8 @@
         case 'confirmar-conta': return confirmarConta(true);
         case 'ler-perfil': return lerPerfil();
         case 'sair': return window.PicoAuth?.sair();
+        case 'sincronizar': return sincronizar();
+        case 'conflito': { const r = await window.Sync.resolverConflito(id, el.dataset.escolha); await carregar(); await carregarSync(); toast(r === 'servidor' ? 'Agora vale a cópia do servidor. A deste aparelho ficou como snapshot.' : 'A cópia deste aparelho foi enviada.'); return render(); }
         case 'exportar-backup': { const blob = await S.exportar(); await entregarArquivo(blob, `pico-backup-${C.toISODate(new Date())}.json`); return toast('Backup gerado.'); }
         case 'backup-agora': await S.criarBackupAutomatico('manual'); state.backups = await S.listarBackups(); toast('Backup criado.'); return render();
         case 'restaurar': state.confirmando = `restaurar-${id}`; return render();
@@ -508,6 +569,9 @@
         await S.salvarBlob('upload:encerramento', f, { nome: f.name });
         state.encerramento = { nome: f.name, largura: bmp.width, altura: bmp.height, em: new Date().toISOString(), tipo: f.type };
         await S.cfgSet('encerramento_aprovado', state.encerramento);
+        if (state.servidor?.configurado && window.Sync) {
+          await window.Sync.enviarArquivo('upload:encerramento', f).then(() => S.cfgSet('encerramento_no_servidor', true)).catch((e) => toast(`Encerramento guardado só neste aparelho: ${e.message}`));
+        }
         toast(bmp.width === 1080 && bmp.height === 1350 ? 'Arquivo guardado.' : `Guardado, mas o tamanho é ${bmp.width}×${bmp.height} (o esperado é 1080×1350).`);
         render();
       }
@@ -531,6 +595,9 @@
     await carregar();
     state.pronto = true;
     render();
+    // Cópia no servidor: confere estado e sincroniza ao abrir (traz o que foi feito em outro aparelho).
+    carregarSync().then(() => { render(); if (state.servidor?.configurado) sincronizar(); }).catch(() => {});
+    window.addEventListener('pico-sync', async (ev) => { if (window.Sync) { state.syncMeta[ev.detail.id] = (await window.Sync.meta(ev.detail.id)) || {}; } });
     api('/api/account').then((x) => { state.conta = { ...state.conta, esperado: x.esperado, ambiente: x.ambiente_com_problema }; render(); }).catch(() => {});
   })();
 })();

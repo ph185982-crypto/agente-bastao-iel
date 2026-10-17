@@ -127,6 +127,9 @@
     _pendentes.delete(c.id);
     return c;
   }
+  // Grava exatamente o documento recebido (sincronização): não mexe em updated_at,
+  // senão o hash conferido com o servidor deixaria de bater.
+  async function salvarExato(c) { await put('contents', c); _pendentes.delete(c.id); return c; }
   // Grava logo mais (digitação); flush() força. Sempre grava o objeto mais recente.
   function salvarLogo(c) {
     _pendentes.set(c.id, c);
@@ -309,7 +312,7 @@
 
   return {
     puro, ok: true, iniciar, estado: () => _okEstado,
-    listar, obter, salvar, salvarLogo, flush, snapshot, snapshotsDe, apagarConteudo,
+    listar, obter, salvar, salvarExato, salvarLogo, flush, snapshot, snapshotsDe, apagarConteudo,
     salvarBlob, obterBlob, apagarBlob, cfgGet, cfgSet, quarentena, isolar,
     listarBackups, criarBackupAutomatico, exportar, importarArquivo, importarObjeto, restaurarBackup, migrar,
     _raw: { getAll, get, put, del, keys },

@@ -13,7 +13,7 @@ const AMOSTRAS = PREFIXOS.flatMap((p) => [['GET', `${p}/`], ['POST', `${p}/qualq
 let base; let srv; const envAntes = { ...process.env };
 async function sobe(env) {
   for (const k of ['APP_ACCESS_CODE', 'VERCEL', 'NODE_ENV', 'CRON_SECRET']) delete process.env[k];
-  Object.assign(process.env, env);
+  Object.assign(process.env, { PORT: '0' }, env);
   if (srv) await new Promise((r) => srv.close(r));
   Object.keys(require.cache).filter((k) => k.includes(`${path.sep}backend${path.sep}`)).forEach((k) => { delete require.cache[k]; });
   const app = require('../server');

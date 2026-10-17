@@ -5,6 +5,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const { limita, unica } = require('../lib/access');
+const { armazem } = require('../lib/armazem');
 const feeds = require('../lib/feeds');
 const { pedirJson, dado, REGRAS_DADOS, hasLlmKey, comConsumo } = require('../lib/llmJson');
 const Editorial = require('../../static/editorial');
@@ -121,13 +122,28 @@ const txt = (v, max) => String(v == null ? '' : v).slice(0, max);
 const arr = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
 // Etapas sem estado: se o mesmo request_id chegar de novo (duplo clique, reenvio
 // após queda de conexão), devolve o resultado da primeira chamada.
+//
+// Com armazenamento no servidor, o resultado também é gravado como tarefa:
+// se a aba fechar no meio, o navegador recupera o resultado pelo request_id
+// sem refazer (nem pagar) a pesquisa ou a redação. Sem armazenamento, só vale
+// a proteção em memória desta instância.
+const DURAVEIS = new Set(['claims', 'verify', 'briefing', 'copy', 'conferir']);
 const etapa = (nome, max, fn) => router.post(`/${nome}`, porMinuto(max, nome), async (req, res) => {
   try {
     const rid = req.body?.request_id ? `${nome}:${txt(req.body.request_id, 80)}` : null;
-    res.json(await unica(rid, async () => {
+    const arm = DURAVEIS.has(nome) && rid ? armazem() : null;
+    if (arm) {
+      const j = await arm.jobs.obter(rid).catch(() => null);
+      if (j?.estado === 'concluido') return res.json({ ...j.resultado, reaproveitado: true });
+      if (j?.estado === 'rodando' && Date.now() - new Date(j.criado_em).getTime() < 75000) return res.status(202).json({ em_andamento: true, rid });
+      await arm.jobs.iniciar(rid, nome, txt(req.body.conteudo_id, 80)).catch(() => {});
+    }
+    const corpo = await unica(rid, async () => {
       const { resultado, consumo } = await comConsumo(() => fn(req.body || {}));
       return { ...resultado, consumo: { etapa: nome, ...consumo } };
-    }));
+    }).catch(async (e) => { if (arm) await arm.jobs.falhar(rid, e.message).catch(() => {}); throw e; });
+    if (arm) await arm.jobs.concluir(rid, corpo).catch(() => {});
+    res.json(corpo);
   } catch (e) { if (!res.headersSent) erroJson(res, e); }
 });
 
