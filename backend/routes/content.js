@@ -60,24 +60,26 @@ router.post('/discover', porMinuto(6, 'descoberta'), async (req, res) => {
           maxTokens: 3500,
           sistema: `${Editorial.VOZ}\n\n${REGRAS_DADOS}`,
           usuario: `Abaixo, notícias recentes (só título, resumo e veículos). Para cada uma escreva, SEM afirmar nenhum fato que não esteja no título/resumo:
-- por_que_interessa: 1 frase ligando o assunto ao perfil e à vida prática de quem lê (sem forçar ligação que não existe);
+- ligacao_com_perfil: "forte", "media" ou "fraca" (seja honesto: se a conexão com política, economia, empreendedorismo ou o bolso de quem lê é forçada, é "fraca");
+- por_que_interessa: 1 frase ligando o assunto ao perfil e à vida prática de quem lê, só com o que o título/resumo permite concluir (sem especular efeitos);
 - angulo: uma tese possível OU uma pergunta central, em 1 frase (se o assunto não sustenta posição, proponha explicar o que mudou);
 - objetivo_sugerido: "alcance", "autoridade" ou "conversao";
 - formato_sugerido: "carrossel", "estatico", "reels" ou "stories";
 - risco: "alto" se envolve acusação a pessoa, crime, saúde ou eleição; senão "baixo";
 - limitacoes: o que precisa ser confirmado antes de publicar;
 - repete_recente: true se o tema é o mesmo de algum post recente listado.
-Não dê pontuação. Se uma notícia não rende post, omita.
+Não dê pontuação. Se a ligação for fraca ou a notícia não render post, omita o item.
 
 ${entrada.bloco}
 ${rec.bloco}
 
-Responda APENAS JSON: {"itens":[{"i":0,"por_que_interessa":"","angulo":"","objetivo_sugerido":"","formato_sugerido":"","risco":"","limitacoes":"","repete_recente":false}]}`,
+Responda APENAS JSON: {"itens":[{"i":0,"ligacao_com_perfil":"forte","por_que_interessa":"","angulo":"","objetivo_sugerido":"","formato_sugerido":"","risco":"","limitacoes":"","repete_recente":false}]}`,
         });
         const porI = new Map((dados.itens || []).filter((x) => Number.isInteger(x.i)).map((x) => [x.i, x]));
         lista.forEach((p) => {
           const a = porI.get(p.i);
           if (!a) { p.sem_anotacao = true; return; }
+          p.ligacao = ['forte', 'media'].includes(a.ligacao_com_perfil) ? a.ligacao_com_perfil : 'fraca';
           p.por_que_interessa = String(a.por_que_interessa || '').slice(0, 280);
           p.angulo = String(a.angulo || '').slice(0, 280);
           p.objetivo_sugerido = Editorial.OBJETIVOS[a.objetivo_sugerido] ? a.objetivo_sugerido : null;
@@ -95,7 +97,7 @@ Responda APENAS JSON: {"itens":[{"i":0,"por_que_interessa":"","angulo":"","objet
     res.json({
       gerado_em: new Date().toISOString(),
       janela_dias: dias,
-      pautas: lista.filter((p) => !(ia.usada && p.sem_anotacao)).map(({ i, ...p }) => p),
+      pautas: lista.filter((p) => !(ia.usada && (p.sem_anotacao || p.ligacao === 'fraca'))).map(({ i, ...p }) => p),
       ia,
       feeds: lidos.status,
       aviso: 'Notícias dos feeds dos próprios veículos, dos últimos dias. Não é uma busca completa nem um ranking de tendências.',

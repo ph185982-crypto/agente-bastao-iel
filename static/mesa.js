@@ -234,6 +234,7 @@
     return `<article class="es-card">
       <div class="es-row" style="flex-wrap:wrap;gap:6px">
         <span class="es-chip pillar">${esc(p.pilar)}</span>
+        ${p.ligacao ? `<span class="mz-chip ${p.ligacao === 'forte' ? 'ok' : 'neutro'}">Ligação com o perfil: ${p.ligacao === 'forte' ? 'forte' : 'média'}</span>` : ''}
         ${p.risco === 'alto' ? '<span class="mz-chip err">Assunto sensível</span>' : ''}
         ${p.repete_recente ? '<span class="mz-chip warn">Parecido com post recente</span>' : ''}
       </div>
