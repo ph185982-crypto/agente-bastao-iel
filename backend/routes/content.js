@@ -14,7 +14,7 @@ const porMinuto = (max, nome) => limita({ max, janelaMs: 60000, nome });
 
 const erroJson = (res, e, status) => {
   const code = e.code || (e.isUrlError ? 'URL' : 'ERRO');
-  const http = status || (e.isUrlError ? 400 : e.code === 'SEM_IA' ? 503 : e.code === 'LIMITE' ? 429 : 500);
+  const http = status || (e.isUrlError ? 400 : e.code === 'SEM_IA' ? 503 : e.code === 'LIMITE' ? 429 : ['ENTRADA', 'IMAGEM', 'FONTE_ILEGIVEL', 'SEM_AFIRMACOES'].includes(e.code) ? 400 : 500);
   res.status(http).json({ error: e.message, code });
 };
 
@@ -106,6 +106,101 @@ Responda APENAS JSON: {"itens":[{"i":0,"ligacao_com_perfil":"forte","por_que_int
     erroJson(res, e);
   }
 });
+
+// ── B. Quero falar sobre isso: fonte → afirmações → verificação → briefing → copy → arte ──
+const research = require('../lib/research');
+const redacao = require('../lib/redacao');
+const connectors = require('../lib/connectors');
+const arte = require('../lib/arte');
+
+const exigeIA = () => {
+  if (!hasLlmKey()) throw Object.assign(new Error('Nenhuma chave de IA configurada no servidor.'), { code: 'SEM_IA' });
+};
+const txt = (v, max) => String(v == null ? '' : v).slice(0, max);
+const arr = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
+// Etapas sem estado: se o mesmo request_id chegar de novo (duplo clique, reenvio
+// após queda de conexão), devolve o resultado da primeira chamada.
+const etapa = (nome, max, fn) => router.post(`/${nome}`, porMinuto(max, nome), async (req, res) => {
+  try {
+    const rid = req.body?.request_id ? `${nome}:${txt(req.body.request_id, 80)}` : null;
+    res.json(await unica(rid, () => fn(req.body || {})));
+  } catch (e) { if (!res.headersSent) erroJson(res, e); }
+});
+
+const fonteDoCorpo = (f) => {
+  if (!f || typeof f !== 'object') throw Object.assign(new Error('Falta a fonte.'), { code: 'ENTRADA' });
+  return { ...f, texto: txt(f.texto, 30000), titulo: txt(f.titulo, 300), veiculo: txt(f.veiculo, 120) };
+};
+const claimsDoCorpo = (c) => arr(c, 12).filter((x) => x && x.id && x.texto).map((x) => ({ ...x, texto: txt(x.texto, 500) }));
+const evidsDoCorpo = (e) => arr(e, 80).filter((x) => x && x.id);
+
+etapa('ingest', 10, async (b) => {
+  if (!b.url && !b.texto) throw Object.assign(new Error('Envie um link ou o texto.'), { code: 'ENTRADA' });
+  const fonte = await research.lerFonte({ url: b.url ? txt(b.url, 2000) : undefined, texto: b.texto ? txt(b.texto, 60000) : undefined });
+  return { fonte };
+});
+
+etapa('claims', 6, async (b) => {
+  exigeIA();
+  const r = await research.levantarAfirmacoes(fonteDoCorpo(b.fonte));
+  return r;
+});
+
+etapa('verify', 12, async (b) => {
+  exigeIA();
+  const claim = claimsDoCorpo([b.claim])[0];
+  if (!claim) throw Object.assign(new Error('Falta a afirmação.'), { code: 'ENTRADA' });
+  return research.verificarAfirmacao(claim, fonteDoCorpo(b.fonte), evidsDoCorpo(b.evidencias));
+});
+
+etapa('briefing', 8, async (b) => {
+  exigeIA();
+  return redacao.gerarBriefing({
+    fonte: fonteDoCorpo(b.fonte), claims: claimsDoCorpo(b.claims), evidencias: evidsDoCorpo(b.evidencias),
+    recentes: arr(b.recentes, 10).map((r) => txt(r, 140)), objetivo: txt(b.objetivo, 40), formato: txt(b.formato, 40),
+  });
+});
+
+etapa('copy', 6, async (b) => {
+  exigeIA();
+  if (!b.briefing || typeof b.briefing !== 'object') throw Object.assign(new Error('Falta o briefing.'), { code: 'ENTRADA' });
+  return redacao.gerarCopia({
+    briefing: b.briefing, fonte: fonteDoCorpo(b.fonte), claims: claimsDoCorpo(b.claims), evidencias: evidsDoCorpo(b.evidencias),
+    recentes: arr(b.recentes, 10).map((r) => txt(r, 140)), formato: b.formato === 'estatico' ? 'estatico' : 'carrossel', instrucoes: txt(b.instrucoes, 600),
+  });
+});
+
+// Cálculo de correção pelo IPCA com fórmula e entradas guardadas.
+etapa('calculo-ipca', 20, async (b) => {
+  const valor = Number(b.valor);
+  if (!Number.isFinite(valor) || valor <= 0 || valor > 1e12) throw Object.assign(new Error('Valor inválido.'), { code: 'ENTRADA' });
+  if (!/^\d{4}-\d{2}$/.test(String(b.de)) || !/^\d{4}-\d{2}$/.test(String(b.ate))) throw Object.assign(new Error('Informe os meses no formato AAAA-MM.'), { code: 'ENTRADA' });
+  return connectors.corrigirPorIpca({ valor, de: b.de, ate: b.ate });
+});
+
+// ── Arte: um slide por chamada (PNG em base64 + métricas reais) ──────────────
+const decodificaImagem = async (dataUrl, nome) => {
+  if (!dataUrl) return null;
+  const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
+  if (!m) throw Object.assign(new Error(`${nome}: use PNG, JPG ou WebP.`), { code: 'IMAGEM' });
+  const buf = Buffer.from(m[2], 'base64');
+  if (buf.length > 8 * 1024 * 1024) throw Object.assign(new Error(`${nome}: arquivo maior que 8 MB.`), { code: 'IMAGEM' });
+  const sharp = require('sharp');
+  const meta = await sharp(buf, { limitInputPixels: 40e6 }).metadata().catch(() => null);
+  if (!meta || !['png', 'jpeg', 'webp'].includes(meta.format)) throw Object.assign(new Error(`${nome}: o arquivo não é uma imagem válida.`), { code: 'IMAGEM' });
+  return buf;
+};
+
+etapa('render-slide', 40, async (b) => {
+  const s = b.slide;
+  if (!s || typeof s !== 'object') throw Object.assign(new Error('Falta o slide.'), { code: 'ENTRADA' });
+  const slide = { ...s, texto: txt(s.texto, 900), titulo: s.titulo ? txt(s.titulo, 200) : null, rotulo: s.rotulo ? txt(s.rotulo, 40) : null };
+  const imagem = await decodificaImagem(b.imagem, 'Imagem do slide');
+  const arquivoEncerramento = await decodificaImagem(b.encerramento, 'Arquivo de encerramento');
+  const r = await arte.renderizarSlide(slide, { indice: Number(b.indice) || 1, total: Number(b.total) || 1, imagem, arquivoEncerramento });
+  return { png: `data:image/png;base64,${r.png.toString('base64')}`, metrics: r.metrics };
+});
+
 
 module.exports = router;
 module.exports._util = { erroJson, porMinuto, unica };
