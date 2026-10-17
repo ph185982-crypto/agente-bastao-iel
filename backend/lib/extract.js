@@ -71,7 +71,7 @@ function paragrafos(corpo) {
     const titulo = /^h/i.test(m[1]);
     if (!texto) continue;
     // Fim da matéria: daqui pra baixo são chamadas para outras notícias.
-    if (/^(mais not[íi]cias|leia (tamb[ée]m|mais)|veja tamb[ée]m|not[íi]cias relacionadas|relacionadas)\b/i.test(texto) && blocos.length >= 3) break;
+    if (/^(mais not[íi]cias sobre|not[íi]cias relacionadas)\b/i.test(texto) && blocos.length >= 3) break;
     if (!titulo && texto.length < 40) continue;
     if (LIXO.test(texto)) continue;
     blocos.push(titulo ? `## ${texto}` : texto);
