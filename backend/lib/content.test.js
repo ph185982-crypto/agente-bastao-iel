@@ -293,6 +293,8 @@ test('SSRF: endereços internos, metadados de nuvem, portas e protocolos são ba
   assert.strictEqual(ipProibido('172.16.5.4'), true);
   assert.strictEqual(ipProibido('8.8.8.8'), false);
   assert.strictEqual(ipProibido('::ffff:10.0.0.1'), true);
+  assert.strictEqual(ipProibido('192.0.66.154'), false, 'faixa pública (WordPress.com) não pode ser barrada');
+  assert.strictEqual(ipProibido('192.0.2.7'), true, 'faixa de documentação');
 });
 
 test('SSRF: DNS que aponta para rede interna é barrado na conexão (rebinding)', async () => {

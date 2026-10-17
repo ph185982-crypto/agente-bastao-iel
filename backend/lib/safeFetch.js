@@ -13,6 +13,7 @@
 const dns = require('dns');
 const net = require('net');
 const http = require('http');
+const zlib = require('zlib');
 const https = require('https');
 const { URL } = require('url');
 
@@ -29,7 +30,9 @@ function ipProibido(ip) {
       || (a === 169 && b === 254)                   // link-local e metadados de nuvem
       || (a === 172 && b >= 16 && b <= 31)
       || (a === 192 && b === 168)
-      || (a === 192 && b === 0)
+      || (a === 192 && b === 0 && (Number(ip.split('.')[2]) === 0 || Number(ip.split('.')[2]) === 2))  // só 192.0.0.0/24 e 192.0.2.0/24 (o resto de 192.0.x é público)
+      || (a === 198 && b === 51 && Number(ip.split('.')[2]) === 100)
+      || (a === 203 && b === 0 && Number(ip.split('.')[2]) === 113)
       || (a === 198 && (b === 18 || b === 19))
       || a >= 224;                                  // multicast e reservados
   }
@@ -92,7 +95,7 @@ function umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept }) {
       port: url.port || undefined,
       path: `${url.pathname}${url.search}`,
       method: 'GET',
-      headers: { 'User-Agent': UA, Accept: accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8', 'Accept-Language': 'pt-BR,pt;q=0.9', 'Accept-Encoding': 'identity' },
+      headers: { 'User-Agent': UA, Accept: accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8', 'Accept-Language': 'pt-BR,pt;q=0.9', 'Accept-Encoding': 'gzip, deflate' },
       lookup: lookupSeguro(resolver),
       timeout: timeoutMs,
     }, (res) => {
@@ -109,12 +112,16 @@ function umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept }) {
       }
       const partes = [];
       let total = 0;
-      res.on('data', (c) => {
+      const enc = String(res.headers['content-encoding'] || '').toLowerCase();
+      // O limite vale pro tamanho DESCOMPRIMIDO (protege de bomba de compressão).
+      const fonte = enc === 'gzip' ? res.pipe(zlib.createGunzip()) : enc === 'deflate' ? res.pipe(zlib.createInflate()) : res;
+      fonte.on('data', (c) => {
         total += c.length;
         if (total > maxBytes) { req.destroy(new ErroUrl('A página é grande demais para ler.', 'TAMANHO')); return; }
         partes.push(c);
       });
-      res.on('end', () => resolve({ status, tipo, corpo: Buffer.concat(partes).toString('utf8'), url: url.toString() }));
+      fonte.on('end', () => resolve({ status, tipo, corpo: Buffer.concat(partes).toString('utf8'), url: url.toString() }));
+      fonte.on('error', () => reject(new ErroUrl('Não consegui ler a resposta da página.', 'DECODIFICACAO')));
       res.on('error', reject);
     });
     req.on('timeout', () => req.destroy(new ErroUrl('A página demorou demais para responder.', 'TIMEOUT')));
