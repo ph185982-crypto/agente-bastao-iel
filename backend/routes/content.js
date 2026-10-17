@@ -33,7 +33,8 @@ router.post('/discover', porMinuto(6, 'descoberta'), async (req, res) => {
     const candidatos = [];
     const vistos = new Set();
     for (const p of pilares) {
-      const achados = feeds.filtrar(lidos.itens, { palavras: p.palavras, dias, minimo: 2 });
+      // Páginas de áudio/vídeo do Senado não têm texto para ler: ficam de fora.
+      const achados = feeds.filtrar(lidos.itens, { palavras: p.palavras, dias, minimo: 2 }).filter((x) => !/^\s*(Áudio|Vídeo|Foto|Fotos)\s*:/i.test(x.titulo));
       for (const g of feeds.agruparEventos(achados.slice(0, 40)).slice(0, 3)) {
         if (vistos.has(g.principal.url)) continue;
         vistos.add(g.principal.url);

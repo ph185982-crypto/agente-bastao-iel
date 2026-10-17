@@ -75,3 +75,13 @@ test('copy: claim_ids inexistentes são descartados e capa faltante é apontada'
   assert.ok(!r.versao.slides[1].claim_ids.includes('fantasma'));
   assert.ok(r.problemas_de_forma.some((p) => /tensao/.test(p)));
 });
+
+test('copy: texto público que fala do sistema de checagem é devolvido para reescrita', async () => {
+  const meta = copiaOk();
+  meta.slides[3].texto = 'As informações ainda são apenas parcialmente sustentadas por uma única fonte.';
+  const llm = llmFalso([meta, copiaOk()]);
+  const r = await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias }, { llmJson: llm });
+  assert.strictEqual(r.tentativas, 2);
+  assert.ok(/sistema de checagem/.test(llm.chamadas[1]));
+  assert.ok(!r.versao.slides.some((s) => /parcialmente sustentad/.test(s.texto)));
+});

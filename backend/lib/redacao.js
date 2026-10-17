@@ -43,7 +43,7 @@ Campos:
 - acontecimento: o que aconteceu, só com o que as afirmações sustentam;
 - por_que_interessa: por que isso importa para quem segue o perfil (sem forçar);
 - objetivo: "alcance", "autoridade" ou "conversao" (e objetivo_motivo em 1 frase);
-- tese: a tese ou pergunta central. tese_tipo: "opiniao" (posição do Pedro, com premissas factuais) ou "explicacao". Se os fatos NÃO sustentam a conclusão que o perfil tenderia a defender, não force: preencha "conflito" com {"descricao","alternativa_enquadramento"};
+- tese: a tese ou pergunta central (NUNCA vazia: se não há posição possível, escreva a pergunta que o conteúdo responde). tese_tipo: "opiniao" (posição do Pedro, com premissas factuais) ou "explicacao". Se os fatos NÃO sustentam a conclusão que o perfil tenderia a defender, não force: preencha "conflito" com {"descricao","alternativa_enquadramento"};
 - fatos_disponiveis: ids das afirmações que podem ser ditas como fato;
 - duvidas: o que ainda não está confirmado ou é limitado (lista de frases curtas);
 - formato: "carrossel" ou "estatico" (Reels e Stories ainda não são gerados por esta etapa) e formato_motivo;
@@ -65,7 +65,7 @@ Responda APENAS JSON com esses campos.`,
       por_que_interessa: String(dados.por_que_interessa || '').slice(0, 400),
       objetivo: E.OBJETIVOS[dados.objetivo] ? dados.objetivo : 'autoridade',
       objetivo_motivo: String(dados.objetivo_motivo || '').slice(0, 300),
-      tese: String(dados.tese || '').slice(0, 400),
+      tese: String(dados.tese || '').trim().slice(0, 400) || String(dados.assunto || '').slice(0, 400),
       tese_tipo: dados.tese_tipo === 'opiniao' ? 'opiniao' : 'explicacao',
       conflito: dados.conflito && dados.conflito.descricao ? { descricao: String(dados.conflito.descricao).slice(0, 400), alternativa_enquadramento: String(dados.conflito.alternativa_enquadramento || '').slice(0, 400) } : null,
       fatos_disponiveis: fatos,
@@ -121,6 +121,10 @@ function montarVersao({ dados, claims, evidencias, formato }) {
   if (formato !== 'estatico' && cta) slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'encerramento', titulo: null, texto: cta, claim_ids: [] });
   if (slides.length < (formato === 'estatico' ? 1 : 3)) problemas.push('poucos slides');
 
+  const META = /parcialmente sustentad|fonte [uú]nica|verifica[cç][aã]o independente|n[aã]o verificad|sustentada por|estado da afirma/i;
+  slides.forEach((s, i) => { if (META.test(s.texto)) problemas.push(`o slide ${i + 1} fala do sistema de checagem em vez de falar do assunto (reescreva sem "fonte única", "sustentada" etc.)`); });
+  if (META.test(dados.legenda || '')) problemas.push('a legenda fala do sistema de checagem em vez de falar do assunto');
+
   const hashtags = (dados.hashtags || []).map(String).filter((h) => /^#[\p{L}\p{N}_]+$/u.test(h)).slice(0, 3);
   return {
     versao: {
@@ -167,6 +171,9 @@ REGRAS DE FATOS (inegociáveis):
 3. Citação entre aspas só se for cópia exata de texto das afirmações. Não atribua fala a ninguém que a afirmação não atribua.
 4. Opinião do Pedro deve parecer opinião ("na minha leitura…") e marque o slide com "opiniao": true; nele, claim_ids são as premissas factuais.
 5. Não crie experiência pessoal nem história que o Pedro não contou.
+6. O texto PÚBLICO nunca fala do sistema de checagem: não escreva "parcialmente sustentada", "fonte única", "sem verificação independente", "não verificada". Quando algo ainda é só anúncio, intenção ou declaração, diga isso do jeito de quem fala ("o governo diz que pretende…", "por enquanto é só anúncio", "ainda não há regra publicada"). Limitação da fonte vai para o briefing, não para o slide.
+7. Um slide de prova mostra UM dado ou UMA declaração, com no máximo um trecho em **destaque**. Vários dados vão em slides separados.
+8. Slide de opinião é a posição do Pedro sobre o assunto (o que ele acha e por quê), nunca um comentário sobre a qualidade das fontes.
 
 ESTRUTURA: escolha a que a pauta pede (a sugerida é ${briefing.estrutura}). Cada slide tem UMA função (capa, contexto, prova, explicacao, comparacao, consequencia, opiniao) e precisa acrescentar informação, compreensão ou progressão: se não acrescenta, não escreva. ${formato === 'estatico' ? '' : 'Use o número de slides que a história pedir (entre 4 e 8 de conteúdo); não existe meta de quantidade.'} Texto por slide curto o bastante para ler no celular (capa até 18 palavras; demais até 45).
 Marque com **duas estrelas** no máximo 2 trechos por slide.
