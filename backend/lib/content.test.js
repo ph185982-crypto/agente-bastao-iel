@@ -349,3 +349,27 @@ test('chamada duplicada com o mesmo request_id executa uma vez só', async () =>
   await assert.rejects(() => access.unica('req-2', async () => { throw new Error('falhou'); }));
   assert.strictEqual(await access.unica('req-2', async () => 'ok'), 'ok', 'falha não fica em cache');
 });
+
+test('edição: tirar número não reabre a conferência; pôr número novo ou ligar outra afirmação reabre', () => {
+  const ant = { slides: [{ id: 's1', layout: 'explicacao', texto: 'O teto é R$ 140 mil.', claim_ids: ['a1'] }], legenda: 'x', cta: '' };
+  const semNumero = { slides: [{ id: 's1', layout: 'explicacao', texto: 'O teto subiu.', claim_ids: ['a1'] }], legenda: 'x', cta: '' };
+  const outroNumero = { slides: [{ id: 's1', layout: 'explicacao', texto: 'O teto é R$ 180 mil.', claim_ids: ['a1'] }], legenda: 'x', cta: '' };
+  const outraClaim = { slides: [{ id: 's1', layout: 'explicacao', texto: 'O teto é R$ 140 mil.', claim_ids: ['a1', 'a2'] }], legenda: 'x', cta: '' };
+  assert.deepStrictEqual(M.efeitoDaEdicao(ant, semNumero, []).afirmacoes, []);
+  assert.deepStrictEqual(M.efeitoDaEdicao(ant, outroNumero, []).afirmacoes, ['a1']);
+  assert.deepStrictEqual(M.efeitoDaEdicao(ant, outraClaim, []).afirmacoes.sort(), ['a1', 'a2']);
+  assert.strictEqual(M.efeitoDaEdicao(ant, { ...ant, legenda: 'x e R$ 99 mil' }, []).legenda, true);
+});
+
+test('ativarVersao: não apaga nada e reabre a aprovação se a versão ativa mudou', () => {
+  const c = M.novoConteudo({});
+  const v1 = M.criarVersao(c, { slides: [{ id: 's1', layout: 'explicacao', texto: 'um' }], legenda: '', cta: '' });
+  M.aprovar(c, { bloqueios: [] });
+  M.criarVersao(c, { slides: [{ id: 's1', layout: 'explicacao', texto: 'dois' }], legenda: '', cta: '' });
+  assert.strictEqual(c.status, 'em_revisao');
+  M.ativarVersao(c, v1.id);
+  assert.strictEqual(c.copia.versao_ativa, v1.id);
+  assert.strictEqual(c.revisao.aprovada_versao, null, 'voltar não ressuscita a aprovação sozinha');
+  assert.strictEqual(c.copia.versoes.length, 2, 'nenhuma versão foi apagada');
+  assert.throws(() => M.ativarVersao(c, 'v99'));
+});

@@ -54,6 +54,12 @@ function palavras(texto) {
   for (let i = out.length - 2; i >= 0; i--) {
     if (/^(R|US|U)?\$$/.test(out[i].t)) out.splice(i, 2, { t: `${out[i].t} ${out[i + 1].t}`, hi: out[i].hi || out[i + 1].hi, colada: out[i].colada });
   }
+  // "140 mil", "2 milhões" não se separam do número.
+  for (let i = out.length - 1; i >= 1; i--) {
+    if (/^(mil|milh[õo]es|milh[ãa]o|bilh[õo]es|bilh[ãa]o|trilh[õo]es|trilh[ãa]o)[.,;:!?]?$/i.test(out[i].t) && /\d$/.test(out[i - 1].t) && !out[i].colada) {
+      out.splice(i - 1, 2, { t: `${out[i - 1].t} ${out[i].t}`, hi: out[i - 1].hi || out[i].hi, colada: out[i - 1].colada });
+    }
+  }
   return out;
 }
 

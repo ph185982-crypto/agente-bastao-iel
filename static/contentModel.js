@@ -168,21 +168,21 @@
       const a = mapaAntes[s.id];
       if (!a) { efeito.arte.push(s.id); continue; }
       if (hashRender(a) !== hashRender(s)) efeito.arte.push(s.id);
-      const nA = extrairNumeros(a.texto).map((n) => n.valor).sort().join(',');
-      const nB = extrairNumeros(s.texto).map((n) => n.valor).sort().join(',');
-      const idsA = (a.claim_ids || []).slice().sort().join(',');
-      const idsB = (s.claim_ids || []).slice().sort().join(',');
-      if (nA !== nB || idsA !== idsB) {
-        efeito.afirmacoes.push(...(s.claim_ids || []), ...(a.claim_ids || []));
+      // Reabre a conferência quando o slide ganha número novo ou liga outra afirmação.
+      // Tirar um número do texto não cria risco factual.
+      const nA = extrairNumeros(a.texto).map((n) => n.valor);
+      const novosNumeros = extrairNumeros(s.texto).map((n) => n.valor).filter((v) => !nA.some((x) => igual(x, v)));
+      const idsNovos = (s.claim_ids || []).filter((id) => !(a.claim_ids || []).includes(id));
+      if (novosNumeros.length || idsNovos.length) {
+        efeito.afirmacoes.push(...(s.claim_ids || []));
         efeito.legenda = true;
       }
     }
     if ((antes.slides || []).length !== (depois.slides || []).length) efeito.arte = (depois.slides || []).map((s) => s.id);
     efeito.afirmacoes = [...new Set(efeito.afirmacoes)];
     if (antes.legenda !== depois.legenda || antes.cta !== depois.cta) {
-      const nA = extrairNumeros(antes.legenda).map((n) => n.valor).sort().join(',');
-      const nB = extrairNumeros(depois.legenda).map((n) => n.valor).sort().join(',');
-      if (nA !== nB) efeito.legenda = true;
+      const nA = extrairNumeros(antes.legenda).map((n) => n.valor);
+      if (extrairNumeros(depois.legenda).some((n) => !nA.some((x) => igual(x, n.valor)))) efeito.legenda = true;
     }
     return efeito;
   }
@@ -246,17 +246,25 @@
     registrar(c, 'pedro', 'bloqueio', `${bloquear ? 'Bloqueou' : 'Desbloqueou'} o slide`, { slide: slideId });
   }
 
+  // Trocar a versão ativa nunca apaga nada: só aponta para outra. A aprovação
+  // vale para UMA versão; apontar para outra a reabre.
+  function ativarVersao(c, versaoId, { quem = 'pedro', resumo } = {}) {
+    const v = c.copia.versoes.find((x) => x.id === versaoId);
+    if (!v) throw new Error('Versão não encontrada.');
+    c.copia.versao_ativa = v.id;
+    if (c.revisao.aprovada_versao && c.revisao.aprovada_versao !== v.id) {
+      c.revisao = { aprovada_versao: null, aprovada_em: null, hash_aprovado: null };
+      if (['aprovado', 'exportado'].includes(c.status)) c.status = 'em_revisao';
+    }
+    registrar(c, quem, 'desfazer', resumo || `Voltou para ${v.id}`, { versao: v.id });
+    return v;
+  }
+
   // Desfazer não apaga: reativa a versão anterior.
   function desfazer(c) {
     const ativa = versaoAtiva(c);
     if (!ativa || !ativa.pai) throw new Error('Não há versão anterior.');
-    c.copia.versao_ativa = ativa.pai;
-    if (c.revisao.aprovada_versao && c.revisao.aprovada_versao !== ativa.pai) {
-      c.revisao = { aprovada_versao: null, aprovada_em: null, hash_aprovado: null };
-      if (['aprovado', 'exportado'].includes(c.status)) c.status = 'em_revisao';
-    }
-    registrar(c, 'pedro', 'desfazer', `Voltou para ${ativa.pai}`, { versao: ativa.pai });
-    return versaoAtiva(c);
+    return ativarVersao(c, ativa.pai);
   }
 
   function reabrirAfirmacoes(c, ids) {
@@ -403,7 +411,7 @@
     SCHEMA, ACCOUNT_PIN, HANDLES_ERRADOS, STATUS, ETAPAS, ESTADOS_CLAIM,
     hash, hashRender, linhaDeFonte, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
     novoConteudo, criarVersao, versaoAtiva, conteudoDaVersao, efeitoDaEdicao,
-    editarSlide, editarLegenda, reordenarSlides, escolherCapa, alternarBloqueio, desfazer,
+    editarSlide, editarLegenda, reordenarSlides, escolherCapa, alternarBloqueio, desfazer, ativarVersao,
     avaliarAfirmacao, valoresPermitidos, migrarItemLegado, aprovar, registrarExportacao, registrarPublicacao,
     registrar, resumoParaLista,
   };

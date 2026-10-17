@@ -108,3 +108,9 @@ test('"R$" nunca fica sozinho no fim da linha', () => {
   const q = A.quebrar('Hoje o valor chega a **R$ 840,22** por mês em média', 'corpo', 50, 520);
   for (const l of q.linhas) assert.notStrictEqual(l[l.length - 1].t, 'R$');
 });
+
+test('número com unidade não se separa entre linhas ("R$ 140 mil", "2 milhões")', () => {
+  const { palavras } = require('./arte');
+  assert.deepStrictEqual(palavras('teto de **R$ 140 mil**.').map((p) => p.t), ['teto', 'de', 'R$ 140 mil', '.']);
+  assert.deepStrictEqual(palavras('são 2 milhões de pessoas').map((p) => p.t), ['são', '2 milhões', 'de', 'pessoas']);
+});

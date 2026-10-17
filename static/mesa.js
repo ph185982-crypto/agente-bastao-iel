@@ -271,6 +271,7 @@
 
   function telaConteudo() {
     const c = conteudoAtual();
+    if (!c && state.novo && window.MesaEditor) return window.MesaEditor.telaNovo();
     if (!c) return '<div class="es-empty-day">Conteúdo não encontrado.</div>';
     const al = S.puro.alertasDoConteudo(c);
     const topo = `<button class="es-btn ghost sm" style="width:auto" data-action="voltar">‹ Mesa</button>
@@ -451,7 +452,7 @@
       switch (a) {
         case 'tab': state.tab = el.dataset.tab; if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
         case 'criar': state.criarModulo = el.dataset.m; trocarAntigo(state.criarModulo); return render();
-        case 'voltar': state.sub = null; state.atual = null; return render();
+        case 'voltar': state.sub = null; state.atual = null; state.novo = null; return render();
         case 'abrir': return abrirConteudo(id);
         case 'filtro': state.filtro = el.dataset.f; return render();
         case 'entrada':

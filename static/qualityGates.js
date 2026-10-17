@@ -149,7 +149,7 @@
       if (r.texto_hash && r.texto_hash !== M.hashRender(s)) {
         out.push(bloqueio('arte_desatualizada', 'arte', 'Arte desatualizada', 'O texto mudou depois de gerar a arte.', { slide: s.id }, 'Gerar a arte de novo'));
       }
-      if (r.metrics && r.metrics.cabe === false) out.push(bloqueio('texto_cortado', 'arte', 'Texto não cabe na arte', `No slide ${idsSlides.indexOf(r.slide_id) + 1} o texto passa do espaço ou fica pequeno demais para ler.`, { slide: s.id }, 'Encurtar, dividir ou trocar o layout'));
+      if (r.metrics && r.metrics.cabe === false) out.push(bloqueio('texto_cortado', 'arte', 'Texto não cabe na arte', `No slide ${idsSlides.indexOf(r.slide_id) + 1}: ${(r.metrics.problemas || []).length ? r.metrics.problemas.join('; ') : 'o texto passa do espaço ou fica pequeno demais para ler'}.`, { slide: s.id }, 'Encurtar, dividir ou trocar o layout'));
       if ((r.elementos || []).some((e) => /selo|verificad|badge/i.test(e))) out.push(bloqueio('selo_falso', 'arte', 'Selo de verificação na arte', 'A conta não é verificada: nenhum selo pode aparecer.', { slide: s.id }, 'Gerar a arte de novo'));
     }
     (v.slides || []).forEach((s) => { if (s.selo || /selo|badge/i.test(s.layout || '')) out.push(bloqueio('selo_falso', 'arte', 'Selo de verificação no slide', 'Remova o selo.', { slide: s.id })); });
