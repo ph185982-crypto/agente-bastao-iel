@@ -36,7 +36,7 @@ function exemplo({ comArte = true } = {}) {
   }, { quem: 'ia', rotulo: 'Primeira versão' });
   const v = M.versaoAtiva(c);
   if (comArte) {
-    c.arte.renders = v.slides.map((s) => ({ slide_id: s.id, versao: v.id, texto_hash: M.hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null }), metrics: { cabe: true, fonte_px: 60 }, elementos: [] }));
+    c.arte.renders = v.slides.map((s) => ({ slide_id: s.id, versao: v.id, texto_hash: M.hashRender(s), metrics: { cabe: true, fonte_px: 60 }, elementos: [] }));
   }
   return c;
 }

@@ -121,12 +121,15 @@
   const conteudoDaVersao = (v) => ({
     estrutura: v.estrutura || null,
     capa_escolhida: v.capa_escolhida || null,
-    slides: (v.slides || []).map((s) => ({ id: s.id, layout: s.layout, texto: s.texto, titulo: s.titulo || null, claim_ids: s.claim_ids || [], imagem_id: s.imagem_id || null })),
+    slides: (v.slides || []).map((s) => ({ id: s.id, layout: s.layout, funcao: s.funcao || null, texto: s.texto, titulo: s.titulo || null, rotulo: s.rotulo || null, dados: s.dados || null, fonte_linha: s.fonte_linha || null, claim_ids: s.claim_ids || [], imagem_id: s.imagem_id || null })),
     legenda: v.legenda || '',
     cta: v.cta || '',
     hashtags: v.hashtags || [],
     legenda_claim_ids: v.legenda_claim_ids || [],
   });
+
+  // Hash do que aparece na arte de um slide (detecta arte desatualizada).
+  const hashRender = (s) => hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null, d: s.dados || undefined, r: s.rotulo || undefined, f: s.fonte_linha || undefined });
 
   const versaoAtiva = (c) => c.copia.versoes.find((v) => v.id === c.copia.versao_ativa) || null;
 
@@ -164,7 +167,7 @@
     for (const s of depois.slides || []) {
       const a = mapaAntes[s.id];
       if (!a) { efeito.arte.push(s.id); continue; }
-      if (a.texto !== s.texto || a.layout !== s.layout || a.imagem_id !== s.imagem_id || a.titulo !== s.titulo) efeito.arte.push(s.id);
+      if (hashRender(a) !== hashRender(s)) efeito.arte.push(s.id);
       const nA = extrairNumeros(a.texto).map((n) => n.valor).sort().join(',');
       const nB = extrairNumeros(s.texto).map((n) => n.valor).sort().join(',');
       const idsA = (a.claim_ids || []).slice().sort().join(',');
@@ -306,6 +309,26 @@
     return vals;
   }
 
+  // Linha de fonte que aparece na arte: montada DAS EVIDÊNCIAS, nunca escrita pela IA.
+  const dd = (iso) => { if (!iso) return null; const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`; };
+  function linhaDeFonte(c, claimIds) {
+    const cl = (claimIds || []).map((id) => c.claims.find((x) => x.id === id)).find(Boolean);
+    if (!cl) return '';
+    if (cl.calculo) {
+      const ent = (cl.calculo.entradas || []).map((e) => `${e.nome} ${e.valor}`).join('; ');
+      const ev = (cl.evidencias || []).map((id) => c.evidencias.find((x) => x.id === id)).find(Boolean);
+      return `Cálculo: ${cl.calculo.formula} (${ent}) · ${ev ? ev.origem : 'fontes oficiais'} · consulta ${dd(ev?.consultada_em) || ''}`.trim();
+    }
+    const evs = (cl.evidencias || []).map((id) => c.evidencias.find((x) => x.id === id)).filter(Boolean);
+    const e = evs.find((x) => x.tipo === 'primaria' && x.relacao !== 'contradiz') || evs.find((x) => x.relacao === 'sustenta') || evs[0];
+    if (!e) return '';
+    const partes = [`Fonte: ${e.origem}`];
+    if (e.titulo && e.via === 'artigo') partes.push(`“${e.titulo.length > 70 ? `${e.titulo.slice(0, 67)}…` : e.titulo}”`);
+    if (e.publicada_em) partes.push(`publicada em ${dd(e.publicada_em)}`);
+    partes.push(`consultada em ${dd(e.consultada_em)}`);
+    return partes.join(' · ');
+  }
+
   // ── Migração de itens da fila antiga (esteira v1) ─────────────────────────
   // Nada é descartado. O item vira rascunho marcado como legado: foi gerado
   // antes da base de evidências, então não pode ser aprovado sem revisão.
@@ -378,7 +401,7 @@
 
   return {
     SCHEMA, ACCOUNT_PIN, HANDLES_ERRADOS, STATUS, ETAPAS, ESTADOS_CLAIM,
-    hash, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
+    hash, hashRender, linhaDeFonte, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
     novoConteudo, criarVersao, versaoAtiva, conteudoDaVersao, efeitoDaEdicao,
     editarSlide, editarLegenda, reordenarSlides, escolherCapa, alternarBloqueio, desfazer,
     avaliarAfirmacao, valoresPermitidos, migrarItemLegado, aprovar, registrarExportacao, registrarPublicacao,

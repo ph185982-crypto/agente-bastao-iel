@@ -135,6 +135,9 @@
       }
     }
 
+    // Capa: o Pedro escolhe entre as opções
+    if ((v.capas || []).length && !v.capa_escolhida) out.push(bloqueio('capa_nao_escolhida', 'arte', 'Escolha uma das capas', 'Há três opções de capa e nenhuma foi escolhida.', null, 'Escolher a capa'));
+
     // Arte
     const renders = c.arte?.renders || [];
     const idsSlides = (v.slides || []).map((s) => s.id);
@@ -143,7 +146,7 @@
     for (const r of renders.filter((x) => x.versao === v.id)) {
       const s = (v.slides || []).find((x) => x.id === r.slide_id);
       if (!s) continue;
-      if (r.texto_hash && r.texto_hash !== M.hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null })) {
+      if (r.texto_hash && r.texto_hash !== M.hashRender(s)) {
         out.push(bloqueio('arte_desatualizada', 'arte', 'Arte desatualizada', 'O texto mudou depois de gerar a arte.', { slide: s.id }, 'Gerar a arte de novo'));
       }
       if (r.metrics && r.metrics.cabe === false) out.push(bloqueio('texto_cortado', 'arte', 'Texto não cabe na arte', `No slide ${idsSlides.indexOf(r.slide_id) + 1} o texto passa do espaço ou fica pequeno demais para ler.`, { slide: s.id }, 'Encurtar, dividir ou trocar o layout'));
