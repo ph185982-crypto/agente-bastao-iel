@@ -81,7 +81,7 @@ function safeErrorMessage(e) {
 
 // Selo de verificado no cabeçalho. Ligado por padrão (o perfil é verificado);
 // dá pra desligar com PROFILE_VERIFIED=false.
-const PROFILE_VERIFIED = String(process.env.PROFILE_VERIFIED || 'true').toLowerCase() !== 'false';
+const PROFILE_VERIFIED = require('../lib/account').ACCOUNT.verified === true; // conta não verificada: sem selo
 
 // ── Layout (mesmo perfil de saída das outras rotas de vídeo) ──────────────────
 const W = 720;

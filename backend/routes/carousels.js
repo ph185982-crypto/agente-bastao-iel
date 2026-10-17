@@ -24,7 +24,7 @@ let _llm = null;
 const getOpenAI = () => (_llm ??= createCompatClient());
 
 // Handle usado quando o campo do frontend vem vazio.
-const DEFAULT_HANDLE = process.env.PROFILE_HANDLE || '@pedro_destrava';
+const DEFAULT_HANDLE = require('../lib/account').ACCOUNT.handle;
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 const CW = 1080;            // largura do slide

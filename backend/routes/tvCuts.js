@@ -18,6 +18,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const sharp = require('sharp');
 const { createCompatClient } = require('../lib/llm');
 const { PROFILE_NAME, PROFILE_HANDLE } = require('../lib/pedroDna');
+const { ACCOUNT } = require('../lib/account');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -854,7 +855,7 @@ async function buildViralOverlay(headline, outPath) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
     <rect x="0" y="0" width="${W}" height="${V.headerH}" fill="${V.bg}"/>
     <text x="${W / 2}" y="${nameY}" font-family="${VIRAL_FONT_BLACK}" font-size="${nameSize}" fill="${V.white}" text-anchor="middle">${escXml(PROFILE_NAME)}</text>
-    ${viralBadgeSvg(W / 2 + nameW / 2 + badgeR + 10, nameY - nameSize * 0.34, badgeR)}
+    ${ACCOUNT.verified ? viralBadgeSvg(W / 2 + nameW / 2 + badgeR + 10, nameY - nameSize * 0.34, badgeR) : ''}
     <text x="${W / 2}" y="${handleY}" font-family="${VIRAL_FONT_BODY}" font-size="${handleSize}" fill="${V.handleColor}" text-anchor="middle">${escXml(PROFILE_HANDLE)}</text>
     <rect x="0" y="${V.headerH}" width="${W}" height="${V.lineH}" fill="${V.blue}"/>
 

@@ -9,8 +9,9 @@ const sharp = require('sharp');
 
 const W = 1080;
 const H = 1350;
-const HANDLE = process.env.PROFILE_HANDLE || '@pedro_destrava';
-const NOME = process.env.PROFILE_NAME || 'Pedro Martins';
+const { ACCOUNT } = require('./account');
+const HANDLE = ACCOUNT.handle;
+const NOME = ACCOUNT.nome;
 const AVATAR = path.join(__dirname, '..', 'assets', 'avatar.jpg');
 
 const F = {
@@ -188,12 +189,9 @@ async function renderPrint(c) {
     const t = fit(frase, { maxW: W - 192, maxH: 760, max: 74, min: 44, ratio: 0.6, lh: 1.24 });
     const blocoH = 124 + 56 + t.lines.length * t.lineH;
     const top = Math.round((H - blocoH) / 2);
-    const nomeW = Math.round(NOME.length * 44 * 0.6);
     const yNome = top + 52;
     const svg = svgWrap(`<rect width="${W}" height="${H}" fill="${bg}"/>
       <text x="252" y="${yNome}" font-family="${F.bold}" font-weight="700" font-size="44" fill="${fg}">${esc(NOME)}</text>
-      <circle cx="${252 + nomeW + 30}" cy="${yNome - 15}" r="20" fill="#1D9BF0"/>
-      <path d="M ${252 + nomeW + 20} ${yNome - 15} l 7 7 l 13 -14" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       <text x="252" y="${yNome + 50}" font-family="${F.semi}" font-weight="600" font-size="34" fill="${sub}">${esc(HANDLE)}</text>
       ${textBlock(t.lines, { x: 96, y: top + 124 + 56 + t.fs, fs: t.fs, lineH: t.lineH, family: F.semi, weight: 600, color: fg, hiColor: COR.azul })}`);
     out.push(await sharp(Buffer.from(svg)).composite([{ input: av, top, left: 96 }]).png().toBuffer());

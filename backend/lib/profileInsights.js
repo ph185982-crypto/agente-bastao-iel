@@ -12,7 +12,8 @@ const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sáb
 const apiKey = () => process.env.RAPIDAPI_KEY_INSTAGRAM || process.env.RAPIDAPI_KEY;
 // Usuário do Instagram que a ferramenta estuda. Separado do PROFILE_HANDLE
 // (que só aparece impresso nos posts) pra um erro lá não fazer ler a conta errada.
-const username = () => String(process.env.INSTAGRAM_USERNAME || 'pedro_destrava').replace('@', '').trim();
+const { ACCOUNT } = require('./account');
+const username = () => ACCOUNT.username;
 
 async function looter(path, params) {
   const { data } = await axios.get(`https://${HOST}/${path}`, {
@@ -28,6 +29,8 @@ let _perfil = null;
 async function perfil() {
   if (_perfil) return _perfil;
   const d = await looter('profile', { username: username() });
+  // Confere a identidade: se a API devolver outra conta, nada é usado nem guardado.
+  if (String(d.id) !== ACCOUNT.ig_id) throw new Error(`A leitura veio de outra conta (id ${d.id}); esperado ${ACCOUNT.handle}.`);
   _perfil = { id: d.id, seguidores: d.edge_followed_by?.count || 0, nome: d.full_name, bio: d.biography };
   return _perfil;
 }
