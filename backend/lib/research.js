@@ -18,6 +18,7 @@ function deps(d = {}) {
     llmJson: d.llmJson || require('./llmJson'),
     feeds: d.feeds || require('./feeds'),
     connectors: d.connectors || require('./connectors'),
+    busca: d.busca || require('./busca'),
     agora: d.agora || (() => Date.now()),
   };
 }
@@ -223,6 +224,29 @@ async function verificarAfirmacao(claim, fonte, evidenciasAtuais, d0, { maxCandi
   }
   log.push(`${lidos.status.filter((s) => s.ok).length} feeds lidos; ${candidatosBrutos.length} matérias parecidas; ${candidatos.length} de veículos diferentes escolhidas${naoLidos.length ? `; sem resposta: ${naoLidos.join(', ')}` : ''}`);
 
+  // (b2) Busca web opcional: só acha links; a página é lida como as outras.
+  let cobertura = d.busca.cobertura();
+  if (d.busca.provedor() && candidatos.length < maxCandidatos) {
+    try {
+      const r = await d.busca.buscar([...q.palavras, ...q.numeros].join(' '), { dias: 30 });
+      d.llmJson.registrarChamada?.({ provider: r.provedor, model: 'busca web', tipo: 'busca', duracao_ms: r.duracao_ms, ok: true, creditos: r.creditos });
+      let n = 0;
+      for (const x of r.resultados) {
+        const dom = Ev.dominioRegistravel(x.url);
+        if (vistos.has(dom) || x.url === fonte.url_final) continue;
+        vistos.add(dom);
+        candidatos.push({ titulo: x.titulo, url: x.url, publicada_em: x.publicada_em, origem: dom, dominio: dom, via_busca: r.provedor });
+        n += 1;
+        if (candidatos.length >= maxCandidatos) break;
+      }
+      log.push(`Busca web (${r.provedor}): ${r.resultados.length} resultado(s); ${n} de veículos novos para ler`);
+    } catch (e) {
+      d.llmJson.registrarChamada?.({ provider: d.busca.provedor(), model: 'busca web', tipo: 'busca', ok: false, erro: e.message });
+      log.push(`Busca web indisponível: ${e.message}`);
+      cobertura = `${cobertura} A busca falhou nesta conferência.`;
+    }
+  }
+
   const lidasPaginas = [];
   for (const c of candidatos) {
     try {
@@ -305,7 +329,7 @@ Responda APENAS JSON: {"materias":[{"i":0,"correspondencia":"nao_sustenta","trec
   atualizada.motivo_estado = r.motivo;
   atualizada.exige_atribuicao = r.exige_atribuicao;
   atualizada.verificada_em = new Date(hoje).toISOString();
-  return { claim: atualizada, evidencias: novas, log, consulta: q, janela_dias: 10 };
+  return { claim: atualizada, evidencias: novas, log, consulta: q, janela_dias: 10, cobertura };
 }
 
 // ── 4. Conferir uma afirmação escrita/corrigida pelo Pedro ─────────────────

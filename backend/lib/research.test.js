@@ -244,3 +244,30 @@ test('C. conferir afirmação do Pedro: trecho real que NÃO sustenta a interpre
   assert.strictEqual(r2.evidencias.length, 0);
   assert.strictEqual(r2.claim.estado, 'nao_verificada');
 });
+
+test('busca web opcional: só acha links; a página é lida e o trecho conferido; sem chave, a cobertura é explicada', async () => {
+  const busca = require('./busca');
+  const antes = { t: process.env.TAVILY_API_KEY, b: process.env.BRAVE_SEARCH_API_KEY };
+  delete process.env.TAVILY_API_KEY; delete process.env.BRAVE_SEARCH_API_KEY;
+  assert.strictEqual(busca.provedor(), null);
+  assert.match(busca.cobertura(), /Sem busca web configurada/);
+  const fonte = { legivel: true, texto: 'x', dominio: 'jornalx.com.br', url_final: 'https://jornalx.com.br/m', acessada_em: 'x' };
+  const e0 = { id: 'e0', via: 'artigo', autoridade: 'reportagem', correspondencia: 'integral', trecho: 'Senado aprovou teto de R$ 140 mil', origem: 'Jornal X', grupo: 'g0', fonte_principal: true };
+  const claim = { id: 'a1', texto: 'O Senado aprovou o teto de R$ 140 mil para o MEI.', tipo: 'fato', natureza: 'dado', central: true, evidencias: ['e0'] };
+  const semChave = await verificarAfirmacao(claim, fonte, [e0], { feeds: feedsFalso([]), llmJson: llmFalso([{}]), agora: () => 0 });
+  assert.match(semChave.cobertura, /Sem busca web/);
+  // com busca simulada: o resultado só conta depois de a página ser lida
+  const pagina = HTML('<p>O plenário do Senado aprovou o teto de R$ 140 mil para o MEI, em votação simbólica nesta quinta-feira, segundo a ata da sessão publicada no portal da Casa.</p><p>Parágrafo extra suficientemente longo para a página ser legível pelo extrator do sistema de checagem editorial do perfil.</p><p>Mais texto para passar do mínimo exigido pela leitura de páginas da ferramenta.</p><p>O projeto ainda precisa de sanção presidencial para valer, e o prazo legal começa a contar a partir do recebimento do texto pela Presidência.</p>').replaceAll('Jornal X', 'Portal Busca');
+  const buscaFalsa = { provedor: () => 'tavily', cobertura: () => 'Busca web ativa (tavily)', buscar: async () => ({ provedor: 'tavily', duracao_ms: 5, creditos: 1, resultados: [{ titulo: 'Senado aprova', url: 'https://portalbusca.com.br/mei' }, { titulo: 'mesmo domínio', url: 'https://jornalx.com.br/outra' }] }) };
+  const r = await verificarAfirmacao(claim, fonte, [e0], {
+    feeds: feedsFalso([]), busca: buscaFalsa, agora: () => 0,
+    safeFetch: async (u) => ({ url_final: u, status: 200, corpo: pagina, acessada_em: '2026-10-17T10:05:00Z', redirecionamentos: [] }),
+    llmJson: llmFalso([{ materias: [{ i: 0, correspondencia: 'integral', trecho: 'O plenário do Senado aprovou o teto de R$ 140 mil para o MEI' }] }]),
+  });
+  assert.ok(r.log.some((l) => /Busca web \(tavily\): 2 resultado/.test(l)), r.log.join(' | '));
+  const ev = r.evidencias.find((e) => /portalbusca/.test(e.url));
+  assert.ok(ev && ev.trecho_encontrado && ev.correspondencia === 'integral', JSON.stringify({ log: r.log, ev: r.evidencias.map((e) => [e.url, e.correspondencia, e.trecho_encontrado]) }));
+  assert.ok(!r.evidencias.some((e) => /jornalx\.com\.br\/outra/.test(e.url)), 'mesmo domínio da fonte não conta');
+  assert.strictEqual(r.claim.estado, 'sustentada', r.claim.motivo_estado);
+  if (antes.t) process.env.TAVILY_API_KEY = antes.t; if (antes.b) process.env.BRAVE_SEARCH_API_KEY = antes.b;
+});

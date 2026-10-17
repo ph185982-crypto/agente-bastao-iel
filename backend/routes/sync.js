@@ -25,6 +25,7 @@ router.get('/status', (req, res) => {
     configurado: !!a, tipo: a?.tipo || null, duravel: !!a?.duravel,
     arquivos: a ? 'no mesmo banco (limite de 8 MB por arquivo)' : null,
     aviso: a ? null : 'Sem armazenamento no servidor: a única cópia está neste navegador. Exporte backups.',
+    busca: require('../lib/busca').provedor(), cobertura: require('../lib/busca').cobertura(),
   });
 });
 

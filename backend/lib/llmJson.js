@@ -80,4 +80,7 @@ async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3
   throw ultimoErro;
 }
 
-module.exports = { pedirJson, dado, REGRAS_DADOS, hasLlmKey, comConsumo };
+// Chamadas que não são de IA mas consomem cota (ex.: busca web).
+const registrarChamada = (info) => { registro.getStore()?.chamadas.push(info); };
+
+module.exports = { pedirJson, dado, REGRAS_DADOS, hasLlmKey, comConsumo, registrarChamada };

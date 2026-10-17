@@ -121,7 +121,7 @@
     const r = await chamarEtapa(x, c, 'pesquisa', `verify:${claim.id}`, '/api/content/verify', { claim, fonte: c.fonte_principal, evidencias: c.evidencias });
     mesclar(c, r.claim, r.evidencias);
     registrarConsumo(c, r.consumo);
-    c.pesquisa_log = { ...(c.pesquisa_log || {}), [claim.id]: { log: r.log, consulta: r.consulta, janela_dias: r.janela_dias, em: new Date().toISOString() } };
+    c.pesquisa_log = { ...(c.pesquisa_log || {}), [claim.id]: { log: r.log, consulta: r.consulta, janela_dias: r.janela_dias, cobertura: r.cobertura, em: new Date().toISOString() } };
     return r;
   }
 
@@ -490,7 +490,7 @@
       ${(k.textos_anteriores || []).length ? `<div class="es-text">Antes: “${esc(k.textos_anteriores[k.textos_anteriores.length - 1].texto)}”</div>` : ''}
       <details class="mz-det" data-aberto="k:${esc(k.id)}" ${aberto ? 'open' : ''}><summary>${ev.length} fonte(s): trecho, correspondência e qualidade</summary>
         ${ev.map(cartaoEvidencia).join('') || '<div class="es-text">Nenhum trecho localizado nas fontes acessadas.</div>'}
-        ${log ? `<div class="mz-bloco"><b>Como a busca foi feita (${esc(quando(log.em))})</b>${(log.log || []).map((l) => `<span>${esc(l)}</span>`).join('')}</div>` : ''}
+        ${log ? `<div class="mz-bloco"><b>Como a busca foi feita (${esc(quando(log.em))})</b>${(log.log || []).map((l) => `<span>${esc(l)}</span>`).join('')}${log.cobertura ? `<span><i>${esc(log.cobertura)}</i></span>` : ''}</div>` : ''}
       </details>
       ${opin ? '' : painelDecisao(c, k)}
       ${opin ? '' : `<div class="es-actions" style="flex-wrap:wrap">

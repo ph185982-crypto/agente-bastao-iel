@@ -390,6 +390,10 @@
   function secaoServidor() {
     const sv = state.servidor;
     if (!sv) return '<div class="es-text">Verificando a cópia no servidor…</div>';
+    const busca = sv.cobertura ? `<div class="es-label">Cobertura da pesquisa</div><div class="es-text">${esc(sv.cobertura)}</div>` : '';
+    return busca + secaoServidorCopia(sv);
+  }
+  function secaoServidorCopia(sv) {
     if (!sv.configurado) return `<div class="es-warn"><b>Sem cópia no servidor.</b> A única cópia está neste navegador. Se ele for limpo ou o aparelho for perdido, o trabalho só volta pelo arquivo de backup.</div>`;
     const metas = Object.values(state.syncMeta);
     const conferidos = state.contents.filter((c) => state.syncMeta[c.id]?.conferido && !state.syncMeta[c.id]?.conflito).length;
