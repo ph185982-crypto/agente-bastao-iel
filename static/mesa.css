@@ -52,3 +52,4 @@
 .ed-bloq small { color: #8A3A33; }
 .ed-slide textarea, .ed-claim textarea { width: 100%; box-sizing: border-box; }
 select.es-input { min-height: 40px; }
+.ed-bloq ul { margin: 6px 0 0; padding-left: 18px; }

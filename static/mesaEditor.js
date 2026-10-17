@@ -491,6 +491,13 @@
       <div class="es-text">Gerar outra versão não apaga a atual: você pode voltar a ela.</div>`;
   }
 
+  // Vários bloqueios do mesmo tipo viram um só cartão, sem repetições.
+  function agrupar(lista) {
+    const m = new Map();
+    lista.forEach((b) => { if (!m.has(b.id)) m.set(b.id, { id: b.id, titulo: b.titulo, acao: b.acao, itens: [] }); const gr = m.get(b.id); if (!gr.itens.some((x) => x.detalhe === b.detalhe)) gr.itens.push(b); });
+    return [...m.values()];
+  }
+
   function secaoRevisao(c) {
     const v = M.versaoAtiva(c);
     if (!v) return '';
@@ -501,7 +508,7 @@
     return `<div class="es-label">Revisão</div>
       <div class="es-card">
         <div class="mz-top">${chip(r.conta === 'ok', 'Conta: ' + (r.conta === 'ok' ? '@pedro_destrava' : 'incorreta'))}${chip(r.fatos === 'ok', 'Fatos: ' + (r.fatos === 'ok' ? 'ok' : r.fatos === 'contradicao' ? 'contradição' : 'pendências'))}${chip(r.arte === 'ok', 'Arte: ' + (r.arte === 'ok' ? 'ok' : 'pendências'))}${chip(r.redacao === 'ok', 'Redação: ' + (r.redacao === 'ok' ? 'sem sugestões' : g.sugestoes.length + ' sugestão(ões)'))}</div>
-        ${g.bloqueios.length ? `<b>Impedem aprovar (${g.bloqueios.length})</b>${g.bloqueios.map((b) => `<div class="ed-bloq"><b>${esc(b.titulo)}</b><br>${esc(b.detalhe)}${b.acao ? `<br><small>${esc(b.acao)}</small>` : ''}</div>`).join('')}` : '<div class="es-text"><b>Nenhum bloqueio.</b> Fatos, conta e arte estão em ordem.</div>'}
+        ${g.bloqueios.length ? `<b>Impedem aprovar (${g.bloqueios.length})</b>${agrupar(g.bloqueios).map((gr) => `<div class="ed-bloq"><b>${esc(gr.titulo)}${gr.itens.length > 1 ? ` (${gr.itens.length})` : ''}</b>${gr.itens.length === 1 ? `<br>${esc(gr.itens[0].detalhe)}` : `<ul>${gr.itens.map((b) => `<li>${esc(b.detalhe)}</li>`).join('')}</ul>`}${gr.acao ? `<br><small>${esc(gr.acao)}</small>` : ''}${gr.id === 'afirmacao_parcial' ? '<br><button class="es-btn ghost sm" style="margin-top:6px;width:auto" data-action="ed-ressalva-todas">Li as fontes e aceito com ressalva</button>' : ''}</div>`).join('')}` : '<div class="es-text"><b>Nenhum bloqueio.</b> Fatos, conta e arte estão em ordem.</div>'}
         ${g.sugestoes.length ? `<details class="mz-det" data-aberto="sug" ${abertos.has('sug') ? 'open' : ''}><summary>Sugestões de redação (não impedem nada)</summary>${g.sugestoes.map((b) => `<div class="mz-bloco"><b>${esc(b.titulo)}</b><span>${esc(b.detalhe)}</span></div>`).join('')}</details>` : ''}
         ${aprovado ? `<div class="es-text" style="margin-top:8px"><b>Aprovada</b> em ${esc(quando(c.revisao.aprovada_em))} (versão ${esc(v.id)}).</div>` : `<button class="es-btn" style="margin-top:10px" data-action="ed-aprovar" ${g.bloqueios.length ? 'disabled' : ''}>Aprovar esta versão</button>`}
         ${aprovado ? '<button class="es-btn" data-action="ed-exportar">Exportar arquivos (PNG, legenda e fontes)</button>' : ''}
@@ -598,6 +605,12 @@
         delete rodando[c.id]; await x.persistir(c); x.render(); return true;
       }
       case 'ed-ressalva': claim().revisao = { ...claim().revisao, aceito_com_ressalva: true }; reabrirAprovacao(c); M.registrar(c, 'pedro', 'revisao', 'Aceitou afirmação com ressalva'); await x.persistir(c); x.render(); return true;
+      case 'ed-ressalva-todas': {
+        const g = G.avaliar(c, { conta: M.ACCOUNT_PIN });
+        const ids = new Set(g.bloqueios.filter((b) => b.id === 'afirmacao_parcial').map((b) => b.onde?.claim));
+        ids.forEach((cid) => { const k = c.claims.find((q) => q.id === cid); if (k) k.revisao = { ...k.revisao, aceito_com_ressalva: true }; });
+        reabrirAprovacao(c); M.registrar(c, 'pedro', 'revisao', `Aceitou ${ids.size} afirmação(ões) com ressalva`); await x.persistir(c); x.render(); return true;
+      }
       case 'ed-confirmar': claim().revisao = { ...claim().revisao, confirmada_por_pedro: true, confirmada_em: new Date().toISOString() }; reabrirAprovacao(c); M.registrar(c, 'pedro', 'revisao', 'Confirmou assunto sensível após ler a fonte'); await x.persistir(c); x.render(); return true;
       case 'ed-resolver': {
         const j = window.prompt('Por que a contradição não impede o post? (fica registrado)');

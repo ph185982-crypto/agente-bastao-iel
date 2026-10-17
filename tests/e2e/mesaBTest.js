@@ -228,6 +228,26 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   ok(/403/.test(await p.textContent('.es-errbox')) && !p.chamadas.claims, 'site que bloqueia: avisa, oferece colar o texto e NÃO inventa afirmações');
   await ctx.close();
 
+
+  console.log('8. Afirmações só em parte sustentadas');
+  const m4 = MOCKS(); m4.verify = { claim: CLAIM, evidencias: [], log: ['sem outras fontes'], consulta: {}, janela_dias: 10 };
+  ({ ctx, p } = await nova(browser, m4));
+  await aberto(p);
+  await p.click('[data-e="link"]'); await p.fill('#ed-novo-url', 'https://jornalx.com.br/mei'); await p.click('[data-action="ed-iniciar"]');
+  await p.waitForSelector('[data-action="ed-gerar-texto"]', { timeout: 15000 });
+  await p.click('[data-action="ed-gerar-texto"]');
+  await p.waitForSelector('.ed-slide', { timeout: 15000 }); await arteOk(p, 5);
+  await p.check('input[data-ed-capa="k_acontecimento"]'); await arteOk(p, 5);
+  let bq = await p.textContent('.es-card:has([data-action="ed-ressalva-todas"])');
+  ok(/Afirmação central só em parte sustentada/.test(bq), 'única fonte: afirmação central fica bloqueada (não vira "sustentada" sozinha)');
+  ok(await p.locator('[data-action="ed-aprovar"]').isDisabled(), 'e não dá para aprovar');
+  await p.click('[data-action="ed-ressalva-todas"]');
+  await p.waitForFunction(() => !document.querySelector('[data-action="ed-ressalva-todas"]'));
+  ok(!(await p.locator('[data-action="ed-aprovar"]').isDisabled()), 'depois de aceitar com ressalva (decisão do Pedro, registrada) a aprovação libera');
+  c = await conteudo(p);
+  ok(c.historico.some((h) => /com ressalva/.test(h.resumo)), 'a decisão fica no histórico');
+  await ctx.close();
+
   await browser.close();
   console.log(falhas.length ? `\n${falhas.length} FALHA(S):\n- ${falhas.join('\n- ')}` : '\nTudo certo.');
   process.exit(falhas.length ? 1 : 0);
