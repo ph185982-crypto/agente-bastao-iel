@@ -44,7 +44,7 @@ function extraiJson(conteudo) {
 }
 
 // budget: { max, usados } compartilhado por quem orquestra, para limitar consumo.
-async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3, budget, modelo = 'gpt-4o' }) {
+async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3, budget, modelo = 'gpt-4o', esforco }) {
   if (!hasLlmKey()) { const e = new Error('Nenhuma IA está configurada no servidor.'); e.code = 'SEM_IA'; throw e; }
   if (budget) {
     if (budget.usados >= budget.max) { const e = new Error('Limite de chamadas de IA desta etapa atingido.'); e.code = 'LIMITE'; throw e; }
@@ -60,6 +60,7 @@ async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3
         temperature: temperatura,
         response_format: { type: 'json_object' },
         max_tokens: maxTokens,
+        ...(esforco ? { esforco } : {}),
         messages: [{ role: 'system', content: sistema }, { role: 'user', content: usuario }],
       });
       const info = res.__llm || { provider: 'desconhecido', model: res.model || 'desconhecido' };

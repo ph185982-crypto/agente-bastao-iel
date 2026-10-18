@@ -157,7 +157,18 @@ function modelsFor(provider, requestedModel) {
 async function tryModel(provider, model, opts, requestOptions, cont) {
   if (cont) cont.n += 1;
   const client = clientFor(provider);
-  const res = await client.chat.completions.create({ ...opts, model }, requestOptions);
+  // Modelos gpt-oss "pensam" antes de responder e isso pode passar de 30 s:
+  // pedimos raciocínio curto (reasoning_effort, documentado pela Groq) e sem o
+  // texto do raciocínio na resposta. Se o provedor recusar o parâmetro, repete sem.
+  const { esforco, ...base } = opts || {};
+  const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : {};
+  let res;
+  try {
+    res = await client.chat.completions.create({ ...base, ...extra, model }, requestOptions);
+  } catch (err) {
+    if (Object.keys(extra).length && err?.status === 400 && /reasoning/i.test(err?.message || '')) res = await client.chat.completions.create({ ...base, model }, requestOptions);
+    else throw err;
+  }
   _lastGood = { provider: provider.name, model };
   const out = opts?.response_format?.type === 'json_object' ? withSanitizedJson(res) : res;
   // Quem usou a resposta pode registrar qual provedor/modelo a produziu.

@@ -173,6 +173,7 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   c = await conteudo(p);
   ok(c.revisao.aprovada_versao === null && c.status === 'em_revisao', 'editar depois de aprovar reabre a aprovação');
   ok(await p.locator('[data-action="ed-exportar"]').count() === 0, 'não dá para exportar a versão nova sem aprovar de novo');
+  ok(/desatualizada: não corresponde ao texto atual/.test(await p.textContent('.es-main')), 'F: a exportação anterior aparece como desatualizada');
   await p.click('summary:has-text("Versões")');
   await p.click('[data-action="ed-ativar"][data-v="' + c.exportacoes[0].versao + '"]');
   await esperaToast(p, /Voltou/);

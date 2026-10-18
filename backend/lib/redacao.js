@@ -198,13 +198,19 @@ Responda APENAS JSON:
     return { dados, llm };
   };
 
+  // A Vercel corta a etapa em 60 s: a segunda tentativa (correção) só roda se a
+  // primeira terminou cedo. Se não der tempo, os problemas continuam visíveis.
+  const t0 = Date.now();
   let r = await pedir('');
   let m = montarVersao({ dados: r.dados, claims, evidencias, formato });
   let prov = provisorio({ claims, evidencias, fonte, versao: m.versao, opinioes: m.opinioes });
   const fatosProblemas = (c) => G.bloqueios(c, { conta: M.ACCOUNT_PIN }).filter((b) => ['numero_sem_origem', 'numero_sem_afirmacao', 'citacao_sem_origem', 'atribuicao_sem_origem', 'valores_divergentes', 'ressalva_ausente'].includes(b.id));
   let falhas = fatosProblemas(prov);
   let tentativas = 1;
-  if ((falhas.length || m.problemas.length) && budget.usados < budget.max) {
+  const tempoUsado = Date.now() - t0;
+  let semTempo = false;
+  if ((falhas.length || m.problemas.length) && budget.usados < budget.max && tempoUsado > 24000) semTempo = true;
+  if ((falhas.length || m.problemas.length) && budget.usados < budget.max && !semTempo) {
     const fb = [...falhas.map((b) => `- ${b.titulo}: ${b.detalhe}`), ...m.problemas.map((p) => `- ${p}`)].join('\n');
     try {
       const r2 = await pedir(fb);
@@ -217,7 +223,7 @@ Responda APENAS JSON:
   }
   // Linha de fonte das provas e comparações: do registro, nunca da IA.
   m.versao.slides.forEach((s) => { if (['prova', 'comparacao'].includes(s.layout)) s.fonte_linha = M.linhaDeFonte(prov, s.claim_ids) || null; });
-  return { versao: m.versao, opinioes: m.opinioes, problemas_de_forma: m.problemas, bloqueios_de_fatos: falhas.map((b) => ({ id: b.id, detalhe: b.detalhe })), llm: r.llm, tentativas };
+  return { versao: m.versao, opinioes: m.opinioes, problemas_de_forma: m.problemas, bloqueios_de_fatos: falhas.map((b) => ({ id: b.id, detalhe: b.detalhe })), llm: r.llm, tentativas, correcao_pulada_por_tempo: semTempo };
 }
 
 module.exports = { gerarBriefing, gerarCopia, montarVersao, provisorio, resumoClaim, LAYOUT_POR_FUNCAO };

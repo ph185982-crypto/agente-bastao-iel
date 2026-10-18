@@ -625,7 +625,8 @@
         ${aprovado ? `<div class="es-text" style="margin-top:8px"><b>Aprovada</b> em ${esc(quando(c.revisao.aprovada_em))} (versão ${esc(v.id)}).</div>` : `<button class="es-btn" style="margin-top:10px" data-action="ed-aprovar" ${g.bloqueios.length ? 'disabled' : ''}>Aprovar esta versão</button>`}
         ${aprovado ? '<button class="es-btn" data-action="ed-exportar">Exportar arquivos (PNG, legenda e fontes)</button>' : ''}
       </div>
-      ${c.exportacoes.length ? `<div class="es-text">Exportações: ${c.exportacoes.map((e) => `${esc(quando(e.em))} (versão ${esc(e.versao)})`).join(' · ')}</div>
+      ${c.exportacoes.length ? `<div class="es-text">Exportações: ${c.exportacoes.map((e) => `${esc(quando(e.em))} (versão ${esc(e.versao)})${e.hash_versao !== v.hash || !aprovado ? ' — <b>desatualizada: não corresponde ao texto atual</b>' : ''}`).join(' · ')}</div>
+        ${c.exportacoes.some((e) => e.hash_versao !== v.hash) ? '<div class="es-warn">O texto mudou depois da última exportação. Os arquivos baixados antes não valem para esta versão: aprove e exporte de novo.</div>' : ''}
         <div class="es-label">Depois de postar</div>
         ${c.publicacao ? `<div class="es-text">Marcada como publicada ${c.publicacao.url ? `— <a href="${esc(c.publicacao.url)}" target="_blank" rel="noopener noreferrer">ver post</a>` : ''}. Versão publicada: ${esc(c.publicacao.versao_publicada || '—')}.</div>` : '<input id="ed-pub-url" class="es-input" inputmode="url" placeholder="Link do post no Instagram (https://www.instagram.com/p/…)"><button class="es-btn ghost" data-action="ed-publicado">Marcar como publicado</button><div class="es-text">O sistema não publica por você.</div>'}` : ''}`;
   }
@@ -797,6 +798,8 @@
       case 'ed-publicado': {
         const url = document.getElementById('ed-pub-url')?.value.trim();
         if (url && !/^https:\/\/(www\.)?instagram\.com\/(p|reel)\/[\w-]+/i.test(url)) { x.toast('O link deve ser de um post do Instagram (instagram.com/p/… ou /reel/…).'); return true; }
+        const ult = c.exportacoes[c.exportacoes.length - 1];
+        if (ult && ult.hash_versao !== M.versaoAtiva(c).hash && !window.confirm('O texto atual é diferente do último arquivo exportado. Marcar como publicado assim mesmo? (fica registrado qual versão foi exportada)')) return true;
         M.registrarPublicacao(c, { url: url || null }); await S.snapshot(c, 'publicado'); await x.persistir(c); x.render(); return true;
       }
       default: return false;
