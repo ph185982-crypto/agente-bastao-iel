@@ -107,6 +107,7 @@ function montarVersao({ dados, claims, evidencias, formato }) {
     if (!s || !s.texto) return;
     const funcao = E.FUNCOES_SLIDE[s.funcao] ? s.funcao : 'explicacao';
     let claim_ids = limpaIds(s.claim_ids);
+    s = { ...s, texto: String(s.texto).replace(/【[^】]*】/g, '').replace(/\s+([.,;:!?])/g, '$1').trim() };
     if (s.opiniao) {
       const id = `o${novasOpinioes.length + 1}`;
       novasOpinioes.push({ id, texto: String(s.texto).slice(0, 400), tipo: 'opiniao', central: false, estado: 'nao_verificada', premissas: claim_ids, evidencias: [], risco: 'baixo', origem: 'copy', revisao: {} });
@@ -130,9 +131,10 @@ function montarVersao({ dados, claims, evidencias, formato }) {
   slides.forEach((s, i) => {
     if (i > 0 && !['encerramento', 'capa'].includes(s.funcao) && !(s.claim_ids || []).length && s.texto.split(/\s+/).length > 8) problemas.push(`o slide ${i + 1} afirma algo sem afirmação ligada: ligue a uma afirmação (claim_ids) ou marque como opinião`);
   });
-  const META = /parcialmente sustentad|fonte [uú]nica|verifica[cç][aã]o independente|n[aã]o verificad|sustentada por|estado da afirma/i;
+  const META = /parcialmente (sustentad|confirmad)|confirmad[oa] parcialmente|n[aã]o confirmad|fonte [uú]nica|verifica[cç][aã]o independente|n[aã]o verificad|sustentada por|estado da afirma|claim_ids?|\[a\d+\]|【/i;
   slides.forEach((s, i) => { if (META.test(s.texto)) problemas.push(`o slide ${i + 1} fala do sistema de checagem em vez de falar do assunto (reescreva sem "fonte única", "sustentada" etc.)`); });
   if (META.test(dados.legenda || '')) problemas.push('a legenda fala do sistema de checagem em vez de falar do assunto');
+  if (formato !== 'estatico' && cta.split(/\s+/).filter(Boolean).length < 4) problemas.push('a chamada final (cta) precisa ser uma frase completa, não uma palavra');
 
   const hashtags = (dados.hashtags || []).map(String).filter((h) => /^#[\p{L}\p{N}_]+$/u.test(h)).slice(0, 3);
   return {

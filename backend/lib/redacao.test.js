@@ -85,3 +85,17 @@ test('copy: texto público que fala do sistema de checagem é devolvido para ree
   assert.ok(/sistema de checagem/.test(llm.chamadas[1]));
   assert.ok(!r.versao.slides.some((s) => /parcialmente sustentad/.test(s.texto)));
 });
+
+test('copy: marcadores de citação do modelo são limpos; "parcialmente confirmado" e CTA de uma palavra voltam para correção', async () => {
+  const d = copiaOk();
+  d.slides[1].texto = 'O Senado aprovou o teto de **R$ 140 mil**【a1】.';
+  d.slides[3].texto = 'O texto segue para sanção (parcialmente confirmado).';
+  d.cta = 'salvar';
+  const llm = llmFalso([d, copiaOk()]);
+  const r1 = await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias }, { llmJson: llmFalso([d, d]) });
+  assert.ok(!r1.versao.slides.some((s) => /【/.test(s.texto)), 'marcador removido');
+  assert.ok(r1.problemas_de_forma.some((p) => /checagem/.test(p)));
+  assert.ok(r1.problemas_de_forma.some((p) => /chamada final/.test(p)));
+  const r2 = await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias }, { llmJson: llm });
+  assert.strictEqual(r2.tentativas, 2);
+});
