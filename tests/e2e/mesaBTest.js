@@ -6,6 +6,7 @@ const fs = require('fs'); const { execSync } = require('child_process');
 const SP = process.env.SP || require('path').join(__dirname, 'out'); // SP/vendor: react, react-dom, babel (offline)
 const BASE = process.env.BASE || 'http://127.0.0.1:4800';
 const falhas = [];
+const hashTexto = (t) => require('../../static/contentModel').hash(t);
 const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m); if (!c) falhas.push(m); };
 
 const TEXTO = 'O Senado aprovou nesta quinta-feira o projeto que eleva o teto de faturamento anual do microempreendedor individual para R$ 140 mil. O texto segue para sanção presidencial.';
@@ -45,6 +46,8 @@ const MOCKS = () => ({
   verify: { claim: { ...CLAIM, evidencias: ['e1', 'e2'], estado: 'sustentada', motivo_estado: 'Sustentada por 2 fontes independentes.' }, evidencias: [EV2], log: ['Outro Veículo: sustenta'], consulta: {}, janela_dias: 10 },
   briefing: { briefing: BRIEF },
   copy: COPIA,
+  // auditoria simulada: toda afirmação de fato aponta para a1 (o mock não tem fato sem fonte)
+  auditar: (n, req) => { const b = JSON.parse(req.postData() || '{}'); return { auditoria: (b.slides || []).map((s) => ({ slide_id: s.id, hash_texto: hashTexto(s.texto), premissas: [] })) }; },
 });
 const esperaToast = (p, re) => p.waitForFunction((s) => new RegExp(s).test(document.querySelector('.es-toast')?.textContent || ''), re.source, { timeout: 8000 });
 const aberto = async (p) => { await p.goto(`${BASE}/`, { waitUntil: 'networkidle' }); await p.waitForFunction(() => window.Mesa?.state.pronto, null, { timeout: 15000 }); };

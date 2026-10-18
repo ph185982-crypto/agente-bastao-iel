@@ -456,14 +456,25 @@ test('opinião: precisa ter as premissas conferidas; fato embutido sem fonte blo
   let r = G.avaliar(c);
   assert.ok(ids(r).includes('opiniao_nao_auditada'));
   const s2 = M.versaoAtiva(c).slides.find((s) => s.id === 's2');
-  c.auditoria_opinioes = { s2: { slide_id: 's2', hash_texto: M.hash(s2.texto), premissas: [{ texto: 'a medida aumenta a carga tributária', claim_id: null }] } };
+  c.auditoria_textos = { s2: { slide_id: 's2', hash_texto: M.hash(s2.texto), premissas: [{ texto: 'a medida aumenta a carga tributária', claim_id: null }] } };
   r = G.avaliar(c);
   assert.ok(ids(r).includes('premissa_sem_fonte') && !ids(r).includes('opiniao_nao_auditada'));
   // reescreve como avaliação pura e a auditoria nova não acha fato sem fonte
   M.editarSlide(c, 's2', { texto: 'Na minha leitura, o país precisa discutir produtividade antes de qualquer custo novo.' });
   assert.ok(ids(G.avaliar(c)).includes('opiniao_nao_auditada'), 'texto mudou: precisa conferir de novo');
   const novo = M.versaoAtiva(c).slides.find((s) => s.id === 's2');
-  c.auditoria_opinioes.s2 = { slide_id: 's2', hash_texto: M.hash(novo.texto), premissas: [] };
+  c.auditoria_textos.s2 = { slide_id: 's2', hash_texto: M.hash(novo.texto), premissas: [] };
   r = G.avaliar(c);
   assert.ok(!ids(r).includes('premissa_sem_fonte') && !ids(r).includes('opiniao_nao_auditada'), JSON.stringify(ids(r)));
+});
+
+test('auditoria do texto: fato sem fonte na legenda bloqueia; texto não auditado é só sugestão', () => {
+  const c = exemplo();
+  const v = M.versaoAtiva(c);
+  assert.ok(G.avaliar(c).sugestoes.some((x) => x.id === 'texto_nao_auditado'));
+  c.auditoria_textos = { legenda: { slide_id: 'legenda', hash_texto: M.hash(v.legenda), premissas: [{ texto: 'a mudança vale só para agentes de saúde', claim_id: null }] } };
+  const r = G.avaliar(c);
+  assert.ok(r.bloqueios.some((b) => b.id === 'fato_sem_fonte' && /legenda/.test(b.detalhe)));
+  M.editarLegenda(c, { legenda: 'O salário mínimo saiu de R$ 64,79 para R$ 1.621,00.' });
+  assert.ok(!G.avaliar(c).bloqueios.some((b) => b.id === 'fato_sem_fonte'), 'texto novo: a auditoria antiga não vale mais');
 });

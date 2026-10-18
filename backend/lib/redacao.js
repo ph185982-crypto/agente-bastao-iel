@@ -229,7 +229,8 @@ Responda APENAS JSON:
   if ((falhas.length || m.problemas.length) && budget.usados < budget.max && !semTempo) {
     const fb = [...falhas.map((b) => `- ${b.titulo}: ${b.detalhe}`), ...m.problemas.map((p) => `- ${p}`)].join('\n');
     try {
-      const r2 = await pedir(fb);
+      const restante = 50000 - (Date.now() - t0);
+      const r2 = await Promise.race([pedir(fb), new Promise((_, no) => setTimeout(() => no(new Error('sem tempo para a correção')), Math.max(1000, restante)))]);
       const m2 = montarVersao({ dados: r2.dados, claims, evidencias, formato });
       const prov2 = provisorio({ claims, evidencias, fonte, versao: m2.versao, opinioes: m2.opinioes });
       const f2 = fatosProblemas(prov2);
@@ -242,25 +243,25 @@ Responda APENAS JSON:
   return { versao: m.versao, opinioes: m.opinioes, problemas_de_forma: m.problemas, bloqueios_de_fatos: falhas.map((b) => ({ id: b.id, detalhe: b.detalhe })), llm: r.llm, tentativas, correcao_pulada_por_tempo: semTempo };
 }
 
-// ── Auditoria das opiniões ─────────────────────────────────────────────────
-// Opinião pode interpretar, mas não pode trazer fato novo escondido ("aumenta
-// impostos", "vai fechar empresas"). A IA lista as premissas factuais de cada
-// slide de opinião e diz qual afirmação conferida sustenta cada uma; o código
-// só aceita ids que existem. Premissa sem afirmação vira bloqueio.
+// ── Auditoria do texto público ─────────────────────────────────────────────
+// Nem toda afirmação errada tem número ou aspas. A IA lista as afirmações de
+// fato de cada slide e da legenda (inclusive as escondidas numa opinião, como
+// "aumenta impostos") e diz qual afirmação conferida sustenta cada uma; o código
+// só aceita ids que existem. Fato sem afirmação vira bloqueio.
 async function auditarOpinioes({ slides, claims }, d0) {
   const d = deps(d0);
-  const ops = (slides || []).filter((s) => s && s.id && s.texto).slice(0, 8);
+  const ops = (slides || []).filter((s) => s && s.id && s.texto).slice(0, 12);
   if (!ops.length) return { auditoria: [] };
   const ids = new Set(claims.map((c) => c.id));
   const lista = claims.filter((c) => c.tipo !== 'opiniao' && c.decisao?.tipo !== 'retirar').map((c) => ({ id: c.id, texto: c.texto, estado: c.estado }));
   const { dados, llm } = await d.llmJson.pedirJson({
     temperatura: 0.1, maxTokens: 1500, esforco: 'low',
-    sistema: `Você separa, em textos de opinião, o que é avaliação do autor do que é afirmação de fato. É rigoroso: "aumenta a carga tributária", "vai fechar empresas", "a maioria apoia" são afirmações de fato.\n${d.llmJson.REGRAS_DADOS}`,
+    sistema: `Você separa, em textos de post, o que é avaliação do autor do que é afirmação de fato. É rigoroso: "aumenta a carga tributária", "vai fechar empresas", "a maioria apoia", "muda a rotina dos agentes de saúde" são afirmações de fato. Uma afirmação só é sustentada se a afirmação conferida diz a MESMA coisa (mesmo sujeito, alcance, status e números).\n${d.llmJson.REGRAS_DADOS}`,
     usuario: `AFIRMAÇÕES CONFERIDAS: ${JSON.stringify(lista)}
 
-SLIDES DE OPINIÃO: ${JSON.stringify(ops.map((s) => ({ id: s.id, texto: String(s.texto).replace(/\*\*/g, '') })))}
+TEXTOS DO POST: ${JSON.stringify(ops.map((s) => ({ id: s.id, texto: String(s.texto).replace(/\*\*/g, '') })))}
 
-Para cada slide, liste as premissas FACTUAIS (não as avaliações) e, para cada uma, o id da afirmação conferida que a sustenta, ou null se nenhuma sustenta.
+Para cada texto, liste as afirmações de FATO (não as avaliações, perguntas ou convites) e, para cada uma, o id da afirmação conferida que a sustenta, ou null se nenhuma sustenta.
 Responda APENAS JSON: {"slides":[{"id":"s4","premissas":[{"texto":"","claim_id":null}]}]}`,
   });
   const auditoria = (dados.slides || []).filter((x) => ops.some((s) => s.id === x.id)).map((x) => {

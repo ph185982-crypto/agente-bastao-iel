@@ -201,7 +201,7 @@ etapa('copy', 6, async (b) => {
 // Opiniões: separa premissas factuais e liga às afirmações conferidas.
 etapa('auditar', 12, async (b) => {
   exigeIA();
-  return redacao.auditarOpinioes({ slides: arr(b.slides, 8).map((x) => ({ id: txt(x?.id, 20), texto: txt(x?.texto, 900) })), claims: claimsDoCorpo(b.claims) });
+  return redacao.auditarOpinioes({ slides: arr(b.slides, 12).map((x) => ({ id: txt(x?.id, 20), texto: txt(x?.texto, 900) })), claims: claimsDoCorpo(b.claims) });
 });
 
 // Cálculo de correção pelo IPCA com fórmula e entradas guardadas.

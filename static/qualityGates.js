@@ -90,7 +90,7 @@
         // Auditoria das premissas factuais embutidas na opinião (por slide e texto).
         textos.filter((t) => t.tipo === 'slide' && (t.claim_ids || []).includes(cl.id)).forEach((t) => {
           const s = (v.slides || []).find((x) => x.id === t.onde.slide);
-          const a = (c.auditoria_opinioes || {})[s.id];
+          const a = (c.auditoria_textos || c.auditoria_opinioes || {})[s.id];
           if (!a || a.hash_texto !== M.hash(s.texto)) { out.push(bloqueio('opiniao_nao_auditada', 'fatos', 'Opinião ainda não conferida', `O slide ${t.onde.indice} é opinião e ainda não teve as premissas factuais separadas e conferidas${a ? ' (o texto mudou depois da conferência)' : ''}.`, t.onde, 'Conferir a opinião')); return; }
           a.premissas.filter((p) => !p.claim_id).forEach((p) => out.push(bloqueio('premissa_sem_fonte', 'fatos', 'Fato dentro da opinião sem fonte', `No slide ${t.onde.indice}, “${p.texto}” é apresentado como fato e nenhuma afirmação conferida sustenta isso. Tire, transforme em pergunta ou traga uma fonte.`, t.onde, 'Reescrever ou buscar fonte')));
           a.premissas.filter((p) => p.claim_id).forEach((p) => { const q = c.claims.find((x) => x.id === p.claim_id); if (q && q.estado !== 'sustentada' && q.decisao?.tipo !== 'atribuir') out.push(bloqueio('premissa_pendente', 'fatos', 'Opinião apoiada em fato ainda pendente', `“${p.texto}” depende de “${q.texto}”, que está ${rotuloEstado(q.estado)}.`, t.onde, 'Decidir sobre a premissa')); });
@@ -125,6 +125,19 @@
         });
       }
     }
+
+    // Auditoria dos textos que não são opinião: fato sem afirmação conferida.
+    const aud = c.auditoria_textos || {};
+    textos.filter((t) => t.tipo !== 'cta').forEach((t) => {
+      const chave = t.tipo === 'legenda' ? 'legenda' : t.onde.slide;
+      const s = t.tipo === 'legenda' ? null : (v.slides || []).find((x) => x.id === chave);
+      const ehOpiniao = (t.claim_ids || []).some((id) => { const k = c.claims.find((q) => q.id === id); return k && (k.tipo === 'opiniao' || k.natureza === 'opiniao'); });
+      if (ehOpiniao || (s && s.layout === 'encerramento')) return;
+      const a = aud[chave];
+      const textoAtual = t.tipo === 'legenda' ? v.legenda : s.texto;
+      if (!a || a.hash_texto !== M.hash(textoAtual)) return; // sem auditoria atual: vira sugestão abaixo
+      a.premissas.filter((p) => !p.claim_id).forEach((p) => out.push(bloqueio('fato_sem_fonte', 'fatos', 'Afirmação de fato sem fonte', `${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} diz “${p.texto}”, e nenhuma afirmação conferida sustenta isso.`, t.onde, 'Corrigir, tirar ou trazer fonte')));
+    });
 
     // Números e consistência entre capa, slides e legenda
     const porClaim = new Map();
@@ -252,6 +265,17 @@
       if (img && img.tipo !== 'tipografica' && ['baixa', 'desconhecida', undefined].includes(img.relevancia)) out.push(sugestao('imagem_pouco_relevante', 'arte', 'Imagem pouco relevante', `A imagem do slide ${i + 1} não foi confirmada como pertinente ao assunto. Se não servir, use composição só com texto.`, { slide: s.id }));
     });
 
+    // Texto ainda não auditado (a auditoria roda sozinha depois de gerar/editar).
+    const aud = c.auditoria_textos || {};
+    textos.filter((t) => t.tipo !== 'cta').forEach((t) => {
+      const chave = t.tipo === 'legenda' ? 'legenda' : t.onde.slide;
+      const s = t.tipo === 'legenda' ? null : (v.slides || []).find((x) => x.id === chave);
+      if (s && s.layout === 'encerramento') return;
+      const atual = t.tipo === 'legenda' ? v.legenda : s?.texto;
+      if (!atual) return;
+      if (!aud[chave] || aud[chave].hash_texto !== M.hash(atual)) out.push(sugestao('texto_nao_auditado', 'fatos', 'Texto ainda não conferido', `${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} ainda não teve as afirmações de fato conferidas contra as fontes.`, t.onde));
+    });
+
     // Slide de conteúdo sem base: não é opinião marcada e não liga nenhuma afirmação.
     (v.slides || []).forEach((s, i) => {
       if (i === 0 || ['encerramento'].includes(s.layout) || (s.claim_ids || []).length) return;
@@ -289,7 +313,7 @@
         fatos: temContradita ? 'contradicao' : fatos.length ? 'pendente' : 'ok',
         conta: b.some((x) => x.eixo === 'conta') ? 'incorreta' : 'ok',
         arte: b.some((x) => x.eixo === 'arte') ? 'pendente' : 'ok',
-        redacao: s.length ? 'com_sugestoes' : 'ok',
+        redacao: s.some((x) => x.eixo === 'redacao') ? 'com_sugestoes' : 'ok',
         pode_aprovar: b.length === 0,
       },
     };
