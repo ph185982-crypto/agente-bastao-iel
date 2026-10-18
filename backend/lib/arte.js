@@ -162,18 +162,26 @@ function layoutCapaTipografica(s, ctx) {
 
 function layoutExplicacao(s, ctx) {
   const rot = FUNCAO_ROTULO[s.funcao] ?? '';
-  let y = 250;
   const blocos = [];
   let inner = chrome(ctx);
-  if (rot) { inner += rotuloSvg(rot, { x: MARGEM, y: 214, cor: COR.mostarda }); }
-  if (s.titulo) {
-    const ti = ajustar({ texto: s.titulo, k: 'display', larg: LARG, alt: 300, max: 64, min: 44, entrelinha: 1.15, papel: 'titulo' });
+  // Mede primeiro, desenha depois: texto curto ganha letra maior e o bloco
+  // (rótulo + título + corpo) desce para o terço central em vez de deixar a
+  // metade de baixo vazia.
+  const TOPO = 214; const BASE = H - 130;
+  const ti = s.titulo ? ajustar({ texto: s.titulo, k: 'display', larg: LARG, alt: 300, max: 64, min: 44, entrelinha: 1.15, papel: 'titulo' }) : null;
+  const yCorpo0 = 250 + (ti ? ti.altura + 36 : 0);
+  const alt = BASE - yCorpo0 - 40;
+  const c = ajustar({ texto: s.texto, k: 'corpo', larg: LARG, alt, max: 64, min: 38, entrelinha: 1.38, papel: 'corpo' });
+  const total = (yCorpo0 - TOPO) + c.altura;
+  const livre = (BASE - TOPO) - total;
+  const desloc = livre > 160 ? Math.round(livre * 0.38) : 0;
+  if (rot) inner += rotuloSvg(rot, { x: MARGEM, y: TOPO + desloc, cor: COR.mostarda });
+  let y = 250 + desloc;
+  if (ti) {
     inner += textoSvg(ti, { x: MARGEM, y, k: 'display', cor: COR.marinho });
     y += ti.altura + 36;
     blocos.push({ nome: 'titulo', ...resumo(ti) });
   }
-  const alt = H - 130 - y - 40;
-  const c = ajustar({ texto: s.texto, k: 'corpo', larg: LARG, alt, max: 56, min: 38, entrelinha: 1.38, papel: 'corpo' });
   inner += textoSvg(c, { x: MARGEM, y, k: 'corpo', cor: COR.marinho, marcador: true });
   blocos.push({ nome: 'corpo', ...resumo(c, alt) });
   return { svg: svg(COR.marfim, inner), blocos };
