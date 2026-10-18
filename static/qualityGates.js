@@ -244,6 +244,12 @@
       if (img && img.tipo !== 'tipografica' && ['baixa', 'desconhecida', undefined].includes(img.relevancia)) out.push(sugestao('imagem_pouco_relevante', 'arte', 'Imagem pouco relevante', `A imagem do slide ${i + 1} não foi confirmada como pertinente ao assunto. Se não servir, use composição só com texto.`, { slide: s.id }));
     });
 
+    // Slide de conteúdo sem base: não é opinião marcada e não liga nenhuma afirmação.
+    (v.slides || []).forEach((s, i) => {
+      if (i === 0 || ['encerramento'].includes(s.layout) || (s.claim_ids || []).length) return;
+      if (palavras(limpa(s.texto)).length > 8) out.push(sugestao('slide_sem_base', 'fatos', 'Slide sem afirmação ligada', `O slide ${i + 1} não está ligado a nenhuma afirmação conferida nem marcado como opinião. Se ele afirma um fato, ligue a uma fonte; se é sua leitura, deixe claro que é opinião.`, { slide: s.id }));
+    });
+
     // Foto ampliada demais (fica borrada) e encerramento provisório
     const rendersV = (c.arte?.renders || []).filter((r) => r.versao === v.id);
     rendersV.forEach((r) => {

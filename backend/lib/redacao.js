@@ -126,6 +126,10 @@ function montarVersao({ dados, claims, evidencias, formato }) {
   if (formato !== 'estatico' && cta) slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'encerramento', titulo: null, texto: cta, claim_ids: [] });
   if (slides.length < (formato === 'estatico' ? 1 : 3)) problemas.push('poucos slides');
 
+  // Slide de conteúdo sem afirmação ligada e sem ser opinião: provável fato sem fonte.
+  slides.forEach((s, i) => {
+    if (i > 0 && !['encerramento', 'capa'].includes(s.funcao) && !(s.claim_ids || []).length && s.texto.split(/\s+/).length > 8) problemas.push(`o slide ${i + 1} afirma algo sem afirmação ligada: ligue a uma afirmação (claim_ids) ou marque como opinião`);
+  });
   const META = /parcialmente sustentad|fonte [uú]nica|verifica[cç][aã]o independente|n[aã]o verificad|sustentada por|estado da afirma/i;
   slides.forEach((s, i) => { if (META.test(s.texto)) problemas.push(`o slide ${i + 1} fala do sistema de checagem em vez de falar do assunto (reescreva sem "fonte única", "sustentada" etc.)`); });
   if (META.test(dados.legenda || '')) problemas.push('a legenda fala do sistema de checagem em vez de falar do assunto');
@@ -181,6 +185,8 @@ REGRAS DE FATOS (inegociáveis):
 6. O texto PÚBLICO nunca fala do sistema de checagem: não escreva "parcialmente sustentada", "fonte única", "sem verificação independente", "não verificada". Quando algo ainda é só anúncio, intenção ou declaração, diga isso do jeito de quem fala ("o governo diz que pretende…", "por enquanto é só anúncio", "ainda não há regra publicada"). Limitação da fonte vai para o briefing, não para o slide.
 7. Um slide de prova mostra UM dado ou UMA declaração, com no máximo um trecho em **destaque**. Vários dados vão em slides separados.
 8. Slide de opinião é a posição do Pedro sobre o assunto (o que ele acha e por quê), nunca um comentário sobre a qualidade das fontes.
+9. Slide sem claim_ids só pode ser: capa, transição, pergunta ou OPINIÃO marcada ("opiniao": true). Generalização como "reduzir horas costuma elevar custos" é opinião ou precisa de afirmação com fonte; não escreva como fato.
+10. Não acrescente detalhe factual que não esteja nas afirmações ligadas ao slide (prazo, exceção, quem decide, acordo coletivo etc.).
 
 ESTRUTURA: escolha a que a pauta pede (a sugerida é ${briefing.estrutura}). Cada slide tem UMA função (capa, contexto, prova, explicacao, comparacao, consequencia, opiniao) e precisa acrescentar informação, compreensão ou progressão: se não acrescenta, não escreva. ${formato === 'estatico' ? '' : 'Use o número de slides que a história pedir (entre 4 e 8 de conteúdo); não existe meta de quantidade.'} Texto por slide curto o bastante para ler no celular (capa até 18 palavras; demais até 45).
 Marque com **duas estrelas** no máximo 2 trechos por slide.

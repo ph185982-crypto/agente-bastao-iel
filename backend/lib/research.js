@@ -91,7 +91,7 @@ async function levantarAfirmacoes(fonte, d0, { max = 8 } = {}) {
     usuario: `Do texto abaixo, liste as afirmações FACTUAIS e CHECÁVEIS (no máximo ${max}). Para cada uma:
 - texto: frase completa e autônoma (sem pronomes ambíguos), com os números exatos do texto. NÃO fortaleça o que o texto diz: se o texto fala em proposta, estudo, intenção ou previsão, a afirmação diz isso ("O governo anunciou que pretende…", "O ministro estima que…"), nunca "a medida está em vigor" ou "a medida vai gerar";
 - tipo: "fato", "calculo", "declaracao" (alguém DISSE algo: escreva "Fulano disse que…") ou "opiniao";
-- natureza: "fato" (algo que aconteceu ou está em vigor), "dado" (número/estatística), "anuncio" (proposta, plano, intenção anunciada), "declaracao" (o que alguém disse), "previsao" (efeito futuro estimado) ou "opiniao";
+- natureza: "fato" (algo que aconteceu, está em vigor, OU regra já aprovada/promulgada/publicada, mesmo com prazo futuro — o que a lei/emenda determina é fato), "dado" (número/estatística), "anuncio" (proposta, plano ou intenção que ainda depende de decisão), "declaracao" (o que alguém disse), "previsao" (efeito futuro ESTIMADO por alguém, ex.: "vai gerar empregos") ou "opiniao";
 - correspondencia: o trecho sustenta a afirmação INTEIRA ("integral") ou só parte ("parcial")? Se parcial, diga em "falta" o que não está no trecho;
 - central: true só nas 3 ou 4 que sustentam a notícia;
 - trecho: cópia EXATA e literal (até 300 caracteres) do texto que contém a afirmação. Não resuma, não corrija, não una pedaços;
