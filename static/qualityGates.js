@@ -87,6 +87,14 @@
         continue;
       }
       if (cl.tipo === 'opiniao' || cl.natureza === 'opiniao') {
+        // Auditoria das premissas factuais embutidas na opinião (por slide e texto).
+        textos.filter((t) => t.tipo === 'slide' && (t.claim_ids || []).includes(cl.id)).forEach((t) => {
+          const s = (v.slides || []).find((x) => x.id === t.onde.slide);
+          const a = (c.auditoria_opinioes || {})[s.id];
+          if (!a || a.hash_texto !== M.hash(s.texto)) { out.push(bloqueio('opiniao_nao_auditada', 'fatos', 'Opinião ainda não conferida', `O slide ${t.onde.indice} é opinião e ainda não teve as premissas factuais separadas e conferidas${a ? ' (o texto mudou depois da conferência)' : ''}.`, t.onde, 'Conferir a opinião')); return; }
+          a.premissas.filter((p) => !p.claim_id).forEach((p) => out.push(bloqueio('premissa_sem_fonte', 'fatos', 'Fato dentro da opinião sem fonte', `No slide ${t.onde.indice}, “${p.texto}” é apresentado como fato e nenhuma afirmação conferida sustenta isso. Tire, transforme em pergunta ou traga uma fonte.`, t.onde, 'Reescrever ou buscar fonte')));
+          a.premissas.filter((p) => p.claim_id).forEach((p) => { const q = c.claims.find((x) => x.id === p.claim_id); if (q && q.estado !== 'sustentada' && q.decisao?.tipo !== 'atribuir') out.push(bloqueio('premissa_pendente', 'fatos', 'Opinião apoiada em fato ainda pendente', `“${p.texto}” depende de “${q.texto}”, que está ${rotuloEstado(q.estado)}.`, t.onde, 'Decidir sobre a premissa')); });
+        });
         (cl.premissas || []).forEach((pid) => {
           const p = c.claims.find((x) => x.id === pid);
           if (p && p.estado !== 'sustentada' && p.decisao?.tipo !== 'atribuir') out.push(bloqueio('premissa_pendente', 'fatos', 'Opinião apoiada em fato ainda pendente', `“${cl.texto}” depende de “${p.texto}”, que está ${rotuloEstado(p.estado)}.`, { claim: cl.id }, 'Decidir sobre a premissa'));

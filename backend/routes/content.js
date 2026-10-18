@@ -127,7 +127,7 @@ const arr = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
 // se a aba fechar no meio, o navegador recupera o resultado pelo request_id
 // sem refazer (nem pagar) a pesquisa ou a redação. Sem armazenamento, só vale
 // a proteção em memória desta instância.
-const DURAVEIS = new Set(['claims', 'verify', 'briefing', 'copy', 'conferir']);
+const DURAVEIS = new Set(['claims', 'verify', 'briefing', 'copy', 'conferir', 'auditar']);
 const etapa = (nome, max, fn) => router.post(`/${nome}`, porMinuto(max, nome), async (req, res) => {
   try {
     const rid = req.body?.request_id ? `${nome}:${txt(req.body.request_id, 80)}` : null;
@@ -196,6 +196,12 @@ etapa('copy', 6, async (b) => {
     briefing: b.briefing, fonte: fonteDoCorpo(b.fonte), claims: claimsDoCorpo(b.claims), evidencias: evidsDoCorpo(b.evidencias),
     recentes: arr(b.recentes, 10).map((r) => txt(r, 140)), formato: b.formato === 'estatico' ? 'estatico' : 'carrossel', instrucoes: txt(b.instrucoes, 600),
   });
+});
+
+// Opiniões: separa premissas factuais e liga às afirmações conferidas.
+etapa('auditar', 12, async (b) => {
+  exigeIA();
+  return redacao.auditarOpinioes({ slides: arr(b.slides, 8).map((x) => ({ id: txt(x?.id, 20), texto: txt(x?.texto, 900) })), claims: claimsDoCorpo(b.claims) });
 });
 
 // Cálculo de correção pelo IPCA com fórmula e entradas guardadas.

@@ -138,6 +138,20 @@
     } catch (e) { x.toast(e.message); } finally { fim(x, c); await x.persistir(c); x.render(); }
   }
 
+  // Opiniões: premissas factuais separadas e ligadas às afirmações conferidas.
+  const slidesDeOpiniao = (c, v) => (v?.slides || []).filter((s) => (s.claim_ids || []).some((id) => { const k = c.claims.find((q) => q.id === id); return k && (k.tipo === 'opiniao' || k.natureza === 'opiniao'); }));
+  async function auditarOpinioes(x, c, { so_pendentes = true } = {}) {
+    const v = M.versaoAtiva(c);
+    const alvo = slidesDeOpiniao(c, v).filter((s) => !so_pendentes || (c.auditoria_opinioes || {})[s.id]?.hash_texto !== M.hash(s.texto));
+    if (!alvo.length) return;
+    const r = await chamarEtapa(x, c, 'copy', `auditar:${alvo.map((s) => M.hash(s.texto)).join(',')}`, '/api/content/auditar', { slides: alvo.map((s) => ({ id: s.id, texto: s.texto })), claims: c.claims });
+    c.auditoria_opinioes = { ...(c.auditoria_opinioes || {}) };
+    r.auditoria.forEach((a) => { c.auditoria_opinioes[a.slide_id] = a; });
+    registrarConsumo(c, r.consumo);
+    const sem = r.auditoria.flatMap((a) => a.premissas.filter((p) => !p.claim_id));
+    M.registrar(c, 'sistema', 'auditoria', `Opiniões conferidas: ${sem.length} premissa(s) factual(is) sem fonte`);
+  }
+
   async function etapaPesquisa(x, c) {
     const alvo = c.claims.filter((k) => k.central && k.tipo !== 'opiniao').slice(0, 4);
     let falhas = 0;
@@ -181,6 +195,7 @@
     registrarConsumo(c, r.consumo);
     if (c.status === 'rascunho') c.status = 'em_revisao';
     M.criarVersao(c, versao, { quem: 'ia', rotulo: instrucoes ? `Texto gerado (${instrucoes.slice(0, 40)})` : 'Texto gerado' });
+    try { await auditarOpinioes(x, c); } catch (e) { M.registrar(c, 'sistema', 'erro', `Conferência das opiniões falhou: ${e.message}`); }
     return { llm: r.llm, tentativas: r.tentativas, problemas_de_forma: r.problemas_de_forma };
   }
 
@@ -274,6 +289,7 @@
     if (rodando[c.id]) { artePendente[c.id] = true; return; }
     rodando[c.id] = true;
     try {
+      try { await auditarOpinioes(x, c); } catch (e) { x.toast(`Conferência da opinião falhou: ${e.message}`); }
       marca(c, 'arte', 'em_andamento', { erro: null }); x.render();
       await atualizarArte(x, c);
       marca(c, 'arte', 'concluida', { erro: null, progresso: null });
@@ -571,6 +587,7 @@
         <select class="es-input" style="width:auto" data-ed-layout="${esc(s.id)}" ${s.bloqueado ? 'disabled' : ''} aria-label="Layout">${layouts.map((l) => `<option value="${l}" ${l === s.layout ? 'selected' : ''}>${LAYOUTS[l]}</option>`).join('')}</select>
         ${s.layout === 'prova' ? `<span class="es-text">Fonte na arte: ${esc(s.fonte_linha || 'sem fonte ligada')}</span>` : ''}
       </div>
+      ${(() => { const a = (c.auditoria_opinioes || {})[s.id]; if (!a || !slidesDeOpiniao(c, v).some((q) => q.id === s.id)) return ''; const atual = a.hash_texto === M.hash(s.texto); return `<div class="mz-bloco"><b>Fatos dentro desta opinião${atual ? '' : ' (texto mudou: confira de novo)'}</b> <button class="es-btn ghost sm" style="width:auto" data-action="ed-auditar" ${rodando[c.id] ? 'disabled' : ''}>Conferir de novo</button>${a.premissas.map((p) => `<span>${p.claim_id ? '✓' : '✗'} ${esc(p.texto)}${p.claim_id ? ` — sustentado por ${esc(p.claim_id)}` : ' — <b>sem fonte</b>'}</span>`).join('') || '<span>Nenhuma afirmação de fato: só avaliação.</span>'}</div>`; })()}
       ${claims.length ? `<div class="es-text">Baseado em: ${claims.map((k) => `<span class="mz-chip ${(ESTADO_CLAIM[k.estado] || ESTADO_CLAIM.nao_verificada)[0]}" title="${esc(k.texto)}">${esc(k.texto.slice(0, 38))}${k.texto.length > 38 ? '…' : ''}</span>`).join(' ')}</div>` : '<div class="es-text">Sem número ou fato novo neste slide.</div>'}
       <div class="es-actions" style="flex-wrap:wrap">
         ${!primeiro && !ultimo ? `<button class="es-btn ghost sm" data-action="ed-mover" data-id="${esc(s.id)}" data-d="-1" ${i <= 1 ? 'disabled' : ''} aria-label="Subir">↑</button><button class="es-btn ghost sm" data-action="ed-mover" data-id="${esc(s.id)}" data-d="1" ${i >= (v.slides[n - 1].layout === 'encerramento' ? n - 2 : n - 1) ? 'disabled' : ''} aria-label="Descer">↓</button>` : ''}
@@ -758,6 +775,7 @@
         return true;
       }
       case 'ed-conferir': await conferirUma(x, c, claim()); return true;
+      case 'ed-auditar': { if (rodando[c.id]) return true; rodando[c.id] = true; x.render(); try { await auditarOpinioes(x, c, { so_pendentes: false }); } catch (e) { x.toast(e.message); } fim(x, c); await x.persistir(c); x.render(); return true; }
       case 'ed-nova-afirmacao': {
         const t = document.getElementById('ed-nova-afirmacao')?.value.trim() || '';
         if (t.length < 12) { x.toast('Escreva a afirmação completa.'); return true; }

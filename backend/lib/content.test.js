@@ -448,3 +448,22 @@ test('ativarVersao: não apaga nada e reabre a aprovação se a versão ativa mu
   assert.strictEqual(c.copia.versoes.length, 2, 'nenhuma versão foi apagada');
   assert.throws(() => M.ativarVersao(c, 'v99'));
 });
+
+test('opinião: precisa ter as premissas conferidas; fato embutido sem fonte bloqueia; editar reabre', () => {
+  const c = exemplo();
+  c.claims.push({ id: 'o1', texto: 'Na minha leitura, isso aumenta a carga tributária das pequenas empresas.', tipo: 'opiniao', natureza: 'opiniao', premissas: [], evidencias: [], revisao: {} });
+  M.editarSlide(c, 's2', { texto: 'Na minha leitura, isso aumenta a carga tributária das pequenas empresas.', claim_ids: ['o1'] });
+  let r = G.avaliar(c);
+  assert.ok(ids(r).includes('opiniao_nao_auditada'));
+  const s2 = M.versaoAtiva(c).slides.find((s) => s.id === 's2');
+  c.auditoria_opinioes = { s2: { slide_id: 's2', hash_texto: M.hash(s2.texto), premissas: [{ texto: 'a medida aumenta a carga tributária', claim_id: null }] } };
+  r = G.avaliar(c);
+  assert.ok(ids(r).includes('premissa_sem_fonte') && !ids(r).includes('opiniao_nao_auditada'));
+  // reescreve como avaliação pura e a auditoria nova não acha fato sem fonte
+  M.editarSlide(c, 's2', { texto: 'Na minha leitura, o país precisa discutir produtividade antes de qualquer custo novo.' });
+  assert.ok(ids(G.avaliar(c)).includes('opiniao_nao_auditada'), 'texto mudou: precisa conferir de novo');
+  const novo = M.versaoAtiva(c).slides.find((s) => s.id === 's2');
+  c.auditoria_opinioes.s2 = { slide_id: 's2', hash_texto: M.hash(novo.texto), premissas: [] };
+  r = G.avaliar(c);
+  assert.ok(!ids(r).includes('premissa_sem_fonte') && !ids(r).includes('opiniao_nao_auditada'), JSON.stringify(ids(r)));
+});

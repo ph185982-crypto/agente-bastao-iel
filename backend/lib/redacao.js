@@ -115,10 +115,17 @@ function montarVersao({ dados, claims, evidencias, formato }) {
     }
     let layout = LAYOUT_POR_FUNCAO[funcao] || 'explicacao';
     if (layout === 'comparacao' && !(s.dados && s.dados.esquerda && s.dados.direita)) layout = 'explicacao';
-    if (i === 0) layout = 'capa_tipografica';
+    // O primeiro slide é sempre a capa. Se o modelo começou pelo contexto, a capa
+    // entra antes com a primeira opção (provisória até o Pedro escolher).
+    if (!slides.length && funcao !== 'capa') {
+      const k = capas[0];
+      if (k) slides.push({ id: 's1', funcao: 'capa', layout: 'capa_tipografica', titulo: null, texto: k.texto, rotulo: null, dados: null, claim_ids: k.claim_ids });
+    }
+    const ehCapa = !slides.length;
+    if (ehCapa) layout = 'capa_tipografica';
     slides.push({
-      id: `s${slides.length + 1}`, funcao: i === 0 ? 'capa' : funcao, layout,
-      titulo: s.titulo ? String(s.titulo).slice(0, 120) : null, texto: String(s.texto).slice(0, 700), rotulo: i === 0 && s.rotulo ? String(s.rotulo).slice(0, 28) : null,
+      id: `s${slides.length + 1}`, funcao: ehCapa ? 'capa' : (funcao === 'capa' ? 'contexto' : funcao), layout,
+      titulo: s.titulo ? String(s.titulo).slice(0, 120) : null, texto: String(s.texto).slice(0, 700), rotulo: ehCapa && s.rotulo ? String(s.rotulo).slice(0, 28) : null,
       dados: layout === 'comparacao' ? { esquerda: s.dados.esquerda, direita: s.dados.direita } : null, claim_ids,
     });
   });
@@ -141,7 +148,8 @@ function montarVersao({ dados, claims, evidencias, formato }) {
     versao: {
       estrutura: E.ESTRUTURAS[dados.estrutura] ? dados.estrutura : null,
       capas, capa_escolhida: null, slides,
-      legenda: String(dados.legenda || '').replace(/\*\*/g, '').slice(0, 1400), legenda_claim_ids: limpaIds(dados.legenda_claim_ids),
+      // Hashtags ficam no campo próprio, não repetidas dentro da legenda.
+      legenda: String(dados.legenda || '').replace(/\*\*/g, '').replace(/(^|\s)#[\p{L}\p{N}_]+/gu, '').replace(/[ \t]+\n/g, '\n').trim().slice(0, 1400), legenda_claim_ids: limpaIds(dados.legenda_claim_ids),
       cta, hashtags, formato,
     },
     opinioes: novasOpinioes,
@@ -234,4 +242,35 @@ Responda APENAS JSON:
   return { versao: m.versao, opinioes: m.opinioes, problemas_de_forma: m.problemas, bloqueios_de_fatos: falhas.map((b) => ({ id: b.id, detalhe: b.detalhe })), llm: r.llm, tentativas, correcao_pulada_por_tempo: semTempo };
 }
 
-module.exports = { gerarBriefing, gerarCopia, montarVersao, provisorio, resumoClaim, LAYOUT_POR_FUNCAO };
+// ── Auditoria das opiniões ─────────────────────────────────────────────────
+// Opinião pode interpretar, mas não pode trazer fato novo escondido ("aumenta
+// impostos", "vai fechar empresas"). A IA lista as premissas factuais de cada
+// slide de opinião e diz qual afirmação conferida sustenta cada uma; o código
+// só aceita ids que existem. Premissa sem afirmação vira bloqueio.
+async function auditarOpinioes({ slides, claims }, d0) {
+  const d = deps(d0);
+  const ops = (slides || []).filter((s) => s && s.id && s.texto).slice(0, 8);
+  if (!ops.length) return { auditoria: [] };
+  const ids = new Set(claims.map((c) => c.id));
+  const lista = claims.filter((c) => c.tipo !== 'opiniao' && c.decisao?.tipo !== 'retirar').map((c) => ({ id: c.id, texto: c.texto, estado: c.estado }));
+  const { dados, llm } = await d.llmJson.pedirJson({
+    temperatura: 0.1, maxTokens: 1500, esforco: 'low',
+    sistema: `Você separa, em textos de opinião, o que é avaliação do autor do que é afirmação de fato. É rigoroso: "aumenta a carga tributária", "vai fechar empresas", "a maioria apoia" são afirmações de fato.\n${d.llmJson.REGRAS_DADOS}`,
+    usuario: `AFIRMAÇÕES CONFERIDAS: ${JSON.stringify(lista)}
+
+SLIDES DE OPINIÃO: ${JSON.stringify(ops.map((s) => ({ id: s.id, texto: String(s.texto).replace(/\*\*/g, '') })))}
+
+Para cada slide, liste as premissas FACTUAIS (não as avaliações) e, para cada uma, o id da afirmação conferida que a sustenta, ou null se nenhuma sustenta.
+Responda APENAS JSON: {"slides":[{"id":"s4","premissas":[{"texto":"","claim_id":null}]}]}`,
+  });
+  const auditoria = (dados.slides || []).filter((x) => ops.some((s) => s.id === x.id)).map((x) => {
+    const s = ops.find((y) => y.id === x.id);
+    return {
+      slide_id: x.id, hash_texto: require('../../static/contentModel').hash(s.texto),
+      premissas: (x.premissas || []).slice(0, 6).map((p) => ({ texto: String(p.texto || '').slice(0, 240), claim_id: ids.has(String(p.claim_id)) ? String(p.claim_id) : null })).filter((p) => p.texto),
+    };
+  });
+  return { auditoria, llm };
+}
+
+module.exports = { auditarOpinioes, gerarBriefing, gerarCopia, montarVersao, provisorio, resumoClaim, LAYOUT_POR_FUNCAO };
