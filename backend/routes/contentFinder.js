@@ -49,19 +49,11 @@ function escXml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Links vêm do navegador: baixa com proteção contra acesso à rede interna (SSRF).
 function streamDownload(url, destPath) {
-  return new Promise((resolve, reject) => {
-    axios.get(url, {
-      responseType: 'stream',
-      timeout: 90000,
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
-    }).then(resp => {
-      const writer = fs.createWriteStream(destPath);
-      resp.data.pipe(writer);
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-      resp.data.on('error', err => { writer.destroy(); reject(err); });
-    }).catch(reject);
+  return require('../lib/midiaSegura').baixarParaArquivo(url, destPath, {
+    timeout: 90000,
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
   });
 }
 
@@ -1208,14 +1200,18 @@ router.post('/preview-video', async (req, res) => {
   if (!videoUrl) return res.status(400).json({ error: 'videoUrl é obrigatório' });
 
   try {
-    const response = await axios.get(videoUrl, {
-      responseType: 'stream',
+    const response = await require('../lib/midiaSegura').abrirStream(videoUrl, {
       timeout: 30000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
         'Referer': 'https://www.instagram.com/',
       },
     });
+    const tipo = String(response.headers['content-type'] || 'video/mp4');
+    if (!/^(video|image|audio)\//i.test(tipo) && !/octet-stream/i.test(tipo)) {
+      response.data.destroy();
+      return res.status(415).json({ error: 'O endereço não é um arquivo de vídeo ou imagem.' });
+    }
     const contentType = response.headers['content-type'] || 'video/mp4';
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=300');
@@ -1223,6 +1219,7 @@ router.post('/preview-video', async (req, res) => {
     response.data.on('error', () => { if (!res.headersSent) res.status(500).end(); });
   } catch (e) {
     console.error('[preview-video] error:', e.message);
+    if (e.isUrlError && !res.headersSent) return res.status(400).json({ error: e.message });
     if (!res.headersSent) res.status(502).json({ error: 'Não foi possível carregar o vídeo' });
   }
 });
