@@ -517,22 +517,14 @@ function ehHostInstagram(url) {
 // pra saber só pela URL do CDN de qual das duas plataformas o vídeo veio, por
 // isso o chamador pode informar o Referer certo (ver getOrDownloadVideo).
 function streamDownload(url, destPath, timeoutMs = 45000, referer) {
-  return new Promise((resolve, reject) => {
-    axios.get(url, {
-      responseType: 'stream',
-      timeout: timeoutMs,
-      maxRedirects: 5,
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        ...(referer ? { Referer: referer } : ehHostInstagram(url) ? { Referer: 'https://www.instagram.com/' } : {}),
-      },
-    }).then(resp => {
-      const writer = fs.createWriteStream(destPath);
-      resp.data.pipe(writer);
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-      resp.data.on('error', err => { writer.destroy(); reject(err); });
-    }).catch(reject);
+  // O link direto vem do navegador: baixa com proteção contra acesso à rede interna (SSRF).
+  return require('../lib/midiaSegura').baixarParaArquivo(url, destPath, {
+    timeout: timeoutMs,
+    maxRedirects: 5,
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+      ...(referer ? { Referer: referer } : ehHostInstagram(url) ? { Referer: 'https://www.instagram.com/' } : {}),
+    },
   });
 }
 

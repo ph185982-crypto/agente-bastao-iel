@@ -61,7 +61,7 @@ router.post('/', async (req, res) => {
 // aceitava qualquer endereço e dava para ler a rede interna do servidor (SSRF).
 // Valida o endereço no momento da conexão e não segue redirecionamento.
 const CDN_META = /(^|\.)(cdninstagram\.com|fbcdn\.net|fbsbx\.com)$/i;
-const { validaUrl, lookupSeguro } = require('../lib/safeFetch');
+const { validaUrl } = require('../lib/safeFetch');
 
 function urlDeMidia(texto) {
   const u = validaUrl(texto);
@@ -84,11 +84,9 @@ router.get('/proxy', async (req, res) => {
   const safeFilename = String(filename || 'instagram_media').replace(/[^a-zA-Z0-9._\-]/g, '_').slice(0, 120);
 
   try {
-    const response = await axios.get(alvo.toString(), {
-      responseType: 'stream',
+    const response = await require('../lib/midiaSegura').abrirStream(alvo.toString(), {
       timeout: 60000,
       maxRedirects: 0,
-      httpsAgent: new (require('https').Agent)({ lookup: lookupSeguro() }),
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
