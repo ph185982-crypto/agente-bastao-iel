@@ -90,3 +90,9 @@ test('interpretarResposta: aguenta resposta vazia ou sem data sem quebrar feio',
   assert.throws(() => interpretarResposta(null), /Não consegui processar/);
   assert.throws(() => interpretarResposta({ success: true }), /Não encontrei vídeo/);
 });
+
+test('chave recusada pela socialkit (HTTP 403 "not authorized", conferido ao vivo) vira mensagem clara', () => {
+  const e = interpretarErroHttp({ response: { status: 403, data: { success: false, message: 'You are not authorized to access this resource.' } } });
+  assert.match(e.message, /chave da socialkit\.dev foi recusada/);
+  assert.ok(e.isDownloadError);
+});
