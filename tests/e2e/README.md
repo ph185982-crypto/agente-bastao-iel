@@ -24,3 +24,14 @@ PORT=3998 TESTE_PORT=3997 node tests/e2e/servidorTeste.js &          # sem banco
 SP=/caminho/com/vendor node tests/e2e/persistenciaTest.js
 ```
 Testes do banco nos unitários: `PICO_TEST_PG=postgres://… node --test backend/lib/armazem.test.js`.
+
+## Central de aprovação, publicação e lote (`centralTest.js`, `loteTest.js`)
+
+Rodam contra o servidor real da aplicação (Postgres), IA simulada e **Meta simulada**
+(`GRAPH_FALSA=1`, `backend/lib/graphFalsa.js`). Nada é publicado no Instagram de verdade.
+Use um banco novo para cada arquivo (o segundo veria os conteúdos do primeiro):
+
+```
+GRAPH_FALSA=1 GRAPH_PORT=3999 PORT=3996 TESTE_PORT=3995 DATABASE_URL=postgres://…/pico_e2e ATRASO_MS=200 node tests/e2e/servidorTeste.js &
+SP=/caminho/com/vendor node tests/e2e/centralTest.js
+```

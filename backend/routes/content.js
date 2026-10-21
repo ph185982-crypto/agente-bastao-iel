@@ -185,7 +185,7 @@ etapa('briefing', 8, async (b) => {
   exigeIA();
   return redacao.gerarBriefing({
     fonte: fonteDoCorpo(b.fonte), claims: claimsDoCorpo(b.claims), evidencias: evidsDoCorpo(b.evidencias),
-    recentes: arr(b.recentes, 10).map((r) => txt(r, 140)), objetivo: txt(b.objetivo, 40), formato: txt(b.formato, 40),
+    recentes: arr(b.recentes, 10).map((r) => txt(r, 140)), objetivo: txt(b.objetivo, 40), formato: txt(b.formato, 40), voz: txt(b.voz, 1500),
   });
 });
 
@@ -194,7 +194,7 @@ etapa('copy', 6, async (b) => {
   if (!b.briefing || typeof b.briefing !== 'object') throw Object.assign(new Error('Falta o briefing.'), { code: 'ENTRADA' });
   return redacao.gerarCopia({
     briefing: b.briefing, fonte: fonteDoCorpo(b.fonte), claims: claimsDoCorpo(b.claims), evidencias: evidsDoCorpo(b.evidencias),
-    recentes: arr(b.recentes, 10).map((r) => txt(r, 140)), formato: b.formato === 'estatico' ? 'estatico' : 'carrossel', instrucoes: txt(b.instrucoes, 600),
+    recentes: arr(b.recentes, 10).map((r) => txt(r, 140)), formato: b.formato === 'estatico' ? 'estatico' : 'carrossel', instrucoes: txt(b.instrucoes, 600), voz: txt(b.voz, 1500),
   });
 });
 

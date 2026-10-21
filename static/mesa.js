@@ -31,7 +31,7 @@
     contents: [],
     atual: null,               // id do conteúdo aberto
     filtro: 'todos',
-    config: { pilares: E.PILARES_PADRAO, weekly_goal: 5, posting_days: [1, 2, 3, 4, 5], hidden_modules: ['videoIA'], video_template: 'viral' },
+    config: { pilares: E.PILARES_PADRAO, weekly_goal: 5, posting_days: [1, 2, 3, 4, 5], hidden_modules: ['videoIA'], video_template: 'viral', voice_profile: E.VOICE_PROFILE_PADRAO, daily_generation_cap: 10 },
     conta: { esperado: null, confirmada: false, perfil: null, erro: null, carregando: false },
     insights: null,
     insightsLoading: false,
@@ -447,6 +447,14 @@
     </div>`;
   }
 
+  function secaoVoz() {
+    const v = state.config.voice_profile ?? E.VOICE_PROFILE_PADRAO;
+    return `<div class="es-card" style="margin-top:12px"><div class="es-title" style="margin-top:0">Tom de voz</div>
+      <div class="es-text">Entra em toda geração de texto e legenda. Orienta o estilo; não autoriza inventar fatos, números ou histórias.</div>
+      <textarea id="voz-perfil" class="es-input" rows="6" maxlength="1500">${esc(v)}</textarea>
+      <div class="es-actions"><button class="es-btn" data-action="salvar-voz">Salvar tom de voz</button><button class="es-btn ghost" data-action="voz-padrao">Voltar ao padrão</button></div></div>`;
+  }
+
   function secaoRotina() {
     const cfg = state.config;
     return `<div class="es-card" style="margin-top:12px">
@@ -465,7 +473,7 @@
   }
 
   function telaAjustes() {
-    return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
+    return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -479,6 +487,9 @@
   function render() {
     if (!state.pronto) { root.innerHTML = '<main class="es-main"><div class="es-empty-day">Abrindo seu trabalho…</div></main>'; return; }
     const scroll = root.querySelector('.es-main')?.scrollTop || 0;
+    // Quem está digitando não perde o texto quando uma resposta do servidor redesenha a tela.
+    const foco = document.activeElement && root.contains(document.activeElement) && document.activeElement.id && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'file'
+      ? { id: document.activeElement.id, valor: document.activeElement.value, ini: document.activeElement.selectionStart, fim: document.activeElement.selectionEnd } : null;
     let corpo = '';
     if (state.tab === 'mesa') corpo = state.sub === 'descobrir' ? telaDescobrir() : state.sub === 'conteudo' ? telaConteudo() : telaMesa();
     else if (state.tab === 'central') corpo = window.MesaCentral ? window.MesaCentral.render(ctxEditor()) : '';
@@ -492,6 +503,10 @@
       <div class="es-toast-slot">${state.toast ? `<div class="es-toast" role="status">${esc(state.toast)}</div>` : ''}</div>
       <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span>${id === 'central' && nCentral ? `<i class="es-badge" aria-label="${nCentral} para aprovar">${nCentral}</i>` : ''}</button>`).join('')}</nav>`;
     const m = root.querySelector('.es-main'); if (m) m.scrollTop = scroll;
+    if (foco) {
+      const el = root.querySelector(`#${CSS.escape(foco.id)}`);
+      if (el) { el.value = foco.valor; try { el.focus({ preventScroll: true }); el.setSelectionRange(foco.ini, foco.fim); } catch { /* sem seleção */ } }
+    }
     if (state.tab === 'mesa' && state.sub === 'conteudo') preencherArquivosLegado();
     if (window.MesaEditor?.aposRender) window.MesaEditor.aposRender(root, { state });
   }
@@ -544,6 +559,8 @@
         case 'confirmar-conta': return confirmarConta(true);
         case 'ler-perfil': return lerPerfil();
         case 'sair': return window.PicoAuth?.sair();
+        case 'salvar-voz': { const t = root.querySelector('#voz-perfil')?.value.trim() || ''; await salvarConfig({ voice_profile: t }); toast('Tom de voz salvo.'); return render(); }
+        case 'voz-padrao': await salvarConfig({ voice_profile: E.VOICE_PROFILE_PADRAO }); toast('Voltou ao tom padrão.'); return render();
         case 'sincronizar': return sincronizar();
         case 'conflito': { const r = await window.Sync.resolverConflito(id, el.dataset.escolha); await carregar(); await carregarSync(); toast(r === 'servidor' ? 'Agora vale a cópia do servidor. A deste aparelho ficou como snapshot.' : 'A cópia deste aparelho foi enviada.'); return render(); }
         case 'exportar-backup': { const blob = await S.exportar(); await entregarArquivo(blob, `pico-backup-${C.toISODate(new Date())}.json`); return toast('Backup gerado.'); }
@@ -590,7 +607,7 @@
 
   // Contexto entregue ao editor (B): tudo que ele precisa, sem acesso ao resto.
   function ctxEditor() {
-    return { state, M, G, S, E, api, esc, fmtData, toast, render, persistir, abrirConteudo, criarConteudoDeFonte, novoId, entregarArquivo, recentesParaPrompt, conteudoAtual };
+    return { state, M, G, S, E, api, esc, fmtData, toast, render, persistir, salvarConfig, abrirConteudo, criarConteudoDeFonte, novoId, entregarArquivo, recentesParaPrompt, conteudoAtual };
   }
   window.Mesa = { state, ctx: ctxEditor };
 

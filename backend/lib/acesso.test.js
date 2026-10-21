@@ -99,3 +99,10 @@ test('publicação: só a mídia assinada é pública; o resto de /api/publish e
   await sobe({ VERCEL: '1' });
   assert.strictEqual((await chama('POST', '/api/publish/instagram/c1')).status, 503);
 });
+
+test('notificações e Facebook também exigem acesso no servidor', async () => {
+  await sobe({ VERCEL: '1', APP_ACCESS_CODE: 'codigo-novo-de-teste-1' });
+  for (const [met, u] of [['GET', '/api/push/chave'], ['POST', '/api/push/subscribe'], ['POST', '/api/push/notificar-lote'], ['POST', '/api/publish/facebook/c1'], ['GET', '/api/publish/facebook/c1/status']]) {
+    assert.strictEqual((await chama(met, u)).status, 401, `${met} ${u}`);
+  }
+});

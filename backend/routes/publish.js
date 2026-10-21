@@ -37,6 +37,10 @@ router.put('/config', async (req, res) => {
     if (typeof b.publish_paused === 'boolean') patch.publish_paused = b.publish_paused;
     if (Number.isFinite(Number(b.daily_publish_cap))) patch.daily_publish_cap = Math.min(50, Math.max(1, Number(b.daily_publish_cap)));
     if (typeof b.permitir_encerramento_provisorio === 'boolean') patch.permitir_encerramento_provisorio = b.permitir_encerramento_provisorio;
+    if (b.publishers && typeof b.publishers === 'object') {
+      const atual = (await P.config()).publishers || {};
+      patch.publishers = { instagram: true, ...atual, ...(typeof b.publishers.facebook === 'boolean' ? { facebook: b.publishers.facebook } : {}) };   // LinkedIn não é configurável (não implementado)
+    }
     await a.config.salvar(ACCOUNT.ig_id, patch);
     res.json({ config: await P.config() });
   } catch (e) { falha(res, e); }
@@ -55,6 +59,17 @@ router.post('/instagram/:id', limita({ max: 20, janelaMs: 60000, nome: 'publicar
 
 router.get('/instagram/:id/status', limita({ max: 120, janelaMs: 60000, nome: 'status-publicacao' }), async (req, res) => {
   try { res.json(await P.avancar(String(req.params.id).slice(0, 120))); } catch (e) { falha(res, e); }
+});
+
+// Facebook (opcional, desligado por padrão). Mesmas regras: só a versão aprovada.
+router.post('/facebook/:id', limita({ max: 20, janelaMs: 60000, nome: 'publicar-facebook' }), async (req, res) => {
+  try {
+    const base = baseUrl() || (process.env.VERCEL ? '' : `${req.protocol}://${req.get('host')}`);
+    res.json(await require('../lib/publishers').facebook.publish(String(req.params.id).slice(0, 120), { hash: String(req.body?.hash_versao || ''), base }));
+  } catch (e) { falha(res, e); }
+});
+router.get('/facebook/:id/status', async (req, res) => {
+  try { res.json(await require('../lib/publishers').facebook.getStatus(String(req.params.id).slice(0, 120))); } catch (e) { falha(res, e); }
 });
 
 // Cron (Vercel Hobby: 1x por dia): retoma o que ficou no meio.

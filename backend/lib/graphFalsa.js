@@ -21,6 +21,18 @@ function graphFalsa(TOKEN_FALSO, ACCOUNT) {
       if (caminho === 'debug_token') return json({ data: { is_valid: true, expires_at: 2000000000, scopes: ['instagram_basic', 'instagram_content_publish', 'pages_read_engagement'], type: 'PAGE' } });
       if (caminho === process.env.META_IG_USER_ID && req.method === 'GET') return json({ id: est.id, username: est.username });
       if (caminho.endsWith('/content_publishing_limit')) return json({ data: [{ quota_usage: est.quota.usado, config: { quota_total: est.quota.total, quota_duration: 86400 } }] });
+      if (caminho === `${process.env.META_PAGE_ID}/photos` && req.method === 'POST') {
+        est.fotos = est.fotos || [];
+        if (est.fbFalha) return json({ error: est.fbFalha }, 400);
+        const id = `photo_${est.fotos.length + 1}`;
+        est.fotos.push({ id, ...params });
+        return json(params.published === 'false' ? { id } : { id, post_id: `${process.env.META_PAGE_ID}_${id}` });
+      }
+      if (caminho === `${process.env.META_PAGE_ID}/feed` && req.method === 'POST') {
+        est.feeds = est.feeds || [];
+        est.feeds.push(params);
+        return json({ id: `${process.env.META_PAGE_ID}_feed${est.feeds.length}` });
+      }
       if (caminho.endsWith('/media') && req.method === 'POST') {
         const id = `cont_${Object.keys(est.containers).length + 1}`;
         est.containers[id] = { ...params, polls: 0 };

@@ -59,5 +59,8 @@ NÃO obrigue todo post a ter uma contradição, um vilão ou um número. Se os f
     { foco: 'tensao', instrucao: 'a pergunta ou a tensão central do assunto' },
   ];
 
-  return { VOZ, PILARES_PADRAO, OBJETIVOS, ESTRUTURAS, FORMATOS, FUNCOES_SLIDE, COMPOSICAO_CAPAS };
+  // Valor inicial do perfil de voz; o Pedro edita em Ajustes.
+  const VOICE_PROFILE_PADRAO = 'Português brasileiro, direto e informal, frases curtas, sem enrolação, como quem fala com um amigo empreendedor. Foco em negócios, vendas online e marketing digital. Sem jargão desnecessário. Máximo de 2 emojis na legenda. Fechamento com chamada para seguir ou comentar.';
+
+  return { VOICE_PROFILE_PADRAO, VOZ, PILARES_PADRAO, OBJETIVOS, ESTRUTURAS, FORMATOS, FUNCOES_SLIDE, COMPOSICAO_CAPAS };
 });

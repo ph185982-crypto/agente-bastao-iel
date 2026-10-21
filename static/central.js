@@ -83,6 +83,12 @@
     if (!['enviado', 'igual'].includes(r.estado)) throw new Error('Não consegui gravar este conteúdo no servidor (' + (r.erro || r.estado) + '). Sem isso não dá para publicar.');
     const resp = await x.api(`/api/publish/instagram/${encodeURIComponent(c.id)}`, { method: 'POST', body: { hash_versao: c.revisao.hash_aprovado } });
     st.pubs[c.id] = resp;
+    // Facebook é opcional e vem desligado: só quando o Pedro liga em Ajustes.
+    if (st.config?.publishers?.facebook) {
+      x.api(`/api/publish/facebook/${encodeURIComponent(c.id)}`, { method: 'POST', body: { hash_versao: c.revisao.hash_aprovado } })
+        .then((f) => { st.fb = { ...(st.fb || {}), [c.id]: f }; x.render(); })
+        .catch((e) => { st.fb = { ...(st.fb || {}), [c.id]: { estado: 'erro', erro: { amigavel: e.message } } }; x.render(); });
+    }
     M.registrar(c, 'sistema', 'publicacao', `Enviado ao Instagram (${resp.estado})`);
     await x.persistir(c);
     iniciarPolling(x, c.id);
@@ -179,6 +185,7 @@
           <div class="es-text">${esc(v.cta || '')} ${esc((v.hashtags || []).join(' '))}</div>
           <div class="es-text">Editar a legenda cria uma versão nova e pede aprovação de novo.</div>
         </details>
+        ${(v.capas || []).length && !v.capa_escolhida ? `<div class="cn-capas"><b>Escolha a capa</b><div class="es-text">Três jeitos de abrir, com a mesma base factual. A escolha é sua.</div>${v.capas.map((k) => `<button class="cn-capa" data-action="cn-capa" data-id="${esc(c.id)}" data-capa="${esc(k.id)}" ${ocupado ? 'disabled' : ''}><b>${esc({ acontecimento: 'O fato', consequencia: 'A consequência', tensao: 'A tensão' }[k.foco] || k.foco)}</b><br>${esc(String(k.texto).replace(/\*\*/g, ''))}</button>`).join('')}</div>` : ''}
         ${terceiros ? '<div class="es-warn">Conteúdo de terceiros: confira o direito de uso. O crédito da fonte já vai na legenda.</div>' : ''}
         ${g.bloqueios.length ? `<div class="ed-bloq"><b>${g.bloqueios.length} pendência(s) de revisão</b><br>${esc(g.bloqueios[0].titulo)}${g.bloqueios.length > 1 ? ` e mais ${g.bloqueios.length - 1}` : ''}</div>` : ''}
         ${semServidor && !pausado ? '<div class="es-warn">Para publicar é preciso a cópia no servidor (banco de dados). Aprovar funciona; publicar não.</div>' : ''}
@@ -194,6 +201,7 @@
         <div class="es-text">${emAndamento ? `<span class="es-spin"></span> <b>Publicando…</b> ${esc({ iniciada: 'enviando as imagens à Meta', aguardando_processamento: 'a Meta está processando', publicando_final: 'confirmando a publicação' }[p.estado] || '')}` : `<b>Aprovado</b> em ${esc(dia(c.revisao.aprovada_em))}, ainda não enviado ao Instagram${pausado ? ' (publicações pausadas)' : ''}.`}</div>
         ${p?.aviso_temporario ? `<div class="es-warn">${esc(p.aviso_temporario)}</div>` : ''}
         ${(p?.avisos || []).map((t) => `<div class="es-warn">${esc(t)}</div>`).join('')}
+        ${st.fb?.[c.id] ? `<div class="es-text">Facebook: ${esc(st.fb[c.id].estado === 'publicada' ? 'publicado' : st.fb[c.id].estado === 'erro' ? 'erro — ' + (st.fb[c.id].erro?.amigavel || '') : st.fb[c.id].estado)}</div>` : ''}
         ${emAndamento ? '' : `<div class="cn-botoes"><button class="cn-btn cn-ok" data-action="cn-publicar" data-id="${esc(c.id)}" ${pausado || ocupado ? 'disabled' : ''}>${pausado ? 'Pausado' : 'Publicar agora'}</button></div>`}`;
     } else if (a === 'publicados') {
       const link = p?.permalink || c.publicacao?.url;
@@ -230,8 +238,63 @@
         <label class="cn-pausa"><input type="checkbox" data-cn-pausa ${st.config?.publish_paused ? 'checked' : ''} ${st.config ? '' : 'disabled'}><span><b>Pausar publicações</b><br><small>${st.config?.publish_paused ? 'Ligado: aprovar não envia ao Instagram.' : 'Desligado: aprovar publica.'}</small></span></label>
         <div class="es-text">Criados hoje: <b>${hoje}</b>${l?.cap_diario != null ? ` · Publicados nas últimas 24 h: <b>${l.publicadas_24h ?? 0}/${l.cap_diario}</b>${(l.publicadas_24h ?? 0) >= l.cap_diario ? ' — <b>limite diário atingido</b>' : ''}` : ''}</div>
       </div>
+      ${blocoLote(x)}
       <div class="cn-abas" role="tablist">${ABAS.map(([k, r]) => `<button role="tab" aria-selected="${st.aba === k}" data-action="cn-aba" data-aba="${k}">${r}${contagem[k] ? ` (${contagem[k]})` : ''}</button>`).join('')}</div>
       <div class="es-stack">${nessa.map((c) => cartao(c, x)).join('') || `<div class="es-empty-day">${st.aba === 'aprovar' ? 'Nada esperando aprovação. Crie conteúdo na Mesa.' : 'Nada por aqui.'}</div>`}</div>`;
+  }
+
+  function blocoLote(x) {
+    const L = window.MesaEditor?.lote;
+    if (!L) return '';
+    const cap = Math.max(1, Number(x.state.config.daily_generation_cap) || 10);
+    const hoje = window.MesaEditor.criadosHoje(x);
+    if (L.rodando) return `<div class="cn-topo"><div class="es-text"><span class="es-spin"></span> <b>Gerando lote:</b> ${L.feitos} de ${L.alvo} prontos${L.atual ? ` · agora: ${x.esc(L.atual)}` : ''}</div><div class="es-text">Mantenha o app aberto: gerar em lote roda neste aparelho.</div><button class="cn-btn cn-fora" style="min-height:48px" data-action="cn-lote-parar">Parar depois deste</button></div>`;
+    return `<div class="cn-topo"><div class="es-text">Gerados em lote hoje: <b>${hoje}/${cap}</b> (limite diário em Ajustes). Cada item chega como rascunho para você revisar; nada é publicado sozinho.</div>${L.motivo ? `<div class="es-warn">${x.esc(L.motivo)}</div>` : ''}<div class="cn-botoes"><button class="cn-btn cn-ok" data-action="cn-lote" data-n="3" ${hoje >= cap ? 'disabled' : ''}>Gerar 3</button><button class="cn-btn cn-ok" data-action="cn-lote" data-n="5" ${hoje >= cap ? 'disabled' : ''}>Gerar 5</button></div></div>`;
+  }
+
+  // ── Notificações (Web Push) ─────────────────────────────────────────────────
+  const ehIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const instalado = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+  const pushOk = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const b64ParaU8 = (b64) => { const p = '='.repeat((4 - (b64.length % 4)) % 4); const r = atob((b64 + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map((c) => c.charCodeAt(0))); };
+
+  async function registrarSW() {
+    if (!('serviceWorker' in navigator)) return null;
+    try { return await navigator.serviceWorker.register('/sw.js'); } catch { return null; }
+  }
+
+  async function ativarNotificacoes(x) {
+    if (!pushOk()) throw new Error(ehIOS() && !instalado() ? 'No iPhone, primeiro adicione o app à Tela de Início (Compartilhar → Adicionar à Tela de Início) e abra por lá.' : 'Este navegador não suporta notificações.');
+    const chave = await x.api('/api/push/chave');
+    if (!chave.configurado) throw new Error('As notificações ainda não estão configuradas no servidor (VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY).');
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('A permissão de notificações foi negada. Libere nas configurações do aparelho.');
+    const reg = (await registrarSW()) || (await navigator.serviceWorker.ready);
+    await navigator.serviceWorker.ready;
+    const assinatura = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ParaU8(chave.chave_publica) });
+    await x.api('/api/push/subscribe', { method: 'POST', body: { assinatura: assinatura.toJSON() } });
+    st.push = { ativo: true };
+  }
+
+  async function estadoPush() {
+    if (!pushOk()) return { suportado: false };
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    return { suportado: true, permissao: Notification.permission, ativo: !!sub };
+  }
+
+  function secaoNotificacoes() {
+    const { esc } = ctx();
+    const p = st.push || {};
+    const aviso = ehIOS() && !instalado()
+      ? '<div class="es-warn"><b>No iPhone:</b> as notificações só funcionam com o app na Tela de Início (iOS 16.4 ou mais novo). Toque em <b>Compartilhar</b> → <b>Adicionar à Tela de Início</b>, abra o app por esse ícone e volte aqui para ativar.</div>'
+      : '';
+    return `<div class="es-card" style="margin-top:12px"><div class="es-title" style="margin-top:0">Notificações</div>
+      <div class="es-text">Você recebe <b>um</b> aviso por lote ("5 conteúdos novos para aprovar"), não um por item. Tocar no aviso abre a aba Para aprovar.</div>
+      ${aviso}
+      ${p.suportado === false ? '<div class="es-warn">Este navegador não suporta notificações.</div>' : `<div class="es-text">${p.ativo ? '✓ Ativadas neste aparelho.' : p.permissao === 'denied' ? '✗ Bloqueadas pelo aparelho: libere nas configurações.' : '• Ainda não ativadas.'}</div>
+      <button class="es-btn" data-action="cn-push" ${p.ativo ? 'disabled' : ''}>${p.ativo ? 'Notificações ativas' : 'Ativar notificações'}</button>`}
+    </div>`;
   }
 
   // ── Ajustes → Conexões ──────────────────────────────────────────────────────
@@ -253,12 +316,15 @@
       ].join('');
     }
     const cfg = st.config || {};
-    return `<div class="es-card" style="margin-top:12px"><div class="es-title" style="margin-top:0">Conexões</div>
+    return secaoNotificacoes() + `<div class="es-card" style="margin-top:12px"><div class="es-title" style="margin-top:0">Conexões</div>
       <div class="es-label">Instagram</div>${corpo}
       <button class="es-btn ghost sm" style="margin-top:8px" data-action="cn-saude">Verificar agora</button>
       <div class="es-label">Limites e regras de publicação</div>
       <label class="es-label" for="cn-cap">Máximo de publicações por dia</label>
       <input id="cn-cap" class="es-input" type="number" min="1" max="50" value="${esc(cfg.daily_publish_cap ?? 10)}" data-cn-cap ${st.config ? '' : 'disabled'}>
+      <label class="es-label" for="cn-gcap">Máximo de conteúdos gerados em lote por dia</label>
+      <input id="cn-gcap" class="es-input" type="number" min="1" max="50" value="${esc(ctx().state.config.daily_generation_cap ?? 10)}" data-cn-gcap>
+      <label class="cn-pausa"><input type="checkbox" data-cn-fb ${cfg.publishers?.facebook ? 'checked' : ''} ${st.config ? '' : 'disabled'}><span>Publicar também na Página do Facebook (opcional)<br><small>Desligado por padrão. Chamada própria, só da versão aprovada. Antes de ligar, confira as permissões na Página de teste (docs/META_SETUP.md). LinkedIn: ainda não implementado.</small></span></label>
       <label class="cn-pausa"><input type="checkbox" data-cn-enc ${cfg.permitir_encerramento_provisorio ? 'checked' : ''} ${st.config ? '' : 'disabled'}><span>Permitir publicar com o encerramento provisório de texto<br><small>Desligado: só publica com o arquivo de encerramento aprovado.</small></span></label>
       <div class="es-text">Publicar é irreversível pela API: só acontece depois da sua aprovação. Passo a passo: docs/META_SETUP.md.</div></div>`;
   }
@@ -282,10 +348,23 @@
         } catch (e) { x.toast(e.message); } finally { delete st.ocupado[id]; x.render(); }
         return true;
       }
+      case 'cn-capa': {
+        if (st.ocupado[id]) return true;
+        st.ocupado[id] = true; x.render();
+        try {
+          M.escolherCapa(c, el.dataset.capa); reabrirAprovacao(c); await x.persistir(c);
+          await window.MesaEditor._internos.atualizarArte(x, c);
+          x.toast('Capa escolhida.');
+        } catch (e) { x.toast(e.message); } finally { delete st.ocupado[id]; x.render(); }
+        return true;
+      }
+      case 'cn-lote': { const n = Number(el.dataset.n) || 5; window.MesaEditor.gerarLote(x, n); return true; }
+      case 'cn-lote-parar': window.MesaEditor.lote.parar = true; x.toast('Vou parar depois do item atual.'); return true;
       case 'cn-revisar': await x.abrirConteudo(id); return true;
       case 'cn-descartar': c.status = 'arquivado'; M.registrar(c, 'pedro', 'arquivado', 'Descartou na Central'); await S.snapshot(c, 'descartado'); await x.persistir(c); x.render(); x.toast('Descartado. Dá para restaurar na aba Descartados.'); return true;
       case 'cn-restaurar': c.status = 'rascunho'; M.registrar(c, 'pedro', 'restaurado', 'Restaurou da aba Descartados'); await x.persistir(c); x.render(); return true;
       case 'cn-saude': await carregarSaude(x); return true;
+      case 'cn-push': try { await ativarNotificacoes(x); x.toast('Notificações ativadas neste aparelho.'); } catch (e) { x.toast(e.message); } st.push = await estadoPush(); x.render(); return true;
       default: return false;
     }
   }
@@ -295,6 +374,8 @@
     try {
       if ('cnPausa' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { publish_paused: el.checked } }); st.config = r.config; x.toast(el.checked ? 'Publicações pausadas.' : 'Publicações liberadas.'); x.render(); return; }
       if ('cnCap' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { daily_publish_cap: Number(el.value) } }); st.config = r.config; x.toast(`Limite diário: ${r.config.daily_publish_cap}.`); x.render(); return; }
+      if ('cnGcap' in d) { const v = Math.min(50, Math.max(1, Number(el.value) || 10)); await x.salvarConfig({ daily_generation_cap: v }); x.toast(`Limite de geração por dia: ${v}.`); x.render(); return; }
+      if ('cnFb' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { publishers: { facebook: el.checked } } }); st.config = r.config; x.toast(el.checked ? 'Facebook ligado.' : 'Facebook desligado.'); x.render(); return; }
       if ('cnEnc' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { permitir_encerramento_provisorio: el.checked } }); st.config = r.config; x.render(); return; }
       if (d.cnLegenda) {
         const c = x.state.contents.find((k) => k.id === d.cnLegenda);
@@ -305,6 +386,16 @@
       }
     } catch (e) { x.toast(e.message); x.render(); }
   }
+
+  // Atalho do app instalado e toque na notificação: abre a Central em "Para aprovar".
+  function abrirCentralPorLink() {
+    const q = new URLSearchParams(location.search);
+    if (q.get('tab') === 'central') { window.Mesa.state.tab = 'central'; st.aba = 'aprovar'; window.Mesa.ctx().render(); try { history.replaceState(null, '', location.pathname); } catch { /* ok */ } }
+  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', (e) => { if (e.data?.tipo === 'abrir-central') { window.Mesa.state.tab = 'central'; st.aba = 'aprovar'; window.Mesa.ctx().render(); } });
+  setTimeout(async () => { await registrarSW(); st.push = await estadoPush(); abrirCentralPorLink(); }, 800);
+  // Número no ícone do app (onde o aparelho permite).
+  setInterval(() => { try { const n = badge(); if (navigator.setAppBadge) (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {}); } catch { /* sem suporte */ } }, 5000);
 
   window.MesaCentral = { render, acao, aoMudar, carregar, badge, secaoConexoes, _st: st, _abaDe: abaDe };
 })();

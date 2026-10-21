@@ -12,6 +12,13 @@ const { ACCOUNT } = require('./account');
 
 const deps = (d = {}) => ({ llmJson: d.llmJson || require('./llmJson') });
 
+// Perfil de voz definido pelo Pedro (Ajustes). Orienta o estilo; NUNCA autoriza inventar
+// fato, número, citação ou experiência pessoal — as regras de fatos continuam acima dele.
+const vozDoPedro = (voz) => {
+  const t = String(voz || '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, 1500);
+  return t ? `\n\nPERFIL DE VOZ DEFINIDO PELO PEDRO (estilo apenas; não autoriza inventar fatos, números, citações nem histórias pessoais):\n${t}` : '';
+};
+
 const resumoClaim = (c, evid) => {
   const evs = (c.evidencias || []).map((id) => evid.find((e) => e.id === id)).filter(Boolean);
   return {
@@ -26,7 +33,7 @@ const resumoClaim = (c, evid) => {
 // ── Briefing ───────────────────────────────────────────────────────────────
 const utilizaveis = (claims) => claims.filter((c) => c.decisao?.tipo !== 'retirar');
 
-async function gerarBriefing({ fonte, claims: todas, evidencias, recentes = [], objetivo, formato }, d0) {
+async function gerarBriefing({ fonte, claims: todas, evidencias, recentes = [], objetivo, formato, voz }, d0) {
   const d = deps(d0);
   const claims = utilizaveis(todas);
   const lista = claims.map((c) => resumoClaim(c, evidencias));
@@ -34,7 +41,7 @@ async function gerarBriefing({ fonte, claims: todas, evidencias, recentes = [], 
   const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 8).join('\n'), 2500);
   const { dados, llm } = await d.llmJson.pedirJson({
     temperatura: 0.35, maxTokens: 3000,
-    sistema: `${E.VOZ}\n\n${d.llmJson.REGRAS_DADOS}`,
+    sistema: `${E.VOZ}${vozDoPedro(voz)}\n\n${d.llmJson.REGRAS_DADOS}`,
     usuario: `Monte o BRIEFING editorial deste conteúdo para ${ACCOUNT.handle}. Use SÓ as afirmações listadas (por id) como fatos disponíveis. Afirmações "nao_verificada", "parcialmente_sustentada" ou "contradita" NÃO são fatos: registre-as em duvidas.
 
 AFIRMAÇÕES (com o estado verificado pelo sistema):
@@ -167,7 +174,7 @@ function provisorio({ claims, evidencias, fonte, versao, opinioes }) {
   return c;
 }
 
-async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', instrucoes = '' }, d0) {
+async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', instrucoes = '', voz }, d0) {
   const d = deps(d0);
   const claims = utilizaveis(todas);
   const lista = claims.map((c) => resumoClaim(c, evidencias));
@@ -177,7 +184,7 @@ async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes
   const pedir = async (feedback) => {
     const { dados, llm } = await d.llmJson.pedirJson({
       temperatura: 0.6, maxTokens: 4500, budget,
-      sistema: `${E.VOZ}\n\n${d.llmJson.REGRAS_DADOS}`,
+      sistema: `${E.VOZ}${vozDoPedro(voz)}\n\n${d.llmJson.REGRAS_DADOS}`,
       usuario: `Escreva o conteúdo para ${ACCOUNT.handle} seguindo o BRIEFING. ${formato === 'estatico' ? 'Formato: post estático (UMA imagem que se sustenta sozinha).' : 'Formato: carrossel.'}
 
 BRIEFING: ${JSON.stringify({ assunto: briefing.assunto, acontecimento: briefing.acontecimento, objetivo: briefing.objetivo, tese: briefing.tese, tese_tipo: briefing.tese_tipo, estrutura: E.ESTRUTURAS[briefing.estrutura]?.nome, motivo_compartilhar: briefing.motivo_compartilhar, conflito: briefing.conflito, duvidas: briefing.duvidas })}
@@ -274,4 +281,4 @@ Responda APENAS JSON: {"slides":[{"id":"s4","premissas":[{"texto":"","claim_id":
   return { auditoria, llm };
 }
 
-module.exports = { auditarOpinioes, gerarBriefing, gerarCopia, montarVersao, provisorio, resumoClaim, LAYOUT_POR_FUNCAO };
+module.exports = { vozDoPedro, auditarOpinioes, gerarBriefing, gerarCopia, montarVersao, provisorio, resumoClaim, LAYOUT_POR_FUNCAO };

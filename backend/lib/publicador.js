@@ -41,10 +41,11 @@ async function config() {
   const a = armazem();
   const c = a ? await a.config.obter(conta()) : {};
   return {
+    ...c,
     publish_paused: !!c.publish_paused,
     daily_publish_cap: Number.isFinite(Number(c.daily_publish_cap)) ? Math.min(50, Math.max(1, Number(c.daily_publish_cap))) : 10,
     permitir_encerramento_provisorio: !!c.permitir_encerramento_provisorio,
-    ...c,
+    publishers: { instagram: true, facebook: false, ...(c.publishers || {}) },
   };
 }
 
@@ -345,4 +346,4 @@ async function renderizarMidia(token) {
   return sharp(r.png).flatten({ background: '#FAF7F0' }).jpeg({ quality: 92, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
-module.exports = { iniciar, avancar, saude, config, listarPublicacoes, avancarPendentes, renderizarMidia, montarLegenda, conferirLegenda, carregarAprovado, ErroPub, resposta, LIMITE_CARROSSEL, LIMITE_LEGENDA, REDE };
+module.exports = { urlMidia, conferirMidias, conta, iniciar, avancar, saude, config, listarPublicacoes, avancarPendentes, renderizarMidia, montarLegenda, conferirLegenda, carregarAprovado, ErroPub, resposta, LIMITE_CARROSSEL, LIMITE_LEGENDA, REDE };

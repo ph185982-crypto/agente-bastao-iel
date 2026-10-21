@@ -99,3 +99,17 @@ test('copy: marcadores de citação do modelo são limpos; "parcialmente confirm
   const r2 = await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias }, { llmJson: llm });
   assert.strictEqual(r2.tentativas, 2);
 });
+
+test('perfil de voz do Pedro entra no prompt, limitado e sem poder sobrepor as regras de fatos', async () => {
+  const { vozDoPedro } = require('./redacao');
+  assert.strictEqual(vozDoPedro(''), '');
+  const t = vozDoPedro('Direto e informal.\u0000 Máximo de 2 emojis.');
+  assert.match(t, /estilo apenas; não autoriza inventar fatos/);
+  assert.ok(!t.includes('\u0000'));
+  assert.ok(vozDoPedro('x'.repeat(5000)).length < 1800, 'limite de tamanho');
+  const chamadas = [];
+  const llm = { ...llmReal, pedirJson: async (p) => { chamadas.push(p.sistema); return { dados: copiaOk(), llm: { provider: 'teste', model: 'falso' } }; } };
+  await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias, voz: 'Fale como um amigo empreendedor.' }, { llmJson: llm });
+  assert.match(chamadas[0], /PERFIL DE VOZ DEFINIDO PELO PEDRO[\s\S]*amigo empreendedor/);
+  assert.ok(chamadas[0].indexOf('REGRAS DE SEGURANÇA') > chamadas[0].indexOf('amigo empreendedor'), 'as regras de dados vêm depois e valem sobre a voz');
+});

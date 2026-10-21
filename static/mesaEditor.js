@@ -176,7 +176,7 @@
     const p = c.origem?.pauta;
     const r = await chamarEtapa(x, c, 'briefing', 'briefing', '/api/content/briefing', {
       fonte: c.fonte_principal, claims: c.claims, evidencias: c.evidencias, recentes: x.recentesParaPrompt(),
-      objetivo: p?.objetivo_sugerido || '', formato: p?.formato_sugerido === 'estatico' ? 'estatico' : '',
+      objetivo: p?.objetivo_sugerido || '', formato: p?.formato_sugerido === 'estatico' ? 'estatico' : '', voz: x.state.config.voice_profile || '',
     });
     c.briefing = r.briefing;
     registrarConsumo(c, r.consumo);
@@ -186,7 +186,7 @@
   async function etapaCopy(x, c, instrucoes = '') {
     const r = await chamarEtapa(x, c, 'copy', 'copy', '/api/content/copy', {
       briefing: c.briefing, fonte: c.fonte_principal, claims: c.claims, evidencias: c.evidencias, recentes: x.recentesParaPrompt(),
-      formato: c.briefing.formato === 'estatico' ? 'estatico' : 'carrossel', instrucoes,
+      formato: c.briefing.formato === 'estatico' ? 'estatico' : 'carrossel', instrucoes, voz: x.state.config.voice_profile || '',
     });
     // Opiniões ganham ids únicos por versão (as versões antigas continuam apontando para as suas).
     const n = c.copia.versoes.length + 1;
@@ -709,6 +709,58 @@
     sequencia(x, c, ATE_BRIEFING);
   }
 
+  // ── Geração em lote (com o app aberto) ──────────────────────────────────────
+  // Um conteúdo por vez, até o limite diário de criação. Cada um vira rascunho para
+  // revisão na Central: nada é aprovado nem publicado aqui, e a capa continua sendo
+  // escolha do Pedro. Pautas de assunto sensível ou parecidas com post recente são puladas.
+  const lote = { rodando: false, parar: false, feitos: 0, alvo: 0, atual: null, pulados: 0, erros: 0, motivo: null };
+  const hojeISO = () => new Date().toISOString().slice(0, 10);
+  const criadosHoje = (x) => x.state.contents.filter((c) => c.origem?.lote && (c.created_at || '').slice(0, 10) === hojeISO()).length;
+
+  async function pautasDoLote(x) {
+    let pautas = x.state.descoberta?.dados?.pautas;
+    if (!pautas?.length) {
+      const d = await x.api('/api/content/discover', { method: 'POST', body: { pilares: x.state.config.pilares, recentes: x.recentesParaPrompt(), dias: 3 } });
+      x.state.descoberta = { carregando: false, erro: null, dados: d };
+      pautas = d.pautas;
+    }
+    const usadas = new Set(x.state.contents.flatMap((c) => [c.origem?.pauta?.id, c.origem?.url]).filter(Boolean));
+    return pautas.filter((p) => p.fontes?.[0]?.url && p.risco !== 'alto' && !p.repete_recente && !usadas.has(p.id) && !usadas.has(p.fontes[0].url));
+  }
+
+  async function gerarLote(x, n) {
+    if (lote.rodando) return;
+    Object.assign(lote, { rodando: true, parar: false, feitos: 0, pulados: 0, erros: 0, alvo: n, atual: null, motivo: null });
+    x.render();
+    try {
+      const cap = Math.max(1, Number(x.state.config.daily_generation_cap) || 10);
+      const restante = cap - criadosHoje(x);
+      if (restante <= 0) { lote.motivo = `Limite diário de criação atingido (${cap}/${cap}).`; return; }
+      lote.alvo = Math.min(n, restante);
+      const fila = await pautasDoLote(x);
+      if (!fila.length) { lote.motivo = 'Nenhuma pauta nova adequada agora (as sensíveis e as parecidas com posts recentes são puladas).'; return; }
+      for (const p of fila) {
+        if (lote.parar || lote.feitos >= lote.alvo || lote.erros >= 3) break;
+        lote.atual = p.titulo; x.render();
+        const c = x.criarConteudoDeFonte({ url: p.fontes[0].url, titulo: p.titulo, pauta: { id: p.id, titulo: p.titulo, pilar: p.pilar, por_que_interessa: p.por_que_interessa, angulo: p.angulo, objetivo_sugerido: p.objetivo_sugerido, formato_sugerido: p.formato_sugerido, fontes: p.fontes } });
+        c.origem.lote = true;
+        await x.persistir(c);
+        await sequencia(x, c, [...ATE_BRIEFING, ...TEXTO_E_ARTE]);
+        if (feito(c, 'arte')) { lote.feitos += 1; M.registrar(c, 'sistema', 'lote', 'Gerado em lote; aguardando revisão'); await x.persistir(c); }
+        else if (c.pipeline.leitura?.estado === 'erro') { c.status = 'arquivado'; M.registrar(c, 'sistema', 'lote', 'Pulada: a fonte não pôde ser lida'); await x.persistir(c); lote.pulados += 1; }
+        else lote.erros += 1;
+      }
+      if (lote.erros >= 3) lote.motivo = 'Parei depois de 3 falhas seguidas (veja os erros em cada conteúdo).';
+    } catch (e) { lote.motivo = e.message; }
+    finally {
+      lote.rodando = false; lote.atual = null; x.render();
+      if (lote.feitos) {
+        x.toast(`${lote.feitos} conteúdo(s) novo(s) para revisar na Central.`);
+        x.api('/api/push/notificar-lote', { method: 'POST', body: { n: lote.feitos } }).catch(() => {});
+      } else if (lote.motivo) x.toast(lote.motivo);
+    }
+  }
+
   async function iniciarNovo(x) {
     const modo = x.state.novo?.modo || 'link';
     const url = document.getElementById('ed-novo-url')?.value.trim();
@@ -863,5 +915,5 @@
   }
 
   // Ao carregar o app: nada fica "andando" sem estar rodando.
-  window.MesaEditor = { render, telaNovo, aposRender, acao, aoMudar, novoPorLink, desenvolverPauta, _internos: { montarZip, crc32, fichaDeFontes, atualizarArte, sequencia, etapaCopy } };
+  window.MesaEditor = { gerarLote, lote, criadosHoje, render, telaNovo, aposRender, acao, aoMudar, novoPorLink, desenvolverPauta, _internos: { montarZip, crc32, fichaDeFontes, atualizarArte, sequencia, etapaCopy } };
 })();
