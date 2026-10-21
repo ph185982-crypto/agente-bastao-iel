@@ -12,50 +12,7 @@ const { ACCOUNT } = require('./account');
 
 const TOKEN_FALSO = 'TOKEN_FALSO_DE_TESTE_123';
 
-// ── Graph falsa ────────────────────────────────────────────────────────────
-function graphFalsa() {
-  const est = {
-    chamadas: [], containers: {}, publicados: [], statusSeq: ['IN_PROGRESS', 'FINISHED'], publishFalha: null, publishDeixaCair: false,
-    username: 'pedro_destrava', id: ACCOUNT.ig_id, quota: { usado: 2, total: 100 }, tokenInvalido: false, midias: [],
-  };
-  const srv = http.createServer((req, res) => {
-    let corpo = '';
-    req.on('data', (c) => { corpo += c; });
-    req.on('end', () => {
-      const u = new URL(req.url, 'http://x');
-      const params = req.method === 'GET' ? Object.fromEntries(u.searchParams) : Object.fromEntries(new URLSearchParams(corpo));
-      const caminho = u.pathname.replace(/^\/v[\d.]+\//, '');
-      est.chamadas.push({ metodo: req.method, caminho, params });
-      const json = (o, st = 200) => { res.writeHead(st, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
-      if (est.tokenInvalido) return json({ error: { message: 'Error validating access token', code: 190, error_subcode: 463, fbtrace_id: 'abc' } }, 400);
-      if (params.access_token !== TOKEN_FALSO && caminho !== 'debug_token') return json({ error: { message: 'Invalid OAuth access token', code: 190 } }, 400);
-      if (caminho === 'debug_token') return json({ data: { is_valid: true, expires_at: 2000000000, scopes: ['instagram_basic', 'instagram_content_publish', 'pages_read_engagement'], type: 'PAGE' } });
-      if (caminho === process.env.META_IG_USER_ID && req.method === 'GET') return json({ id: est.id, username: est.username });
-      if (caminho.endsWith('/content_publishing_limit')) return json({ data: [{ quota_usage: est.quota.usado, config: { quota_total: est.quota.total, quota_duration: 86400 } }] });
-      if (caminho.endsWith('/media') && req.method === 'POST') {
-        const id = `cont_${Object.keys(est.containers).length + 1}`;
-        est.containers[id] = { ...params, polls: 0 };
-        return json({ id });
-      }
-      if (caminho.endsWith('/media') && req.method === 'GET') return json({ data: est.midias });
-      if (caminho.endsWith('/media_publish')) {
-        if (est.publishDeixaCair) { est.publishDeixaCair = false; est.publicados.push(params.creation_id); est.midias.push({ id: `media_${est.publicados.length}`, caption: est.containers[params.creation_id]?.caption, permalink: `https://www.instagram.com/p/ABC${est.publicados.length}/`, timestamp: new Date().toISOString() }); req.socket.destroy(); return; }
-        if (est.publishFalha) return json({ error: est.publishFalha }, 400);
-        est.publicados.push(params.creation_id);
-        const m = { id: `media_${est.publicados.length}`, caption: est.containers[params.creation_id]?.caption, permalink: `https://www.instagram.com/p/ABC${est.publicados.length}/`, timestamp: new Date().toISOString() };
-        est.midias.push(m);
-        return json({ id: m.id });
-      }
-      if (/^cont_\d+$/.test(caminho)) {
-        const c = est.containers[caminho]; c.polls += 1;
-        return json({ status_code: est.statusSeq[Math.min(c.polls - 1, est.statusSeq.length - 1)] });
-      }
-      if (/^media_\d+$/.test(caminho)) { const m = est.midias.find((x) => x.id === caminho); return json({ id: caminho, permalink: m?.permalink }); }
-      json({ error: { message: `rota não simulada: ${caminho}`, code: 100 } }, 404);
-    });
-  });
-  return { est, srv };
-}
+const { graphFalsa: criarGraphFalsa } = require('./graphFalsa');
 
 // ── Conteúdo aprovado (fixture identificada) ──────────────────────────────
 function conteudoAprovado({ slidesExtras = 0, legenda } = {}) {
@@ -87,7 +44,7 @@ async function monta({ conteudo = conteudoAprovado(), encerramento = false } = {
 
 test.before(async () => {
   envAntes = { ...process.env };
-  graph = graphFalsa();
+  graph = criarGraphFalsa(TOKEN_FALSO, ACCOUNT);
   await new Promise((r) => graph.srv.listen(0, '127.0.0.1', r));
   Object.assign(process.env, { META_GRAPH_BASE: `http://127.0.0.1:${graph.srv.address().port}`, META_PAGE_ACCESS_TOKEN: TOKEN_FALSO, META_IG_USER_ID: ACCOUNT.ig_id, META_PAGE_ID: '123', PUBLISH_SECRET: 'segredo-de-teste-publicacao', META_APP_ID: '1', META_APP_SECRET: 'segredo-app-teste' });
   delete process.env.VERCEL;

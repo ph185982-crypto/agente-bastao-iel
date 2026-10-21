@@ -1,5 +1,5 @@
 // Mesa de trabalho do Pedro Destrava.
-// Navegação: Mesa | Semana | Criar | Ajustes.
+// Navegação: Mesa | Central | Criar | Ajustes. (A Central de aprovação substitui a aba Semana.)
 //  - Mesa: três entradas (encontrar pauta, falar sobre algo que o Pedro trouxe,
 //    transformar uma ideia) que levam ao MESMO editor, mais a biblioteca.
 //  - Tudo é guardado no aparelho por Store (IndexedDB) com versões e backup.
@@ -171,6 +171,7 @@
   const ICON = {
     mesa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 10h18M5 10v9M19 10v9M3 6h18"/></svg>',
     semana: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>',
+    central: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12.5l3 3 5-6"/></svg>',
     criar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
     ajustes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#fff"/><circle cx="15" cy="12" r="2" fill="#fff"/><circle cx="7" cy="18" r="2" fill="#fff"/></svg>',
   };
@@ -464,7 +465,7 @@
   }
 
   function telaAjustes() {
-    return `<div class="es-h1">Ajustes</div>${secaoConta()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
+    return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -480,14 +481,16 @@
     const scroll = root.querySelector('.es-main')?.scrollTop || 0;
     let corpo = '';
     if (state.tab === 'mesa') corpo = state.sub === 'descobrir' ? telaDescobrir() : state.sub === 'conteudo' ? telaConteudo() : telaMesa();
+    else if (state.tab === 'central') corpo = window.MesaCentral ? window.MesaCentral.render(ctxEditor()) : '';
     else if (state.tab === 'semana') corpo = telaSemana();
     else if (state.tab === 'ajustes') corpo = telaAjustes();
-    const tabs = [['mesa', 'Mesa'], ['semana', 'Semana'], ['criar', 'Criar'], ['ajustes', 'Ajustes']];
+    const nCentral = window.MesaCentral ? window.MesaCentral.badge() : 0;
+    const tabs = [['mesa', 'Mesa'], ['central', 'Central'], ['criar', 'Criar'], ['ajustes', 'Ajustes']];
     root.innerHTML = `
       <div class="es-top" ${state.tab === 'criar' ? '' : 'hidden'}>${CRIAR.filter((m) => !escondido(m.id)).map((m) => `<button data-action="criar" data-m="${m.id}" aria-pressed="${state.criarModulo === m.id}">${m.label}</button>`).join('')}</div>
       <main class="es-main" ${state.tab === 'criar' ? 'hidden' : ''}>${corpo}</main>
       <div class="es-toast-slot">${state.toast ? `<div class="es-toast" role="status">${esc(state.toast)}</div>` : ''}</div>
-      <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span></button>`).join('')}</nav>`;
+      <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span>${id === 'central' && nCentral ? `<i class="es-badge" aria-label="${nCentral} para aprovar">${nCentral}</i>` : ''}</button>`).join('')}</nav>`;
     const m = root.querySelector('.es-main'); if (m) m.scrollTop = scroll;
     if (state.tab === 'mesa' && state.sub === 'conteudo') preencherArquivosLegado();
     if (window.MesaEditor?.aposRender) window.MesaEditor.aposRender(root, { state });
@@ -512,8 +515,9 @@
     const a = el.dataset.action; const id = el.dataset.id;
     try {
       if (window.MesaEditor?.acao && await window.MesaEditor.acao(a, el, ctxEditor())) return;
+      if (window.MesaCentral?.acao && await window.MesaCentral.acao(a, el, ctxEditor())) return;
       switch (a) {
-        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
+        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
         case 'criar': state.criarModulo = el.dataset.m; trocarAntigo(state.criarModulo); return render();
         case 'voltar': state.sub = null; state.atual = null; state.novo = null; return render();
         case 'abrir': return abrirConteudo(id);
@@ -580,6 +584,7 @@
         render();
       }
       if (window.MesaEditor?.aoMudar) await window.MesaEditor.aoMudar(el, ctxEditor());
+      if (window.MesaCentral?.aoMudar) await window.MesaCentral.aoMudar(el, ctxEditor());
     } catch (e) { toast(e.message || 'Não foi possível concluir.'); }
   });
 
