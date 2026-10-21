@@ -122,3 +122,30 @@ test('tarefa durável: aba fechada no meio da redação → o servidor termina e
     if (antes === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = antes;
   }
 });
+
+async function contratoPublicacoes(a) {
+  await a.iniciar();
+  const id = `c_pub_${Date.now().toString(36)}`;
+  const [x, y] = await Promise.all([a.publicacoes.iniciar(CONTA, id, 'instagram', { versao: 'v1' }), a.publicacoes.iniciar(CONTA, id, 'instagram', { versao: 'v1' })]);
+  assert.strictEqual([x, y].filter((r) => r.criada).length, 1, 'duas tentativas simultâneas: só uma cria');
+  // troca condicional: só uma de duas chamadas paralelas vence
+  const [p, q] = await Promise.all([
+    a.publicacoes.atualizar(CONTA, id, 'instagram', ['iniciada'], 'publicando_final', { quem: 'A' }),
+    a.publicacoes.atualizar(CONTA, id, 'instagram', ['iniciada'], 'publicando_final', { quem: 'B' }),
+  ]);
+  assert.strictEqual([p, q].filter(Boolean).length, 1, 'transição atômica');
+  assert.strictEqual((await a.publicacoes.obter(CONTA, id, 'instagram')).estado, 'publicando_final');
+  assert.strictEqual(await a.publicacoes.reiniciar(CONTA, id, 'instagram', {}), null, 'só reinicia se estiver em erro');
+  await a.publicacoes.atualizar(CONTA, id, 'instagram', ['publicando_final'], 'erro', { erro: 'x' });
+  assert.ok(await a.publicacoes.reiniciar(CONTA, id, 'instagram', { versao: 'v2' }));
+  assert.strictEqual((await a.publicacoes.obter(CONTA, id, 'instagram')).dados.versao, 'v2');
+  assert.strictEqual(await a.publicacoes.obter('999', id, 'instagram'), null, 'outra conta não vê');
+  await a.config.salvar(CONTA, { publish_paused: true });
+  await a.config.salvar(CONTA, { daily_publish_cap: 7 });
+  assert.deepStrictEqual(await a.config.obter(CONTA), { publish_paused: true, daily_publish_cap: 7 });
+}
+test('publicações e configuração: driver em memória', async () => { await contratoPublicacoes(A.memoria()); });
+test('publicações e configuração: Postgres real (transição atômica sob concorrência)', { skip: !process.env.PICO_TEST_PG && 'defina PICO_TEST_PG para rodar' }, async () => {
+  const a = A.postgres({ url: process.env.PICO_TEST_PG });
+  try { await contratoPublicacoes(a); } finally { await a.fechar(); }
+});

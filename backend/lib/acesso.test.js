@@ -81,3 +81,21 @@ test('computador local (sem VERCEL) e sem código: aberto para desenvolvimento',
   const st = await chama('GET', '/api/auth/status');
   assert.strictEqual(st.json.estado, 'aberto_local');
 });
+
+test('publicação: só a mídia assinada é pública; o resto de /api/publish exige acesso e o cron exige CRON_SECRET', async () => {
+  await sobe({ VERCEL: '1', APP_ACCESS_CODE: 'codigo-novo-de-teste-1', CRON_SECRET: 'segredo-cron-teste', PUBLISH_SECRET: 'segredo-publicacao-teste' });
+  // mídia: sem token válido a própria rota recusa (403), mas o porteiro do código não bloqueia (a Meta não tem o código)
+  const m = await chama('GET', '/api/publico/midia/abc.def.jpg');
+  assert.strictEqual(m.status, 403);
+  assert.strictEqual((await chama('GET', '/api/publico/outra-coisa')).status, 401);
+  for (const [met, u] of [['GET', '/api/publish/instagram/health'], ['POST', '/api/publish/instagram/c1'], ['GET', '/api/publish/instagram/c1/status'], ['PUT', '/api/publish/config'], ['GET', '/api/publish/status'], ['GET', '/api/publish/cron']]) {
+    assert.strictEqual((await chama(met, u)).status, 401, `${met} ${u}`);
+  }
+  // cron com o segredo passa pelo porteiro (a rota responde 503 por falta de banco, não 401)
+  const cron = await fetch(`${base}/api/publish/cron`, { headers: { authorization: 'Bearer segredo-cron-teste' } });
+  assert.notStrictEqual(cron.status, 401);
+  assert.strictEqual((await chama('GET', '/api/publish/instagram/health', { authorization: 'Bearer segredo-cron-teste' })).status, 401, 'CRON_SECRET não abre as outras rotas');
+  // sem código no servidor: tudo (menos a mídia assinada) fecha com 503
+  await sobe({ VERCEL: '1' });
+  assert.strictEqual((await chama('POST', '/api/publish/instagram/c1')).status, 503);
+});

@@ -70,9 +70,11 @@ function registraFalha(ip) {
 }
 
 // ── Middleware ──────────────────────────────────────────────────────────────
-const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//];
+// /api/publico/midia: a Meta baixa as imagens daqui SEM o código do Pedro; a rota só entrega
+// com um token assinado (HMAC) que amarra o conteúdo, o hash aprovado e o slide, e expira.
+const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/];
 // Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
-const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/];
+const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/];
 
 const estadoAcesso = () => (codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
 

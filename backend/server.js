@@ -55,6 +55,8 @@ app.use('/api/queue', require('./routes/queue'));
 app.use('/api/content', require('./routes/content'));
 app.use('/api/account', require('./routes/account'));
 app.use('/api/sync', require('./routes/sync'));
+app.use('/api/publish', require('./routes/publish'));
+app.use('/api/publico', require('./routes/publish').publico);
 app.use('/api/jobs', require('./routes/sync').jobs);
 
 app.get(['/health', '/api/health'], (req, res) =>

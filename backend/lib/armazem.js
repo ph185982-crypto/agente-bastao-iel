@@ -39,6 +39,47 @@ function validaDoc(conta, id, doc) {
   if (tam > 4 * 1024 * 1024) throw erro('Conteúdo grande demais para gravar (acima de 4 MB).', 'TAMANHO');
 }
 
+// ── Publicações e configuração ─────────────────────────────────────────────
+// Uma publicação por (conta, conteúdo, rede). A troca de estado é CONDICIONAL
+// ("só se ainda estiver em X"): é isso que impede o post duplicado quando o
+// Pedro toca duas vezes ou o app reenvia depois de uma queda de conexão.
+function publicacoesMemoria() {
+  const m = new Map();
+  const k = (c, id, r) => `${c}|${id}|${r}`;
+  const copia = (x) => (x ? JSON.parse(JSON.stringify(x)) : null);
+  return {
+    async obter(conta, id, rede) { return copia(m.get(k(conta, id, rede))); },
+    async listar(conta) { return [...m.values()].filter((x) => x.conta === conta).map(copia); },
+    async iniciar(conta, id, rede, dados) {
+      const chave = k(conta, id, rede);
+      if (m.has(chave)) return { criada: false, pub: copia(m.get(chave)) };
+      const agora = new Date().toISOString();
+      const pub = { conta, content_id: id, rede, estado: 'iniciada', iniciada_em: agora, atualizada_em: agora, dados: dados || {} };
+      m.set(chave, pub);
+      return { criada: true, pub: copia(pub) };
+    },
+    async atualizar(conta, id, rede, deEstados, estado, patch) {
+      const x = m.get(k(conta, id, rede));
+      if (!x || !deEstados.includes(x.estado)) return null;
+      x.estado = estado; x.dados = { ...x.dados, ...(patch || {}) }; x.atualizada_em = new Date().toISOString();
+      return copia(x);
+    },
+    async reiniciar(conta, id, rede, dados) {
+      const x = m.get(k(conta, id, rede));
+      if (!x || x.estado !== 'erro') return null;
+      x.estado = 'iniciada'; x.dados = dados || {}; x.iniciada_em = x.atualizada_em = new Date().toISOString();
+      return copia(x);
+    },
+  };
+}
+function configMemoria() {
+  const m = new Map();
+  return {
+    async obter(conta) { return JSON.parse(JSON.stringify(m.get(conta) || {})); },
+    async salvar(conta, patch) { const novo = { ...(m.get(conta) || {}), ...patch }; m.set(conta, novo); return JSON.parse(JSON.stringify(novo)); },
+  };
+}
+
 // ── Memória (testes) ───────────────────────────────────────────────────────
 function memoria() {
   const docs = new Map(); const hist = []; const arqs = new Map(); const jobs = new Map();
@@ -69,6 +110,8 @@ function memoria() {
       async obter(conta, chave) { return arqs.get(k(conta, chave)) || null; },
       async listar(conta) { return [...arqs.entries()].filter(([key]) => key.startsWith(`${conta}|`)).map(([key, v]) => ({ chave: key.split('|').slice(1).join('|'), tipo: v.tipo, tamanho: v.dados.length, sha256: v.sha256 })); },
     },
+    publicacoes: publicacoesMemoria(),
+    config: configMemoria(),
     jobs: {
       async iniciar(rid, etapa, conteudo) { if (!jobs.has(rid)) jobs.set(rid, { rid, etapa, conteudo_id: conteudo || null, estado: 'rodando', criado_em: new Date().toISOString() }); return jobs.get(rid); },
       async concluir(rid, resultado) { const j = jobs.get(rid); if (j) Object.assign(j, { estado: 'concluido', resultado, atualizado_em: new Date().toISOString() }); },
@@ -79,6 +122,8 @@ function memoria() {
 }
 
 // ── Postgres (Neon em produção; Postgres local nos testes) ─────────────────
+const linhaPub = (r) => ({ conta: r.conta, content_id: r.content_id, rede: r.rede, estado: r.estado, iniciada_em: r.iniciada_em.toISOString(), atualizada_em: r.atualizada_em.toISOString(), dados: r.dados });
+
 function postgres({ url, pool }) {
   let _pool = pool || null;
   const db = () => {
@@ -97,6 +142,10 @@ function postgres({ url, pool }) {
       gravado_em timestamptz not null default now(), doc jsonb not null, primary key (conta, id, rev));
     create table if not exists pico_arquivos (conta text not null, chave text not null, tipo text, tamanho integer, sha256 text,
       criado_em timestamptz not null default now(), dados bytea not null, primary key (conta, chave));
+    create table if not exists pico_publicacoes (conta text not null, content_id text not null, rede text not null, estado text not null,
+      iniciada_em timestamptz not null default now(), atualizada_em timestamptz not null default now(), dados jsonb not null default '{}',
+      primary key (conta, content_id, rede));
+    create table if not exists pico_config (conta text primary key, valor jsonb not null default '{}', atualizada_em timestamptz not null default now());
     create table if not exists pico_jobs (rid text primary key, etapa text, conteudo_id text, estado text not null,
       criado_em timestamptz not null default now(), atualizado_em timestamptz, resultado jsonb, erro text);
   `).catch((e) => { pronto = null; throw e; }));
@@ -164,6 +213,41 @@ function postgres({ url, pool }) {
       async listar(conta) {
         await iniciar();
         return (await q('select chave, tipo, tamanho, sha256 from pico_arquivos where conta = $1 order by criado_em desc', [conta])).rows;
+      },
+    },
+    publicacoes: {
+      async obter(conta, id, rede) {
+        await iniciar();
+        const r = (await q('select * from pico_publicacoes where conta = $1 and content_id = $2 and rede = $3', [conta, id, rede])).rows[0];
+        return r ? linhaPub(r) : null;
+      },
+      async listar(conta) { await iniciar(); return (await q('select * from pico_publicacoes where conta = $1 order by iniciada_em desc', [conta])).rows.map(linhaPub); },
+      async iniciar(conta, id, rede, dados) {
+        await iniciar();
+        const ins = await q(`insert into pico_publicacoes (conta, content_id, rede, estado, dados) values ($1, $2, $3, 'iniciada', $4)
+          on conflict (conta, content_id, rede) do nothing returning *`, [conta, id, rede, JSON.stringify(dados || {})]);
+        if (ins.rows[0]) return { criada: true, pub: linhaPub(ins.rows[0]) };
+        return { criada: false, pub: await this.obter(conta, id, rede) };
+      },
+      async atualizar(conta, id, rede, deEstados, estado, patch) {
+        await iniciar();
+        const r = await q(`update pico_publicacoes set estado = $5, dados = dados || $6::jsonb, atualizada_em = now()
+          where conta = $1 and content_id = $2 and rede = $3 and estado = any($4) returning *`, [conta, id, rede, deEstados, estado, JSON.stringify(patch || {})]);
+        return r.rows[0] ? linhaPub(r.rows[0]) : null;
+      },
+      async reiniciar(conta, id, rede, dados) {
+        await iniciar();
+        const r = await q(`update pico_publicacoes set estado = 'iniciada', dados = $4::jsonb, iniciada_em = now(), atualizada_em = now()
+          where conta = $1 and content_id = $2 and rede = $3 and estado = 'erro' returning *`, [conta, id, rede, JSON.stringify(dados || {})]);
+        return r.rows[0] ? linhaPub(r.rows[0]) : null;
+      },
+    },
+    config: {
+      async obter(conta) { await iniciar(); return (await q('select valor from pico_config where conta = $1', [conta])).rows[0]?.valor || {}; },
+      async salvar(conta, patch) {
+        await iniciar();
+        const r = await q(`insert into pico_config (conta, valor) values ($1, $2::jsonb) on conflict (conta) do update set valor = pico_config.valor || excluded.valor, atualizada_em = now() returning valor`, [conta, JSON.stringify(patch || {})]);
+        return r.rows[0].valor;
       },
     },
     jobs: {
