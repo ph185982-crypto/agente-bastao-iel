@@ -90,7 +90,7 @@ function lookupSeguro(resolver) {
 
 const TIPOS_PADRAO = [/^text\/html/, /^application\/xhtml\+xml/, /^text\/plain/, /^application\/json/, /^application\/(rss|atom)?\+?xml/, /^text\/xml/];
 
-function umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept }) {
+function umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept, binario }) {
   return new Promise((resolve, reject) => {
     const mod = url.protocol === 'https:' ? https : http;
     const req = mod.request({
@@ -127,7 +127,7 @@ function umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept }) {
         if (total > maxBytes) { req.destroy(new ErroUrl('A página é grande demais para ler.', 'TAMANHO')); return; }
         partes.push(c);
       });
-      fonte.on('end', () => resolve({ status, tipo, corpo: Buffer.concat(partes).toString('utf8'), url: url.toString() }));
+      fonte.on('end', () => {const dados=Buffer.concat(partes);resolve({ status, tipo, corpo: binario ? dados : dados.toString('utf8'), url: url.toString() });});
       fonte.on('error', () => reject(new ErroUrl('Não consegui ler a resposta da página.', 'DECODIFICACAO')));
       res.on('error', reject);
     });
@@ -141,11 +141,11 @@ function umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept }) {
 // Quando a página exige login/pagamento (401/402/403) devolve acesso_negado:true
 // e corpo vazio: o chamador registra "fonte indisponível" e procura outra.
 async function safeFetch(texto, opts = {}) {
-  const { timeoutMs = TIMEOUT_MS_PADRAO, maxBytes = MAX_BYTES_PADRAO, tipos = TIPOS_PADRAO, resolver, accept } = opts;
+  const { timeoutMs = TIMEOUT_MS_PADRAO, maxBytes = MAX_BYTES_PADRAO, tipos = TIPOS_PADRAO, resolver, accept, binario = false } = opts;
   let url = validaUrl(texto);
   const salto = [];
   for (let i = 0; i <= 4; i++) {
-    const r = await umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept });
+    const r = await umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept, binario });
     if (r.redirect) {
       url = validaUrl(r.redirect);
       salto.push(url.toString());

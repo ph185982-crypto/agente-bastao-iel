@@ -37,6 +37,12 @@ test('produção concorrente executa uma única etapa e não publica; HMAC não 
   await Promise.all([studio.processar(c.id,c.studio.job,{deps}),studio.processar(c.id,c.studio.job,{deps})]);assert.equal(chamadas,1);assert.equal((await studio.ler(c.id)).doc.studio.etapa,'afirmacoes');assert.equal((await arm.publicacoes.listar(conta)).length,0);
   const token=studio.assinatura(c.id,c.studio.job);assert(studio.confere(c.id,c.studio.job,token));assert(!studio.confere('outro',c.studio.job,token));
 });
+test('preparar um rascunho antigo atribui estilo e mantém o histórico',async()=>{
+  const c=pronto();delete c.studio;delete c.experimento;c.status='rascunho';
+  await arm.conteudos.salvar(conta,c.id,c,0);
+  const r=await studio.reagendar(c.id,{acao:'retomar'});
+  assert(prefs.ESTILOS[r.experimento.estilo]);assert.equal(r.studio.estado,'gerando');assert.equal(r.copia.versoes.length,1);
+});
 test('os três formatos geram PNG legível e mudar estilo invalida a arte',async()=>{
   const arte=require('./arte');const img=await sharp({create:{width:1080,height:1350,channels:3,background:'#afcfe0'}}).jpeg().toBuffer();
   for(const estilo of Object.keys(prefs.ESTILOS)){const s={layout:'capa_foto',estilo,texto:'O detalhe que muda o jogo.'};const r=await arte.renderizarSlide(s,{indice:1,total:5,imagem:img});const meta=await sharp(r.png).metadata();assert.equal(meta.width,1080);assert.equal(meta.height,1350);assert.equal(r.metrics.cabe,true);}

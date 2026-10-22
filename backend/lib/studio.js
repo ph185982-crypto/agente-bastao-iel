@@ -52,6 +52,7 @@ async function reagendar(id,{motivos=[],detalhe='',hash,acao='refazer'}={}) {
   const reg=await ler(id);const c=reg.doc;
   if(['publicado','aprovado','exportado'].includes(c.status))throw falha('Este conteúdo já foi aprovado. Crie uma nova ideia para não alterar a publicação.',409);
   if(c.studio?.estado==='gerando')return c;
+  if(!prefs.ESTILOS[c.experimento?.estilo]){const estilo=await prefs.escolherEstilo({indice:0});c.experimento={estilo,letra:prefs.ESTILOS[estilo].letra,criado_em:now()};}
   if(acao==='retomar' && c.studio?.estado==='erro'){
     const st=c.studio;st.job=crypto.randomUUID();st.estado=st.etapa==='publicacao'?'publicando':'gerando';st.erro=null;st.passos=0;delete st.lease;
     c.status=st.estado==='publicando'?'aprovado':'produzindo';await gravar(c,reg.rev);return c;

@@ -10,7 +10,7 @@ async function buscarFoto(consulta, { fetcher = fetch, carregar = safeFetch } = 
   if (!p) throw new Error('Não encontrei uma foto adequada. Tente outro assunto ou envie sua foto.');
   const url=p.src.large2x || p.src.large;
   if (new URL(url).hostname !== 'images.pexels.com') throw new Error('A origem da foto não confere.');
-  const img=await carregar(url,{ maxBytes:6*1024*1024, timeoutMs:12000, tipos:[/^image\//] });
+  const img=await carregar(url,{ maxBytes:6*1024*1024, timeoutMs:12000, tipos:[/^image\//], binario:true, accept:'image/jpeg,image/png,image/webp' });
   if (img.status !== 200) throw new Error('Não consegui baixar a foto.');
   const dados=await sharp(img.corpo,{limitInputPixels:40e6}).rotate().resize(1080,1350,{fit:'cover'}).jpeg({quality:88}).toBuffer();
   return { dados, meta:{ id:`pexels_${p.id}`,tipo:'ilustrativa',origem:p.url,autor:String(p.photographer || '').slice(0,120),licenca:'Pexels License',licenca_url:'https://www.pexels.com/license/',consulta:query,src:url,alt:String(p.alt || 'Foto ilustrativa').slice(0,240) } };

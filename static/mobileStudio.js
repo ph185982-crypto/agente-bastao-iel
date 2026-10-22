@@ -15,9 +15,15 @@
   async function adotar(reg){await window.Sync.adotar(reg);const i=x().state.contents.findIndex(c=>c.id===reg.doc.id);if(i<0)x().state.contents.unshift(reg.doc);else x().state.contents[i]=reg.doc;x().state.syncMeta[reg.doc.id]=await window.Sync.meta(reg.doc.id);}
   async function atualizar({silencioso=false}={}){
     if(ui.carregando)return;ui.carregando=true;
+    const antes=JSON.stringify(x().state.contents),erroAntes=ui.erro;
     try{ui.estado=await x().api('/api/studio/estado');await window.Sync.puxar();x().state.contents=await window.Store.listar();ui.erro=null;}
     catch(e){ui.erro=e.message;if(!silencioso)x().toast(e.message);}
-    finally{ui.carregando=false;if(!document.hidden&&!ui.reprovar&&['central','ajustes'].includes(x().state.tab))x().render();}
+    finally{ui.carregando=false;const mudou=antes!==JSON.stringify(x().state.contents)||erroAntes!==ui.erro;
+      const video=document.querySelector('.st-video video');
+      if(mudou&&!document.hidden&&!ui.reprovar&&['central','ajustes'].includes(x().state.tab)){
+        if(video&&!video.paused&&!video.ended)ui.renderPendente=true;else x().render();
+      }
+    }
   }
   function preview(c){
     const v=versao(c);
@@ -38,9 +44,9 @@
       <details class="st-caption"><summary>Ver legenda e detalhes</summary><p>${esc([v.legenda,v.cta,(v.hashtags||[]).join(' ')].filter(Boolean).join('\n\n'))}</p><button class="st-text-button" data-action="cn-revisar" data-id="${esc(c.id)}">Ajustar manualmente</button></details></div></article>`;
   }
   function filaProduzindo(){
-    const lista=x().state.contents.filter(c=>emProducao(c)||(c.studio?.estado==='erro'&&!versao(c)));
+    const lista=x().state.contents.filter(c=>emProducao(c)||(!c.legado&&!versao(c)&&!['publicado','arquivado'].includes(c.status)));
     if(!lista.length)return '';
-    return `<section class="st-production"><h2>Em preparação <span>${lista.length}</span></h2>${lista.map(c=>`<div class="st-job">${c.studio.estado==='erro'?'<span>!</span>':'<span class="es-spin"></span>'}<div><b>${esc(c.titulo)}</b><small>${esc(c.studio.estado==='erro'?c.studio.erro:ETAPAS[c.studio.etapa]||'Preparando')} ${c.studio.etapa==='arte'?`· slide ${(c.studio.indice||0)+1}`:''}</small>${c.studio.estado==='erro'?`<button class="st-text-button" data-action="st-preparar" data-id="${esc(c.id)}">Tentar novamente</button>`:''}</div></div>`).join('')}<p>Pode fechar o app. A preparação continua e, com notificações ativas, você recebe o aviso.</p></section>`;
+    return `<section class="st-production"><h2>Em preparação <span>${lista.length}</span></h2>${lista.map(c=>{const st=c.studio||{},ativo=emProducao(c);return `<div class="st-job">${ativo?'<span class="es-spin"></span>':'<span>↻</span>'}<div><b>${esc(c.titulo)}</b><small>${esc(st.estado==='erro'?st.erro:ativo?ETAPAS[st.etapa]||'Preparando':'Rascunho da sua biblioteca')} ${st.etapa==='arte'?`· slide ${(st.indice||0)+1}`:''}</small>${!ativo?`<button class="st-text-button" data-action="st-preparar" data-id="${esc(c.id)}">${st.estado==='erro'?'Tentar novamente':'Preparar automaticamente'}</button>`:''}</div></div>`;}).join('')}<p>Pode fechar o app. A preparação continua e, com notificações ativas, você recebe o aviso.</p></section>`;
   }
   function modal(){
     if(!ui.reprovar)return '';
@@ -114,6 +120,7 @@
     const dialog=root.querySelector('[role="dialog"]');if(dialog&&!dialog.contains(document.activeElement))dialog.querySelector('button')?.focus({preventScroll:true});
   }
   const root=document.getElementById('esteira');
+  ['pause','ended'].forEach(tipo=>root.addEventListener(tipo,e=>{if(e.target.tagName==='VIDEO'&&ui.renderPendente){ui.renderPendente=false;x().render();}},true));
   root.addEventListener('input',e=>{if(e.target.id==='st-url')ui.source.url=e.target.value;if(e.target.id==='st-texto')ui.source.texto=e.target.value;if(e.target.id==='st-feedback-text')ui.detalhe=e.target.value;});
   root.addEventListener('change',e=>{if(e.target.id==='st-estilo')ui.source.estilo=e.target.value;});
   root.addEventListener('scroll',e=>{const el=e.target;if(!el.dataset?.stCarousel)return;const id=el.dataset.stCarousel;const i=Math.round(el.scrollLeft/el.clientWidth);ui.slides[id]=i;const counter=root.querySelector(`[data-st-counter="${CSS.escape(id)}"]`);if(counter)counter.textContent=`${i+1}/${el.children.length}`;el.parentElement.querySelectorAll('.st-dots button').forEach((b,n)=>b.setAttribute('aria-current',String(n===i)));},true);
