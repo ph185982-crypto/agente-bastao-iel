@@ -1,8 +1,17 @@
-# Cópia no servidor: proposta e passos
+# Cópia no servidor: configuração e operação
 
-Hoje o preview roda **sem** cópia no servidor: a única cópia do trabalho está no navegador
-(o app avisa com o selo "Só neste navegador"). O código para o servidor já está pronto e
-testado contra PostgreSQL real; falta só conectar o serviço — o que depende da sua aprovação.
+Em 22/10/2026, o banco **pedro-destrava-db** foi criado na integração Neon existente,
+no plano **Free**, e conectado ao ambiente **Production** do projeto `agente-bastao-iel`.
+O banco está separado do recurso usado pelo `nexo-backend`. Nenhum plano foi alterado.
+
+O deploy `dpl_CxBHKrHi1WKJ2Mh7RZxd9GG4QCgH` está em produção e usa `DATABASE_URL`.
+Foram conferidos pela API publicada: gravação e leitura com hash idêntico, recuperação
+em outra sessão autenticada, histórico, conflito de revisão, concorrência e arquivos.
+As credenciais ficam nas variáveis de ambiente do servidor; não estão neste repositório.
+
+O **Preview continua sem banco conectado**. Os conteúdos que já estão no navegador
+não são enviados pela configuração da infraestrutura: entre no app e use **Sincronizar agora**.
+O navegador mantém sua cópia, e cada envio é conferido por leitura de volta.
 
 ## O que guardar e onde
 
@@ -23,15 +32,13 @@ testado contra PostgreSQL real; falta só conectar o serviço — o que depende 
 - **Atenção**: o plano Hobby da Vercel é descrito como "uso pessoal, não comercial". Se o perfil for uso
   comercial, isso precisa ser avaliado por você (não mudei plano nenhum).
 
-## Passos (feitos por você ou com a sua autorização)
+## Uso após a ativação
 
-1. Vercel → projeto `agente-bastao-iel` → **Storage** → **Create** → **Neon (Postgres)** → plano **Free** →
-   conecte ao projeto marcando **Preview** (e Production só quando for promover). A Vercel cria a
-   variável `DATABASE_URL` sozinha.
-2. Faça um novo deploy da branch (ou peça para eu fazer).
-3. Abra o app → **Ajustes** → "Cópia no servidor" deve mostrar **Conectada**. Clique **Sincronizar agora**.
+1. Abra `https://agente-bastao-iel.vercel.app` e entre com o código de acesso existente.
+2. Abra **Ajustes** → "Cópia no servidor". Clique **Sincronizar agora**.
    Cada conteúdo só é marcado "No servidor" depois de ser **lido de volta e o hash conferir**.
-4. Teste em outro navegador/aparelho: entre com o código e veja o conteúdo aparecer.
+3. Em outro navegador/aparelho, entre com o código e sincronize para recuperar os conteúdos.
+4. Continue exportando backups em Ajustes. O banco não substitui uma cópia independente.
 
 ## Migração e recuperação
 
