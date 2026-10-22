@@ -46,29 +46,53 @@ async function renderSegmento({slide,imagem,indice,total,duracao}){
     return {dados:await fs.readFile(path.join(dir,'part.mp4')),duracao:frames/24,poster:await sharp(frame).resize(540,960).jpeg({quality:85}).toBuffer()};
   }finally{await fs.rm(dir,{recursive:true,force:true});}
 }
-async function juntar(partes,audio){
+async function juntar(partes,audio,{duracao}={}){
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'pd-final-'));
   try{for(let i=0;i<partes.length;i++)await fs.writeFile(path.join(dir,`p${i}.mp4`),partes[i]);await fs.writeFile(path.join(dir,'list.txt'),partes.map((_,i)=>`file '${dir}/p${i}.mp4'`).join('\n'));if(audio)await fs.writeFile(path.join(dir,'voice.wav'),audio);
-    await executar(['-y','-f','concat','-safe','0','-i',path.join(dir,'list.txt'),...(audio?['-i',path.join(dir,'voice.wav'),'-map','0:v:0','-map','1:a:0','-c:a','aac','-b:a','64k','-shortest']:['-an']),'-c:v','copy','-movflags','+faststart',path.join(dir,'final.mp4')]);return await fs.readFile(path.join(dir,'final.mp4'));
+    await executar(['-y','-f','concat','-safe','0','-i',path.join(dir,'list.txt'),...(audio?['-i',path.join(dir,'voice.wav'),'-map','0:v:0','-map','1:a:0','-c:a','aac','-b:a','64k','-shortest']:['-an']),'-c:v','copy','-movflags','+faststart',path.join(dir,'final.mp4')]);
+    let dados=await fs.readFile(path.join(dir,'final.mp4'));
+    // Function responses are capped at 4.5 MB. Keep room for delivery overhead.
+    if(dados.length>4000000){
+      const segundos=duracao || (audio?(audio.length-44)/48000:0);if(!segundos)throw new Error('Não consegui calcular o tamanho do vídeo. Retome a preparação.');
+      const kbps=Math.max(110,Math.floor(3400000*8/segundos/1000)-(audio?64:0));
+      await executar(['-y','-threads','1','-i',path.join(dir,'final.mp4'),'-c:v','libx264','-preset','ultrafast','-b:v',`${kbps}k`,'-maxrate',`${kbps}k`,'-bufsize',`${kbps*2}k`,'-threads','1',...(audio?['-c:a','copy']:['-an']),'-movflags','+faststart',path.join(dir,'compact.mp4')]);
+      dados=await fs.readFile(path.join(dir,'compact.mp4'));if(dados.length>4100000)throw new Error('O vídeo ainda ficou grande demais. Peça uma versão mais curta.');
+    }
+    return dados;
   }finally{await fs.rm(dir,{recursive:true,force:true});}
 }
 async function avancar(c){
   const a=armazem(),v=M.versaoAtiva(c);let m=c.motion;
-  if(!m || m.engine!=='local' || m.hash!==v.hash){m=c.motion={engine:'local',estado:'renderizando',etapa:'voz',hash:v.hash,segmentos:[],indice:0,formato:'1080x1920',iniciado_em:new Date().toISOString(),narracao:false};}
-  if(m.etapa==='voz'){
-    try{const voz=await gerarVoz(v.slides.map(fala).join('\n'));if(voz.duracao>90||voz.duracao<8)throw new Error('A narração não ficou na duração esperada.');m.audio_key=`motion:${c.id}:${v.id}:voz`;await a.arquivos.salvar(conta,m.audio_key,voz.dados,'audio/wav');m.duracao_alvo=voz.duracao;m.narracao=true;m.voz='Charon · português brasileiro';}
-    catch(e){m.aviso=e.message+' O vídeo será preparado com legendas, sem voz.';m.duracao_alvo=60;m.narracao=false;}
-    m.etapa='segmentos';return m;
+  if(!m || m.engine!=='local' || m.hash!==v.hash){m=c.motion={engine:'local',estado:'renderizando',etapa:'vozes',hash:v.hash,segmentos:[],audio_partes:[],indice_voz:0,indice:0,formato:'1080x1920',iniciado_em:new Date().toISOString(),narracao:false};}
+  if(m.etapa==='voz'){m.etapa='vozes';m.audio_partes=[];m.indice_voz=0;}
+  if(m.etapa==='vozes'){
+    try{
+      const voz=await gerarVoz(fala(v.slides[m.indice_voz]));if(voz.duracao>30||voz.duracao<.5)throw new Error('A narração deste trecho não ficou na duração esperada.');
+      const pcm=voz.dados.subarray(44);const alinhado=Buffer.concat([pcm,Buffer.alloc(Math.ceil(pcm.length/2000)*2000-pcm.length)]);
+      const key=`motion:${c.id}:${v.id}:voz${m.indice_voz}`;await a.arquivos.salvar(conta,key,wav(alinhado),'audio/wav');
+      m.audio_partes.push({key,duracao:alinhado.length/48000});m.indice_voz++;m.tentativas_voz=0;
+      if(m.indice_voz>=v.slides.length)m.etapa='juntar_voz';
+    }catch(e){
+      m.tentativas_voz=(m.tentativas_voz||0)+1;if(m.tentativas_voz<2)return m;
+      m.aviso=(/abort|timeout/i.test(e.message)?'A narração demorou mais que o esperado.':e.message)+' O vídeo será preparado com legendas, sem voz.';m.duracao_alvo=60;m.narracao=false;m.etapa='segmentos';
+    }
+    return m;
+  }
+  if(m.etapa==='juntar_voz'){
+    const vozes=await Promise.all(m.audio_partes.map(async p=>(await a.arquivos.obter(conta,p.key)).dados));
+    m.duracao_alvo=m.audio_partes.reduce((n,p)=>n+p.duracao,0);if(m.duracao_alvo>90)throw new Error('A narração ficou longa demais. Peça uma versão mais curta.');
+    m.audio_key=`motion:${c.id}:${v.id}:voz`;await a.arquivos.salvar(conta,m.audio_key,wav(Buffer.concat(vozes.map(b=>Buffer.from(b).subarray(44)))),'audio/wav');
+    m.narracao=true;m.voz='Charon · português brasileiro';delete m.aviso;m.etapa='segmentos';return m;
   }
   if(m.etapa==='segmentos'){
-    const s=v.slides[m.indice];const n=palavras(fala(s)).length;const total=v.slides.reduce((n,s)=>n+palavras(fala(s)).length,0);const duracao=Math.max(2,m.duracao_alvo*n/Math.max(total,1));
+    const s=v.slides[m.indice];const n=palavras(fala(s)).length;const total=v.slides.reduce((n,s)=>n+palavras(fala(s)).length,0);const duracao=m.narracao&&m.audio_partes?.[m.indice]?m.audio_partes[m.indice].duracao:Math.max(2,m.duracao_alvo*n/Math.max(total,1));
     const imgId=s.imagem_id||c.imagens?.[0]?.id;const imagem=imgId?(await a.arquivos.obter(conta,`img:${imgId}`))?.dados:null;
     const r=await renderSegmento({slide:s,imagem,indice:m.indice,total:v.slides.length,duracao});const key=`motion:${c.id}:${v.id}:parte${m.indice}`;await a.arquivos.salvar(conta,key,r.dados,'video/mp4');
     if(m.indice===0){m.poster_key=`motion:${c.id}:${v.id}:poster`;await a.arquivos.salvar(conta,m.poster_key,r.poster,'image/jpeg');}
     m.segmentos.push({key,duracao:r.duracao});m.indice++;if(m.indice>=v.slides.length)m.etapa='juntar';return m;
   }
   if(m.etapa==='juntar'){
-    const partes=await Promise.all(m.segmentos.map(async s=>(await a.arquivos.obter(conta,s.key)).dados));const audio=m.audio_key?(await a.arquivos.obter(conta,m.audio_key))?.dados:null;const final=await juntar(partes,audio);m.blob_key=`motion:${c.id}:${v.id}:final`;await a.arquivos.salvar(conta,m.blob_key,final,'video/mp4');m.duracao=m.segmentos.reduce((n,s)=>n+s.duracao,0);m.estado='pronto';m.bytes=final.length;
+    const partes=await Promise.all(m.segmentos.map(async s=>(await a.arquivos.obter(conta,s.key)).dados));const audio=m.audio_key?(await a.arquivos.obter(conta,m.audio_key))?.dados:null;m.duracao=m.segmentos.reduce((n,s)=>n+s.duracao,0);const final=await juntar(partes,audio,{duracao:m.duracao});m.blob_key=`motion:${c.id}:${v.id}:final`;await a.arquivos.salvar(conta,m.blob_key,final,'video/mp4');m.estado='pronto';m.bytes=final.length;
     const base=String(process.env.PUBLIC_BASE_URL||'').replace(/\/$/,'');const token=require('./meta').assinarMidia({conteudo:c.id,hash:v.hash,indice:0,ttlS:30*86400});m.url=`${base}/api/publico/video/${token}.mp4`;m.poster=`${base}/api/sync/arquivos/${encodeURIComponent(m.poster_key)}`;m.concluido_em=new Date().toISOString();return m;
   }
   return m;

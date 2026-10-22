@@ -67,6 +67,19 @@ test('renderização local gera MP4 real, concatena trechos e conserva saída ve
   const dir=await fs.mkdtemp(path.join(os.tmpdir(),'pd-video-test-'));
   try{const r=await local.renderSegmento({slide:{texto:'Teste de legenda no vídeo.'},imagem:null,indice:0,total:2,duracao:2});const final=await local.juntar([r.dados,r.dados],null);const p=path.join(dir,'final.mp4');await fs.writeFile(p,final);const out=JSON.parse(spawnSync(require('ffprobe-static').path,['-v','quiet','-show_streams','-show_format','-of','json',p],{encoding:'utf8'}).stdout);assert.equal(out.streams[0].width,1080);assert.equal(out.streams[0].height,1920);assert(Math.abs(Number(out.format.duration)-4)<.1);assert.equal(out.streams[0].codec_name,'h264');}finally{await fs.rm(dir,{recursive:true,force:true});}
 });
+test('narração é preparada por cena e o áudio final segue os limites dos quadros',async()=>{
+  const c=pronto(),local=require('./motionLocal');const original=global.fetch,key=process.env.GOOGLE_API_KEY;
+  process.env.GOOGLE_API_KEY='fixture-google';const textos=[];
+  global.fetch=async(url,opts)=>{textos.push(JSON.parse(opts.body).contents[0].parts[0].text);return {ok:true,json:async()=>({candidates:[{content:{parts:[{inlineData:{mimeType:'audio/L16',data:Buffer.alloc(48010).toString('base64')}}]}}]})};};
+  try{
+    c.motion=await local.avancar(c);assert.equal(c.motion.indice_voz,1);assert.equal(c.motion.etapa,'vozes');
+    c.motion=await local.avancar(c);assert.equal(c.motion.etapa,'juntar_voz');
+    c.motion=await local.avancar(c);assert.equal(c.motion.narracao,true);assert.equal(c.motion.etapa,'segmentos');assert.equal(textos.length,2);
+    assert(!textos[0].includes('Siga para entender'));assert(textos[1].includes('Siga para entender'));
+    const audio=await arm.arquivos.obter(conta,c.motion.audio_key);assert.equal((audio.dados.length-44)%2000,0);
+    assert.equal(c.motion.duracao_alvo,(audio.dados.length-44)/48000);
+  }finally{global.fetch=original;if(key===undefined)delete process.env.GOOGLE_API_KEY;else process.env.GOOGLE_API_KEY=key;}
+});
 
 test('produção completa chega à revisão sem aprovações intermediárias e sem publicar',async()=>{
   const c=await studio.criar({texto:'FIXTURE de produção completa. '.repeat(15),request_id:'fixture-fluxo-completo',estilo:'foto_editorial'});
