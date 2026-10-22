@@ -514,6 +514,7 @@
     // Quem está digitando não perde o texto quando uma resposta do servidor redesenha a tela.
     const foco = document.activeElement && root.contains(document.activeElement) && document.activeElement.id && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'file'
       ? { id: document.activeElement.id, valor: document.activeElement.value, ini: document.activeElement.selectionStart, fim: document.activeElement.selectionEnd } : null;
+    const botaoFocado = root.contains(document.activeElement) && document.activeElement?.dataset?.action ? { ...document.activeElement.dataset } : null;
     let corpo = '';
     if (state.tab === 'mesa') corpo = state.sub === 'descobrir' ? telaDescobrir() : state.sub === 'conteudo' ? telaConteudo() : telaMesa();
     else if (state.tab === 'central') corpo = window.MesaCentral ? window.MesaCentral.render(ctxEditor()) : '';
@@ -523,7 +524,7 @@
     const tabs = [['mesa', 'Mesa'], ['central', 'Central'], ['criar', 'Criar'], ['ajustes', 'Ajustes']];
     const [saveClass, saveText] = estadoSalvamento();
     root.innerHTML = `
-      <a class="studio-skip" href="#studio-main">Ir para o conteúdo</a>
+      <a class="studio-skip" href="#${state.tab === 'criar' ? 'pico-legacy-app' : 'studio-main'}">Ir para o conteúdo</a>
       <div class="studio-brand"><span class="studio-monogram" aria-hidden="true">↗</span><div><b>PEDRO DESTRAVA</b><span>Estúdio de conteúdo</span></div></div>
       <header class="studio-header"><div class="studio-breadcrumb">Meu estúdio <span>/</span> <b>${tabs.find(t => t[0] === state.tab)?.[1] || 'Mesa'}</b></div><button class="studio-save ${saveClass}" data-action="tab" data-tab="ajustes" aria-label="${saveText}. Ver ajustes de armazenamento"><i aria-hidden="true"></i><span>${saveText}</span></button><span class="studio-avatar" title="${esc(M.ACCOUNT_PIN.handle)}">PD</span></header>
       <div class="es-top" ${state.tab === 'criar' ? '' : 'hidden'}>${CRIAR.filter((m) => !escondido(m.id)).map((m) => `<button data-action="criar" data-m="${m.id}" aria-pressed="${state.criarModulo === m.id}">${m.label}</button>`).join('')}</div>
@@ -537,6 +538,9 @@
     if (foco) {
       const el = root.querySelector(`#${CSS.escape(foco.id)}`);
       if (el) { el.value = foco.valor; try { el.focus({ preventScroll: true }); el.setSelectionRange(foco.ini, foco.fim); } catch { /* sem seleção */ } }
+    } else if (botaoFocado && (!mudouTela || state.tab === 'criar')) {
+      const botao = [...root.querySelectorAll('[data-action]')].find(el => Object.entries(botaoFocado).every(([k,v]) => el.dataset[k] === v));
+      botao?.focus({ preventScroll: true });
     }
     if (state.tab === 'mesa' && state.sub === 'conteudo') preencherArquivosLegado();
     if (window.MesaEditor?.aposRender) window.MesaEditor.aposRender(root, { state });
