@@ -123,7 +123,9 @@ async function processar(id,job,{deps={}}={}) {
       }
       case 'auditoria': {
         const v=M.versaoAtiva(c);const unidades=[...v.slides.filter(s=>s.layout!=='encerramento').map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda}];
-        const r=await d.redacao.auditarOpinioes({slides:unidades,claims:c.claims});r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});proxima('foto');break;
+        const grupo=unidades.slice(st.indice,st.indice+3);
+        const r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims});r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});
+        if(st.indice+grupo.length<unidades.length)proxima('auditoria',st.indice+grupo.length);else proxima('foto');break;
       }
       case 'foto': {
         const v=M.versaoAtiva(c);
