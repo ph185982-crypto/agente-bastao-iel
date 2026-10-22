@@ -13,6 +13,14 @@ router.post('/subscribe', limita({ max: 20, janelaMs: 60000, nome: 'push-subscri
 router.post('/unsubscribe', async (req, res) => {
   try { res.json({ ok: true, aparelhos: await push.removerAssinatura(String(req.body?.endpoint || '')) }); } catch (e) { falha(res, e); }
 });
+router.post('/teste', limita({ max: 3, janelaMs: 60000, nome: 'push-teste' }), async (req, res) => {
+  try {
+    const endpoint = String(req.body?.endpoint || '');
+    if (!(await push.lista()).some(s => s.endpoint === endpoint)) return res.status(404).json({ error: 'Ative as notificações neste aparelho primeiro.' });
+    const r = await push.notificar({ corpo: 'Tudo certo! Você será avisado quando houver conteúdo pronto para aprovar.', tag: 'teste-notificacoes' }, { endpoint });
+    res.status(r.enviadas ? 200 : 502).json({ ...r, ...(r.enviadas ? {} : { error: 'O serviço do aparelho não aceitou o teste. Ative novamente as notificações.' }) });
+  } catch (e) { falha(res,e); }
+});
 // Uma notificação por lote ("5 conteúdos novos para aprovar").
 router.post('/notificar-lote', limita({ max: 10, janelaMs: 60000, nome: 'push-lote' }), async (req, res) => {
   try { res.json(await push.notificarLote(req.body?.n)); } catch (e) { falha(res, e); }

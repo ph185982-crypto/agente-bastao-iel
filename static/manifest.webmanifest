@@ -1,7 +1,8 @@
 {
   "name": "Pedro Destrava",
-  "short_name": "Pedro",
-  "description": "Mesa de trabalho e central de aprovação do @pedro_destrava",
+  "short_name": "Destrava",
+  "id": "/",
+  "description": "Confira seus carrosséis e Reels. Aprove para publicar no @pedro_destrava.",
   "start_url": "/?tab=central",
   "scope": "/",
   "display": "standalone",
@@ -9,8 +10,8 @@
   "theme_color": "#0A1B33",
   "lang": "pt-BR",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/app-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app-icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/app-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

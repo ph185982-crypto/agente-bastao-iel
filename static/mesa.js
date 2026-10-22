@@ -212,6 +212,7 @@
   }
 
   function telaMesa() {
+    if (window.StudioMobile) return window.StudioMobile.telaCriar();
     const ativos = state.contents.filter((c) => c.status !== 'arquivado');
     const filtros = [['todos', 'Todos'], ['andamento', 'Em andamento'], ['aprovado', 'Aprovados'], ['publicado', 'Publicados'], ['arquivado', 'Arquivados'], ['legado', 'Fila anterior']];
     return `
@@ -482,6 +483,7 @@
   }
 
   function telaAjustes() {
+    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1>${window.StudioMobile.perfil()}<details class="st-advanced"><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
     return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
   }
 
@@ -521,11 +523,11 @@
     else if (state.tab === 'semana') corpo = telaSemana();
     else if (state.tab === 'ajustes') corpo = telaAjustes();
     const nCentral = window.MesaCentral ? window.MesaCentral.badge() : 0;
-    const tabs = [['mesa', 'Mesa'], ['central', 'Central'], ['criar', 'Criar'], ['ajustes', 'Ajustes']];
+    const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['criar', 'Ferramentas'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['criar', 'Criar'], ['ajustes', 'Ajustes']];
     const [saveClass, saveText] = estadoSalvamento();
     root.innerHTML = `
       <a class="studio-skip" href="#${state.tab === 'criar' ? 'pico-legacy-app' : 'studio-main'}">Ir para o conteúdo</a>
-      <div class="studio-brand"><span class="studio-monogram" aria-hidden="true">↗</span><div><b>PEDRO DESTRAVA</b><span>Estúdio de conteúdo</span></div></div>
+      <div class="studio-brand"><img class="st-brand-logo" src="/logo-app.svg" alt="" width="36" height="36"><div><b>PEDRO DESTRAVA</b><span>Estúdio de conteúdo</span></div></div>
       <header class="studio-header"><div class="studio-breadcrumb">Meu estúdio <span>/</span> <b>${tabs.find(t => t[0] === state.tab)?.[1] || 'Mesa'}</b></div><button class="studio-save ${saveClass}" data-action="tab" data-tab="ajustes" aria-label="${saveText}. Ver ajustes de armazenamento"><i aria-hidden="true"></i><span>${saveText}</span></button><span class="studio-avatar" title="${esc(M.ACCOUNT_PIN.handle)}">PD</span></header>
       <div class="es-top" ${state.tab === 'criar' ? '' : 'hidden'}>${CRIAR.filter((m) => !escondido(m.id)).map((m) => `<button data-action="criar" data-m="${m.id}" aria-pressed="${state.criarModulo === m.id}">${m.label}</button>`).join('')}</div>
       <main id="studio-main" class="es-main" tabindex="-1" ${state.tab === 'criar' ? 'hidden' : ''}><div class="studio-page ${state.tab === 'mesa' && !state.sub ? 'studio-home' : ''}">${corpo}</div></main>

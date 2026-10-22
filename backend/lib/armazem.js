@@ -82,7 +82,7 @@ function configMemoria() {
 
 // ── Memória (testes) ───────────────────────────────────────────────────────
 function memoria() {
-  const docs = new Map(); const hist = []; const arqs = new Map(); const jobs = new Map();
+  const docs = new Map(); const hist = []; const arqs = new Map(); const jobs = new Map(); const feedback = new Map();
   const k = (c, id) => `${c}|${id}`;
   return {
     tipo: 'memoria', duravel: false,
@@ -112,6 +112,10 @@ function memoria() {
     },
     publicacoes: publicacoesMemoria(),
     config: configMemoria(),
+    feedback: {
+      async salvar(conta, dado) { const key = `${conta}|${dado.id}`; if (!feedback.has(key)) feedback.set(key, { ...JSON.parse(JSON.stringify(dado)), conta }); return feedback.get(key); },
+      async listar(conta) { return [...feedback.values()].filter(x => x.conta === conta).sort((a,b) => b.em.localeCompare(a.em)).slice(0,200); },
+    },
     jobs: {
       async iniciar(rid, etapa, conteudo) { if (!jobs.has(rid)) jobs.set(rid, { rid, etapa, conteudo_id: conteudo || null, estado: 'rodando', criado_em: new Date().toISOString() }); return jobs.get(rid); },
       async concluir(rid, resultado) { const j = jobs.get(rid); if (j) Object.assign(j, { estado: 'concluido', resultado, atualizado_em: new Date().toISOString() }); },
@@ -148,6 +152,7 @@ function postgres({ url, pool }) {
     create table if not exists pico_config (conta text primary key, valor jsonb not null default '{}', atualizada_em timestamptz not null default now());
     create table if not exists pico_jobs (rid text primary key, etapa text, conteudo_id text, estado text not null,
       criado_em timestamptz not null default now(), atualizado_em timestamptz, resultado jsonb, erro text);
+    create table if not exists pico_feedback (conta text not null, id text not null, em timestamptz not null default now(), dado jsonb not null, primary key(conta,id));
   `).catch((e) => { pronto = null; throw e; }));
 
   return {
@@ -249,6 +254,10 @@ function postgres({ url, pool }) {
         const r = await q(`insert into pico_config (conta, valor) values ($1, $2::jsonb) on conflict (conta) do update set valor = pico_config.valor || excluded.valor, atualizada_em = now() returning valor`, [conta, JSON.stringify(patch || {})]);
         return r.rows[0].valor;
       },
+    },
+    feedback: {
+      async salvar(conta, dado) { await iniciar(); await q('insert into pico_feedback(conta,id,em,dado) values($1,$2,$3,$4) on conflict do nothing', [conta,dado.id,dado.em,JSON.stringify(dado)]); return dado; },
+      async listar(conta) { await iniciar(); return (await q('select dado from pico_feedback where conta=$1 order by em desc limit 200', [conta])).rows.map(r => r.dado); },
     },
     jobs: {
       async iniciar(rid, etapa, conteudo) {

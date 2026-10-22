@@ -265,9 +265,11 @@
 
   async function ativarNotificacoes(x) {
     if (!pushOk()) throw new Error(ehIOS() && !instalado() ? 'No iPhone, primeiro adicione o app à Tela de Início (Compartilhar → Adicionar à Tela de Início) e abra por lá.' : 'Este navegador não suporta notificações.');
+    // Safari requires the permission prompt synchronously in the tap gesture.
+    const pedidoPermissao = Notification.permission === 'granted' ? Promise.resolve('granted') : Notification.requestPermission();
     const chave = await x.api('/api/push/chave');
     if (!chave.configurado) throw new Error('As notificações ainda não estão configuradas no servidor (VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY).');
-    const perm = await Notification.requestPermission();
+    const perm = await pedidoPermissao;
     if (perm !== 'granted') throw new Error('A permissão de notificações foi negada. Libere nas configurações do aparelho.');
     const reg = (await registrarSW()) || (await navigator.serviceWorker.ready);
     await navigator.serviceWorker.ready;

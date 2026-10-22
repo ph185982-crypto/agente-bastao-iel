@@ -321,3 +321,13 @@ test('sem banco de dados no servidor não publica (a cópia só no navegador nã
   A._definir(A.memoria());
   await assert.rejects(() => P.iniciar('qualquer', { base: basePublica }), (e) => e.code === 'SEM_ARMAZEM');
 });
+
+test('Reel aprovado cria vídeo REELS e uma única publicação; prévia de sandbox não publica', async () => {
+  zera();
+  const c=conteudoAprovado();c.formato='reels';c.motion={estado:'pronto',hash:M.versaoAtiva(c).hash,url:'https://exemplo.test/reel-fixture.mp4',sandbox:false};
+  await monta({conteudo:c});
+  const p=await P.iniciar(c.id,{hash:c.revisao.hash_aprovado,base:basePublica});assert.strictEqual(p.tipo,'REELS');
+  const pedidos=chamou(/POST .*\/media$/);assert.strictEqual(pedidos.length,1);assert.strictEqual(pedidos[0].params.media_type,'REELS');assert.strictEqual(pedidos[0].params.video_url,c.motion.url);
+  await P.avancar(c.id);await P.avancar(c.id);await P.avancar(c.id);assert.strictEqual(graph.est.publicados.length,1);
+  c.id+='sandbox';c.motion.sandbox=true;await monta({conteudo:c});await assert.rejects(P.iniciar(c.id,{base:basePublica}),(e)=>e.code==='VIDEO_TESTE');
+});

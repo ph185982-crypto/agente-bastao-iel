@@ -127,7 +127,7 @@
   const conteudoDaVersao = (v) => ({
     estrutura: v.estrutura || null,
     capa_escolhida: v.capa_escolhida || null,
-    slides: (v.slides || []).map((s) => ({ id: s.id, layout: s.layout, funcao: s.funcao || null, texto: s.texto, titulo: s.titulo || null, rotulo: s.rotulo || null, dados: s.dados || null, fonte_linha: s.fonte_linha || null, claim_ids: s.claim_ids || [], imagem_id: s.imagem_id || null })),
+    slides: (v.slides || []).map((s) => ({ id: s.id, layout: s.layout, funcao: s.funcao || null, texto: s.texto, titulo: s.titulo || null, rotulo: s.rotulo || null, dados: s.dados || null, fonte_linha: s.fonte_linha || null, claim_ids: s.claim_ids || [], imagem_id: s.imagem_id || null, ...(s.estilo ? { estilo:s.estilo } : {}) })),
     legenda: v.legenda || '',
     cta: v.cta || '',
     hashtags: v.hashtags || [],
@@ -135,7 +135,7 @@
   });
 
   // Hash do que aparece na arte de um slide (detecta arte desatualizada).
-  const hashRender = (s) => hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null, d: s.dados || undefined, r: s.rotulo || undefined, f: s.fonte_linha || undefined });
+  const hashRender = (s) => hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null, d: s.dados || undefined, r: s.rotulo || undefined, f: s.fonte_linha || undefined, ...(s.estilo ? { estilo:s.estilo } : {}) });
 
   const versaoAtiva = (c) => c.copia.versoes.find((v) => v.id === c.copia.versao_ativa) || null;
 

@@ -274,6 +274,43 @@ async function renderCapaFoto(s, ctx, imagemBuf) {
   return { png, blocos: [{ nome: 'titulo', ...resumo(t) }], foto: { largura: lado.w, altura: lado.h, ampliacao: Math.round(ampliacao * 100) / 100 } };
 }
 
+// Distinct visual experiments. Every preview and published image uses this renderer.
+async function renderExperimental(s, ctx, imagem) {
+  const estilo = s.estilo;
+  const capa = ctx.indice === 1;
+  const fim = s.layout === 'encerramento';
+  const paleta = estilo === 'impacto' ? { bg:'#1747D1', fg:'#FFFFFF', ac:'#DBFF70' } : estilo === 'revista' ? { bg:'#F2EDE3', fg:'#14243E', ac:'#DC542F' } : { bg:'#14243E', fg:'#FFFFFF', ac:'#FFCD68' };
+  const usaFoto = !!imagem && !fim;
+  let base = usaFoto ? await sharp(imagem).rotate().resize(W,H,{ fit:'cover', position:'attention' }).png().toBuffer() : null;
+  let inner = '';
+  if (usaFoto) inner += `<defs><linearGradient id="photo-shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#08152B" stop-opacity=".45"/><stop offset=".28" stop-color="#08152B" stop-opacity=".05"/><stop offset=".65" stop-color="#08152B" stop-opacity=".85"/><stop offset="1" stop-color="#08152B"/></linearGradient></defs><rect width="${W}" height="${H}" fill="url(#photo-shade)"/>`;
+  const cor = usaFoto ? '#FFFFFF' : paleta.fg;
+  inner += chrome({ ...ctx, cor, corMarca:paleta.ac });
+  const blocos=[];
+  if (fim) {
+    inner += `<circle cx="900" cy="350" r="370" fill="${paleta.ac}" opacity=".09"/>`;
+    inner += rotuloSvg('A próxima leitura começa aqui', { x:96,y:300,tam:24,cor:paleta.ac,espaco:1 });
+    const t=ajustar({ texto:s.texto,k:'display',larg:LARG,alt:590,max:82,min:48,entrelinha:1.16,papel:'cta' });
+    inner += textoSvg(t,{ x:96,y:380,k:'display',cor,corDestaque:paleta.ac }); blocos.push({ nome:'cta',...resumo(t) });
+    inner += `<rect x="96" y="1110" width="${LARG}" height="110" rx="22" fill="${paleta.ac}"/><text x="540" y="1182" text-anchor="middle" font-family="${ARQ.rotulo.familia}" font-weight="700" font-size="40" fill="#14243E">SIGA ${esc(ACCOUNT.handle)}</text>`;
+  } else {
+    const texto = capa ? s.texto : [s.titulo,s.texto].filter(Boolean).join('\n\n');
+    const t=ajustar({ texto,k:capa?'display':'semi',larg:LARG,alt:capa?600:760,max:capa?90:64,min:capa?58:38,entrelinha:capa?1.12:1.32,papel:capa?'titulo_capa':'corpo' });
+    const y=usaFoto?Math.max(440,1100-t.altura):capa?340:300;
+    if (!usaFoto && estilo === 'revista') inner += `<rect x="96" y="210" width="96" height="12" fill="${paleta.ac}"/>`;
+    if (!capa) inner += rotuloSvg(FUNCAO_ROTULO[s.funcao] || 'NA PRÁTICA',{x:96,y:220,tam:24,cor:paleta.ac,espaco:2});
+    inner += textoSvg(t,{x:96,y,k:capa?'display':'semi',cor,corDestaque:paleta.ac}); blocos.push({nome:'conteudo',...resumo(t)});
+    if (s.fonte_linha) {
+      const f=ajustar({texto:s.fonte_linha,k:'semi',larg:LARG,alt:76,max:24,min:20,entrelinha:1.3,papel:'fonte_linha'});
+      inner+=textoSvg(f,{x:96,y:1160,k:'semi',cor}); blocos.push({nome:'fonte',...resumo(f)});
+    }
+    inner += rotuloSvg(usaFoto?'Imagem ilustrativa · deslize →':capa?'Deslize para entender →':`Continue →`,{x:96,y:1280,tam:20,cor,espaco:1});
+  }
+  const overlay=Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${base?'':`<rect width="${W}" height="${H}" fill="${paleta.bg}"/>`}${inner}</svg>`);
+  const png=base?await sharp(base).composite([{input:overlay}]).png().toBuffer():await sharp(overlay).png().toBuffer();
+  return {png,metrics:resumirMetricas(blocos,s.layout,['experimento_'+estilo,...(usaFoto?['foto_ilustrativa_licenciada']:[])])};
+}
+
 // ── Entrada principal ──────────────────────────────────────────────────────
 // slide: { layout, funcao, titulo?, texto, rotulo?, dados?, fonte_linha? }
 // opcoes: { indice, total, imagem (Buffer), arquivoEncerramento (Buffer) }
@@ -288,6 +325,8 @@ async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, ar
     const png = await sharp(arquivoEncerramento).resize(W, H, { fit: igual ? 'fill' : 'cover' }).png().toBuffer();
     return { png, metrics: { cabe: true, fonte_px: null, blocos: [], layout, elementos: ['arquivo_aprovado', ...(igual ? [] : ['arquivo_aprovado_redimensionado'])], arquivo: { largura: meta.width, altura: meta.height } } };
   }
+
+  if (['foto_editorial','impacto','revista'].includes(slide.estilo)) return renderExperimental(slide,ctx,imagem);
 
   let r;
   if (layout === 'capa_foto') {

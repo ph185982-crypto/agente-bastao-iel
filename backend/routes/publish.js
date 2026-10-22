@@ -78,6 +78,18 @@ router.get('/cron', async (req, res) => {
 });
 
 // ── Mídia pública para a Meta ───────────────────────────────────────────────
+publico.get('/video/:token.mp4',async(req,res)=>{
+  try{
+    const info=require('../lib/meta').verificarMidia(req.params.token);if(!info)return res.status(403).end();
+    const reg=await armazem()?.conteudos.obter(ACCOUNT.ig_id,info.c);const c=reg?.doc;const v=c&&require('../../static/contentModel').versaoAtiva(c);
+    if(!v || v.hash!==info.h || c.motion?.hash!==info.h || c.motion?.estado!=='pronto')return res.status(409).end();
+    const arq=await armazem().arquivos.obter(ACCOUNT.ig_id,c.motion.blob_key);if(!arq)return res.status(404).end();
+    const bytes=Buffer.from(arq.dados);const range=req.headers.range;
+    res.set({'Content-Type':'video/mp4','Accept-Ranges':'bytes','Cache-Control':'private,no-store','X-Content-Type-Options':'nosniff'});
+    if(range){const m=/^bytes=(\d*)-(\d*)$/.exec(range);if(!m)return res.status(416).set('Content-Range',`bytes */${bytes.length}`).end();const start=m[1]?Number(m[1]):Math.max(0,bytes.length-Number(m[2]));const end=m[1]&&m[2]?Math.min(Number(m[2]),bytes.length-1):bytes.length-1;if(start>=bytes.length||start>end)return res.status(416).set('Content-Range',`bytes */${bytes.length}`).end();return res.status(206).set({'Content-Range':`bytes ${start}-${end}/${bytes.length}`,'Content-Length':String(end-start+1)}).end(bytes.subarray(start,end+1));}
+    res.set('Content-Length',String(bytes.length)).end(bytes);
+  }catch(e){falha(res,e);}
+});
 publico.get('/midia/:token.jpg', limita({ max: 120, janelaMs: 60000, nome: 'midia-publica' }), async (req, res) => {
   try {
     const jpg = await P.renderizarMidia(req.params.token);

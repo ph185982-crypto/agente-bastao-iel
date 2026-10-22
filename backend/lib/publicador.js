@@ -91,6 +91,11 @@ async function carregarAprovado(id, hashInformado) {
 async function conferirMidias(c, v, cfg) {
   const a = armazem();
   const avisos = [];
+  if (c.formato === 'reels') {
+    if (c.motion?.sandbox) throw new ErroPub('VIDEO_TESTE', 'Este vídeo é uma prévia de teste. Gere a versão final para publicar.',409);
+    if(c.motion?.estado !== 'pronto' || c.motion.hash !== v.hash || !/^https:\/\//.test(c.motion.url || '')) throw new ErroPub('VIDEO_PENDENTE','O vídeo desta versão ainda não está pronto.',409);
+    return {slides:[],avisos};
+  }
   let slides = v.slides;
   if (slides.length > LIMITE_CARROSSEL) {
     slides = slides.slice(0, LIMITE_CARROSSEL);
@@ -101,7 +106,7 @@ async function conferirMidias(c, v, cfg) {
       throw new ErroPub('FOTO_AUSENTE', 'A foto de um slide não está no servidor. Envie a foto de novo (com a cópia no servidor ligada).', 409);
     }
   }
-  const temEnc = slides.some((s) => s.layout === 'encerramento');
+  const temEnc = slides.some((s) => s.layout === 'encerramento' && !['foto_editorial','impacto','revista'].includes(s.estilo));
   if (temEnc && !(await a.arquivos.obter(conta(), 'upload:encerramento')) && !cfg.permitir_encerramento_provisorio) {
     throw new ErroPub('ENCERRAMENTO_PROVISORIO', 'O encerramento aprovado ainda não foi enviado (Ajustes → Encerramento). Para publicar com o encerramento provisório de texto, permita isso em Ajustes.', 409);
   }
@@ -161,8 +166,13 @@ function urlMidia(base, id, hash, indice) {
   return `${base.replace(/\/$/, '')}/api/publico/midia/${meta.assinarMidia({ conteudo: id, hash, indice })}.jpg`;
 }
 
-async function criarContainers({ id, hash, slides, legenda, base }) {
+async function criarContainers({ id, hash, slides, legenda, base, c }) {
   const ig = meta.config().igId;
+  if(c?.formato === 'reels'){
+    if(c.motion.engine==='local')c.motion.url=`${base.replace(/\/$/,'')}/api/publico/video/${meta.assinarMidia({conteudo:id,hash,indice:0})}.mp4`;
+    const r=await meta.graph('POST',`${ig}/media`,{media_type:'REELS',video_url:c.motion.url,caption:legenda,share_to_feed:true});
+    return {tipo:'REELS',creation_id:r.id,filhos:[]};
+  }
   if (slides.length === 1) {
     const r = await meta.graph('POST', `${ig}/media`, { image_url: urlMidia(base, id, hash, 0), caption: legenda });
     return { tipo: 'IMAGE', creation_id: r.id, filhos: [] };
@@ -203,7 +213,7 @@ async function iniciar(id, { hash, base } = {}) {
   if (!pub) return resposta(await a.publicacoes.obter(conta(), id, REDE));  // outra chamada simultânea venceu
 
   try {
-    const cont = await criarContainers({ id, hash: v.hash, slides, legenda, base });
+    const cont = await criarContainers({ id, hash: v.hash, slides, legenda, base, c });
     const atual = await a.publicacoes.atualizar(conta(), id, REDE, ['iniciada'], 'aguardando_processamento', { creation_id: cont.creation_id, tipo: cont.tipo, filhos: cont.filhos, containers_em: new Date().toISOString() });
     return resposta(atual || await a.publicacoes.obter(conta(), id, REDE));
   } catch (e) {

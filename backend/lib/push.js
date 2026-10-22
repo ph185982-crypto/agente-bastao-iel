@@ -47,27 +47,31 @@ async function removerAssinatura(endpoint) {
 }
 
 // sender é injetável nos testes; em produção usa a biblioteca web-push.
-async function notificarLote(n, { sender } = {}) {
+async function notificar({ corpo, n = 0, url = '/?tab=central', tag = 'studio' }, { sender, endpoint } = {}) {
   if (!configurado()) return { enviadas: 0, motivo: 'VAPID não configurado' };
   const envio = sender || (() => {
     const wp = require('web-push');
     wp.setVapidDetails(process.env.VAPID_SUBJECT || (process.env.PUBLIC_BASE_URL ? process.env.PUBLIC_BASE_URL : 'mailto:contato@exemplo.invalid'), process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
     return (sub, payload) => wp.sendNotification(sub, payload, { TTL: 6 * 3600 });
   })();
-  const quantos = Math.max(1, Math.min(99, Number(n) || 1));
   const payload = JSON.stringify({
     titulo: 'Pedro Destrava',
-    corpo: quantos === 1 ? '1 conteúdo novo para aprovar' : `${quantos} conteúdos novos para aprovar`,
-    url: '/?tab=central', n: quantos, tag: 'lote-aprovacao',
+    corpo: String(corpo).slice(0,180),
+    url: url.startsWith('/?') ? url : '/?tab=central', n: Math.max(0, Math.min(99, Number(n) || 0)), tag,
   });
-  const subs = await lista();
-  let enviadas = 0; const mortas = [];
+  const todas = await lista(); const subs = endpoint ? todas.filter(s => s.endpoint === endpoint) : todas;
+  let enviadas = 0; let falhas = 0; const mortas = [];
   for (const s of subs) {
     try { await envio(s, payload); enviadas += 1; }
-    catch (e) { if ([404, 410].includes(e.statusCode)) mortas.push(s.endpoint); }
+    catch (e) { falhas += 1; if ([404, 410].includes(e.statusCode)) mortas.push(s.endpoint); }
   }
-  if (mortas.length) { const a = armazem(); await a.config.salvar(conta(), { push_subs: subs.filter((s) => !mortas.includes(s.endpoint)) }); }
-  return { enviadas, removidas: mortas.length };
+  if (mortas.length) { const a = armazem(); await a.config.salvar(conta(), { push_subs: todas.filter((s) => !mortas.includes(s.endpoint)) }); }
+  return { enviadas, removidas: mortas.length, ...(falhas ? { falhas } : {}) };
 }
 
-module.exports = { configurado, chavePublica, salvarAssinatura, removerAssinatura, notificarLote, assinaturaValida, lista };
+async function notificarLote(n, opcoes = {}) {
+  const quantos = Math.max(1, Math.min(99, Number(n) || 1));
+  return notificar({ corpo: quantos === 1 ? '1 conteúdo novo para aprovar' : `${quantos} conteúdos novos para aprovar`, n: quantos, tag: 'lote-aprovacao' }, opcoes);
+}
+
+module.exports = { configurado, chavePublica, salvarAssinatura, removerAssinatura, notificarLote, notificar, assinaturaValida, lista };

@@ -61,6 +61,13 @@
   }
 
   // Traz do servidor o que não existe aqui ou o que mudou lá sem mudar aqui.
+  async function adotar(reg) {
+    if(!reg?.doc || (await sha256Doc(reg.doc))!==reg.hash)throw new Error('A cópia recebida não confere. Atualize para tentar novamente.');
+    const local=await S.obter(reg.doc.id);const m=await meta(reg.doc.id);
+    if(local && m?.hash && (await sha256Doc(local))!==m.hash && (await sha256Doc(local))!==reg.hash)throw new Error('Há alterações locais neste conteúdo. Sincronize antes de continuar.');
+    if(local)await S.snapshot(local,'antes de receber decisão do servidor');
+    await S.salvarExato(reg.doc);await gravaMeta(reg.doc.id,{rev:reg.rev,hash:reg.hash,em:new Date().toISOString(),conferido:true,origem:'servidor'});
+  }
   async function puxar() {
     const { conteudos } = await req('/api/sync/conteudos');
     const out = { novos: 0, atualizados: 0, conflitos: 0 };
@@ -115,6 +122,7 @@
     rodando = (async () => {
       const st = await status(true);
       if (!st.configurado) return { configurado: false };
+      await puxar();
       const lista = await S.listar();
       const res = { configurado: true, enviados: 0, iguais: 0, conflitos: 0, erros: 0, nao_conferidos: 0 };
       for (const c of lista) {
@@ -147,5 +155,5 @@
     return r.blob();
   }
 
-  window.Sync = { status, enviar, puxar, sincronizarTudo, agendar, resolverConflito, meta, enviarArquivo, baixarArquivo, sha256Doc };
+  window.Sync = { status, enviar, puxar, adotar, sincronizarTudo, agendar, resolverConflito, meta, enviarArquivo, baixarArquivo, sha256Doc };
 })();

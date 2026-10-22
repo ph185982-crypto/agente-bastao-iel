@@ -9,8 +9,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
     await self.registration.showNotification(titulo, {
       body: d.corpo || 'Há conteúdo novo para aprovar',
-      icon: '/icon-192.png', badge: '/icon-192.png', tag: d.tag || 'lote-aprovacao', renotify: true,
-      data: { url: d.url || '/?tab=central' },
+      icon: '/app-icon-192.png', badge: '/app-icon-192.png', tag: d.tag || 'lote-aprovacao', renotify: true,
+      data: { url: typeof d.url === 'string' && d.url.startsWith('/?') ? d.url : '/?tab=central' },
     });
     if (self.navigator && 'setAppBadge' in self.navigator && d.n) { try { await self.navigator.setAppBadge(d.n); } catch { /* sem suporte */ } }
   })());
