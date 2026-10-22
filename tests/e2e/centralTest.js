@@ -1,6 +1,6 @@
 // Central de aprovação + publicação no navegador. Servidor real da aplicação (Postgres), IA simulada
 // e META SIMULADA (servidorTeste.js com GRAPH_FALSA=1). Nada vai ao Instagram de verdade.
-const { chromium } = require('playwright');
+const { chromium } = require('./apoio');
 const fs = require('fs');
 const SP = process.env.SP || require('path').join(__dirname, 'out');
 const BASE = 'http://127.0.0.1:3995';

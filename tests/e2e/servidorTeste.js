@@ -1,13 +1,23 @@
 // Servidor REAL da aplicação com a IA SIMULADA (só para teste no navegador).
 // Uso: PORT=3995 [DATABASE_URL=...] node servidorTeste.js
-process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'chave-falsa-de-teste';
+if (process.env.VERCEL || process.env.NODE_ENV === 'production') throw new Error('Servidor simulado permitido apenas localmente.');
+require('./semRedeExterna');
+process.env.GROQ_API_KEY = 'chave-falsa-de-teste';
 const path = require('path');
 const RAIZ = require('path').join(__dirname, '..', '..');
 const llmJson = require(path.join(RAIZ, 'backend/lib/llmJson'));
+if (process.env.TESTE_MEMORIA === '1') {
+  const arm = require(path.join(RAIZ, 'backend/lib/armazem'));
+  arm._definir(arm.memoria());
+}
 const chamadas = {};
 const atraso = Number(process.env.ATRASO_MS || 2500);
 const TRECHO = 'O Senado aprovou nesta quinta-feira o projeto que eleva o teto de faturamento anual do microempreendedor individual para R$ 140 mil';
 llmJson.pedirJson = async ({ usuario }) => {
+  if (usuario.includes('TEXTOS DO POST:')) {
+    const textos = JSON.parse(usuario.split('TEXTOS DO POST: ')[1].split('\n\n')[0]);
+    return { llm: { provider: 'simulado', model: 'teste' }, dados: { slides: textos.map(s => ({ id: s.id, premissas: [] })) } };
+  }
   const tipo = /liste as afirmações FACTUAIS/.test(usuario) ? 'claims' : /BRIEFING editorial/.test(usuario) ? 'briefing' : /TRÊS CAPAS/.test(usuario) ? 'copy' : /AFIRMAÇÃO A VERIFICAR/.test(usuario) ? 'verify' : /AFIRMAÇÃO: /.test(usuario) ? 'conferir' : 'outro';
   chamadas[tipo] = (chamadas[tipo] || 0) + 1;
   await new Promise((r) => setTimeout(r, atraso));

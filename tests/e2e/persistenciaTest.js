@@ -1,6 +1,6 @@
 // Fechar a aba no meio de cada etapa + recuperação em outro navegador.
 // Servidor real da aplicação com IA SIMULADA (servidorTeste.js): 3995 com Postgres, 3997 sem banco.
-const { chromium } = require('playwright');
+const { chromium } = require('./apoio');
 const fs = require('fs');
 const SP = process.env.SP || require('path').join(__dirname, 'out'); // SP/vendor: react, react-dom, babel (offline)
 const falhas = []; const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m); if (!c) falhas.push(m); };

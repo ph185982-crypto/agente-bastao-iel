@@ -21,6 +21,8 @@ async function abrirStream(url, { timeout = 60000, headers = {}, maxRedirects = 
       timeout,
       headers,
       maxRedirects: 0,
+      // O DNS deve passar pelo lookup seguro abaixo, nunca pelo proxy do Axios.
+      proxy: false,
       validateStatus: (s) => s >= 200 && s < 400,
       httpAgent: new http.Agent({ lookup }),
       httpsAgent: new https.Agent({ lookup }),

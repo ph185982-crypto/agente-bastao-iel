@@ -176,8 +176,8 @@
       if (hashRender(a) !== hashRender(s)) efeito.arte.push(s.id);
       // Reabre a conferência quando o slide ganha número novo ou liga outra afirmação.
       // Tirar um número do texto não cria risco factual.
-      const nA = extrairNumeros(a.texto).map((n) => n.valor);
-      const novosNumeros = extrairNumeros(s.texto).map((n) => n.valor).filter((v) => !nA.some((x) => igual(x, v)));
+      const nA = extrairNumeros(textoParaAuditoria(a)).map((n) => n.valor);
+      const novosNumeros = extrairNumeros(textoParaAuditoria(s)).map((n) => n.valor).filter((v) => !nA.some((x) => igual(x, v)));
       const idsNovos = (s.claim_ids || []).filter((id) => !(a.claim_ids || []).includes(id));
       if (novosNumeros.length || idsNovos.length) {
         efeito.afirmacoes.push(...(s.claim_ids || []));

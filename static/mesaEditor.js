@@ -586,6 +586,7 @@
       <div class="es-between"><b>${i + 1}/${n} · ${esc(window.Editorial.FUNCOES_SLIDE[s.funcao] || s.funcao || '')}</b>${s.bloqueado ? '<span class="mz-chip ok">Bloqueado</span>' : ''}</div>
       ${thumb(c, v, s)}
       ${ultimo ? `<div class="es-text">${s.layout === 'encerramento' ? 'Encerramento: usa o arquivo aprovado enviado em Ajustes, sem refazer.' : ''}</div>` : ''}
+      ${!primeiro && !ultimo ? `<label class="es-label" for="titulo-${esc(s.id)}">Título (opcional)</label><input id="titulo-${esc(s.id)}" class="es-input" maxlength="120" data-ed-titulo="${esc(s.id)}" value="${esc(s.titulo || '')}" ${s.bloqueado ? 'disabled' : ''}>` : ''}
       <label class="es-label">Texto (use **palavra** para destacar)</label>
       <textarea class="es-input" rows="3" data-ed-texto="${esc(s.id)}" ${s.bloqueado ? 'disabled' : ''}>${esc(s.texto)}</textarea>
       <div class="es-row" style="gap:8px;flex-wrap:wrap">
@@ -615,6 +616,7 @@
       ${capas.length ? `<div class="es-card"><b>Escolha a capa</b><div class="es-text">Três jeitos diferentes de abrir, com a mesma base factual. Nenhuma foi escolhida por você ainda${v.capa_escolhida ? ' — escolhida: ' + esc(FOCO[(capas.find((x) => x.id === v.capa_escolhida) || {}).foco] || '') : ''}.</div>
         ${capas.map((k) => `<label class="ed-capa ${v.capa_escolhida === k.id ? 'sel' : ''}"><input type="radio" name="capa" data-ed-capa="${esc(k.id)}" ${v.capa_escolhida === k.id ? 'checked' : ''}><span><b>${esc(FOCO[k.foco] || k.foco)}</b><br>${esc(k.texto)}<br><small>${esc(k.explicacao)}</small></span></label>`).join('')}</div>` : ''}
       <div class="es-stack">${v.slides.map((s, i) => cartaoSlide(c, v, s, i)).join('')}</div>
+      <button class="es-btn ghost" data-action="ed-auditar" ${rodando[c.id] ? 'disabled' : ''}>Conferir fatos dos títulos, textos e legenda</button>
       <div class="es-label">Legenda</div>
       <textarea class="es-input" rows="7" data-ed-legenda="legenda">${esc(v.legenda)}</textarea>
       <div class="es-label">Chamada final</div>
@@ -892,6 +894,7 @@
         M.registrar(c, 'pedro', 'briefing', `Alterou ${d.edBrief} do briefing`); await x.persistir(c); x.render(); return;
       }
       if (d.edTexto) { const r = M.editarSlide(c, d.edTexto, { texto: el.value.trim() }); return aposEdicao(x, c, r.efeito); }
+      if (d.edTitulo) { const r = M.editarSlide(c, d.edTitulo, { titulo: el.value.trim() || null }); return aposEdicao(x, c, r.efeito); }
       if (d.edLayout) {
         const sl = M.versaoAtiva(c).slides.find((q) => q.id === d.edLayout);
         const patch = { layout: el.value };

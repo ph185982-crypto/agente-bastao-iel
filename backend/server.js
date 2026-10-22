@@ -64,11 +64,13 @@ app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
-// Redirect root to the frontend so visiting the Render URL doesn't show a blank error
+// O mesmo servidor entrega a interface e a API, inclusive na instalação local.
+// Um frontend separado só é usado quando foi configurado explicitamente.
 app.get('/', (req, res) => {
-  const frontend = process.env.FRONTEND_URL || 'https://nexos-paginas.netlify.app';
-  res.redirect(302, frontend);
+  if (process.env.FRONTEND_URL) return res.redirect(302, process.env.FRONTEND_URL);
+  res.sendFile(require('path').join(__dirname, '..', 'static', 'index.html'));
 });
+app.use(express.static(require('path').join(__dirname, '..', 'static')));
 
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {

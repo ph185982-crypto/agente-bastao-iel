@@ -1,7 +1,7 @@
 // Entrega B no navegador: fluxo link → fatos → briefing → texto → arte → revisão → exportação.
 // IA e leitura da matéria são simuladas aqui; arte, regras de revisão, persistência e
 // exportação são as reais. Backend em 3990 e staticProxy em 4800.
-const { chromium } = require('playwright');
+const { chromium } = require('./apoio');
 const fs = require('fs'); const { execSync } = require('child_process');
 const SP = process.env.SP || require('path').join(__dirname, 'out'); // SP/vendor: react, react-dom, babel (offline)
 const BASE = process.env.BASE || 'http://127.0.0.1:4800';

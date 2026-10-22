@@ -129,3 +129,18 @@ test('auditoria confere título e corpo e assina o texto completo', async () => 
   assert.notStrictEqual(r.auditoria[0].hash_texto, M.hash(slide.texto));
   assert.strictEqual(r.auditoria[0].premissas[0].claim_id, null);
 });
+
+test('auditoria parcial ou malformada não vira conferência concluída', async () => {
+  const { auditarOpinioes } = require('./redacao');
+  for (const dados of [null, {}, { slides: [] }, { slides: [{ id: 's1' }] }, { slides: [{ id: 's1', premissas: [] }, { id: 's1', premissas: [] }] }, { slides: [{ id: 's1', premissas: [] }, { id: 's1' }] }, { slides: [{ id: 's1', premissas: [null] }] }, { slides: [{ id: 's1', premissas: [{}] }] }]) {
+    const llm = { REGRAS_DADOS: '', pedirJson: async () => ({ dados, llm: { provider: 'teste' } }) };
+    await assert.rejects(() => auditarOpinioes({ slides: [{ id: 's1', titulo: 'Título factual', texto: 'Corpo' }], claims: [] }, { llmJson: llm }), e => e.code === 'AUDITORIA_INCOMPLETA');
+  }
+});
+
+test('correção encerra o temporizador quando termina, sem prender a função por 50 segundos', async t => {
+  const clear = t.mock.method(global, 'clearTimeout');
+  const d = copiaOk(); d.slides[1].texto = 'Teto de R$ 180 mil.';
+  await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias }, { llmJson: llmFalso([d, copiaOk()]) });
+  assert.ok(clear.mock.calls.some(c => c.arguments[0]), 'temporizador da correção foi cancelado');
+});

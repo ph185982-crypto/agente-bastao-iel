@@ -1,6 +1,6 @@
 // Geração em lote (app aberto), limite diário, escolha de capa na Central e notificação única.
 // Servidor real (Postgres), IA simulada; só discover e ingest (rede externa) são simulados no navegador.
-const { chromium } = require('playwright');
+const { chromium } = require('./apoio');
 const fs = require('fs');
 const SP = process.env.SP || require('path').join(__dirname, 'out');
 const BASE = 'http://127.0.0.1:3995';

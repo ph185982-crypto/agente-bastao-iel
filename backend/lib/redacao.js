@@ -235,15 +235,17 @@ Responda APENAS JSON:
   if ((falhas.length || m.problemas.length) && budget.usados < budget.max && tempoUsado > 24000) semTempo = true;
   if ((falhas.length || m.problemas.length) && budget.usados < budget.max && !semTempo) {
     const fb = [...falhas.map((b) => `- ${b.titulo}: ${b.detalhe}`), ...m.problemas.map((p) => `- ${p}`)].join('\n');
+    let prazo;
     try {
       const restante = 50000 - (Date.now() - t0);
-      const r2 = await Promise.race([pedir(fb), new Promise((_, no) => setTimeout(() => no(new Error('sem tempo para a correção')), Math.max(1000, restante)))]);
+      const r2 = await Promise.race([pedir(fb), new Promise((_, no) => { prazo = setTimeout(() => no(new Error('sem tempo para a correção')), Math.max(1000, restante)); })]);
       const m2 = montarVersao({ dados: r2.dados, claims, evidencias, formato });
       const prov2 = provisorio({ claims, evidencias, fonte, versao: m2.versao, opinioes: m2.opinioes });
       const f2 = fatosProblemas(prov2);
       tentativas = 2;
       if (f2.length + m2.problemas.length <= falhas.length + m.problemas.length) { r = r2; m = m2; prov = prov2; falhas = f2; }
     } catch (e) { /* mantém a primeira tentativa; os problemas continuam visíveis */ }
+    finally { clearTimeout(prazo); }
   }
   // Linha de fonte das provas e comparações: do registro, nunca da IA.
   m.versao.slides.forEach((s) => { if (['prova', 'comparacao'].includes(s.layout)) s.fonte_linha = M.linhaDeFonte(prov, s.claim_ids) || null; });
@@ -272,7 +274,15 @@ TEXTOS DO POST: ${JSON.stringify(ops.map((s) => ({ id: s.id, texto: String(s.tex
 Para cada texto, liste as afirmações de FATO (não as avaliações, perguntas ou convites) e, para cada uma, o id da afirmação conferida que a sustenta, ou null se nenhuma sustenta.
 Responda APENAS JSON: {"slides":[{"id":"s4","premissas":[{"texto":"","claim_id":null}]}]}`,
   });
-  const auditoria = (dados.slides || []).filter((x) => ops.some((s) => s.id === x.id)).map((x) => {
+  const recebidos = Array.isArray(dados?.slides) ? dados.slides : [];
+  if (ops.some((s) => {
+    const itens = recebidos.filter((x) => x && x.id === s.id);
+    return itens.length !== 1 || !Array.isArray(itens[0].premissas)
+      || itens[0].premissas.some((p) => !p || typeof p.texto !== 'string' || !p.texto.trim());
+  })) {
+    throw Object.assign(new Error('A conferência não cobriu todos os textos. Confira de novo antes de aprovar.'), { code: 'AUDITORIA_INCOMPLETA' });
+  }
+  const auditoria = recebidos.filter((x) => x && ops.some((s) => s.id === x.id)).map((x) => {
     const s = ops.find((y) => y.id === x.id);
     return {
       slide_id: x.id, hash_texto: require('../../static/contentModel').hash(s.texto),

@@ -37,11 +37,15 @@ function ipProibido(ip) {
       || a >= 224;                                  // multicast e reservados
   }
   if (net.isIPv6(ip)) {
-    const v = ip.toLowerCase();
+    const v = new URL(`http://[${ip}]/`).hostname.slice(1, -1).toLowerCase();
     if (v === '::1' || v === '::') return true;
-    if (v.startsWith('fe80') || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('ff')) return true;
-    const m = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);   // IPv4 mapeado
-    if (m) return ipProibido(m[1]);
+    if (/^fe[89ab]/.test(v) || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('ff')) return true;
+    // URL normaliza IPv4 mapeado para hexadecimal (::ffff:a00:1).
+    const m = v.match(/^::ffff:([a-f0-9]+):([a-f0-9]+)$/);
+    if (m) {
+      const alto = parseInt(m[1], 16); const baixo = parseInt(m[2], 16);
+      return ipProibido([alto >> 8, alto & 255, baixo >> 8, baixo & 255].join('.'));
+    }
     return false;
   }
   return true;
@@ -97,6 +101,9 @@ function umaRequisicao(url, { timeoutMs, maxBytes, tipos, resolver, accept }) {
       method: 'GET',
       headers: { 'User-Agent': UA, Accept: accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8', 'Accept-Language': 'pt-BR,pt;q=0.9', 'Accept-Encoding': 'gzip, deflate' },
       lookup: lookupSeguro(resolver),
+      // Um agente próprio garante que a resolução segura não seja substituída
+      // pelo agente global (inclusive quando ele usa proxy de ambiente).
+      agent: new mod.Agent({ lookup: lookupSeguro(resolver) }),
       timeout: timeoutMs,
     }, (res) => {
       const status = res.statusCode;

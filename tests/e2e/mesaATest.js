@@ -1,7 +1,7 @@
 // Entrega A no navegador: migração da fila antiga, quarentena, backup, restauração,
 // persistência ao recarregar e tela de código. Rode com o backend na porta 3990
 // e o staticProxy na 4800 (APP_ACCESS_CODE só no teste de login).
-const { chromium } = require('playwright');
+const { chromium } = require('./apoio');
 const fs = require('fs');
 const SP = process.env.SP || require('path').join(__dirname, 'out'); // SP/vendor: react, react-dom, babel (offline)
 const BASE = process.env.BASE || 'http://127.0.0.1:4800';
