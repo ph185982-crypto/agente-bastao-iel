@@ -145,7 +145,7 @@
   async function auditarOpinioes(x, c, { so_pendentes = true } = {}) {
     const v = M.versaoAtiva(c);
     if (!v) return;
-    const unidades = [...v.slides.filter((s) => s.layout !== 'encerramento').map((s) => ({ id: s.id, texto: s.texto })), ...(v.legenda ? [{ id: 'legenda', texto: v.legenda }] : [])];
+    const unidades = [...v.slides.filter((s) => s.layout !== 'encerramento').map((s) => ({ id: s.id, texto: M.textoParaAuditoria(s) })), ...(v.legenda ? [{ id: 'legenda', texto: v.legenda }] : [])];
     const aud = c.auditoria_textos || {};
     const alvo = unidades.filter((u) => !so_pendentes || aud[u.id]?.hash_texto !== M.hash(u.texto));
     if (!alvo.length) return;
@@ -592,7 +592,7 @@
         <select class="es-input" style="width:auto" data-ed-layout="${esc(s.id)}" ${s.bloqueado ? 'disabled' : ''} aria-label="Layout">${layouts.map((l) => `<option value="${l}" ${l === s.layout ? 'selected' : ''}>${LAYOUTS[l]}</option>`).join('')}</select>
         ${s.layout === 'prova' ? `<span class="es-text">Fonte na arte: ${esc(s.fonte_linha || 'sem fonte ligada')}</span>` : ''}
       </div>
-      ${(() => { const a = (c.auditoria_textos || {})[s.id]; if (!a) return ''; const atual = a.hash_texto === M.hash(s.texto); return `<div class="mz-bloco"><b>Afirmações de fato neste slide${atual ? '' : ' (texto mudou: confira de novo)'}</b> <button class="es-btn ghost sm" style="width:auto" data-action="ed-auditar" ${rodando[c.id] ? 'disabled' : ''}>Conferir de novo</button>${a.premissas.map((p) => `<span>${p.claim_id ? '✓' : '✗'} ${esc(p.texto)}${p.claim_id ? ` — sustentado por ${esc(p.claim_id)}` : ' — <b>sem fonte</b>'}</span>`).join('') || '<span>Nenhuma afirmação de fato: só avaliação.</span>'}</div>`; })()}
+      ${(() => { const a = (c.auditoria_textos || {})[s.id]; if (!a) return ''; const atual = a.hash_texto === M.hash(M.textoParaAuditoria(s)); return `<div class="mz-bloco"><b>Afirmações de fato neste slide${atual ? '' : ' (texto mudou: confira de novo)'}</b> <button class="es-btn ghost sm" style="width:auto" data-action="ed-auditar" ${rodando[c.id] ? 'disabled' : ''}>Conferir de novo</button>${a.premissas.map((p) => `<span>${p.claim_id ? '✓' : '✗'} ${esc(p.texto)}${p.claim_id ? ` — sustentado por ${esc(p.claim_id)}` : ' — <b>sem fonte</b>'}</span>`).join('') || '<span>Nenhuma afirmação de fato: só avaliação.</span>'}</div>`; })()}
       ${claims.length ? `<div class="es-text">Baseado em: ${claims.map((k) => `<span class="mz-chip ${(ESTADO_CLAIM[k.estado] || ESTADO_CLAIM.nao_verificada)[0]}" title="${esc(k.texto)}">${esc(k.texto.slice(0, 38))}${k.texto.length > 38 ? '…' : ''}</span>`).join(' ')}</div>` : '<div class="es-text">Sem número ou fato novo neste slide.</div>'}
       <div class="es-actions" style="flex-wrap:wrap">
         ${!primeiro && !ultimo ? `<button class="es-btn ghost sm" data-action="ed-mover" data-id="${esc(s.id)}" data-d="-1" ${i <= 1 ? 'disabled' : ''} aria-label="Subir">↑</button><button class="es-btn ghost sm" data-action="ed-mover" data-id="${esc(s.id)}" data-d="1" ${i >= (v.slides[n - 1].layout === 'encerramento' ? n - 2 : n - 1) ? 'disabled' : ''} aria-label="Descer">↓</button>` : ''}

@@ -91,7 +91,7 @@
         textos.filter((t) => t.tipo === 'slide' && (t.claim_ids || []).includes(cl.id)).forEach((t) => {
           const s = (v.slides || []).find((x) => x.id === t.onde.slide);
           const a = (c.auditoria_textos || c.auditoria_opinioes || {})[s.id];
-          if (!a || a.hash_texto !== M.hash(s.texto)) { out.push(bloqueio('opiniao_nao_auditada', 'fatos', 'Opinião ainda não conferida', `O slide ${t.onde.indice} é opinião e ainda não teve as premissas factuais separadas e conferidas${a ? ' (o texto mudou depois da conferência)' : ''}.`, t.onde, 'Conferir a opinião')); return; }
+          if (!a || a.hash_texto !== M.hash(M.textoParaAuditoria(s))) { out.push(bloqueio('opiniao_nao_auditada', 'fatos', 'Opinião ainda não conferida', `O slide ${t.onde.indice} é opinião e ainda não teve as premissas factuais separadas e conferidas${a ? ' (o texto mudou depois da conferência)' : ''}.`, t.onde, 'Conferir a opinião')); return; }
           a.premissas.filter((p) => !p.claim_id).forEach((p) => out.push(bloqueio('premissa_sem_fonte', 'fatos', 'Fato dentro da opinião sem fonte', `No slide ${t.onde.indice}, “${p.texto}” é apresentado como fato e nenhuma afirmação conferida sustenta isso. Tire, transforme em pergunta ou traga uma fonte.`, t.onde, 'Reescrever ou buscar fonte')));
           a.premissas.filter((p) => p.claim_id).forEach((p) => { const q = c.claims.find((x) => x.id === p.claim_id); if (q && q.estado !== 'sustentada' && q.decisao?.tipo !== 'atribuir') out.push(bloqueio('premissa_pendente', 'fatos', 'Opinião apoiada em fato ainda pendente', `“${p.texto}” depende de “${q.texto}”, que está ${rotuloEstado(q.estado)}.`, t.onde, 'Decidir sobre a premissa')); });
         });
@@ -134,8 +134,11 @@
       const ehOpiniao = (t.claim_ids || []).some((id) => { const k = c.claims.find((q) => q.id === id); return k && (k.tipo === 'opiniao' || k.natureza === 'opiniao'); });
       if (ehOpiniao || (s && s.layout === 'encerramento')) return;
       const a = aud[chave];
-      const textoAtual = t.tipo === 'legenda' ? v.legenda : s.texto;
-      if (!a || a.hash_texto !== M.hash(textoAtual)) return; // sem auditoria atual: vira sugestão abaixo
+      const textoAtual = t.tipo === 'legenda' ? v.legenda : M.textoParaAuditoria(s);
+      if (!a || a.hash_texto !== M.hash(textoAtual)) {
+        if (s?.titulo) out.push(bloqueio('titulo_nao_auditado', 'fatos', 'Título ainda não conferido', `O título e o texto do slide ${t.onde.indice} precisam ser conferidos juntos.`, t.onde, 'Conferir o slide'));
+        return;
+      }
       a.premissas.filter((p) => !p.claim_id).forEach((p) => out.push(bloqueio('fato_sem_fonte', 'fatos', 'Afirmação de fato sem fonte', `${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} diz “${p.texto}”, e nenhuma afirmação conferida sustenta isso.`, t.onde, 'Corrigir, tirar ou trazer fonte')));
     });
 
@@ -271,7 +274,7 @@
       const chave = t.tipo === 'legenda' ? 'legenda' : t.onde.slide;
       const s = t.tipo === 'legenda' ? null : (v.slides || []).find((x) => x.id === chave);
       if (s && s.layout === 'encerramento') return;
-      const atual = t.tipo === 'legenda' ? v.legenda : s?.texto;
+      const atual = t.tipo === 'legenda' ? v.legenda : M.textoParaAuditoria(s);
       if (!atual) return;
       if (!aud[chave] || aud[chave].hash_texto !== M.hash(atual)) out.push(sugestao('texto_nao_auditado', 'fatos', 'Texto ainda não conferido', `${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} ainda não teve as afirmações de fato conferidas contra as fontes.`, t.onde));
     });

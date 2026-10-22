@@ -257,7 +257,8 @@ Responda APENAS JSON:
 // só aceita ids que existem. Fato sem afirmação vira bloqueio.
 async function auditarOpinioes({ slides, claims }, d0) {
   const d = deps(d0);
-  const ops = (slides || []).filter((s) => s && s.id && s.texto).slice(0, 12);
+  const ops = (slides || []).filter((s) => s && s.id && (s.texto || s.titulo)).slice(0, 12)
+    .map((s) => ({ ...s, texto: M.textoParaAuditoria(s) }));
   if (!ops.length) return { auditoria: [] };
   const ids = new Set(claims.map((c) => c.id));
   const lista = claims.filter((c) => c.tipo !== 'opiniao' && c.decisao?.tipo !== 'retirar').map((c) => ({ id: c.id, texto: c.texto, estado: c.estado }));

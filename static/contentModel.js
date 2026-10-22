@@ -33,6 +33,12 @@
     if (v && typeof v === 'object') return `{${Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonico(v[k])}`).join(',')}}`;
     return JSON.stringify(v);
   }
+  // Sem título, mantém compatibilidade com auditorias anteriores.
+  function textoParaAuditoria(slide) {
+    const texto = String(slide?.texto || '');
+    return slide?.titulo ? `${slide.titulo}. ${texto}` : texto;
+  }
+
   function hash(v) {
     const s = canonico(v);
     let h1 = 0xdeadbeef; let h2 = 0x41c6ce57;
@@ -486,7 +492,7 @@
 
   return {
     SCHEMA, ACCOUNT_PIN, HANDLES_ERRADOS, STATUS, ETAPAS, ESTADOS_CLAIM,
-    hash, hashRender, linhaDeFonte, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
+    textoParaAuditoria, hash, hashRender, linhaDeFonte, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
     novoConteudo, criarVersao, versaoAtiva, conteudoDaVersao, efeitoDaEdicao,
     editarSlide, editarLegenda, reordenarSlides, escolherCapa, alternarBloqueio, desfazer, ativarVersao,
     avaliarAfirmacao, decidirAfirmacao, DECISOES, naturezaDe, NATUREZAS, EXIGE_ATRIBUICAO, valoresPermitidos, migrarItemLegado, aprovar, registrarExportacao, registrarPublicacao,
