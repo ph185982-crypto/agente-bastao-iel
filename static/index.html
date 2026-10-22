@@ -1,8 +1,12 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pedro Destrava · Estúdio de conteúdo</title>
+<link rel="stylesheet" href="./esteira.css">
+<link rel="stylesheet" href="./mesa.css">
+<link rel="stylesheet" href="./interface.css">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./icon-180.png">
 <meta name="theme-color" content="#0A1B33">
@@ -40,7 +44,7 @@
 </helmet>
 
 <!-- Main Container -->
-<div style="width: 100%; max-width: 430px; margin: 0 auto; height: 100vh; background: #F2F2F7; display: flex; flex-direction: column; position: relative; overflow: hidden">
+<div id="pico-legacy-app" style="width: 100%; max-width: 430px; margin: 0 auto; height: 100vh; background: #F2F2F7; display: flex; flex-direction: column; position: relative; overflow: hidden">
 
   <!-- Header -->
   <div id="pico-old-header" style="background: #FFFFFF; padding: 8px 20px 16px; border-bottom: 0.5px solid rgba(0,0,0,0.08)">
@@ -2393,8 +2397,6 @@ class Component extends DCLogic {
   }
 }
 </script>
-<link rel="stylesheet" href="./esteira.css">
-<link rel="stylesheet" href="./mesa.css">
 <div id="esteira"></div>
 <script src="./esteiraCore.js"></script>
 <script src="./editorial.js"></script>

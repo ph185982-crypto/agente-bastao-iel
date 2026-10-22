@@ -31,6 +31,8 @@
     contents: [],
     atual: null,               // id do conteúdo aberto
     filtro: 'todos',
+    busca: '',
+    ordem: 'recentes',
     config: { pilares: E.PILARES_PADRAO, weekly_goal: 5, posting_days: [1, 2, 3, 4, 5], hidden_modules: ['videoIA'], video_template: 'viral', voice_profile: E.VOICE_PROFILE_PADRAO, daily_generation_cap: 10 },
     conta: { esperado: null, confirmada: false, perfil: null, erro: null, carregando: false },
     insights: null,
@@ -210,37 +212,44 @@
   }
 
   function telaMesa() {
-    const emAndamento = state.contents.filter((c) => !['publicado', 'arquivado'].includes(c.status));
-    const filtros = [['todos', 'Todos'], ['andamento', 'Em andamento'], ['aprovado', 'Aprovados'], ['publicado', 'Publicados'], ['legado', 'Fila anterior']];
+    const ativos = state.contents.filter((c) => c.status !== 'arquivado');
+    const filtros = [['todos', 'Todos'], ['andamento', 'Em andamento'], ['aprovado', 'Aprovados'], ['publicado', 'Publicados'], ['arquivado', 'Arquivados'], ['legado', 'Fila anterior']];
+    return `
+      <section class="studio-welcome">
+        <div><div class="studio-eyebrow">Seu estúdio de conteúdo</div><h1 class="es-h1">Boas ideias merecem<br>ganhar o mundo.</h1>
+        <p>Da primeira pauta ao próximo post.<br>Crie, revise e publique com a sua voz.</p></div>
+        <div class="studio-flow" aria-label="Seu fluxo de trabalho"><span><i>01</i> Encontre a ideia</span><span><i>02</i> Dê a sua voz</span><span><i>03</i> Revise e publique</span></div>
+      </section>
+      <div class="studio-entries">
+        <button class="mz-entry" data-action="entrada" data-e="link"><i class="studio-entry-icon">${ICON.criar}</i><div><b>Quero falar sobre isso</b><span>Comece com um link ou texto e transforme a informação em conteúdo.</span></div><i class="studio-arrow" aria-hidden="true">↗</i></button>
+        <button class="mz-entry secondary" data-action="entrada" data-e="descobrir"><i class="studio-entry-icon">${ICON.mesa}</i><div><b>Encontre uma pauta</b><span>Descubra assuntos recentes, com fontes e conexão com o seu perfil.</span></div><i class="studio-arrow" aria-hidden="true">↗</i></button>
+      </div>
+      <div class="studio-stats" aria-label="Resumo dos conteúdos">
+        ${[['andamento', 'Em andamento', ativos.filter(c => ['rascunho', 'em_revisao'].includes(c.status) && !c.legado).length], ['aprovado', 'Aprovados', ativos.filter(c => ['aprovado', 'exportado'].includes(c.status)).length], ['publicado', 'Publicados', ativos.filter(c => c.status === 'publicado').length]].map(([k,l,n]) => `<button data-action="resumo" data-f="${k}"><span class="studio-stat-dot ${k}"></span><span>${l}</span><b>${n}</b><i aria-hidden="true">↗</i></button>`).join('')}
+      </div>
+      <section class="studio-library" aria-labelledby="library-title">
+        <div class="studio-section-head"><div><h2 id="library-title">Sua biblioteca</h2><p>Continue de onde parou. Cada ideia tem seu lugar.</p></div><span class="studio-total">${ativos.length} conteúdo${ativos.length === 1 ? '' : 's'}</span></div>
+        <div class="studio-library-tools"><label class="studio-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="library-search" type="search" value="${esc(state.busca)}" placeholder="Buscar por título ou assunto" aria-label="Buscar na biblioteca" autocomplete="off"></label><label class="studio-sort"><span class="sr-only">Ordenar conteúdos</span><select id="library-sort"><option value="recentes" ${state.ordem === 'recentes' ? 'selected' : ''}>Mais recentes</option><option value="antigos" ${state.ordem === 'antigos' ? 'selected' : ''}>Mais antigos</option><option value="titulo" ${state.ordem === 'titulo' ? 'selected' : ''}>Título: A–Z</option></select></label></div>
+        <div class="mz-filtros" role="group" aria-label="Filtrar conteúdos">${filtros.map(([k,l]) => `<button class="es-chip ${state.filtro === k ? 'score' : 'pillar'}" data-action="filtro" data-f="${k}" aria-pressed="${state.filtro === k}">${l}</button>`).join('')}</div>
+        <div id="library-results">${resultadosBiblioteca()}</div>
+      </section>
+      ${state.migracao?.quarentena?.length ? `<div class="es-warn" style="margin-top:14px">Isolei ${state.migracao.quarentena.length} dado(s) sem origem de conta confirmada. Você pode consultá-los em Ajustes › Dados isolados.</div>` : ''}`;
+  }
+
+  function resultadosBiblioteca() {
+    const normalizar = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR');
+    const busca = normalizar(state.busca.trim());
     const lista = state.contents.filter((c) => {
+      if (busca && !normalizar(`${c.titulo || ''} ${c.origem?.pauta?.pilar || ''}`).includes(busca)) return false;
+      if (state.filtro === 'arquivado') return c.status === 'arquivado';
       if (c.status === 'arquivado' && state.filtro !== 'arquivado') return false;
       if (state.filtro === 'andamento') return ['rascunho', 'em_revisao'].includes(c.status) && !c.legado;
       if (state.filtro === 'aprovado') return ['aprovado', 'exportado'].includes(c.status);
       if (state.filtro === 'publicado') return c.status === 'publicado';
       if (state.filtro === 'legado') return !!c.legado;
       return true;
-    });
-    return `
-      <div class="mz-top">${chipConta()}${chipArmazenamento()}</div>
-      <div class="es-h1">O que vamos fazer hoje?</div>
-      <div class="es-sub">Os três caminhos levam ao mesmo editor.</div>
-      <div class="es-stack">
-        <button class="mz-entry" data-action="entrada" data-e="descobrir">
-          <b>Encontre uma pauta</b><span>Assuntos recentes dos veículos, com fonte e o porquê de interessar ao perfil.</span>
-        </button>
-        <button class="mz-entry" data-action="entrada" data-e="link">
-          <b>Quero falar sobre isso</b><span>Cole um link ou um texto. A ferramenta lê, separa o que precisa de confirmação e pesquisa.</span>
-        </button>
-        <button class="mz-entry off" data-action="entrada" data-e="ideia" aria-disabled="true">
-          <b>Transforme minha ideia</b><span>Texto ou áudio seu, com a sua opinião preservada. Chega na próxima etapa de entregas.</span>
-        </button>
-      </div>
-      ${emAndamento.length ? '' : '<div class="es-empty-day" style="margin-top:18px">Nenhum conteúdo ainda. Comece por um dos caminhos acima.</div>'}
-      <div class="es-label">Biblioteca</div>
-      <div class="mz-filtros">${filtros.map(([k, l]) => `<button class="es-chip ${state.filtro === k ? 'score' : 'pillar'}" style="height:36px;padding:0 14px;border:0;cursor:pointer" data-action="filtro" data-f="${k}">${l}</button>`).join('')}</div>
-      <div class="es-stack" style="margin-top:12px">${lista.map(cardConteudo).join('') || '<div class="es-empty-day">Nada nesta lista.</div>'}</div>
-      ${state.migracao?.quarentena?.length ? `<div class="es-warn" style="margin-top:14px">Isolei ${state.migracao.quarentena.length} dado(s) guardado(s) neste aparelho sem origem de conta confirmada (leitura do Instagram e pautas antigas). Estão em Ajustes › Dados isolados, não foram apagados.</div>` : ''}
-    `;
+    }).sort((a,b) => state.ordem === 'titulo' ? (a.titulo || '').localeCompare(b.titulo || '', 'pt-BR') : state.ordem === 'antigos' ? (a.updated_at || '').localeCompare(b.updated_at || '') : (b.updated_at || '').localeCompare(a.updated_at || ''));
+    return `<p class="studio-result-count" role="status">${lista.length} conteúdo${lista.length === 1 ? '' : 's'} nesta seleção</p><div class="studio-content-grid">${lista.map(cardConteudo).join('') || `<div class="studio-empty"><div class="studio-empty-icon">${ICON.mesa}</div><h3>${state.busca || state.filtro !== 'todos' ? 'Nenhum conteúdo encontrado' : 'Sua próxima ideia começa aqui'}</h3><p>${state.busca || state.filtro !== 'todos' ? 'Experimente outra busca ou veja todos os conteúdos.' : 'Cole um link ou texto para criar o primeiro conteúdo da sua biblioteca.'}</p><button class="es-btn sm" style="width:auto" data-action="${state.busca || state.filtro !== 'todos' ? 'limpar-filtros' : 'entrada'}" data-e="link">${state.busca || state.filtro !== 'todos' ? 'Limpar busca e filtros' : 'Criar primeiro conteúdo'}</button></div>`}</div>`;
   }
 
   function cardPauta(p) {
@@ -343,7 +352,7 @@
     const p = c.perfil;
     return `<div class="es-card">
       <div class="es-title" style="margin-top:0">Conta</div>
-      <div class="es-text">Fixa no código: <b>${esc(M.ACCOUNT_PIN.handle)}</b> (id ${esc(M.ACCOUNT_PIN.ig_id)}). O ambiente do servidor não consegue trocar isso.</div>
+      <div class="es-text">Perfil de publicação: <b>${esc(M.ACCOUNT_PIN.handle)}</b>. Os conteúdos deste estúdio pertencem a esta conta.</div>
       ${c.ambiente ? `<div class="es-warn">Servidor: ${esc(c.ambiente)}</div>` : ''}
       ${p ? `<div class="es-text" style="margin-top:6px">Confirmada na API em ${esc(fmtData(p.checked_at))}: ${esc(p.username)}, ${Number(p.seguidores).toLocaleString('pt-BR')} seguidores, ${p.verified ? 'verificada' : 'não verificada (por isso nenhuma arte mostra selo)'}.</div>` : ''}
       ${c.erro ? `<div class="es-errbox">${esc(c.erro)}</div>` : ''}
@@ -484,9 +493,24 @@
   const escondido = (m) => { const x = CRIAR.find((k) => k.id === m); return x?.flag && state.config.hidden_modules.includes(x.flag); };
   const trocarAntigo = (tab) => { if (window.__picoSwitchTab) window.__picoSwitchTab(tab); else setTimeout(() => trocarAntigo(tab), 200); };
 
+  let ultimaTela = '';
+  const scrollDasTelas = new Map();
+  function estadoSalvamento() {
+    if (!S.ok || !state.storage.ok) return ['err', 'Verificar salvamento'];
+    if (state.sincronizando) return ['loading', 'Sincronizando…'];
+    if (!state.servidor) return ['loading', 'Verificando conexão…'];
+    if (!state.servidor.configurado) return ['warn', 'Salvo neste navegador'];
+    if (state.contents.some(c => state.syncMeta[c.id]?.conflito || (state.syncMeta[c.id]?.erro && !state.syncMeta[c.id]?.conferido))) return ['warn', 'Revisar sincronização'];
+    return ['ok', 'Conectado ao servidor'];
+  }
+
   function render() {
     if (!state.pronto) { root.innerHTML = '<main class="es-main"><div class="es-empty-day">Abrindo seu trabalho…</div></main>'; return; }
     const scroll = root.querySelector('.es-main')?.scrollTop || 0;
+    if (ultimaTela) scrollDasTelas.set(ultimaTela, scroll);
+    const tela = `${state.tab}:${state.sub || ''}:${state.atual || ''}`;
+    const mudouTela = tela !== ultimaTela;
+    document.body.dataset.studioTab = state.tab;
     // Quem está digitando não perde o texto quando uma resposta do servidor redesenha a tela.
     const foco = document.activeElement && root.contains(document.activeElement) && document.activeElement.id && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName) && document.activeElement.type !== 'file'
       ? { id: document.activeElement.id, valor: document.activeElement.value, ini: document.activeElement.selectionStart, fim: document.activeElement.selectionEnd } : null;
@@ -497,12 +521,19 @@
     else if (state.tab === 'ajustes') corpo = telaAjustes();
     const nCentral = window.MesaCentral ? window.MesaCentral.badge() : 0;
     const tabs = [['mesa', 'Mesa'], ['central', 'Central'], ['criar', 'Criar'], ['ajustes', 'Ajustes']];
+    const [saveClass, saveText] = estadoSalvamento();
     root.innerHTML = `
+      <a class="studio-skip" href="#studio-main">Ir para o conteúdo</a>
+      <div class="studio-brand"><span class="studio-monogram" aria-hidden="true">↗</span><div><b>PEDRO DESTRAVA</b><span>Estúdio de conteúdo</span></div></div>
+      <header class="studio-header"><div class="studio-breadcrumb">Meu estúdio <span>/</span> <b>${tabs.find(t => t[0] === state.tab)?.[1] || 'Mesa'}</b></div><button class="studio-save ${saveClass}" data-action="tab" data-tab="ajustes" aria-label="${saveText}. Ver ajustes de armazenamento"><i aria-hidden="true"></i><span>${saveText}</span></button><span class="studio-avatar" title="${esc(M.ACCOUNT_PIN.handle)}">PD</span></header>
       <div class="es-top" ${state.tab === 'criar' ? '' : 'hidden'}>${CRIAR.filter((m) => !escondido(m.id)).map((m) => `<button data-action="criar" data-m="${m.id}" aria-pressed="${state.criarModulo === m.id}">${m.label}</button>`).join('')}</div>
-      <main class="es-main" ${state.tab === 'criar' ? 'hidden' : ''}>${corpo}</main>
+      <main id="studio-main" class="es-main" tabindex="-1" ${state.tab === 'criar' ? 'hidden' : ''}><div class="studio-page ${state.tab === 'mesa' && !state.sub ? 'studio-home' : ''}">${corpo}</div></main>
       <div class="es-toast-slot">${state.toast ? `<div class="es-toast" role="status">${esc(state.toast)}</div>` : ''}</div>
       <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span>${id === 'central' && nCentral ? `<i class="es-badge" aria-label="${nCentral} para aprovar">${nCentral}</i>` : ''}</button>`).join('')}</nav>`;
-    const m = root.querySelector('.es-main'); if (m) m.scrollTop = scroll;
+    root.insertAdjacentHTML('beforeend', `<div class="studio-rail-footer"><span class="studio-avatar">PD</span><div><b>Pedro Destrava</b><span>${esc(M.ACCOUNT_PIN.handle)}</span></div></div>`);
+    const m = root.querySelector('.es-main');
+    if (m) { m.scrollTop = mudouTela ? (scrollDasTelas.get(tela) || 0) : scroll; if (mudouTela && !m.hidden) m.focus({ preventScroll: true }); }
+    ultimaTela = tela;
     if (foco) {
       const el = root.querySelector(`#${CSS.escape(foco.id)}`);
       if (el) { el.value = foco.valor; try { el.focus({ preventScroll: true }); el.setSelectionRange(foco.ini, foco.fim); } catch { /* sem seleção */ } }
@@ -537,6 +568,8 @@
         case 'voltar': state.sub = null; state.atual = null; state.novo = null; return render();
         case 'abrir': return abrirConteudo(id);
         case 'filtro': state.filtro = el.dataset.f; return render();
+        case 'resumo': state.filtro = el.dataset.f; state.busca = ''; render(); root.querySelector('.studio-library')?.scrollIntoView({ block: 'start' }); return;
+        case 'limpar-filtros': state.busca = ''; state.filtro = 'todos'; render(); root.querySelector('#library-search')?.focus({ preventScroll: true }); return;
         case 'entrada':
           if (el.dataset.e === 'descobrir') { state.sub = 'descobrir'; render(); if (!state.descoberta.dados) descobrir(); return; }
           if (el.dataset.e === 'link') { state.sub = 'conteudo'; state.atual = null; return window.MesaEditor?.novoPorLink ? window.MesaEditor.novoPorLink(ctxEditor()) : toast('Disponível na próxima etapa.'); }
@@ -587,6 +620,7 @@
   root.addEventListener('change', async (ev) => {
     const el = ev.target;
     try {
+      if (el.id === 'library-sort') { state.ordem = el.value; root.querySelector('#library-results').innerHTML = resultadosBiblioteca(); return; }
       if (el.id === 'import-backup' && el.files?.[0]) { state.resultadoImport = await S.importarArquivo(el.files[0]); await carregar(); toast('Backup importado.'); render(); }
       if (el.id === 'enviar-encerramento' && el.files?.[0]) {
         const f = el.files[0];
@@ -603,6 +637,15 @@
       if (window.MesaEditor?.aoMudar) await window.MesaEditor.aoMudar(el, ctxEditor());
       if (window.MesaCentral?.aoMudar) await window.MesaCentral.aoMudar(el, ctxEditor());
     } catch (e) { toast(e.message || 'Não foi possível concluir.'); }
+  });
+
+  root.addEventListener('input', (ev) => {
+    const el = ev.target;
+    if (el.id === 'library-search') {
+      state.busca = el.value;
+      root.querySelector('#library-results').innerHTML = resultadosBiblioteca();
+    }
+    if (state.novo && ['ed-novo-url', 'ed-novo-texto'].includes(el.id)) state.novo[el.id === 'ed-novo-url' ? 'url' : 'texto'] = el.value;
   });
 
   // Contexto entregue ao editor (B): tudo que ele precisa, sem acesso ao resto.

@@ -408,17 +408,18 @@
 
   // ── Telas ───────────────────────────────────────────────────────────────────
   function telaNovo() {
-    const modo = window.Mesa.state.novo?.modo || 'link';
+    const novo = window.Mesa.state.novo || {};
+    const modo = novo.modo || 'link';
     return `
       <button class="es-btn ghost sm" style="width:auto" data-action="voltar">‹ Mesa</button>
       <div class="es-h1" style="margin-top:12px">Quero falar sobre isso</div>
       <div class="es-sub">Cole o link da matéria ou o texto. O sistema lê, separa o que precisa ser conferido e pesquisa antes de escrever.</div>
-      <div class="mz-top"><button class="es-btn ${modo === 'link' ? '' : 'ghost'} sm" style="width:auto" data-action="ed-modo" data-m="link">Link</button><button class="es-btn ${modo === 'texto' ? '' : 'ghost'} sm" style="width:auto" data-action="ed-modo" data-m="texto">Texto colado</button></div>
+      <div class="studio-source-form"><div class="mz-top" role="group" aria-label="Tipo de fonte"><button class="es-btn ${modo === 'link' ? '' : 'ghost'} sm" style="width:auto" data-action="ed-modo" data-m="link" aria-pressed="${modo === 'link'}">Link</button><button class="es-btn ${modo === 'texto' ? '' : 'ghost'} sm" style="width:auto" data-action="ed-modo" data-m="texto" aria-pressed="${modo === 'texto'}">Texto colado</button></div>
       ${modo === 'link'
-        ? '<input id="ed-novo-url" class="es-input" inputmode="url" placeholder="https://…" autocomplete="off"><div class="es-text" style="margin:8px 0">Instagram, TikTok, X e YouTube não são lidos automaticamente (exigem login). Cole o texto do post nesses casos.</div>'
-        : '<textarea id="ed-novo-texto" class="es-input" rows="9" placeholder="Cole aqui o texto da matéria ou do post"></textarea><div class="es-text" style="margin:8px 0">Um texto colado prova o que está escrito nele, não que seja verdade: o sistema procura confirmação em outras fontes.</div>'}
+        ? `<label class="es-label" for="ed-novo-url">Link da matéria</label><input id="ed-novo-url" class="es-input" type="url" inputmode="url" value="${esc(novo.url || '')}" placeholder="https://site.com/sua-materia" autocomplete="off" aria-describedby="source-help"><div id="source-help" class="es-text" style="margin:12px 0 20px">Para posts do Instagram, TikTok, X ou YouTube, use a opção “Texto colado”.</div>`
+        : `<label class="es-label" for="ed-novo-texto">Texto da matéria ou do post</label><textarea id="ed-novo-texto" class="es-input" rows="9" placeholder="Cole aqui o conteúdo que você quer desenvolver…" aria-describedby="source-help">${esc(novo.texto || '')}</textarea><div id="source-help" class="es-text" style="margin:12px 0 20px">As informações serão pesquisadas em outras fontes antes da criação do conteúdo.</div>`}
       <button class="es-btn" data-action="ed-iniciar">Ler e pesquisar</button>
-      <div class="es-text" style="margin-top:12px">Print de tela: em breve (por enquanto, cole o texto do print).</div>`;
+      </div><div class="studio-editor-note"><b>Você acompanha cada etapa</b><p>Leitura → Pesquisa → Texto → Arte. Revise o resultado antes de aprovar a publicação.</p></div>`;
   }
 
   function stepper(c) {
@@ -782,7 +783,7 @@
     const id = el.dataset.id;
     const claim = () => c.claims.find((k) => k.id === id);
     switch (a) {
-      case 'ed-modo': x.state.novo = { modo: el.dataset.m }; x.render(); return true;
+      case 'ed-modo': x.state.novo = { ...x.state.novo, modo: el.dataset.m }; x.render(); return true;
       case 'ed-iniciar': await iniciarNovo(x); return true;
       case 'ed-continuar': sequencia(x, c, ATE_BRIEFING.every((p) => feito(c, p)) ? TEXTO_E_ARTE : ATE_BRIEFING); return true;
       case 'ed-colar': {
