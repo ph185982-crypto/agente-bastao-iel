@@ -29,7 +29,7 @@ test.before(async () => {
   envAntes = { ...process.env };
   graph = graphFalsa(TOKEN, ACCOUNT);
   await new Promise((r) => graph.srv.listen(0, '127.0.0.1', r));
-  Object.assign(process.env, { META_GRAPH_BASE: `http://127.0.0.1:${graph.srv.address().port}`, META_PAGE_ACCESS_TOKEN: TOKEN, META_IG_USER_ID: ACCOUNT.ig_id, META_PAGE_ID: '777', PUBLISH_SECRET: 'segredo-fb-teste' });
+  Object.assign(process.env, { META_GRAPH_BASE: `http://127.0.0.1:${graph.srv.address().port}`, META_PAGE_ACCESS_TOKEN: TOKEN, META_IG_USER_ID: ACCOUNT.meta_ig_id, META_PAGE_ID: '777', PUBLISH_SECRET: 'segredo-fb-teste' });
   delete process.env.VERCEL;
   for (const k of Object.keys(require.cache)) if (/backend[\\/](lib[\\/](meta|publicador|publishers[\\/].*)|routes[\\/]publish)\.js$/.test(k)) delete require.cache[k];
   PUB = require('./publishers');

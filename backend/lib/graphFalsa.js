@@ -5,7 +5,7 @@ const http = require('http');
 function graphFalsa(TOKEN_FALSO, ACCOUNT) {
   const est = {
     chamadas: [], containers: {}, publicados: [], statusSeq: ['IN_PROGRESS', 'FINISHED'], publishFalha: null, publishDeixaCair: false,
-    username: 'pedro_destrava', id: ACCOUNT.ig_id, quota: { usado: 2, total: 100 }, tokenInvalido: false, midias: [],
+    username: 'pedro_destrava', id: ACCOUNT.meta_ig_id, quota: { usado: 2, total: 100 }, tokenInvalido: false, midias: [],
   };
   const srv = http.createServer((req, res) => {
     let corpo = '';

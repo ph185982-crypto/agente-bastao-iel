@@ -111,8 +111,11 @@ async function conferirMidias(c, v, cfg) {
 // ── Conta e saúde ───────────────────────────────────────────────────────────
 async function conferirConta() {
   const c = meta.config();
+  if (String(c.igId) !== ACCOUNT.meta_ig_id) {
+    throw new ErroPub('CONTA_ERRADA', `META_IG_USER_ID não corresponde ao ID Graph API de ${ACCOUNT.handle}. Nada foi publicado.`, 409);
+  }
   const d = await meta.graph('GET', c.igId, { fields: 'id,username' });
-  if (String(d.id) !== ACCOUNT.ig_id || String(d.username || '').toLowerCase() !== ACCOUNT.username) {
+  if (String(d.id) !== ACCOUNT.meta_ig_id || String(d.username || '').toLowerCase() !== ACCOUNT.username) {
     throw new ErroPub('CONTA_ERRADA', `O token da Meta aponta para @${d.username || '?'} (id ${d.id}), não para ${ACCOUNT.handle}. Nada foi publicado.`, 409);
   }
   return { id: d.id, username: d.username };

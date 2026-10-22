@@ -46,7 +46,7 @@ test.before(async () => {
   envAntes = { ...process.env };
   graph = criarGraphFalsa(TOKEN_FALSO, ACCOUNT);
   await new Promise((r) => graph.srv.listen(0, '127.0.0.1', r));
-  Object.assign(process.env, { META_GRAPH_BASE: `http://127.0.0.1:${graph.srv.address().port}`, META_PAGE_ACCESS_TOKEN: TOKEN_FALSO, META_IG_USER_ID: ACCOUNT.ig_id, META_PAGE_ID: '123', PUBLISH_SECRET: 'segredo-de-teste-publicacao', META_APP_ID: '1', META_APP_SECRET: 'segredo-app-teste' });
+  Object.assign(process.env, { META_GRAPH_BASE: `http://127.0.0.1:${graph.srv.address().port}`, META_PAGE_ACCESS_TOKEN: TOKEN_FALSO, META_IG_USER_ID: ACCOUNT.meta_ig_id, META_PAGE_ID: '123', PUBLISH_SECRET: 'segredo-de-teste-publicacao', META_APP_ID: '1', META_APP_SECRET: 'segredo-app-teste' });
   delete process.env.VERCEL;
   for (const k of Object.keys(require.cache)) if (/backend[\\/](lib[\\/](meta|publicador)|routes[\\/]publish)\.js$/.test(k)) delete require.cache[k];
   P = require('./publicador');
@@ -56,7 +56,7 @@ test.before(async () => {
   basePublica = `http://127.0.0.1:${appPublica.address().port}`;
 });
 test.after(() => { graph.srv.close(); appPublica.close(); for (const k of Object.keys(process.env)) if (!(k in envAntes)) delete process.env[k]; Object.assign(process.env, envAntes); setTimeout(() => process.exit(process.exitCode || 0), 200).unref(); });
-const zera = () => { graph.est.chamadas.length = 0; graph.est.containers = {}; graph.est.publicados = []; graph.est.midias = []; graph.est.statusSeq = ['IN_PROGRESS', 'FINISHED']; graph.est.publishFalha = null; graph.est.tokenInvalido = false; graph.est.username = 'pedro_destrava'; graph.est.id = ACCOUNT.ig_id; graph.est.quota = { usado: 2, total: 100 }; };
+const zera = () => { graph.est.chamadas.length = 0; graph.est.containers = {}; graph.est.publicados = []; graph.est.midias = []; graph.est.statusSeq = ['IN_PROGRESS', 'FINISHED']; graph.est.publishFalha = null; graph.est.tokenInvalido = false; graph.est.username = 'pedro_destrava'; graph.est.id = ACCOUNT.meta_ig_id; graph.est.quota = { usado: 2, total: 100 }; };
 const chamou = (re) => graph.est.chamadas.filter((c) => re.test(`${c.metodo} ${c.caminho}`));
 
 test('carrossel: cria filhos e pai, espera o processamento e só então publica uma vez; a Meta consegue baixar JPEG 1080×1350', async () => {
@@ -161,6 +161,30 @@ test('conta errada: token que aponta para outro perfil não publica nada', async
   assert.strictEqual(chamou(/POST/).length, 0);
   const s = await P.saude();
   assert.strictEqual(s.conta.ok, false);
+});
+
+test('Graph API usa ID próprio sem trocar a identidade dos dados salvos', async () => {
+  zera();
+  const c = await monta();
+  const s = await P.saude();
+  assert.strictEqual(s.conta.ok, true);
+  assert.strictEqual(s.conta.id, ACCOUNT.meta_ig_id);
+  assert.notStrictEqual(ACCOUNT.meta_ig_id, ACCOUNT.ig_id);
+  assert.strictEqual(c.conta.ig_id, ACCOUNT.ig_id);
+  graph.est.id = ACCOUNT.ig_id;
+  await assert.rejects(() => P.iniciar(c.id, { hash: c.revisao.hash_aprovado, base: basePublica }), (e) => e.code === 'CONTA_ERRADA');
+  assert.strictEqual(chamou(/POST/).length, 0, 'mesmo username não autoriza um ID diferente');
+});
+
+test('ID interno configurado como ID Graph bloqueia antes de criar mídia', async () => {
+  zera();
+  const c = await monta();
+  const anterior = process.env.META_IG_USER_ID;
+  try {
+    process.env.META_IG_USER_ID = ACCOUNT.ig_id;
+    await assert.rejects(() => P.iniciar(c.id, { hash: c.revisao.hash_aprovado, base: basePublica }), (e) => e.code === 'CONTA_ERRADA');
+    assert.strictEqual(graph.est.chamadas.length, 0);
+  } finally { process.env.META_IG_USER_ID = anterior; }
 });
 
 test('token inválido (190): item não vira erro definitivo e a saúde pede para reconectar', async () => {

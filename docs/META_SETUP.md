@@ -48,7 +48,8 @@ developers.facebook.com → Instagram Platform → Content Publishing e Facebook
    ```
    curl "https://graph.facebook.com/v26.0/PAGE_ID?fields=instagram_business_account&access_token=TOKEN_DA_PAGINA"
    ```
-   O app confere que esse id é o de **@pedro_destrava** (74541076144). Se for outra conta, **nada é publicado**.
+   O app confere que esse id é o de **@pedro_destrava** (`17841474524337634` na Graph API), vinculado à Página Pedro Destrava (`716013528269008`), conforme consulta à Meta em 22/10/2026. Se for outra conta, **nada é publicado**.
+   O ID interno `74541076144` continua identificando os dados salvos e o perfil consultado pela RapidAPI; não deve ser usado em `META_IG_USER_ID` nem substituído no armazenamento.
 7. **Coloque na Vercel** (Settings → Environment Variables; ambiente Preview agora, Production depois):
 
    | Variável | O que é |

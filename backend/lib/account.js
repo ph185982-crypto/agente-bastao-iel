@@ -9,6 +9,7 @@ const ACCOUNT = Object.freeze({
   username: 'pedro_destrava',
   handle: '@pedro_destrava',
   ig_id: '74541076144',        // id numérico confirmado na API em 17/10/2026
+  meta_ig_id: '17841474524337634', // Graph API: vínculo da Página confirmado em 22/10/2026; não é a chave do armazenamento
   nome: 'Pedro Martins',
   verified: false,              // is_verified=false na API: nenhum selo pode ser desenhado
 });

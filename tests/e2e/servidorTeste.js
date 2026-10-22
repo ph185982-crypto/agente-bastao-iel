@@ -35,7 +35,7 @@ if (process.env.GRAPH_FALSA) {
   const TOKEN = 'TOKEN_FALSO_DE_TESTE_E2E';
   graph = graphFalsa(TOKEN, ACCOUNT);
   graph.srv.listen(Number(process.env.GRAPH_PORT || 3999), '127.0.0.1');
-  Object.assign(process.env, { META_GRAPH_BASE: `http://127.0.0.1:${process.env.GRAPH_PORT || 3999}`, META_PAGE_ACCESS_TOKEN: TOKEN, META_IG_USER_ID: ACCOUNT.ig_id, META_PAGE_ID: '1', PUBLISH_SECRET: 'segredo-de-teste-e2e', PUBLIC_BASE_URL: `http://127.0.0.1:${process.env.TESTE_PORT || 3995}`, META_APP_ID: '1', META_APP_SECRET: 'segredo-app-e2e' });
+  Object.assign(process.env, { META_GRAPH_BASE: `http://127.0.0.1:${process.env.GRAPH_PORT || 3999}`, META_PAGE_ACCESS_TOKEN: TOKEN, META_IG_USER_ID: ACCOUNT.meta_ig_id, META_PAGE_ID: '1', PUBLISH_SECRET: 'segredo-de-teste-e2e', PUBLIC_BASE_URL: `http://127.0.0.1:${process.env.TESTE_PORT || 3995}`, META_APP_ID: '1', META_APP_SECRET: 'segredo-app-e2e' });
 }
 const app = require(path.join(RAIZ, 'backend/server'));
 if (graph) {
