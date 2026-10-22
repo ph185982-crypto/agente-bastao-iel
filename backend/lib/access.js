@@ -8,6 +8,7 @@
 // privada fica FECHADA com "configuração necessária" (503): nada que consuma
 // IA, leia URLs ou guarde dados roda aberto. Só no computador de quem
 // desenvolve (sem VERCEL) a ausência do código deixa a API aberta.
+// APP_ACCESS_MODE=public permite acesso sem código por escolha explícita do dono.
 //
 // Limites e dedupe são em memória por instância da função: protegem de
 // loop/duplo clique, não são uma cota global.
@@ -19,8 +20,9 @@ const MIN_CODIGO = 10;
 const code = () => process.env.APP_ACCESS_CODE || '';
 const publicado = () => !!process.env.VERCEL || process.env.NODE_ENV === 'production';
 const codigoValido = () => code().length >= MIN_CODIGO;
+const acessoPublico = () => process.env.APP_ACCESS_MODE === 'public';
 const secret = () => crypto.createHash('sha256').update(`pico|${code()}|${process.env.APP_TOKEN_SALT || ''}`).digest();
-const protegido = () => codigoValido();
+const protegido = () => !acessoPublico() && codigoValido();
 
 const b64 = (b) => Buffer.from(b).toString('base64url');
 
@@ -76,13 +78,14 @@ const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api
 // Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
 const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/];
 
-const estadoAcesso = () => (codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
+const estadoAcesso = () => (acessoPublico() ? 'aberto_publico' : codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
+const aberto = (estado) => estado === 'aberto_local' || estado === 'aberto_publico';
 
 function exigeAcesso(req, res, next) {
   const path = (req.originalUrl || req.path || req.url || '').split('?')[0];
   if (ROTAS_LIVRES.some((r) => r.test(path))) return next();
   const est = estadoAcesso();
-  if (est === 'aberto_local') return next();
+  if (aberto(est)) return next();
   if (est === 'nao_configurado') {
     return res.status(503).json({ error: `Configuração necessária: o servidor está sem código de acesso válido (APP_ACCESS_CODE com pelo menos ${MIN_CODIGO} caracteres). Até isso ser definido, operações privadas ficam bloqueadas.`, code: 'ACCESS_NOT_CONFIGURED' });
   }
@@ -129,12 +132,12 @@ function registrarRotas(app) {
   const r = express.Router();
   r.get('/status', (req, res) => {
     const est = estadoAcesso();
-    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : est === 'aberto_local' });
+    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : aberto(est) });
   });
   r.post('/login', (req, res) => {
     const est = estadoAcesso();
     if (est === 'nao_configurado') return res.status(503).json({ error: 'Configuração necessária: defina APP_ACCESS_CODE no servidor.', code: 'ACCESS_NOT_CONFIGURED' });
-    if (est === 'aberto_local') return res.json({ protected: false });
+    if (aberto(est)) return res.json({ protected: false });
     const ip = ipDe(req);
     if (loginBloqueado(ip)) return res.status(429).json({ error: 'Muitas tentativas. Tente de novo em 15 minutos.' });
     if (!codigoConfere(req.body?.code)) {

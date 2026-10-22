@@ -1,5 +1,19 @@
 # Como definir o seu código de acesso
 
+## Configuração atual de produção
+
+Em 22/10/2026, a pedido do Pedro, a produção passou a usar `APP_ACCESS_MODE=public`.
+A ferramenta abre diretamente, sem tela de código. Qualquer pessoa com o link pode
+usar as funções e acessar ou alterar os conteúdos compartilhados. A revisão e os
+requisitos de aprovação da publicação continuam sendo aplicados pelo publicador.
+As credenciais das integrações permanecem no servidor.
+
+Para voltar ao acesso protegido, remova `APP_ACCESS_MODE` ou defina outro valor,
+mantenha `APP_ACCESS_CODE` válido e faça um novo deploy. O preview conserva sua
+configuração independente. Apenas o valor exato `public` abre o acesso publicado.
+
+## Configuração opcional com código
+
 O código **nunca** deve ser mandado por chat, e-mail ou mensagem. Defina você mesmo:
 
 1. Entre em vercel.com → projeto `agente-bastao-iel` → **Settings** → **Environment Variables**.

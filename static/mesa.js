@@ -348,7 +348,7 @@
       ${p ? `<div class="es-text" style="margin-top:6px">Confirmada na API em ${esc(fmtData(p.checked_at))}: ${esc(p.username)}, ${Number(p.seguidores).toLocaleString('pt-BR')} seguidores, ${p.verified ? 'verificada' : 'não verificada (por isso nenhuma arte mostra selo)'}.</div>` : ''}
       ${c.erro ? `<div class="es-errbox">${esc(c.erro)}</div>` : ''}
       <button class="es-btn ghost sm" style="margin-top:10px" data-action="confirmar-conta" ${c.carregando ? 'disabled' : ''}>${c.carregando ? 'Conferindo…' : 'Confirmar conta na API (1 consulta)'}</button>
-      <div class="es-text" style="margin-top:10px">${window.__picoAuth?.protected ? 'Acesso protegido por código.' : '<b>Acesso sem senha:</b> qualquer pessoa com o endereço pode usar. Defina APP_ACCESS_CODE no servidor.'} ${window.__picoAuth?.protected ? '<button class="es-chip pillar" style="border:0;cursor:pointer" data-action="sair">Sair deste aparelho</button>' : ''}</div>
+      <div class="es-text" style="margin-top:10px">${window.__picoAuth?.protected ? 'Acesso protegido por código.' : '<b>Acesso direto:</b> não é necessário código para usar a ferramenta.'} ${window.__picoAuth?.protected ? '<button class="es-chip pillar" style="border:0;cursor:pointer" data-action="sair">Sair deste aparelho</button>' : ''}</div>
     </div>`;
   }
 

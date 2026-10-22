@@ -12,7 +12,7 @@ const AMOSTRAS = PREFIXOS.flatMap((p) => [['GET', `${p}/`], ['POST', `${p}/qualq
 
 let base; let srv; const envAntes = { ...process.env };
 async function sobe(env) {
-  for (const k of ['APP_ACCESS_CODE', 'VERCEL', 'NODE_ENV', 'CRON_SECRET']) delete process.env[k];
+  for (const k of ['APP_ACCESS_CODE', 'APP_ACCESS_MODE', 'VERCEL', 'NODE_ENV', 'CRON_SECRET']) delete process.env[k];
   Object.assign(process.env, { PORT: '0' }, env);
   if (srv) await new Promise((r) => srv.close(r));
   Object.keys(require.cache).filter((k) => k.includes(`${path.sep}backend${path.sep}`)).forEach((k) => { delete require.cache[k]; });
@@ -80,6 +80,22 @@ test('computador local (sem VERCEL) e sem código: aberto para desenvolvimento',
   await sobe({});
   const st = await chama('GET', '/api/auth/status');
   assert.strictEqual(st.json.estado, 'aberto_local');
+});
+
+test('produção com acesso público explícito abre sem código, mesmo com código anterior configurado', async () => {
+  await sobe({ VERCEL: '1', APP_ACCESS_MODE: 'public', APP_ACCESS_CODE: 'codigo-anterior-de-teste' });
+  const st = await chama('GET', '/api/auth/status');
+  assert.deepStrictEqual(st.json, { protected: false, configured: true, estado: 'aberto_publico', authenticated: true });
+  assert.strictEqual(require('./access').protegido(), false);
+  assert.strictEqual((await chama('GET', '/api/sync/status')).status, 200);
+  assert.strictEqual((await chama('POST', '/api/auth/login')).json.protected, false);
+  assert.strictEqual((await chama('POST', '/api/content/ingest')).status, 400, 'a rota executa sua validação, sem exigir login');
+  assert.strictEqual((await chama('GET', '/api/publico/midia/abc.def.jpg')).status, 403, 'mídia continua exigindo assinatura');
+});
+
+test('valor desconhecido de modo de acesso não abre produção', async () => {
+  await sobe({ VERCEL: '1', APP_ACCESS_MODE: 'true' });
+  assert.strictEqual((await chama('GET', '/api/sync/status')).status, 503);
 });
 
 test('publicação: só a mídia assinada é pública; o resto de /api/publish exige acesso e o cron exige CRON_SECRET', async () => {

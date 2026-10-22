@@ -21,7 +21,7 @@
       opts.headers = h;
     }
     return originalFetch(input, opts).then((res) => {
-      if (res.status === 401 && !/\/api\/auth\//.test(url)) pedirCodigo();
+      if (res.status === 401 && !/\/api\/auth\//.test(url)) res.clone().json().then((d) => { if (d.code === 'AUTH_REQUIRED' && window.__picoAuth?.protected !== false) pedirCodigo(); }).catch(() => {});
       if (res.status === 503) res.clone().json().then((d) => { if (d.code === 'ACCESS_NOT_CONFIGURED') naoConfigurado(); }).catch(() => {});
       return res;
     });
