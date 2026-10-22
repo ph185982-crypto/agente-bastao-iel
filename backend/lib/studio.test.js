@@ -9,6 +9,15 @@ const prefs=require('./preferencias');
 const {ACCOUNT}=require('./account');
 const conta=ACCOUNT.ig_id;
 let arm;
+test('referências internas não aparecem nos slides nem na narração',()=>{
+  assert.equal(studio.limparMarcadores('A empresa mudou **(a1, a4)**.'),'A empresa mudou.');
+  assert.equal(studio.limparMarcadores('Leitura (o1_2) com contexto (2025).'),'Leitura com contexto (2025).');
+});
+test('valores abreviados em milhões e bilhões mantêm a mesma escala das fontes',()=>{
+  assert.equal(M.extrairNumeros('R$\u202f11,4\u202fmi')[0].valor,11400000);
+  assert.equal(M.extrairNumeros('R$ 2,5 bi')[0].valor,2500000000);
+  assert.notEqual(M.extrairNumeros('R$ 11,4')[0].valor,11400000);
+});
 test.beforeEach(()=>{arm=Object.assign(A.memoria(),{duravel:true});A._definir(arm);process.env.PUBLISH_SECRET='segredo-local-studio';delete process.env.VAPID_PUBLIC_KEY;});
 function pronto(){
   const c=M.novoConteudo({titulo:'FIXTURE revisão única'});
@@ -62,8 +71,8 @@ test('renderização local gera MP4 real, concatena trechos e conserva saída ve
 test('produção completa chega à revisão sem aprovações intermediárias e sem publicar',async()=>{
   const c=await studio.criar({texto:'FIXTURE de produção completa. '.repeat(15),request_id:'fixture-fluxo-completo',estilo:'foto_editorial'});
   const imagem=await sharp({create:{width:1080,height:1350,channels:3,background:'#7e94ae'}}).jpeg().toBuffer();
-  const claim={id:'a1',texto:'A empresa anunciou uma mudança.',tipo:'fato',natureza:'fato',estado:'sustentada',central:true,risco:'alto',evidencias:['e1'],revisao:{}};
-  const ev={id:'e1',origem:'Empresa',trecho:claim.texto,relacao:'sustenta',correspondencia:'integral'};
+  const claim={id:'a1',texto:'A empresa anunciou uma mudança.',tipo:'fato',natureza:'fato',estado:'parcialmente_sustentada',central:true,risco:'alto',evidencias:['e1'],revisao:{}};
+  const ev={id:'e1',origem:'Empresa',trecho:claim.texto,relacao:'sustenta',correspondencia:'integral',fonte_principal:true};
   const deps={
     research:{lerFonte:async()=>({legivel:true,titulo:'FIXTURE de produção',veiculo:'Empresa',tipo:'artigo',texto:claim.texto}),levantarAfirmacoes:async()=>({claims:[claim],evidencias:[ev]}),verificarAfirmacao:async()=>({claim,evidencias:[ev]})},
     redacao:{gerarBriefing:async()=>({briefing:{assunto:'Mudança da empresa',formato:'carrossel'}}),gerarCopia:async()=>({opinioes:[],versao:{capas:[{id:'k1',foco:'tensao',texto:claim.texto,claim_ids:['a1']}],slides:[{id:'s1',funcao:'capa',layout:'capa_tipografica',texto:claim.texto,claim_ids:['a1']},{id:'s2',funcao:'explicacao',layout:'explicacao',texto:'Entenda a mudança anunciada.',claim_ids:['a1']},{id:'s3',funcao:'encerramento',layout:'encerramento',texto:'Siga para entender a próxima mudança.',claim_ids:[]}],legenda:claim.texto,legenda_claim_ids:['a1'],cta:'Siga para entender a próxima mudança.',hashtags:[]}}),auditarOpinioes:async({slides})=>({auditoria:slides.map(s=>({slide_id:s.id,hash_texto:M.hash(s.texto),premissas:[{texto:claim.texto,claim_id:'a1'}]}))})},
@@ -71,4 +80,5 @@ test('produção completa chega à revisão sem aprovações intermediárias e s
   };
   let atual=c;for(let i=0;i<25&&atual.studio.estado==='gerando';i++)atual=await studio.processar(c.id,c.studio.job,{deps});
   assert.equal(atual.studio.estado,'pronto',atual.studio.erro);assert.equal(atual.status,'em_revisao');assert.equal(studio.prepararRevisao(atual).bloqueios.length,0);assert.equal(atual.revisao.aprovada_versao,null);assert.equal(atual.arte.renders.length,3);assert.equal((await arm.publicacoes.listar(conta)).length,0);
+  assert.match(M.versaoAtiva(atual).slides[0].texto,/Segundo Empresa/);assert.match(M.versaoAtiva(atual).legenda,/Segundo Empresa/);
 });

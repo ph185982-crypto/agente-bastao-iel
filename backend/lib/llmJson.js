@@ -13,6 +13,8 @@ const { createCompatClient, hasLlmKey } = require('./llm');
 // Custo: nenhum provedor devolve preço na resposta, então fica "desconhecido"
 // até haver uma tabela de preços confirmada para o plano em uso.
 const registro = new AsyncLocalStorage();
+const prazos = new AsyncLocalStorage();
+const comPrazo = (ms,fn) => prazos.run({signal:AbortSignal.timeout(ms),fim:Date.now()+ms},fn);
 async function comConsumo(fn) {
   const store = { chamadas: [], inicio: Date.now() };
   const resultado = await registro.run(store, fn);
@@ -52,9 +54,11 @@ async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3
   }
   let ultimoErro;
   const store = registro.getStore();
+  const prazo = prazos.getStore();
   for (let tentativa = 1; tentativa <= 2; tentativa++) {
     const t0 = Date.now();
     try {
+      prazo?.signal.throwIfAborted();
       const res = await llm().chat.completions.create({
         model: modelo,
         temperature: temperatura,
@@ -62,7 +66,7 @@ async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3
         max_tokens: maxTokens,
         ...(esforco ? { esforco } : {}),
         messages: [{ role: 'system', content: sistema }, { role: 'user', content: usuario }],
-      });
+      },prazo?{signal:prazo.signal,timeout:Math.max(1,prazo.fim-Date.now()),maxRetries:0}:undefined);
       const info = res.__llm || { provider: 'desconhecido', model: res.model || 'desconhecido' };
       let dados;
       try { dados = extraiJson(res.choices?.[0]?.message?.content); } catch (e) {
@@ -84,4 +88,4 @@ async function pedirJson({ sistema, usuario, maxTokens = 3500, temperatura = 0.3
 // Chamadas que não são de IA mas consomem cota (ex.: busca web).
 const registrarChamada = (info) => { registro.getStore()?.chamadas.push(info); };
 
-module.exports = { pedirJson, dado, REGRAS_DADOS, hasLlmKey, comConsumo, registrarChamada };
+module.exports = { pedirJson, dado, REGRAS_DADOS, hasLlmKey, comConsumo, registrarChamada, comPrazo };

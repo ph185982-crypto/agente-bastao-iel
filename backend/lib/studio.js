@@ -15,6 +15,19 @@ const now=()=>new Date().toISOString();
 const etapas=['leitura','afirmacoes','pesquisa','briefing','copy','auditoria','foto','arte','motion','finalizar'];
 const base=()=>String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/,'');
 const falha=(message,status=400)=>Object.assign(new Error(message),{status});
+const limparMarcadores=texto=>typeof texto==='string'?texto.replace(/\s*(?:\*\*)?\(\s*[ao]\d+(?:_\d+)?(?:\s*[,;]\s*[ao]\d+(?:_\d+)?)*\s*\)(?:\*\*)?/g,'').trim():texto;
+function manterAtribuicoes(v,c){
+  const norm=s=>M.semAcento(s).replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  const atribuir=(texto,ids)=>{
+    let t=texto;const usadas=c.claims.filter(k=>(ids||[]).includes(k.id));
+    const condicoes=[...new Set(usadas.filter(k=>k.decisao?.tipo==='atribuir').map(k=>k.decisao.condicao).filter(Boolean))];
+    if(usadas.some(k=>k.exige_atribuicao||M.EXIGE_ATRIBUICAO.has(M.naturezaDe(k)))&&c.fonte_principal?.veiculo)condicoes.push(`Segundo ${c.fonte_principal.veiculo}`);
+    for(const cond of condicoes)if(!norm(t).includes(norm(cond)))t=`${cond.charAt(0).toUpperCase()+cond.slice(1)}, ${t.charAt(0).toLowerCase()+t.slice(1)}`;
+    return t;
+  };
+  v.slides.forEach(s=>{s.texto=atribuir(s.texto,s.claim_ids);});
+  v.legenda=atribuir(v.legenda,v.legenda_claim_ids);
+}
 function assinatura(id,job) {
   if (!process.env.PUBLISH_SECRET) throw falha('A produção em segundo plano ainda não está configurada.',503);
   return crypto.createHmac('sha256',process.env.PUBLISH_SECRET).update(`studio:${id}:${job}`).digest('hex');
@@ -76,7 +89,7 @@ async function processar(id,job,{deps={}}={}) {
   try {
     if(st.passos>65)throw new Error('A produção levou mais etapas do que o esperado. Retome para tentar novamente.');
     const d={research,redacao,arte,...deps};
-    switch(st.etapa) {
+    await require('./llmJson').comPrazo(47000,async()=>{switch(st.etapa) {
       case 'leitura': {
         c.fonte_principal=await d.research.lerFonte(c.origem.tipo==='texto'?{texto:c.origem.texto_bruto}:{url:c.origem.url});
         if(!c.fonte_principal.legivel)throw new Error('Não consegui ler a matéria. Cole o texto para tentar novamente.');
@@ -102,9 +115,10 @@ async function processar(id,job,{deps={}}={}) {
         const instr=[`Crie para leitura no celular. Até 28 palavras por slide. CTA forte e específico para seguir ${ACCOUNT.handle}.`,...aprendizado.regras,c.formato==='reels'?'Roteiro para narração: 6 a 8 blocos, entre 120 e 145 palavras no total, frases faladas e progressão dinâmica.':'',c.ultimo_feedback?`Pedido de ajuste do autor (estilo, não fatos): ${c.ultimo_feedback.motivos.map(k=>prefs.MOTIVOS[k]).join('; ')}. ${c.ultimo_feedback.detalhe}`:'',st.correcao||''].filter(Boolean).join('\n');
         const r=await d.redacao.gerarCopia({briefing:c.briefing,fonte:c.fonte_principal,claims:c.claims,evidencias:c.evidencias,recentes:await recentes(),formato:'carrossel',instrucoes:instr,voz:st.voz||cfg.voice_profile});
         const n=c.copia.versoes.length+1;const mapa={};r.opinioes.forEach((o,i)=>{mapa[o.id]=`o${n}_${i+1}`;});c.claims.push(...r.opinioes.map(o=>({...o,id:mapa[o.id]})));
-        const v=M.clone(r.versao);v.slides.forEach(s=>{s.claim_ids=(s.claim_ids||[]).map(id=>mapa[id]||id);s.estilo=c.experimento.estilo;});
-        const capa=v.capas?.find(k=>k.foco==='tensao')||v.capas?.[0];if(capa){v.capa_escolhida=capa.id;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}
+        const v=M.clone(r.versao);v.legenda=limparMarcadores(v.legenda);v.capas?.forEach(k=>{k.texto=limparMarcadores(k.texto);});v.slides.forEach(s=>{s.texto=limparMarcadores(s.texto);s.titulo=limparMarcadores(s.titulo);s.claim_ids=(s.claim_ids||[]).map(id=>mapa[id]||id);s.estilo=c.experimento.estilo;});
+        const capa=v.capas?.find(k=>k.foco==='tensao')||v.capas?.[0];if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}
         if(!v.cta || !/s[ií]g|segu/i.test(v.cta)){v.cta=`Siga ${ACCOUNT.handle} para entender a estratégia por trás das próximas notícias.`;const fim=v.slides.at(-1);if(fim?.layout==='encerramento')fim.texto=v.cta;}
+        manterAtribuicoes(v,c);
         M.criarVersao(c,v,{quem:'sistema',rotulo:'Versão preparada para aprovação única'});c.status='produzindo';c.auditoria_textos={};c.arte.renders=c.arte.renders || [];proxima('auditoria');break;
       }
       case 'auditoria': {
@@ -146,7 +160,7 @@ async function processar(id,job,{deps={}}={}) {
       }
       case 'finalizar':c.status='em_revisao';st.estado='pronto';st.concluido_em=now();M.registrar(c,'sistema','pronto','Conteúdo pronto: basta conferir e aprovar ou pedir ajuste.');break;
       default:throw new Error('Etapa de produção desconhecida.');
-    }
+    }});
     delete st.lease;await gravar(c,lease.rev);
     if(st.estado==='pronto' && !st.notificado){await push.notificarLote(1).catch(()=>{});}
     return c;
@@ -174,4 +188,4 @@ async function panorama(){
   const itens=[];for(const r of docs.filter(r=>r.resumo.status==='publicado').slice(0,100)){const c=(await ler(r.id)).doc;itens.push(c);}
   return {estilos:Object.entries(prefs.ESTILOS).map(([id,cfg])=>{const publicados=itens.filter(c=>c.experimento?.estilo===id);return {id,...cfg,aprovacoes:feedback.filter(f=>f.estilo===id&&f.acao==='aprovar').length,ajustes:feedback.filter(f=>f.estilo===id&&f.acao==='refazer').length,publicados:publicados.length,medidos:publicados.filter(c=>c.desempenho?.alcance>0).length,alcance:publicados.reduce((n,c)=>n+(c.desempenho?.alcance||0),0),interacoes:publicados.reduce((n,c)=>n+(c.desempenho?.interacoes||0),0),seguidores:publicados.some(c=>c.desempenho?.seguidores!=null)?publicados.reduce((n,c)=>n+(c.desempenho?.seguidores||0),0):null};}),orientacoes:await prefs.orientacoes(),aviso:'Preferências vêm das suas decisões. Desempenho usa somente métricas devolvidas pelo Instagram; ainda não há vencedor sem amostra suficiente.'};
 }
-module.exports={criar,reagendar,processar,decidir,ler,prepararRevisao,assinatura,confere,panorama,etapas,base};
+module.exports={criar,reagendar,processar,decidir,ler,prepararRevisao,assinatura,confere,panorama,etapas,base,limparMarcadores};

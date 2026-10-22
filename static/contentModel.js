@@ -54,13 +54,13 @@
 
   // ── Números em texto PT-BR ─────────────────────────────────────────────────
   // "R$ 1.600,50" → 1600.5 | "94%" → 94 | "2 mil" → 2000 | "2,5 milhões" → 2500000
-  const MULT = { mil: 1e3, milhao: 1e6, milhoes: 1e6, bilhao: 1e9, bilhoes: 1e9, trilhao: 1e12, trilhoes: 1e12 };
+  const MULT = { mil: 1e3, mi: 1e6, bi: 1e9, tri: 1e12, milhao: 1e6, milhoes: 1e6, bilhao: 1e9, bilhoes: 1e9, trilhao: 1e12, trilhoes: 1e12 };
   const semAcento = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
   function extrairNumeros(texto) {
     const t = String(texto || '').replace(/ /g, ' ');
     const out = [];
-    const re = /(R\$|US\$|€)?\s*(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)\s*(%|por cento|mil(?:h[õo]es|h[ãa]o)?|milh[õo]es|milh[ãa]o|bilh[õo]es|bilh[ãa]o|trilh[õo]es|trilh[ãa]o)?/gi;
+    const re = /(R\$|US\$|€)?\s*(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)\s*(%|por cento|mil(?:h[õo]es|h[ãa]o)?|milh[õo]es|milh[ãa]o|bilh[õo]es|bilh[ãa]o|trilh[õo]es|trilh[ãa]o|mi\b|bi\b|tri\b)?/gi;
     let m;
     while ((m = re.exec(t))) {
       const moeda = m[1] || null;
