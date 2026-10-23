@@ -17,7 +17,7 @@ const base=()=>String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/,'');
 const falha=(message,status=400)=>Object.assign(new Error(message),{status});
 function esperaTemporaria(e){
   const status=Number(e.status||e.statusCode);const msg=String(e.message||'');
-  if(status!==429&&![502,503,504].includes(status)&&!/rate.?limit|timed? ?out|timeout|aborted|ECONNRESET|ETIMEDOUT|ECONNABORTED/i.test(`${e.code||''} ${e.name||''} ${msg}`))return null;
+  if(e.code!=='AUDITORIA_INCOMPLETA'&&status!==429&&![502,503,504].includes(status)&&!/rate.?limit|timed? ?out|timeout|aborted|ECONNRESET|ETIMEDOUT|ECONNABORTED/i.test(`${e.code||''} ${e.name||''} ${msg}`))return null;
   const header=typeof e.headers?.get==='function'?e.headers.get('retry-after'):e.headers?.['retry-after'];
   const segundos=Number(header)||Number(msg.match(/try again in\s+([\d.]+)\s*s/i)?.[1])||30;
   return Math.min(120,Math.max(10,Math.ceil(segundos)+2));
@@ -131,8 +131,10 @@ async function processar(id,job,{deps={}}={}) {
       }
       case 'auditoria': {
         const v=M.versaoAtiva(c);const unidades=[...v.slides.filter(s=>s.layout!=='encerramento').map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda}];
-        const grupo=unidades.slice(st.indice,st.indice+3);
-        const r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims});r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});
+        const grupo=unidades.slice(st.indice,st.indice+(st.auditoria_lote||3));
+        let r;try{r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims});}
+        catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&grupo.length>1){st.auditoria_lote=1;break;}throw e;}
+        r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});
         if(st.indice+grupo.length<unidades.length)proxima('auditoria',st.indice+grupo.length);else proxima('foto');break;
       }
       case 'foto': {

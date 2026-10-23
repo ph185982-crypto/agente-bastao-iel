@@ -76,6 +76,13 @@ test('uma falha de cota é enviada à fila com espera, sem depender de requisiç
     assert.equal(mensagens.length,1);assert.equal(mensagens[0][0],'pedro-studio');assert.deepEqual(mensagens[0][1],{id:c.id,job:c.studio.job});assert(mensagens[0][2].delaySeconds>=15);assert(mensagens[0][2].delaySeconds<=17);
   }finally{fila.send=enviar;research.lerFonte=lerFonte;if(vercel===undefined)delete process.env.VERCEL;else process.env.VERCEL=vercel;}
 });
+test('conferência incompleta passa a verificar cada texto e conserva o que já foi conferido',async()=>{
+  const c=pronto();c.status='produzindo';c.studio={job:'fixture-auditoria',estado:'gerando',etapa:'auditoria',indice:0,passos:0};c.auditoria_textos={};await arm.conteudos.salvar(conta,c.id,c,0);
+  const grupos=[];const deps={redacao:{auditarOpinioes:async({slides})=>{grupos.push(slides.map(s=>s.id));if(slides.length>1)throw Object.assign(new Error('Incompleta'),{code:'AUDITORIA_INCOMPLETA'});return{auditoria:slides.map(s=>({slide_id:s.id,hash_texto:M.hash(s.texto),premissas:[]}))};}}};
+  const a=await studio.processar(c.id,c.studio.job,{deps});assert.equal(a.studio.auditoria_lote,1);assert.equal(a.studio.estado,'gerando');assert.equal(a.studio.indice,0);
+  const b=await studio.processar(c.id,c.studio.job,{deps});assert(b.auditoria_textos.s1);assert.equal(b.studio.indice,1);
+  const d=await studio.processar(c.id,c.studio.job,{deps});assert(d.auditoria_textos.s1);assert(d.auditoria_textos.legenda);assert.equal(d.studio.etapa,'foto');assert.deepEqual(grupos,[['s1','legenda'],['s1'],['legenda']]);assert.equal(d.revisao.aprovada_versao,null);
+});
 test('os três formatos geram PNG legível e mudar estilo invalida a arte',async()=>{
   const arte=require('./arte');const img=await sharp({create:{width:1080,height:1350,channels:3,background:'#afcfe0'}}).jpeg().toBuffer();
   for(const estilo of Object.keys(prefs.ESTILOS)){const s={layout:'capa_foto',estilo,texto:'O detalhe que muda o jogo.'};const r=await arte.renderizarSlide(s,{indice:1,total:5,imagem:img});const meta=await sharp(r.png).metadata();assert.equal(meta.width,1080);assert.equal(meta.height,1350);assert.equal(r.metrics.cabe,true);}

@@ -272,7 +272,8 @@ async function auditarOpinioes({ slides, claims }, d0) {
 TEXTOS DO POST: ${JSON.stringify(ops.map((s) => ({ id: s.id, texto: String(s.texto).replace(/\*\*/g, '') })))}
 
 Para cada texto, liste as afirmações de FATO (não as avaliações, perguntas ou convites) e, para cada uma, o id da afirmação conferida que a sustenta, ou null se nenhuma sustenta.
-Responda APENAS JSON: {"slides":[{"id":"s4","premissas":[{"texto":"","claim_id":null}]}]}`,
+Devolva exatamente estes IDs, uma vez cada, sem trocar ou inventar: ${JSON.stringify(ops.map(s=>s.id))}. Se um texto não trouxer fatos, devolva premissas: [].
+Responda APENAS JSON: {"slides":[{"id":${JSON.stringify(ops[0].id)},"premissas":[{"texto":"afirmação factual do texto","claim_id":null}]}]}`,
   });
   const recebidos = Array.isArray(dados?.slides) ? dados.slides : [];
   if (ops.some((s) => {
