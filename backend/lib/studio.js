@@ -121,7 +121,7 @@ async function processar(id,job,{deps={}}={}) {
           if(evid.some(e=>e.fonte_principal && e.trecho) && c.fonte_principal.veiculo && c.fonte_principal.tipo!=='texto')k.decisao={tipo:'atribuir',condicao:`segundo ${c.fonte_principal.veiculo}`,quem:'sistema',motivo:'Manter atribuição explícita à matéria; não afirmar como fato confirmado.'};
         });
         const cfg=await armazem().config.obter(conta());const aprendizado=await prefs.orientacoes();
-        const instr=[require('../../static/growthModel').instrucoes({formato:c.formato,objetivo:c.crescimento?.objetivo}),`Crie para leitura no celular. Até 28 palavras por slide, contando título e corpo. CTA específico alinhado ao objetivo principal: diga o benefício concreto, sem "mais análises", "próximas notícias" ou promessa de resultado.`,...aprendizado.regras,c.formato==='reels'?'Roteiro para narração: 6 a 8 blocos, entre 120 e 145 palavras no total, frases faladas e progressão dinâmica.':'Ritmo: capa concreta → lacuna → dado/recorte da fonte → consequência → posição → pergunta específica ao leitor → convite para seguir. Se a matéria for curta, una etapas. Não invente contradição nem dado para preencher slide.',c.ultimo_feedback?`Pedido de ajuste do autor (estilo, não fatos): ${c.ultimo_feedback.motivos.map(k=>prefs.MOTIVOS[k]).join('; ')}. ${c.ultimo_feedback.detalhe}`:'',st.correcao||''].filter(Boolean).join('\n');
+        const instr=[require('../../static/growthModel').instrucoes({formato:c.formato,objetivo:c.crescimento?.objetivo}),`Crie para leitura no celular. Até 28 palavras por slide, contando título e corpo. CTA específico alinhado ao objetivo principal: diga o benefício concreto, sem "mais análises", "próximas notícias" ou promessa de resultado.`,...aprendizado.regras,c.formato==='reels'?'Roteiro para narração: 6 a 8 blocos, entre 120 e 145 palavras no total, frases faladas e progressão dinâmica.':'Ritmo: acontecimento → detalhe concreto → dado/recorte da fonte → esclarecimento de limites ou prazos → pergunta específica → uma ação principal. Consequência econômica e opinião não são etapas obrigatórias. Use apenas o que os dados sustentam; não preencha telas com uma moral ou tese genérica.',c.ultimo_feedback?`Pedido de ajuste do autor (estilo, não fatos): ${c.ultimo_feedback.motivos.map(k=>prefs.MOTIVOS[k]).join('; ')}. ${c.ultimo_feedback.detalhe}`:'',st.correcao||''].filter(Boolean).join('\n');
         const r=await d.redacao.gerarCopia({briefing:c.briefing,fonte:c.fonte_principal,claims:c.claims,evidencias:c.evidencias,recentes:await recentes(),formato:c.formato==='estatico'?'estatico':'carrossel',editorial:c.formato!=='reels',instrucoes:instr,voz:st.voz||cfg.voice_profile,objetivo:c.crescimento?.objetivo||'seguidores'});
         const n=c.copia.versoes.length+1;const mapa={};r.opinioes.forEach((o,i)=>{mapa[o.id]=`o${n}_${i+1}`;});c.claims.push(...r.opinioes.map(o=>({...o,id:mapa[o.id]})));
         const v=M.clone(r.versao);v.legenda=limparMarcadores(v.legenda);v.capas?.forEach(k=>{k.texto=limparMarcadores(k.texto);});v.slides.forEach(s=>{s.texto=limparMarcadores(s.texto);s.titulo=limparMarcadores(s.titulo);s.claim_ids=(s.claim_ids||[]).map(id=>mapa[id]||id);s.estilo=c.experimento.estilo;});
@@ -136,7 +136,7 @@ async function processar(id,job,{deps={}}={}) {
         M.criarVersao(c,v,{quem:'sistema',rotulo:'Versão preparada para aprovação única'});c.status='produzindo';c.auditoria_textos={};c.arte.renders=c.arte.renders || [];delete st.pendencias;proxima('auditoria');break;
       }
       case 'auditoria': {
-        const v=M.versaoAtiva(c);const editorial=v.slides.some(s=>s.design==='editorial_2026');const unidades=[...v.slides.filter(s=>s.layout!=='encerramento'||editorial).map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda},...(editorial&&v.cta?[{id:'cta',texto:v.cta}]:[])];
+        const v=M.versaoAtiva(c);const editorial=v.slides.some(s=>s.design==='editorial_2026');const unidades=[...v.slides.filter(s=>s.layout!=='encerramento'||editorial).map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda},...(editorial&&v.cta?[{id:'cta',texto:v.cta}]:[])].filter(t=>t.texto?.trim());
         if(st.auditoria_verificar_ids?.length){
           const ids=st.auditoria_verificar_ids;
           let r;try{r=await d.redacao.conferirVinculos({auditoria:ids.map(id=>c.auditoria_textos[id]),claims:c.claims,textos:unidades.filter(t=>ids.includes(t.id))});}
@@ -196,10 +196,10 @@ async function processar(id,job,{deps={}}={}) {
     const espera=esperaTemporaria(e);
     if(espera!==null&&(st.retentativas||0)<5){
       delete st.lease;st.retentativas=(st.retentativas||0)+1;st.adiar_ate=new Date(Date.now()+espera*1000).toISOString();
-      st.aviso='O serviço de IA está ocupado. A preparação será retomada automaticamente.';st.erro=null;c.status='produzindo';
+      st.aviso=e.code==='AUDITORIA_INCOMPLETA'?'Estou refazendo a conferência para cobrir o texto completo.':'O serviço de IA está ocupado. A preparação será retomada automaticamente.';st.erro=null;c.status='produzindo';
       await gravar(c,lease.rev);return c;
     }
-    delete st.lease;delete st.adiar_ate;delete st.aviso;st.estado='erro';st.erro=espera!==null?'O serviço de IA continua indisponível após novas tentativas. Tente retomar a preparação em alguns minutos.':e.message;c.status='rascunho';await gravar(c,lease.rev).catch(()=>{});
+    delete st.lease;delete st.adiar_ate;delete st.aviso;st.estado='erro';st.erro=e.code==='AUDITORIA_INCOMPLETA'?'A conferência não cobriu o conteúdo completo. Retome para conferir esta versão novamente.':espera!==null?'O serviço de IA continua indisponível após novas tentativas. Tente retomar a preparação em alguns minutos.':e.message;c.status='rascunho';await gravar(c,lease.rev).catch(()=>{});
     await push.notificar({corpo:'Um conteúdo precisa de um ajuste. Toque para retomar a preparação.',tag:`erro-${c.id}`}).catch(()=>{});return c;
   }
 }

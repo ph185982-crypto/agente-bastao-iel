@@ -1,5 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {limparTitulo,daFonte}=require('./videoCopySeguro');
+test('crítica irônica não vira elogio na legenda nem no gancho extraído',()=>{
+  const {criticaComoElogio}=require('./videoCopySeguro');
+  const transcript='Olha como está a avenida. A equipe está de parabéns. É isso que vocês defendem? Eu discordo dessa situação.';
+  assert(criticaComoElogio({transcript,caption:'O autor está elogiando a campanha e destaca o bom exemplo.'}));
+  assert(!criticaComoElogio({transcript,caption:'O autor ironiza a campanha e questiona a situação.'}));
+  assert(!criticaComoElogio({transcript:'Eu gostei da campanha.',caption:'O autor elogia a campanha.'}));
+  const r=daFonte({transcript});assert.equal(r.headline,'É isso que vocês defendem?');assert(r.caption.includes(transcript));
+  assert.equal(daFonte({transcript,givenHeadline:'Minha leitura desta cena'}).headline,'Minha leitura desta cena');
+});
 test('OCR do cabeçalho do perfil não vira gancho',()=>{
   assert.equal(limparTitulo('Pedro Martins e Qpedro. destrava E — .—'),'');
   assert.equal(limparTitulo('Pedro Martins @pedro_destrava'),'');

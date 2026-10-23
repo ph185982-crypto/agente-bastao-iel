@@ -284,7 +284,7 @@ const normBase = texto => String(texto || '').normalize('NFD').replace(/[\u0300-
 const RAIZES_CAUSAIS=['repass','dilui','encarec','barate'];
 function premissasCausais(texto, claims) {
   const base=normBase(claims.filter(c=>c.tipo!=='opiniao'&&c.natureza!=='opiniao'&&c.decisao?.tipo!=='retirar').map(c=>c.texto).join(' '));
-  return RAIZES_CAUSAIS.some(raiz=>normBase(texto).includes(raiz)&&!base.includes(raiz)) ? [{texto:String(texto).slice(0,240),claim_id:null}] : [];
+  return RAIZES_CAUSAIS.some(raiz=>normBase(texto).includes(raiz)&&!base.includes(raiz)) ? [{texto:String(texto).slice(0,240),claim_id:null,verificacao_deterministica:true}] : [];
 }
 function premissaConferida(p, claims) {
   const texto=String(p.texto||'').slice(0,240), k=claims.find(c=>c.id===String(p.claim_id) && c.tipo!=='opiniao' && c.natureza!=='opiniao' && c.decisao?.tipo!=='retirar');
@@ -309,15 +309,15 @@ async function auditarOpinioes({ slides, claims }, d0) {
 
 TEXTOS DO POST: ${JSON.stringify(ops.map((s) => ({ id: s.id, texto: String(s.texto).replace(/\*\*/g, '') })))}
 
-Para cada texto, liste as afirmações de FATO (não as avaliações, perguntas ou convites) e, para cada uma, o id da afirmação conferida que a sustenta, ou null se nenhuma sustenta.
+Para cada texto, copie LITERALMENTE os trechos que afirmam fatos (sem paráfrase), com o id da afirmação conferida que os sustenta, ou null. Avaliação pura, título sem afirmação e convite sem fato recebem premissas:[]. Não preencha com rótulos de exemplo.
 Devolva exatamente estes IDs, uma vez cada, sem trocar ou inventar: ${JSON.stringify(ops.map(s=>s.id))}. Se um texto não trouxer fatos, devolva premissas: [].
-Responda APENAS JSON: {"slides":[{"id":${JSON.stringify(ops[0].id)},"premissas":[{"texto":"afirmação factual do texto","claim_id":null,"trecho_base":null}]}]}`,
+Responda APENAS JSON com slides. Cada slide contém id e premissas. Cada premissa contém texto (trecho literal do slide), claim_id e trecho_base (trecho literal da afirmação conferida).` ,
   });
   const recebidos = Array.isArray(dados?.slides) ? dados.slides : [];
   if (ops.some((s) => {
     const itens = recebidos.filter((x) => x && x.id === s.id);
     return itens.length !== 1 || !Array.isArray(itens[0].premissas)
-      || itens[0].premissas.some((p) => !p || typeof p.texto !== 'string' || !p.texto.trim());
+      || itens[0].premissas.some((p) => !p || typeof p.texto !== 'string' || !p.texto.trim() || !normBase(s.texto).includes(normBase(p.texto)));
   })) {
     throw Object.assign(new Error('A conferência não cobriu todos os textos. Confira de novo antes de aprovar.'), { code: 'AUDITORIA_INCOMPLETA' });
   }
@@ -339,12 +339,13 @@ async function conferirVinculos({auditoria,claims,textos},d0){
   const bases=claims.filter(c=>c.tipo!=='opiniao'&&c.natureza!=='opiniao'&&c.decisao?.tipo!=='retirar'&&c.estado!=='contradita').map(c=>({id:c.id,texto:c.texto}));
   const {dados,llm}=await d.llmJson.pedirJson({temperatura:0,maxTokens:1800,esforco:'medium',
     sistema:`Confira TODO o texto de cada tela contra as bases, sem conhecimento externo. Pode haver fatos que outro revisor deixou passar. Possibilidades ("podem perder clientes", "pode aumentar a margem") afirmam mecanismos: sem base explícita, bloqueie. "Multas garantem qualidade" também exige prova do efeito; não é só opinião. Perguntas podem insinuar premissas não demonstradas. Mesma empresa ou número não prova uma relação causal. "O dólar caiu" não sustenta "a margem melhora e favorece ações". "A empresa foi multada" não sustenta repasse ao consumidor nem perda de clientes. Não confunda prazo futuro com regra vigente. Avaliações puras ("eu cobraria um plano de melhoria"), perguntas sem pressuposto factual e convites a seguir/salvar não precisam de prova. sustenta:true significa que todos os fatos do texto estão nas bases.\n${d.llmJson.REGRAS_DADOS}`,
-    usuario:`${d.llmJson.dado('BASES_FACTUAIS',JSON.stringify(bases),14000).bloco}\n${d.llmJson.dado('TEXTOS_COMPLETOS',JSON.stringify(unidades),6000).bloco}\nDevolva cada ID exatamente uma vez. Se faltar base, copie o trecho problemático (até 160 caracteres). JSON: {"textos":[{"id":"${unidades[0].id}","sustenta":false,"problemas":[{"texto":"afirmação sem base","motivo":"o que falta na base"}]}]}. Para texto sustentado ou convite sem fatos: sustenta:true,problemas:[].`});
-  if(!Array.isArray(dados?.textos)||unidades.some(p=>dados.textos.filter(v=>v?.id===p.id&&typeof v.sustenta==='boolean'&&Array.isArray(v.problemas)).length!==1))throw Object.assign(new Error('A conferência das fontes não cobriu todos os textos.'),{code:'AUDITORIA_INCOMPLETA'});
+    usuario:`${d.llmJson.dado('BASES_FACTUAIS',JSON.stringify(bases),14000).bloco}\n${d.llmJson.dado('TEXTOS_COMPLETOS',JSON.stringify(unidades),6000).bloco}\nJSON com chave textos. Cada item contém id (um dos IDs reais: ${JSON.stringify(unidades.map(t=>t.id))}), sustenta (boolean) e problemas (array). Para texto sustentado ou convite sem fatos: sustenta:true,problemas:[]. Se faltar base: sustenta:false, problemas com texto (copie literalmente o trecho REAL problemático, até 160 caracteres) e motivo (explique o que falta). Não devolva rótulos ou exemplos como se fossem trechos do texto.`});
+  if(!Array.isArray(dados?.textos)||unidades.some(p=>dados.textos.filter(v=>v?.id===p.id&&typeof v.sustenta==='boolean'&&Array.isArray(v.problemas)&&v.problemas.every(q=>q&&typeof q.texto==='string'&&q.texto.trim()&&normBase(p.texto).includes(normBase(q.texto)))).length!==1))throw Object.assign(new Error('A conferência das fontes não cobriu todos os textos.'),{code:'AUDITORIA_INCOMPLETA'});
   return {auditoria:auditoria.map(a=>{
     const v=dados.textos.find(v=>v.id===a.slide_id);if(!v)return a;
     const faltas=v.sustenta&&!v.problemas.length?[]:(v.problemas.length?v.problemas:[{texto:unidades.find(t=>t.id===a.slide_id)?.texto,motivo:'A base não demonstra este texto.'}]);
-    return {...a,texto_conferido:true,premissas:[...a.premissas.map(p=>p.claim_id?{...p,vinculo_conferido:v.sustenta}:p),...faltas.map(p=>({texto:String(p.texto||'Afirmação sem base.').slice(0,240),claim_id:null,motivo:String(p.motivo||'').slice(0,240)}))]};
+    const anteriores=v.sustenta&&!faltas.length?a.premissas.filter(p=>p.claim_id||p.verificacao_deterministica):a.premissas;
+    return {...a,texto_conferido:true,premissas:[...anteriores.map(p=>p.claim_id?{...p,vinculo_conferido:v.sustenta}:p),...faltas.map(p=>({texto:String(p.texto||'Afirmação sem base.').slice(0,240),claim_id:null,motivo:String(p.motivo||'').slice(0,240)}))]};
   }),llm};
 }
 

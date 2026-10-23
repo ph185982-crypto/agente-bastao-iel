@@ -1248,10 +1248,8 @@ ${REGRAS_CAPTION}
 
 Responda APENAS JSON: {"caption":"..."}`;
 
-// Escreve gancho e legenda. Tenta a IA primeiro (ela lê a fala do vídeo e sai
-// muito melhor); se não houver chave, se a cota acabar ou se a resposta vier
-// quebrada, o robô assume. O editor nunca para por falta de copy — no pior caso
-// o texto sai genérico, com um marcador dizendo onde completar.
+// Escreve gancho e legenda a partir da fala e da leitura visual.
+// Se a IA falhar ou inverter o sentido, preserva trechos da origem.
 async function escreverCopy({ givenHeadline, transcript, visual, tema, variante, objetivo }) {
   const contexto = [
     givenHeadline ? `GANCHO (use exatamente assim):\n${givenHeadline}` : '',
@@ -1276,6 +1274,8 @@ async function escreverCopy({ givenHeadline, transcript, visual, tema, variante,
       const headline = givenHeadline || String(parsed.headline || '').trim();
       const caption = String(parsed.caption || '').trim();
       if (headline && stripEmoji(headline).trim() && caption) {
+        const seguro=require('../lib/videoCopySeguro');
+        if(seguro.criticaComoElogio({transcript,headline,caption}))return {...seguro.daFonte({givenHeadline,transcript,visual,tema,objetivo}),aviso:'A legenda preserva a fala original para evitar mudar o tom do vídeo.'};
         return { headline, caption, fonte: 'ia' };
       }
       console.warn('[videoEditor] IA devolveu copy incompleta — caindo pro robô');

@@ -180,6 +180,22 @@ test('segunda conferência lê a tela inteira mesmo se a extração não encontr
   assert.equal(r.auditoria[1].premissas[0].claim_id,null);assert.equal(auditoria[1].premissas.length,0,'histórico de entrada preservado');
 });
 
+test('rótulo copiado do exemplo não vira uma acusação factual na revisão',async()=>{
+  const {auditarOpinioes,conferirVinculos}=require('./redacao');
+  const llm={REGRAS_DADOS:'',dado:llmReal.dado,pedirJson:async()=>({dados:{slides:[{id:'s1',premissas:[{texto:'afirmação factual do texto',claim_id:null}]}]}})};
+  await assert.rejects(auditarOpinioes({slides:[{id:'s1',texto:'O Senado aprovou o teto.'}],claims},{llmJson:llm}),e=>e.code==='AUDITORIA_INCOMPLETA');
+  llm.pedirJson=async()=>({dados:{textos:[{id:'s1',sustenta:false,problemas:[{texto:'afirmação sem base'}]}]}});
+  await assert.rejects(conferirVinculos({auditoria:[{slide_id:'s1',premissas:[]}],claims,textos:[{id:'s1',texto:'O Senado aprovou o teto.'}]},{llmJson:llm}),e=>e.code==='AUDITORIA_INCOMPLETA');
+});
+
+test('revisão integral confirma o texto e resolve um falso positivo do extrator, mantendo a proteção causal',async()=>{
+  const {conferirVinculos}=require('./redacao');
+  const llm={REGRAS_DADOS:'',dado:llmReal.dado,pedirJson:async()=>({dados:{textos:[{id:'s1',sustenta:true,problemas:[]}]}})};
+  const auditoria=[{slide_id:'s1',premissas:[{texto:'Quando e onde',claim_id:null},{texto:'Pergunta causal indevida',claim_id:null,verificacao_deterministica:true}]}];
+  const r=await conferirVinculos({auditoria,claims,textos:[{id:'s1',texto:'Quando e onde. O Senado aprovou o teto.'}]},{llmJson:llm});
+  assert.equal(r.auditoria[0].premissas.length,1);assert(r.auditoria[0].premissas[0].verificacao_deterministica);
+});
+
 test('capa sem fonte para os números não substitui uma capa conferida',()=>{
   const {capasConferidas}=require('./redacao');
   const v={slides:[{id:'s1',texto:'O Senado aprovou o teto.',claim_ids:['a1']}],capas:[{id:'sem-fonte',texto:'Teto de R$ 140 mil.',claim_ids:[]},{id:'com-fonte',texto:'Teto de R$ 140 mil.',claim_ids:['a1']}]};

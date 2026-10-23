@@ -1,7 +1,7 @@
 // Método Destrava: creation hypotheses and measured results, never a probability of going viral.
 // Shared by the writing pipeline and the phone UI. Checks describe the copy, not Instagram ranking.
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.GrowthModel=api;})(typeof self!=='undefined'?self:this,function(){
-  const VERSION='destrava-1';
+  const VERSION='destrava-2';
   const OBJETIVOS={
     seguidores:{nome:'Ganhar seguidores',mecanismo:'Entregar uma leitura própria que dê motivo para voltar ao perfil.',cta:'Convide a seguir com um benefício específico ligado à pauta. Não peça mais duas ações no mesmo fechamento.'},
     compartilhar:{nome:'Gerar compartilhamentos',mecanismo:'Criar algo que o leitor queira enviar para uma pessoa em uma situação concreta.',cta:'Convide a enviar para alguém identificável pela situação (sócio, cliente, quem vive o problema), sem pedir quantidade de amigos.'},
@@ -15,7 +15,7 @@
     {nome:'Conversão',texto:'Uma ação principal e um motivo claro para seguir, enviar ou salvar.'}
   ];
   const plano=(formato='carrossel',objetivo='seguidores')=>({versao:VERSION,objetivo:OBJETIVOS[objetivo]?objetivo:'seguidores',formato,
-    sequencia:formato==='estatico'?['Uma ideia forte na imagem','Contexto e prova na legenda','Uma ação principal']:formato==='reels'?['0–3s: gancho direto','3–12s: situação e lacuna','12–35s: evidência e virada','35–50s: leitura e entrega','50–60s: fechamento e CTA']:['Capa: tensão concreta','Tela 2: sustenta o interesse sozinha','Evidência: um dado ou caso real','Virada: o que essa história revela','Aplicação ou posição','Pergunta ligada ao caso','Convite com benefício específico']});
+    sequencia:formato==='estatico'?['Uma ideia forte na imagem','Contexto e prova na legenda','Uma ação principal']:formato==='reels'?['0–3s: gancho direto','3–12s: situação e lacuna','12–35s: evidência e virada','35–50s: leitura e entrega','50–60s: fechamento e CTA']:['Capa: acontecimento concreto','Tela 2: sustenta o interesse sozinha','Evidência: um dado ou caso real','Detalhe que a notícia também informa','O que está decidido e quais são os limites','Pergunta ligada ao caso','Convite com benefício específico']});
   function instrucoes({formato='carrossel',objetivo='seguidores'}={}){
     const p=plano(formato,objetivo),o=OBJETIVOS[p.objetivo];
     return `MÉTODO DESTRAVA — hipóteses de criação, sem promessa de viralização. Objetivo principal: ${o.nome}. ${o.mecanismo}\n${p.sequencia.join(' → ')}. A sequência é flexível: não invente fatos para preencher etapas.\n${o.cta}\nCrie três ganchos de verdade para o mesmo conteúdo: fato, consequência e tensão. Evite pergunta vaga, promessa escondida, urgência falsa, afirmação absoluta ou "comente SIM". Não basta pôr uma moldura em outro vídeo: a leitura editorial deve acrescentar significado, sem inverter a opinião do autor. Cumpra a promessa antes do CTA. Opinião se apoia nos fatos listados. Não dê recomendação de compra de ativo nem invente causalidade econômica. Uma pergunta pode criar conversa sem precisar ser opinião factual. O leitor deve reconhecer a situação e ter algo útil para contar a alguém.`;
