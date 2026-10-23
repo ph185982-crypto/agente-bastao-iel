@@ -52,6 +52,10 @@ test('preparar um rascunho antigo atribui estilo e mantém o histórico',async()
   const r=await studio.reagendar(c.id,{acao:'retomar'});
   assert(prefs.ESTILOS[r.experimento.estilo]);assert.equal(r.studio.estado,'gerando');assert.equal(r.copia.versoes.length,1);
 });
+test('retomar uma versão bloqueada na conferência cria nova cópia sem apagar o histórico',async()=>{
+  const c=pronto();c.status='rascunho';Object.assign(c.studio,{estado:'erro',etapa:'motion',tentativas:2,pendencias:[{titulo:'Fato sem fonte',detalhe:'Reescrever com uma afirmação da matéria.'}]});await arm.conteudos.salvar(conta,c.id,c,0);
+  const r=await studio.reagendar(c.id,{acao:'retomar'});assert.equal(r.studio.etapa,'copy');assert.equal(r.studio.tentativas,0);assert.match(r.studio.correcao,/Fato sem fonte/);assert.equal(r.copia.versoes.length,1);
+});
 test('limite temporário da IA agenda nova tentativa e conserva a etapa concluída',async()=>{
   const c=await studio.criar({texto:'Texto de teste '.repeat(30),request_id:'fixture-cota'});let chamadas=0;
   const deps={research:{lerFonte:async()=>{chamadas++;if(chamadas===1)throw Object.assign(new Error('Rate limit. Please try again in 6.5175s. org_privada'),{status:429});return {legivel:true,titulo:'Leitura retomada'};}}};

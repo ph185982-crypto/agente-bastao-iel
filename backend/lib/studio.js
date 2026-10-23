@@ -75,6 +75,7 @@ async function reagendar(id,{motivos=[],detalhe='',hash,acao='refazer'}={}) {
   if(!prefs.ESTILOS[c.experimento?.estilo]){const estilo=await prefs.escolherEstilo({indice:0});c.experimento={estilo,letra:prefs.ESTILOS[estilo].letra,criado_em:now()};}
   if(acao==='retomar' && c.studio?.estado==='erro'){
     const st=c.studio;st.job=crypto.randomUUID();st.estado=st.etapa==='publicacao'?'publicando':'gerando';st.erro=null;st.passos=0;st.retentativas=0;delete st.lease;delete st.adiar_ate;delete st.aviso;
+    if(st.etapa==='motion'&&st.pendencias?.length){st.etapa='copy';st.indice=0;st.tentativas=0;st.correcao='Corrija estes problemas antes de entregar: '+st.pendencias.map(p=>`${p.titulo}: ${p.detalhe}`).join('\n').slice(0,4500);}
     c.status=st.estado==='publicando'?'aprovado':'produzindo';await gravar(c,reg.rev);return c;
   }
   if(acao==='refazer') {
@@ -127,7 +128,7 @@ async function processar(id,job,{deps={}}={}) {
         const capa=v.capas?.find(k=>k.foco==='tensao')||v.capas?.[0];if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}
         if(!v.cta || !/s[ií]g|segu/i.test(v.cta)){v.cta=`Siga ${ACCOUNT.handle} para entender a estratégia por trás das próximas notícias.`;const fim=v.slides.at(-1);if(fim?.layout==='encerramento')fim.texto=v.cta;}
         manterAtribuicoes(v,c);
-        M.criarVersao(c,v,{quem:'sistema',rotulo:'Versão preparada para aprovação única'});c.status='produzindo';c.auditoria_textos={};c.arte.renders=c.arte.renders || [];proxima('auditoria');break;
+        M.criarVersao(c,v,{quem:'sistema',rotulo:'Versão preparada para aprovação única'});c.status='produzindo';c.auditoria_textos={};c.arte.renders=c.arte.renders || [];delete st.pendencias;proxima('auditoria');break;
       }
       case 'auditoria': {
         const v=M.versaoAtiva(c);const unidades=[...v.slides.filter(s=>s.layout!=='encerramento').map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda}];

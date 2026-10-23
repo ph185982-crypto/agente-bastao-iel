@@ -28,7 +28,7 @@ A mídia final fica no banco e é entregue com URL assinada e suporte a requisi�
 
 ## Validação desta entrega
 
-- 280 testes: 278 passaram; 2 dependem de PostgreSQL local opcional.
+- 283 testes: 281 passaram; 2 dependem de PostgreSQL local opcional.
 - Concorrência, aprovação única, versão desatualizada, contradições e feedback durável testados.
 - Publicação de Reel testada contra a Graph API simulada, sem publicar um post real.
 - Três estilos renderizados em PNG 1080×1350.
@@ -45,4 +45,10 @@ A mídia final fica no banco e é entregue com URL assinada e suporte a requisi�
 
 O rascunho de MEI parou na auditoria após a IA responder HTTP 429 (limite temporário de tokens por minuto). A versão corrigida mantém o conteúdo em preparação, preserva a etapa e agenda uma nova tentativa com espera, até cinco vezes. Uma etapa concluída zera o contador. A tela informa que está aguardando a IA, sem mostrar detalhes internos do provedor. Erros de cota não disparam uma repetição imediata da mesma chamada em outro formato.
 
-Os testes reproduzem o erro 429, verificam que não há chamada antes do prazo, conferem a retomada da etapa e validam que a fila recebe o prazo de espera. A correção de filas e de cota está concluída no código local; seu envio ao GitHub e a publicação na Vercel foram bloqueados pela revisão automática. O funcionamento dessa correção em produção ainda não foi validado.
+Os testes reproduzem o erro 429, verificam que não há chamada antes do prazo, conferem a retomada da etapa e validam que a fila recebe o prazo de espera. Quando a IA devolve uma conferência incompleta, o sistema divide o lote e confere os textos individualmente, preservando as verificações já concluídas. IDs de slides e legenda precisam ser devolvidos exatamente como foram enviados.
+
+As opiniões geradas em cópias anteriores são preservadas no histórico, mas não entram como premissas factuais de uma nova cópia. Ao retomar um conteúdo bloqueado pela conferência, a produção reescreve o texto com os problemas encontrados, em vez de apenas repetir a mesma conferência sobre a mesma versão.
+
+As correções foram publicadas no projeto Vercel. Na validação real, o carrossel de MEI terminou com sete slides e o de Procon/Enel com seis, ambos sem bloqueios técnicos e sem aprovação automática. O trabalho ocorreu por mensagens da fila, com o navegador fechado. Houve novo erro 429 em produção e a preparação retomou automaticamente após a espera.
+
+O Reel de teste foi concluído no servidor com narração e legendas: 51,292 segundos, 3.435.885 bytes, vídeo H.264 em 1080×1920 e áudio AAC. A entrega integral respondeu HTTP 200; um pedido parcial de 1.024 bytes respondeu HTTP 206. A reprodução no navegador avançou de 6 para 37 segundos sem reiniciar. O conteúdo de teste foi arquivado, sem publicação no Instagram.

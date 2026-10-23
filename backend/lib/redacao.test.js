@@ -51,6 +51,11 @@ test('copy: 3 capas, capa não escolhida, opinião vira claim, linha de fonte do
   assert.strictEqual(r.versao.slides.at(-1).layout, 'encerramento');
   assert.strictEqual(r.bloqueios_de_fatos.length, 0);
 });
+test('copy: opiniões de versões anteriores não viram premissas factuais da nova versão',async()=>{
+  const llm=llmFalso([copiaOk()]);const antigas=[...claims,{id:'o_antiga',texto:'OPINIAO_GERADA_ANTIGA',tipo:'opiniao',origem:'copy',estado:'nao_verificada',premissas:['a1']}];
+  const r=await gerarCopia({briefing:{objetivo:'autoridade',estrutura:'acontecimento',duvidas:[]},fonte,claims:antigas,evidencias},{llmJson:llm});
+  assert(llm.chamadas.every(p=>!p.includes('OPINIAO_GERADA_ANTIGA')&&!p.includes('o_antiga')));assert.deepStrictEqual(r.opinioes[0].premissas,['a1']);assert.equal(antigas.length,3,'o histórico de afirmações permanece preservado');
+});
 
 test('copy: número inventado dispara uma segunda tentativa com o erro exato', async () => {
   const ruim = copiaOk();

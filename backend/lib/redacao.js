@@ -31,7 +31,7 @@ const resumoClaim = (c, evid) => {
 };
 
 // ── Briefing ───────────────────────────────────────────────────────────────
-const utilizaveis = (claims) => claims.filter((c) => c.decisao?.tipo !== 'retirar');
+const utilizaveis = (claims) => claims.filter((c) => c.decisao?.tipo !== 'retirar' && !(c.tipo === 'opiniao' && c.origem === 'copy'));
 
 async function gerarBriefing({ fonte, claims: todas, evidencias, recentes = [], objetivo, formato, voz }, d0) {
   const d = deps(d0);
