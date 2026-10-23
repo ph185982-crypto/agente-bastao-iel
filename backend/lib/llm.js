@@ -77,7 +77,7 @@ const NO_LLM_KEY_MESSAGE = `Nenhuma chave de IA configurada no servidor (${PROVI
 // ── Classificação de erro ─────────────────────────────────────────────────────
 // modelo  → só esse modelo está ruim, tenta o próximo do mesmo provedor
 // provedor→ o provedor inteiro está fora, pula pro próximo provedor
-function errorScope(err) {
+function errorScope(err, provider) {
   const status = err?.status;
   const code = err?.error?.code || err?.code || '';
   const msg = err?.message || '';
@@ -92,10 +92,23 @@ function errorScope(err) {
     return 'fatal'; // 400 de verdade (payload malformado) — não adianta insistir
   }
   if (status === 401 || status === 403) return 'provider'; // chave inválida/sem acesso
-  if (status === 429) return 'provider';                   // cota/rate-limit estourado
+  // Groq reports quotas per model. A full quota on 120B does not mean the
+  // configured 20B model is unavailable. Account/billing/global limits still
+  // stop the provider, and exhausting all models preserves the 429 for backoff.
+  if (status === 429) return provider?.name === 'groq' && /rate limit reached for model\b/i.test(msg) ? 'model' : 'provider';
   if (status >= 500) return 'provider';
   if (/ETIMEDOUT|ECONNABORTED|ECONNRESET|ENOTFOUND|fetch failed/i.test(`${code} ${msg}`)) return 'provider';
   return 'fatal';
+}
+
+// Never log provider response text: it may contain an organization identifier,
+// a credential fragment or echoed user content. Keep only operational fields.
+function errorInfo(err, scope) {
+  const msg = String(err?.message || '');
+  const header = typeof err?.headers?.get === 'function' ? err.headers.get('retry-after') : err?.headers?.['retry-after'];
+  const metric = msg.match(/\b(?:input |output )?(?:tokens|requests) per (?:minute|day)\b/i)?.[0]?.toLowerCase() || null;
+  const number = label => { const v = msg.match(new RegExp(`\\b${label}\\s*:?\\s*([\\d.]+)`, 'i'))?.[1]; return v && Number.isFinite(Number(v)) ? Number(v) : null; };
+  return { status: Number(err?.status) || null, scope, metric, limit: number('Limit'), used: number('Used'), requested: number('Requested'), retry_after_seconds: header && Number.isFinite(Number(header)) ? Number(header) : null };
 }
 
 // ── Descoberta de modelos ─────────────────────────────────────────────────────
@@ -184,55 +197,64 @@ async function cascade(opts, requestOptions) {
   const cont = { n: 0 };
   if (!providers.length) throw new Error('Nenhuma chave de IA configurada (GROQ_API_KEY, GEMINI_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY ou OPENAI_API_KEY)');
 
-  let lastErr;
+  let lastErr, rateErr;
+  const attempted = new Set(), down = new Set();
+  const attempt = (provider, model) => { attempted.add(`${provider.name}/${model}`); return tryModel(provider, model, opts, requestOptions, cont); };
+  const remember = (provider, model, err) => {
+    const scope = errorScope(err, provider);
+    lastErr = err;
+    if (err?.status === 429) rateErr = err;
+    if (scope === 'provider') down.add(provider.name);
+    console.warn(`[llm] ${provider.name}/${model} falhou:`, JSON.stringify(errorInfo(err, scope)));
+    return scope;
+  };
 
   // Atalho: tenta primeiro a combinação que funcionou na chamada anterior.
-  if (_lastGood) {
-    const p = providers.find(x => x.name === _lastGood.provider);
+  const previous = _lastGood;
+  if (previous) {
+    const p = providers.find(x => x.name === previous.provider);
     if (p) {
       try {
-        return await tryModel(p, _lastGood.model, opts, requestOptions, cont);
+        return await attempt(p, previous.model);
       } catch (err) {
-        if (errorScope(err) === 'fatal') throw err;
-        lastErr = err;
-        _lastGood = null;
+        if (remember(p, previous.model, err) === 'fatal') throw err;
+        if (_lastGood === previous) _lastGood = null;
       }
     }
   }
 
   for (const provider of providers) {
+    if (down.has(provider.name)) continue;
     if (provider.paid) console.warn(`[llm] caindo no provedor pago ${provider.name} — os gratuitos falharam`);
 
     const fixed = modelsFor(provider, opts.model) || [];
     let providerDown = false;
     for (const model of fixed) {
+      if (attempted.has(`${provider.name}/${model}`)) continue;
       try {
-        return await tryModel(provider, model, opts, requestOptions, cont);
+        return await attempt(provider, model);
       } catch (err) {
-        const scope = errorScope(err);
-        lastErr = err;
+        const scope = remember(provider, model, err);
         if (scope === 'fatal') throw err;
-        console.warn(`[llm] ${provider.name}/${model} falhou (${scope}):`, err.message?.slice(0, 100));
         if (scope === 'provider') { providerDown = true; break; }
       }
     }
     if (providerDown) continue;
 
     // Lista fixa esgotada — pergunta ao provedor o que ele tem hoje.
-    const discovered = (await discoverModels(provider)).filter(id => !fixed.includes(id));
+    const discovered = (await discoverModels(provider)).filter(id => !attempted.has(`${provider.name}/${id}`));
     for (const model of discovered.slice(0, 6)) {
       try {
-        return await tryModel(provider, model, opts, requestOptions, cont);
+        return await attempt(provider, model);
       } catch (err) {
-        const scope = errorScope(err);
-        lastErr = err;
+        const scope = remember(provider, model, err);
         if (scope === 'fatal') throw err;
         if (scope === 'provider') break;
       }
     }
   }
 
-  throw lastErr || new Error('Todos os provedores de IA falharam');
+  throw rateErr || lastErr || new Error('Todos os provedores de IA falharam');
 }
 
 function createCompatClient() {
