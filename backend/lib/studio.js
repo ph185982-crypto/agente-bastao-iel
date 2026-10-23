@@ -122,20 +122,20 @@ async function processar(id,job,{deps={}}={}) {
         });
         const cfg=await armazem().config.obter(conta());const aprendizado=await prefs.orientacoes();
         const instr=[require('../../static/growthModel').instrucoes({formato:c.formato,objetivo:c.crescimento?.objetivo}),`Crie para leitura no celular. Até 28 palavras por slide, contando título e corpo. CTA específico alinhado ao objetivo principal: diga o benefício concreto, sem "mais análises", "próximas notícias" ou promessa de resultado.`,...aprendizado.regras,c.formato==='reels'?'Roteiro para narração: 6 a 8 blocos, entre 120 e 145 palavras no total, frases faladas e progressão dinâmica.':'Ritmo: capa concreta → lacuna → dado/recorte da fonte → consequência → posição → pergunta específica ao leitor → convite para seguir. Se a matéria for curta, una etapas. Não invente contradição nem dado para preencher slide.',c.ultimo_feedback?`Pedido de ajuste do autor (estilo, não fatos): ${c.ultimo_feedback.motivos.map(k=>prefs.MOTIVOS[k]).join('; ')}. ${c.ultimo_feedback.detalhe}`:'',st.correcao||''].filter(Boolean).join('\n');
-        const r=await d.redacao.gerarCopia({briefing:c.briefing,fonte:c.fonte_principal,claims:c.claims,evidencias:c.evidencias,recentes:await recentes(),formato:c.formato==='estatico'?'estatico':'carrossel',editorial:c.formato!=='reels',instrucoes:instr,voz:st.voz||cfg.voice_profile});
+        const r=await d.redacao.gerarCopia({briefing:c.briefing,fonte:c.fonte_principal,claims:c.claims,evidencias:c.evidencias,recentes:await recentes(),formato:c.formato==='estatico'?'estatico':'carrossel',editorial:c.formato!=='reels',instrucoes:instr,voz:st.voz||cfg.voice_profile,objetivo:c.crescimento?.objetivo||'seguidores'});
         const n=c.copia.versoes.length+1;const mapa={};r.opinioes.forEach((o,i)=>{mapa[o.id]=`o${n}_${i+1}`;});c.claims.push(...r.opinioes.map(o=>({...o,id:mapa[o.id]})));
         const v=M.clone(r.versao);v.legenda=limparMarcadores(v.legenda);v.capas?.forEach(k=>{k.texto=limparMarcadores(k.texto);});v.slides.forEach(s=>{s.texto=limparMarcadores(s.texto);s.titulo=limparMarcadores(s.titulo);s.claim_ids=(s.claim_ids||[]).map(id=>mapa[id]||id);s.estilo=c.experimento.estilo;});
         if(c.formato!=='reels')v.slides.forEach(s=>{s.design='editorial_2026';});
         const foco=c.experimento.estilo==='impacto'?'acontecimento':c.experimento.estilo==='revista'?'tensao':'consequencia';
-        const capa=require('../../static/growthModel').escolherCapa(v.capas,foco);if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}
+        const capa=require('../../static/growthModel').escolherCapa(redacao.capasConferidas(c,v),foco);if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}else v.capa_escolhida='original';
         if(!v.cta){v.cta=`Siga ${ACCOUNT.handle}. Aqui eu conecto decisões da economia ao dia a dia de quem empreende.`;const fim=v.slides.at(-1);if(fim?.layout==='encerramento')fim.texto=v.cta;}
         manterAtribuicoes(v,c);
         c.crescimento={...require('../../static/growthModel').plano(c.formato,c.crescimento?.objetivo),ganchos:v.capas?.map(k=>({foco:k.foco,texto:k.texto})),hash_versao:M.hash(M.conteudoDaVersao(v))};
         M.criarVersao(c,v,{quem:'sistema',rotulo:'Versão preparada para aprovação única'});c.status='produzindo';c.auditoria_textos={};c.arte.renders=c.arte.renders || [];delete st.pendencias;proxima('auditoria');break;
       }
       case 'auditoria': {
-        const v=M.versaoAtiva(c);const unidades=[...v.slides.filter(s=>s.layout!=='encerramento').map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda}];
-        const grupo=unidades.slice(st.indice,st.indice+(st.auditoria_lote||3));
+        const v=M.versaoAtiva(c);const editorial=v.slides.some(s=>s.design==='editorial_2026');const unidades=[...v.slides.filter(s=>s.layout!=='encerramento'||editorial).map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda},...(editorial&&v.cta?[{id:'cta',texto:v.cta}]:[])];
+        const grupo=unidades.slice(st.indice,st.indice+(st.auditoria_lote||(editorial?2:3)));
         let r;try{r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims});}
         catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&grupo.length>1){st.auditoria_lote=1;break;}throw e;}
         r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});

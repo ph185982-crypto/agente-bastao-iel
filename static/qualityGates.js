@@ -128,14 +128,16 @@
 
     // Auditoria dos textos que não são opinião: fato sem afirmação conferida.
     const aud = c.auditoria_textos || {};
-    textos.filter((t) => t.tipo !== 'cta').forEach((t) => {
-      const chave = t.tipo === 'legenda' ? 'legenda' : t.onde.slide;
-      const s = t.tipo === 'legenda' ? null : (v.slides || []).find((x) => x.id === chave);
+    const editorial = (v.slides || []).some(s=>s.design==='editorial_2026');
+    textos.filter((t) => t.tipo !== 'cta'||editorial).forEach((t) => {
+      const chave = t.tipo === 'slide' ? t.onde.slide : t.tipo;
+      const s = t.tipo === 'slide' ? (v.slides || []).find((x) => x.id === chave) : null;
       const ehOpiniao = (t.claim_ids || []).some((id) => { const k = c.claims.find((q) => q.id === id); return k && (k.tipo === 'opiniao' || k.natureza === 'opiniao'); });
-      if (ehOpiniao || (s && s.layout === 'encerramento')) return;
+      if (ehOpiniao || (s && s.layout === 'encerramento'&&!editorial)) return;
       const a = aud[chave];
-      const textoAtual = t.tipo === 'legenda' ? v.legenda : M.textoParaAuditoria(s);
+      const textoAtual = t.tipo === 'legenda' ? v.legenda : t.tipo==='cta'?v.cta:M.textoParaAuditoria(s);
       if (!a || a.hash_texto !== M.hash(textoAtual)) {
+        if(editorial&&textoAtual)out.push(bloqueio('texto_nao_auditado','fatos','Texto ainda não conferido',`${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} precisa passar pela conferência desta versão.`,t.onde,'Conferir o texto'));
         if (s?.titulo) out.push(bloqueio('titulo_nao_auditado', 'fatos', 'Título ainda não conferido', `O título e o texto do slide ${t.onde.indice} precisam ser conferidos juntos.`, t.onde, 'Conferir o slide'));
         return;
       }

@@ -34,3 +34,12 @@ test('slides sem título preservam o hash antigo', () => {
   const s = { titulo: null, texto: 'Texto anterior.' };
   assert.equal(M.hash(M.textoParaAuditoria(s)), M.hash(s.texto));
 });
+
+test('novo encerramento e CTA não escapam da conferência factual',()=>{
+  const c=M.novoConteudo();
+  M.criarVersao(c,{slides:[{id:'s1',design:'editorial_2026',layout:'encerramento',texto:'Siga para saber quando o investimento vai render.'}],cta:'Siga para saber quando o investimento vai render.',legenda:''});
+  assert(G.bloqueios(c).some(b=>b.id==='texto_nao_auditado'));
+  c.auditoria_textos={s1:{hash_texto:M.hash(M.textoParaAuditoria(M.versaoAtiva(c).slides[0])),premissas:[{texto:'O investimento vai render.',claim_id:null}]},cta:{hash_texto:M.hash(M.versaoAtiva(c).cta),premissas:[{texto:'O investimento vai render.',claim_id:null}]}};
+  assert(G.bloqueios(c).some(b=>b.id==='fato_sem_fonte'&&b.onde?.slide==='s1'));
+  assert(G.bloqueios(c).some(b=>b.id==='fato_sem_fonte'&&b.onde?.campo==='cta'));
+});

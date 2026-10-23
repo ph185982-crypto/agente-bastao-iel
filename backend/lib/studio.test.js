@@ -127,6 +127,6 @@ test('produção completa chega à revisão sem aprovações intermediárias e s
     buscarFoto:async()=>({dados:imagem,meta:{id:'foto-fixture',tipo:'ilustrativa',origem:'https://exemplo.test/foto',licenca:'FIXTURE'}}),
   };
   let atual=c;for(let i=0;i<25&&atual.studio.estado==='gerando';i++)atual=await studio.processar(c.id,c.studio.job,{deps});
-  assert.equal(atual.studio.estado,'pronto',atual.studio.erro);assert.equal(atual.status,'em_revisao');assert.equal(studio.prepararRevisao(atual).bloqueios.length,0);assert.equal(atual.revisao.aprovada_versao,null);assert.equal(atual.arte.renders.length,3);assert.equal((await arm.publicacoes.listar(conta)).length,0);
+  assert.equal(atual.studio.estado,'pronto',JSON.stringify({studio:atual.studio,bloqueios:studio.prepararRevisao(atual).bloqueios}));assert.equal(atual.status,'em_revisao');assert.equal(studio.prepararRevisao(atual).bloqueios.length,0);assert(atual.auditoria_textos.s3,'encerramento conferido');assert(atual.auditoria_textos.cta,'CTA conferido');assert.equal(atual.revisao.aprovada_versao,null);assert.equal(atual.arte.renders.length,3);assert.equal((await arm.publicacoes.listar(conta)).length,0);
   assert.match(M.versaoAtiva(atual).slides[0].texto,/Segundo Empresa/);assert.match(M.versaoAtiva(atual).legenda,/Segundo Empresa/);
 });

@@ -102,7 +102,7 @@ const DIRECAO_EDITORIAL = `DIREÇÃO PARA O CELULAR:
 - Defina composicao: "numero" para dado como título; "recorte" para resumo fiel da fonte; "foto" para contraste visual; "manifesto" para posição; "pergunta" para UMA pergunta ao leitor sobre escolha concreta; "texto" para transição. Varie pelo menos 3 composições. Isso não autoriza criar afirmações.
 - Perto do fim, UMA pergunta participativa ligada ao caso (o que cobraria, escolheria ou mudaria). funcao explicacao, composicao pergunta. Sem fato novo, sem "comente SIM" nem enquete inventada.
 - Sem moral pronta, tom de consultor ou generalização absoluta. Conversa de empreendedor, com raciocínio apoiado nos fatos.
-- CTA até 24 palavras: seguir + benefício concreto ligado ao tema. Sem "mais insights", "próximas notícias" ou história pessoal de origem inventada.
+- CTA até 24 palavras com UMA ação, conforme o objetivo pedido, e benefício concreto ligado ao tema. Escreva a chamada apenas no campo cta, nunca como outro slide. Sem "mais insights", "próximas notícias" ou história pessoal de origem inventada.
 `;
 
 // ── Copy ───────────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ function montarVersao({ dados, claims, evidencias, formato, editorial = false })
   (dados.slides || []).slice(0, 9).forEach((s, i) => {
     if (!s || !s.texto) return;
     const funcao = E.FUNCOES_SLIDE[s.funcao] ? s.funcao : 'explicacao';
-    if(funcao==='encerramento' || (!s.opiniao && !(s.claim_ids||[]).length && /^(siga|segue|salve|envie|manda|compartilhe)\b/i.test(String(s.texto).trim())))return; // appended once from the dedicated CTA field
+    if(funcao==='encerramento' || (!s.opiniao && !(s.claim_ids||[]).length && /^(siga|segue|salve|guarde|envie|envia|manda|mande|compartilhe)\b/i.test(String(s.texto).trim())))return; // appended once from the dedicated CTA field
     let claim_ids = limpaIds(s.claim_ids);
     s = { ...s, texto: String(s.texto).replace(/【[^】]*】/g, '').replace(/\s+([.,;:!?])/g, '$1').trim() };
     if (s.opiniao) {
@@ -157,6 +157,7 @@ function montarVersao({ dados, claims, evidencias, formato, editorial = false })
   // Slide de conteúdo sem afirmação ligada e sem ser opinião: provável fato sem fonte.
   slides.forEach((s, i) => {
     if (i > 0 && !['encerramento', 'capa'].includes(s.funcao) && !(s.claim_ids || []).length && s.texto.split(/\s+/).length > 8) problemas.push(`o slide ${i + 1} afirma algo sem afirmação ligada: ligue a uma afirmação (claim_ids) ou marque como opinião`);
+    if (editorial && [s.titulo,s.texto].filter(Boolean).join(' ').replace(/\*\*/g,'').split(/\s+/).filter(Boolean).length > 32) problemas.push(`o slide ${i + 1} tem texto demais: reduza título e corpo juntos para até 28 palavras, preservando os fatos e a atribuição`);
   });
   const META = /parcialmente (sustentad|confirmad)|confirmad[oa] parcialmente|n[aã]o confirmad|fonte [uú]nica|verifica[cç][aã]o independente|n[aã]o verificad|sustentada por|estado da afirma|claim_ids?|\[a\d+\]|【/i;
   slides.forEach((s, i) => { if (META.test(s.texto)) problemas.push(`o slide ${i + 1} fala do sistema de checagem em vez de falar do assunto (reescreva sem "fonte única", "sustentada" etc.)`); });
@@ -187,7 +188,16 @@ function provisorio({ claims, evidencias, fonte, versao, opinioes }) {
   return c;
 }
 
-async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', editorial = false, instrucoes = '', voz }, d0) {
+function capasConferidas(c, v) {
+  return (v.capas || []).filter(k=>{
+    const slide={...v.slides[0],titulo:null,texto:k.texto,claim_ids:k.claim_ids||[]};
+    const p=provisorio({claims:c.claims,evidencias:c.evidencias,fonte:c.fonte_principal,versao:{...v,slides:[slide]},opinioes:[]});
+    // Required attribution is added by manterAtribuicoes after cover selection.
+    return !G.bloqueios(p,{conta:M.ACCOUNT_PIN}).some(b=>['numero_sem_origem','numero_sem_afirmacao','citacao_sem_origem','atribuicao_sem_origem','valores_divergentes'].includes(b.id));
+  });
+}
+
+async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', editorial = false, instrucoes = '', voz, objetivo }, d0) {
   const d = deps(d0);
   const claims = utilizaveis(todas);
   const lista = claims.map((c) => { const {motivo,fontes,risco,central,mutavel,...essenciais}=resumoClaim(c,evidencias); return essenciais; });
@@ -200,7 +210,7 @@ async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes
       sistema: `${E.VOZ}${vozDoPedro(voz)}\n\n${d.llmJson.REGRAS_DADOS}`,
       usuario: `Escreva o conteúdo para ${ACCOUNT.handle} seguindo o BRIEFING. ${formato === 'estatico' ? 'Formato: post estático (UMA imagem que se sustenta sozinha).' : 'Formato: carrossel.'}
 
-BRIEFING: ${JSON.stringify({ assunto: briefing.assunto, acontecimento: briefing.acontecimento, objetivo: briefing.objetivo, tese: briefing.tese, tese_tipo: briefing.tese_tipo, estrutura: E.ESTRUTURAS[briefing.estrutura]?.nome, motivo_compartilhar: briefing.motivo_compartilhar, conflito: briefing.conflito, duvidas: briefing.duvidas })}
+BRIEFING (tese é uma hipótese editorial, nunca uma fonte factual): ${JSON.stringify({ assunto: briefing.assunto, acontecimento: briefing.acontecimento, objetivo: briefing.objetivo, tese: briefing.tese, tese_tipo: briefing.tese_tipo, estrutura: E.ESTRUTURAS[briefing.estrutura]?.nome, motivo_compartilhar: briefing.motivo_compartilhar, conflito: briefing.conflito, duvidas: briefing.duvidas })}
 
 AFIRMAÇÕES DISPONÍVEIS (use claim_ids exatos; o estado é o verificado pelo sistema):
 ${JSON.stringify(lista)}
@@ -219,7 +229,7 @@ Para "comparacao" preencha dados: {"esquerda":{"rotulo":"","valor":"","detalhe":
 
 TRÊS CAPAS realmente diferentes para a MESMA base factual, uma de cada foco: "acontecimento" (o fato novo, direto), "consequencia" (o efeito na vida prática), "tensao" (a pergunta ou tensão central). Explique em 1 frase a diferença. Não escolha a que tiver mais números ou palavras agressivas.
 
-LEGENDA: primeira linha forte, até 600 caracteres, sem repetir os slides, com a fonte principal citada em texto. CTA coerente com o objetivo (${briefing.objetivo}): ${E.OBJETIVOS[briefing.objetivo]?.cta}. No máximo 3 hashtags (ou nenhuma). Varie a abertura e o fechamento em relação aos posts recentes.
+LEGENDA: primeira linha forte, até 600 caracteres, sem repetir os slides, com a fonte principal citada em texto. ${objetivo ? require('../../static/growthModel').OBJETIVOS[objetivo]?.cta || '' : `CTA coerente com o objetivo (${briefing.objetivo}): ${E.OBJETIVOS[briefing.objetivo]?.cta}.`} No máximo 3 hashtags (ou nenhuma). Varie a abertura e o fechamento em relação aos posts recentes.
 ${instrucoes ? `INSTRUÇÃO DO PEDRO: ${instrucoes}\n` : ''}${feedback ? `\nA VERSÃO ANTERIOR TEVE PROBLEMAS. CORRIJA SÓ ISTO:\n${feedback}\n` : ''}
 ${rec.bloco}
 
@@ -265,23 +275,33 @@ Responda APENAS JSON:
 // fato de cada slide e da legenda (inclusive as escondidas numa opinião, como
 // "aumenta impostos") e diz qual afirmação conferida sustenta cada uma; o código
 // só aceita ids que existem. Fato sem afirmação vira bloqueio.
+const normBase = texto => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\*\*/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+function premissaConferida(p, claims) {
+  const texto=String(p.texto||'').slice(0,240), k=claims.find(c=>c.id===String(p.claim_id) && c.tipo!=='opiniao' && c.natureza!=='opiniao' && c.decisao?.tipo!=='retirar');
+  const trecho=String(p.trecho_base||'').trim(), base=normBase(k?.texto);
+  let ok=!!k && trecho.length>=8 && base.includes(normBase(trecho));
+  // Regression guard: a fine or price movement does not prove a new causal
+  // mechanism. An ID about the same company alone cannot support that claim.
+  const relacoes=[/repass\w*/g,/dilui\w*/g,/encarec\w*/g,/barate\w*/g,/garant\w*/g];
+  for(const r of relacoes){const raiz=r.source.split('\\')[0];if(new RegExp(raiz).test(normBase(texto))&&!new RegExp(raiz).test(base))ok=false;}
+  return {texto,claim_id:ok?k.id:null,...(ok?{trecho_base:trecho}: {})};
+}
 async function auditarOpinioes({ slides, claims }, d0) {
   const d = deps(d0);
   const ops = (slides || []).filter((s) => s && s.id && (s.texto || s.titulo)).slice(0, 12)
     .map((s) => ({ ...s, texto: M.textoParaAuditoria(s) }));
   if (!ops.length) return { auditoria: [] };
-  const ids = new Set(claims.map((c) => c.id));
-  const lista = claims.filter((c) => c.tipo !== 'opiniao' && c.decisao?.tipo !== 'retirar').map((c) => ({ id: c.id, texto: c.texto, estado: c.estado }));
+  const lista = claims.filter((c) => c.tipo !== 'opiniao' && c.natureza !== 'opiniao' && c.decisao?.tipo !== 'retirar').map((c) => ({ id: c.id, texto: c.texto, estado: c.estado }));
   const { dados, llm } = await d.llmJson.pedirJson({
     temperatura: 0.1, maxTokens: 1500, esforco: 'low',
-    sistema: `Você separa, em textos de post, o que é avaliação do autor do que é afirmação de fato. É rigoroso: "aumenta a carga tributária", "vai fechar empresas", "a maioria apoia", "muda a rotina dos agentes de saúde" são afirmações de fato. Uma afirmação só é sustentada se a afirmação conferida diz a MESMA coisa (mesmo sujeito, alcance, status e números).\n${d.llmJson.REGRAS_DADOS}`,
+    sistema: `Você separa avaliações de afirmações factuais. Afirmações condicionais e possibilidades causais também precisam de base: "pode repassar a multa ao consumidor" não é sustentada por "a empresa foi multada". "O dólar caiu" não prova vantagem para comprar ações. Perguntas e CTAs podem embutir essas premissas: confira-os também. Uma base só sustenta a MESMA relação (mesmo sujeito, efeito, alcance, status e números). Para ligar um claim_id, copie um trecho_base literal da afirmação que realmente demonstra essa relação; coincidência de nome ou número não basta. Sem base integral, claim_id:null. Opiniões anteriores não são fontes.\n${d.llmJson.REGRAS_DADOS}`,
     usuario: `AFIRMAÇÕES CONFERIDAS: ${JSON.stringify(lista)}
 
 TEXTOS DO POST: ${JSON.stringify(ops.map((s) => ({ id: s.id, texto: String(s.texto).replace(/\*\*/g, '') })))}
 
 Para cada texto, liste as afirmações de FATO (não as avaliações, perguntas ou convites) e, para cada uma, o id da afirmação conferida que a sustenta, ou null se nenhuma sustenta.
 Devolva exatamente estes IDs, uma vez cada, sem trocar ou inventar: ${JSON.stringify(ops.map(s=>s.id))}. Se um texto não trouxer fatos, devolva premissas: [].
-Responda APENAS JSON: {"slides":[{"id":${JSON.stringify(ops[0].id)},"premissas":[{"texto":"afirmação factual do texto","claim_id":null}]}]}`,
+Responda APENAS JSON: {"slides":[{"id":${JSON.stringify(ops[0].id)},"premissas":[{"texto":"afirmação factual do texto","claim_id":null,"trecho_base":null}]}]}`,
   });
   const recebidos = Array.isArray(dados?.slides) ? dados.slides : [];
   if (ops.some((s) => {
@@ -295,10 +315,10 @@ Responda APENAS JSON: {"slides":[{"id":${JSON.stringify(ops[0].id)},"premissas":
     const s = ops.find((y) => y.id === x.id);
     return {
       slide_id: x.id, hash_texto: require('../../static/contentModel').hash(s.texto),
-      premissas: (x.premissas || []).slice(0, 6).map((p) => ({ texto: String(p.texto || '').slice(0, 240), claim_id: ids.has(String(p.claim_id)) ? String(p.claim_id) : null })).filter((p) => p.texto),
+      premissas: (x.premissas || []).slice(0, 6).map(p=>premissaConferida(p,claims)).filter((p) => p.texto),
     };
   });
   return { auditoria, llm };
 }
 
-module.exports = { vozDoPedro, auditarOpinioes, gerarBriefing, gerarCopia, montarVersao, provisorio, resumoClaim, LAYOUT_POR_FUNCAO };
+module.exports = { vozDoPedro, auditarOpinioes, premissaConferida, gerarBriefing, gerarCopia, montarVersao, provisorio, capasConferidas, resumoClaim, LAYOUT_POR_FUNCAO };

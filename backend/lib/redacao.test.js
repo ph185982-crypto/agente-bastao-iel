@@ -143,6 +143,30 @@ test('auditoria parcial ou malformada não vira conferência concluída', async 
   }
 });
 
+test('multa não sustenta repasse ao consumidor mesmo com um ID válido e trecho real',()=>{
+  const {premissaConferida}=require('./redacao');
+  const base=[{id:'a1',tipo:'fato',texto:'O Procon manteve a multa de R$ 11,4 milhões contra a Enel.'}];
+  for(const texto of ['A Enel pode repassar a multa ao consumidor.','O valor será diluído no boleto.']){
+    assert.equal(premissaConferida({texto,claim_id:'a1',trecho_base:base[0].texto},base).claim_id,null);
+  }
+  assert.equal(premissaConferida({texto:'A penalidade foi mantida.',claim_id:'a1',trecho_base:'O Procon manteve a multa'},base).claim_id,'a1');
+});
+
+test('auditoria exige trecho literal e não usa opinião como fonte',()=>{
+  const {premissaConferida}=require('./redacao');
+  assert.equal(premissaConferida({texto:'O teto subiu.',claim_id:'a1',trecho_base:'O Senado aprovou teto de R$ 180 mil'},claims).claim_id,null);
+  assert.equal(premissaConferida({texto:'O teto subiu.',claim_id:'a1'},claims).claim_id,null);
+  const opiniao={id:'o1',tipo:'opiniao',texto:'A medida vai fechar empresas.'};
+  assert.equal(premissaConferida({texto:opiniao.texto,claim_id:'o1',trecho_base:opiniao.texto},[opiniao]).claim_id,null);
+});
+
+test('capa sem fonte para os números não substitui uma capa conferida',()=>{
+  const {capasConferidas}=require('./redacao');
+  const v={slides:[{id:'s1',texto:'O Senado aprovou o teto.',claim_ids:['a1']}],capas:[{id:'sem-fonte',texto:'Teto de R$ 140 mil.',claim_ids:[]},{id:'com-fonte',texto:'Teto de R$ 140 mil.',claim_ids:['a1']}]};
+  const boas=capasConferidas({claims,evidencias,fonte_principal:fonte},v);
+  assert.deepEqual(boas.map(c=>c.id),['com-fonte']);
+});
+
 test('correção encerra o temporizador quando termina, sem prender a função por 50 segundos', async t => {
   const clear = t.mock.method(global, 'clearTimeout');
   const d = copiaOk(); d.slides[1].texto = 'Teto de R$ 180 mil.';
