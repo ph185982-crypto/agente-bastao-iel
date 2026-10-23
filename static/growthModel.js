@@ -22,7 +22,7 @@
   }
   const clean=s=>String(s||'').replace(/\*\*/g,'').trim();
   const words=s=>clean(s).split(/\s+/).filter(Boolean);
-  const generico=s=>/ser[aá] que.*realmente|voc[eê] sabia|isso muda tudo|voc[eê] n[aã]o vai acreditar|segredo do sucesso|vale a pena.*agora.*esperar/i.test(s||'');
+  const generico=s=>/^ser[aá] que\b|voc[eê] sabia|isso muda tudo|voc[eê] n[aã]o vai acreditar|segredo do sucesso|vale a pena.*agora.*esperar/i.test(s||'');
   function escolherCapa(capas,preferida){
     const lista=(capas||[]).filter(c=>c.texto);
     return [...lista].sort((a,b)=>{
@@ -40,7 +40,7 @@
       {id:'gancho',nome:'Gancho curto e específico',ok:words(hook).length>0&&words(hook).length<=18&&!generico(hook),dica:'Abra com o que aconteceu ou com uma tensão concreta; sem pergunta genérica.'},
       {id:'leitura',nome:'Leitura no celular',ok:content.every(s=>words([s.titulo,s.texto].join(' ')).length<=38),dica:'Uma ideia por tela, com título e corpo que se complementem.'},
       {id:'entrega',nome:'Entrega apoiada na fonte',ok:content.some(s=>(s.claim_ids||[]).length>0),dica:'Apoie a explicação em fatos da fonte. A conferência factual aparece separadamente.'},
-      {id:'convite',nome:'CTA alinhado ao objetivo',ok:wanted.test(final)&&!/mais insights|pr[oó]ximas not[ií]cias|mais an[aá]lises r[aá]pidas/i.test(v.cta||''),dica:OBJETIVOS[objetivo]?.cta||OBJETIVOS.seguidores.cta}
+      {id:'convite',nome:'CTA alinhado ao objetivo',ok:wanted.test(final)&&!/mais insights|pr[oó]ximas not[ií]cias|an[aá]lises r[aá]pidas/i.test(v.cta||''),dica:OBJETIVOS[objetivo]?.cta||OBJETIVOS.seguidores.cta}
     ];
     if(c.formato==='carrossel')checks.splice(2,0,{id:'ritmo',nome:'Variedade visual e progressão',ok:new Set(content.map(s=>s.composicao||s.layout)).size>=3,dica:'Alterne foto, evidência, dado ou posição. Evite repetir o mesmo bloco de texto.'});
     if(c.formato==='reels')checks.push({id:'video',nome:'Vídeo e voz preparados',ok:c.motion?.estado==='pronto'&&c.motion?.narracao===true,dica:'Confira a abertura, o áudio e a entrega na prévia.'});

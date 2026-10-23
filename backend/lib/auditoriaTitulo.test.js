@@ -43,3 +43,10 @@ test('novo encerramento e CTA não escapam da conferência factual',()=>{
   assert(G.bloqueios(c).some(b=>b.id==='fato_sem_fonte'&&b.onde?.slide==='s1'));
   assert(G.bloqueios(c).some(b=>b.id==='fato_sem_fonte'&&b.onde?.campo==='cta'));
 });
+
+test('CTA do novo modelo pede uma ação concreta e evita o fechamento genérico antigo',()=>{
+  const c=M.novoConteudo();M.criarVersao(c,{slides:[{id:'s1',design:'editorial_2026',layout:'explicacao',texto:'Um fato.'}],cta:'Salve e siga para mais análises rápidas.',legenda:''});
+  assert(G.bloqueios(c).some(b=>b.id==='cta_generico'));assert(G.bloqueios(c).some(b=>b.id==='cta_varias_acoes'));
+  M.versaoAtiva(c).cta='Siga @pedro_destrava para distinguir o teto do MEI anunciado do limite que já vale.';
+  assert(!G.bloqueios(c).some(b=>['cta_generico','cta_varias_acoes'].includes(b.id)));
+});

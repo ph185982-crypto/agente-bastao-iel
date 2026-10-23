@@ -102,7 +102,7 @@ const DIRECAO_EDITORIAL = `DIREÇÃO PARA O CELULAR:
 - Defina composicao: "numero" para dado como título; "recorte" para resumo fiel da fonte; "foto" para contraste visual; "manifesto" para posição; "pergunta" para UMA pergunta ao leitor sobre escolha concreta; "texto" para transição. Varie pelo menos 3 composições. Isso não autoriza criar afirmações.
 - Perto do fim, UMA pergunta participativa ligada ao caso (o que cobraria, escolheria ou mudaria). funcao explicacao, composicao pergunta. Sem fato novo, sem "comente SIM" nem enquete inventada.
 - Sem moral pronta, tom de consultor ou generalização absoluta. Conversa de empreendedor, com raciocínio apoiado nos fatos.
-- CTA até 24 palavras com UMA ação, conforme o objetivo pedido, e benefício concreto ligado ao tema. Escreva a chamada apenas no campo cta, nunca como outro slide. Sem "mais insights", "próximas notícias" ou história pessoal de origem inventada.
+- CTA até 24 palavras com UMA ação, conforme o objetivo pedido, e benefício concreto ligado ao tema. Escreva a chamada apenas no campo cta, nunca como outro slide. Sem "análises rápidas", "mais insights", "próximas notícias" ou história pessoal de origem inventada.
 `;
 
 // ── Copy ───────────────────────────────────────────────────────────────────
@@ -200,6 +200,7 @@ function capasConferidas(c, v) {
 async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', editorial = false, instrucoes = '', voz, objetivo }, d0) {
   const d = deps(d0);
   const claims = utilizaveis(todas);
+  const semBase = premissasCausais(briefing.tese, claims).length > 0;
   const lista = claims.map((c) => { const {motivo,fontes,risco,central,mutavel,...essenciais}=resumoClaim(c,evidencias); return essenciais; });
   const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 4).join('\n'), 700);
   const budget = { max: 2, usados: 0 };
@@ -210,13 +211,13 @@ async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes
       sistema: `${E.VOZ}${vozDoPedro(voz)}\n\n${d.llmJson.REGRAS_DADOS}`,
       usuario: `Escreva o conteúdo para ${ACCOUNT.handle} seguindo o BRIEFING. ${formato === 'estatico' ? 'Formato: post estático (UMA imagem que se sustenta sozinha).' : 'Formato: carrossel.'}
 
-BRIEFING (tese é uma hipótese editorial, nunca uma fonte factual): ${JSON.stringify({ assunto: briefing.assunto, acontecimento: briefing.acontecimento, objetivo: briefing.objetivo, tese: briefing.tese, tese_tipo: briefing.tese_tipo, estrutura: E.ESTRUTURAS[briefing.estrutura]?.nome, motivo_compartilhar: briefing.motivo_compartilhar, conflito: briefing.conflito, duvidas: briefing.duvidas })}
+BRIEFING (tese é uma hipótese editorial, nunca uma fonte factual): ${JSON.stringify({ assunto: briefing.assunto, acontecimento: briefing.acontecimento, objetivo: briefing.objetivo, tese: semBase ? 'Explique somente os acontecimentos confirmados abaixo, sem criar mecanismos causais.' : briefing.tese, tese_tipo: semBase ? 'explicacao' : briefing.tese_tipo, estrutura: E.ESTRUTURAS[briefing.estrutura]?.nome, motivo_compartilhar: briefing.motivo_compartilhar, conflito: briefing.conflito, duvidas: briefing.duvidas })}
 
 AFIRMAÇÕES DISPONÍVEIS (use claim_ids exatos; o estado é o verificado pelo sistema):
 ${JSON.stringify(lista)}
 
 REGRAS DE FATOS (inegociáveis):
-1. Use só as afirmações listadas e claim_ids exatos. Todo número, data, nome, citação ou detalhe factual precisa constar na afirmação ligada ou no cálculo dela. Não invente fontes nem causalidade.
+1. Use só as afirmações listadas e claim_ids exatos. Todo número, data, nome, citação ou detalhe factual precisa constar na afirmação ligada ou no cálculo dela. Não invente fontes nem causalidade. Uma pergunta não pode insinuar um mecanismo que a fonte não traz. Multa não prova repasse ao consumidor; dólar em queda não prova que seja hora de investir.
 2. sustentada pode ser fato. parcialmente_sustentada e nao_verificada só entram com atribuição explícita ao veículo. contradita não entra. Respeite natureza, precisa_atribuicao e condicao_obrigatoria, inclusive na capa. Anúncio não é regra vigente, previsão não é certeza.
 3. Aspas só para trecho exato. Nome de quem disse vem da fonte. Fonte, condição e ressalvas não podem ser removidas para criar impacto.
 4. Opinião é marcada opiniao:true, com claim_ids das premissas factuais, e deve soar como posição ("na minha leitura"). Nunca invente experiência pessoal. Fatos embutidos em opinião continuam exigindo fonte. Perguntas e convites sem fato novo não precisam de claim_ids.
@@ -276,6 +277,11 @@ Responda APENAS JSON:
 // "aumenta impostos") e diz qual afirmação conferida sustenta cada uma; o código
 // só aceita ids que existem. Fato sem afirmação vira bloqueio.
 const normBase = texto => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\*\*/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+const RAIZES_CAUSAIS=['repass','dilui','encarec','barate'];
+function premissasCausais(texto, claims) {
+  const base=normBase(claims.filter(c=>c.tipo!=='opiniao'&&c.natureza!=='opiniao'&&c.decisao?.tipo!=='retirar').map(c=>c.texto).join(' '));
+  return RAIZES_CAUSAIS.some(raiz=>normBase(texto).includes(raiz)&&!base.includes(raiz)) ? [{texto:String(texto).slice(0,240),claim_id:null}] : [];
+}
 function premissaConferida(p, claims) {
   const texto=String(p.texto||'').slice(0,240), k=claims.find(c=>c.id===String(p.claim_id) && c.tipo!=='opiniao' && c.natureza!=='opiniao' && c.decisao?.tipo!=='retirar');
   const trecho=String(p.trecho_base||'').trim(), base=normBase(k?.texto);
@@ -315,10 +321,29 @@ Responda APENAS JSON: {"slides":[{"id":${JSON.stringify(ops[0].id)},"premissas":
     const s = ops.find((y) => y.id === x.id);
     return {
       slide_id: x.id, hash_texto: require('../../static/contentModel').hash(s.texto),
-      premissas: (x.premissas || []).slice(0, 6).map(p=>premissaConferida(p,claims)).filter((p) => p.texto),
+      premissas: [...(x.premissas || []).slice(0, 6).map(p=>premissaConferida(p,claims)).filter((p) => p.texto),...premissasCausais(s.texto,claims)],
     };
   });
   return { auditoria, llm };
 }
 
-module.exports = { vozDoPedro, auditarOpinioes, premissaConferida, gerarBriefing, gerarCopia, montarVersao, provisorio, capasConferidas, resumoClaim, LAYOUT_POR_FUNCAO };
+// A second, separately checkpointed task verifies entailment instead of writing
+// or extracting copy. A matching entity/number is not evidence of causation.
+async function conferirVinculos({auditoria,claims},d0){
+  const d=deps(d0),pares=[];
+  for(const a of auditoria)for(let i=0;i<a.premissas.length;i++){
+    const p=a.premissas[i],k=claims.find(c=>c.id===p.claim_id&&c.tipo!=='opiniao'&&c.natureza!=='opiniao');
+    if(k)pares.push({id:`${a.slide_id}:${i}`,afirmacao:p.texto,base:k.texto});
+  }
+  if(!pares.length)return {auditoria};
+  const {dados,llm}=await d.llmJson.pedirJson({temperatura:0,maxTokens:1800,esforco:'medium',
+    sistema:`Compare cada afirmação com sua base, sem usar conhecimento externo. Responda sustenta:true somente se TODA a afirmação puder ser concluída da base. Mesma empresa ou mesmo número não basta. Efeito econômico, causa, intenção, vigência, certeza ou prazo adicionais tornam sustenta:false. Exemplo: base "O dólar caiu" não sustenta "a margem de lucro das empresas melhora e favorece suas ações". Base "A empresa foi multada" não sustenta "a multa será repassada ao consumidor". Avalie cada par de forma independente.\n${d.llmJson.REGRAS_DADOS}`,
+    usuario:`${d.llmJson.dado('PARES_PARA_CONFERIR',JSON.stringify(pares),18000).bloco}\nDevolva cada ID exatamente uma vez. Motivo com até 12 palavras. JSON: {"vinculos":[{"id":"${pares[0].id}","sustenta":false,"motivo":"o que falta na base"}]}`});
+  if(!Array.isArray(dados?.vinculos)||pares.some(p=>dados.vinculos.filter(v=>v?.id===p.id&&typeof v.sustenta==='boolean').length!==1))throw Object.assign(new Error('A conferência das fontes não cobriu todos os vínculos.'),{code:'AUDITORIA_INCOMPLETA'});
+  return {auditoria:auditoria.map(a=>({...a,premissas:a.premissas.map((p,i)=>{
+    if(!p.claim_id)return p;const v=dados.vinculos.find(v=>v.id===`${a.slide_id}:${i}`);
+    return v?.sustenta?{...p,vinculo_conferido:true}:{...p,claim_id:null,motivo:String(v?.motivo||'A base não demonstra esta afirmação.').slice(0,240)};
+  })})),llm};
+}
+
+module.exports = { vozDoPedro, auditarOpinioes, conferirVinculos, premissaConferida, premissasCausais, gerarBriefing, gerarCopia, montarVersao, provisorio, capasConferidas, resumoClaim, LAYOUT_POR_FUNCAO };

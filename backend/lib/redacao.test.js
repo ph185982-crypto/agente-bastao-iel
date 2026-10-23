@@ -160,6 +160,24 @@ test('auditoria exige trecho literal e não usa opinião como fonte',()=>{
   assert.equal(premissaConferida({texto:opiniao.texto,claim_id:'o1',trecho_base:opiniao.texto},[opiniao]).claim_id,null);
 });
 
+test('pergunta causal sem base bloqueia mesmo quando o auditor responde que não há fatos',async()=>{
+  const {auditarOpinioes}=require('./redacao');
+  const texto='Será que a Enel vai repassar o custo da multa aos consumidores?';
+  const llm={REGRAS_DADOS:'',pedirJson:async()=>({dados:{slides:[{id:'s1',premissas:[]}]},llm:{provider:'fixture'}})};
+  const r=await auditarOpinioes({slides:[{id:'s1',texto}],claims:[{id:'a1',tipo:'fato',texto:'A Enel recebeu uma multa.'}]},{llmJson:llm});
+  assert(r.auditoria[0].premissas.some(p=>p.claim_id===null&&p.texto===texto));
+});
+
+test('segunda conferência rejeita causalidade adicional e preserva o fato demonstrado',async()=>{
+  const {conferirVinculos}=require('./redacao');
+  const claims=[{id:'a1',tipo:'fato',texto:'O dólar caiu 0,58%.'}];
+  const auditoria=[{slide_id:'s1',premissas:[{texto:'O dólar recuou 0,58%.',claim_id:'a1'},{texto:'A margem das empresas melhorou e favoreceu suas ações.',claim_id:'a1'}]}];
+  const llm={REGRAS_DADOS:'',dado:llmReal.dado,pedirJson:async()=>({dados:{vinculos:[{id:'s1:0',sustenta:true},{id:'s1:1',sustenta:false,motivo:'A base não informa margens nem efeito nas ações.'}]},llm:{provider:'fixture'}})};
+  const r=await conferirVinculos({auditoria,claims},{llmJson:llm});
+  assert.equal(r.auditoria[0].premissas[0].claim_id,'a1');assert(r.auditoria[0].premissas[0].vinculo_conferido);
+  assert.equal(r.auditoria[0].premissas[1].claim_id,null);assert.equal(auditoria[0].premissas[1].claim_id,'a1','histórico de entrada preservado');
+});
+
 test('capa sem fonte para os números não substitui uma capa conferida',()=>{
   const {capasConferidas}=require('./redacao');
   const v={slides:[{id:'s1',texto:'O Senado aprovou o teto.',claim_ids:['a1']}],capas:[{id:'sem-fonte',texto:'Teto de R$ 140 mil.',claim_ids:[]},{id:'com-fonte',texto:'Teto de R$ 140 mil.',claim_ids:['a1']}]};

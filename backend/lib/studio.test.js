@@ -87,6 +87,16 @@ test('conferência incompleta passa a verificar cada texto e conserva o que já 
   const b=await studio.processar(c.id,c.studio.job,{deps});assert(b.auditoria_textos.s1);assert.equal(b.studio.indice,1);
   const d=await studio.processar(c.id,c.studio.job,{deps});assert(d.auditoria_textos.s1);assert(d.auditoria_textos.legenda);assert.equal(d.studio.etapa,'foto');assert.deepEqual(grupos,[['s1','legenda'],['s1'],['legenda']]);assert.equal(d.revisao.aprovada_versao,null);
 });
+
+test('conferência dos vínculos retoma após limite da IA sem repetir a extração',async()=>{
+  const c=pronto();c.status='produzindo';M.versaoAtiva(c).slides.forEach(s=>{s.design='editorial_2026';});c.studio={job:'fixture-vinculos',estado:'gerando',etapa:'auditoria',indice:0,passos:0};c.auditoria_textos={};await arm.conteudos.salvar(conta,c.id,c,0);
+  let extracoes=0,conferencias=0;
+  const deps={redacao:{auditarOpinioes:async({slides})=>{extracoes++;return{auditoria:slides.map(s=>({slide_id:s.id,hash_texto:M.hash(s.texto),premissas:[{texto:'A empresa anunciou uma mudança.',claim_id:'a1'}]}))};},conferirVinculos:async({auditoria})=>{conferencias++;if(conferencias===1)throw Object.assign(new Error('Rate limit. Please try again in 5s.'),{status:429});return{auditoria:auditoria.map(a=>({...a,premissas:a.premissas.map(p=>({...p,vinculo_conferido:true}))}))};}}};
+  const primeira=await studio.processar(c.id,c.studio.job,{deps});assert.deepEqual(primeira.studio.auditoria_verificar_ids,['s1','s2']);assert.equal(primeira.studio.indice,0);
+  const espera=await studio.processar(c.id,c.studio.job,{deps});assert.equal(espera.studio.retentativas,1);assert.equal(extracoes,1);assert(espera.auditoria_textos.s1);
+  const reg=await studio.ler(c.id);reg.doc.studio.adiar_ate=new Date(Date.now()-1).toISOString();await arm.conteudos.salvar(conta,c.id,reg.doc,reg.rev);
+  const retomado=await studio.processar(c.id,c.studio.job,{deps});assert.equal(extracoes,1);assert.equal(conferencias,2);assert.equal(retomado.studio.indice,2);assert(retomado.auditoria_textos.s1.premissas[0].vinculo_conferido);assert.equal(retomado.studio.auditoria_verificar_ids,undefined);
+});
 test('os três formatos geram PNG legível e mudar estilo invalida a arte',async()=>{
   const arte=require('./arte');const img=await sharp({create:{width:1080,height:1350,channels:3,background:'#afcfe0'}}).jpeg().toBuffer();
   for(const estilo of Object.keys(prefs.ESTILOS)){const s={layout:'capa_foto',estilo,texto:'O detalhe que muda o jogo.'};const r=await arte.renderizarSlide(s,{indice:1,total:5,imagem:img});const meta=await sharp(r.png).metadata();assert.equal(meta.width,1080);assert.equal(meta.height,1350);assert.equal(r.metrics.cabe,true);}

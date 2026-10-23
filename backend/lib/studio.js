@@ -96,7 +96,7 @@ async function processar(id,job,{deps={}}={}) {
   const lease=await gravar(c,reg.rev).catch(e=>{if(e.code==='CONFLITO')return null;throw e;});if(!lease)return c;
   const proxima=(e,i=0)=>{st.etapa=e;st.indice=i;};
   try {
-    if(st.passos>65)throw new Error('A produção levou mais etapas do que o esperado. Retome para tentar novamente.');
+    if(st.passos>100)throw new Error('A produção levou mais etapas do que o esperado. Retome para tentar novamente.');
     const d={research,redacao,arte,...deps};
     await require('./llmJson').comPrazo(47000,async()=>{switch(st.etapa) {
       case 'leitura': {
@@ -135,10 +135,18 @@ async function processar(id,job,{deps={}}={}) {
       }
       case 'auditoria': {
         const v=M.versaoAtiva(c);const editorial=v.slides.some(s=>s.design==='editorial_2026');const unidades=[...v.slides.filter(s=>s.layout!=='encerramento'||editorial).map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda},...(editorial&&v.cta?[{id:'cta',texto:v.cta}]:[])];
+        if(st.auditoria_verificar_ids?.length){
+          const ids=st.auditoria_verificar_ids;
+          let r;try{r=await d.redacao.conferirVinculos({auditoria:ids.map(id=>c.auditoria_textos[id]),claims:c.claims});}
+          catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&ids.length>1){st.auditoria_lote=1;st.auditoria_verificar_ids=ids.slice(0,1);break;}throw e;}
+          r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});delete st.auditoria_verificar_ids;
+          if(st.indice+ids.length<unidades.length)proxima('auditoria',st.indice+ids.length);else proxima('foto');break;
+        }
         const grupo=unidades.slice(st.indice,st.indice+(st.auditoria_lote||(editorial?2:3)));
         let r;try{r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims});}
         catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&grupo.length>1){st.auditoria_lote=1;break;}throw e;}
         r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});
+        if(typeof d.redacao.conferirVinculos==='function'&&r.auditoria.some(a=>a.premissas.some(p=>p.claim_id))){st.auditoria_verificar_ids=grupo.map(s=>s.id);break;}
         if(st.indice+grupo.length<unidades.length)proxima('auditoria',st.indice+grupo.length);else proxima('foto');break;
       }
       case 'foto': {
