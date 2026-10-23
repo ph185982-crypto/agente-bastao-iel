@@ -205,7 +205,7 @@ async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes
   const claims = utilizaveis(todas);
   const semBase = premissasCausais(briefing.tese, claims).length > 0;
   const lista = claims.map((c) => { const {motivo,fontes,risco,central,mutavel,...essenciais}=resumoClaim(c,evidencias); return essenciais; });
-  const direcao=editorial?{assunto:fonte.titulo,objetivo:objetivo||briefing.objetivo,estrutura:E.ESTRUTURAS[briefing.estrutura]?.nome,orientacao:'Explique os fatos listados. A progressão nasce dos detalhes da notícia; não imponha uma tese, moral ou consequência que a fonte não apresenta.'}:{assunto:briefing.assunto,acontecimento:briefing.acontecimento,objetivo:briefing.objetivo,tese:semBase?'Explique somente os fatos abaixo.':briefing.tese,tese_tipo:semBase?'explicacao':briefing.tese_tipo,estrutura:E.ESTRUTURAS[briefing.estrutura]?.nome,motivo_compartilhar:briefing.motivo_compartilhar,conflito:briefing.conflito,duvidas:briefing.duvidas};
+  const direcao=editorial?{assunto:fonte.titulo,objetivo:objetivo||briefing.objetivo,estrutura:'fatos e detalhes da matéria, sem consequência ou opinião obrigatória',orientacao:'Explique os fatos listados. A progressão nasce dos detalhes da notícia; não imponha uma tese, moral ou consequência que a fonte não apresenta.'}:{assunto:briefing.assunto,acontecimento:briefing.acontecimento,objetivo:briefing.objetivo,tese:semBase?'Explique somente os fatos abaixo.':briefing.tese,tese_tipo:semBase?'explicacao':briefing.tese_tipo,estrutura:E.ESTRUTURAS[briefing.estrutura]?.nome,motivo_compartilhar:briefing.motivo_compartilhar,conflito:briefing.conflito,duvidas:briefing.duvidas};
   const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 4).join('\n'), 700);
   const budget = { max: 2, usados: 0 };
 
@@ -232,9 +232,9 @@ ${editorial ? DIRECAO_EDITORIAL : ''}
 Marque com **duas estrelas** no máximo 2 trechos por slide.
 Para "comparacao" preencha dados: {"esquerda":{"rotulo":"","valor":"","detalhe":""},"direita":{...}} só com valores das afirmações.
 
-TRÊS CAPAS realmente diferentes para a MESMA base factual, uma de cada foco: "acontecimento" (o fato novo, direto), "consequencia" (o efeito na vida prática), "tensao" (a pergunta ou tensão central). Explique em 1 frase a diferença. Não escolha a que tiver mais números ou palavras agressivas.
+TRÊS CAPAS realmente diferentes para a MESMA base factual, uma de cada foco: "acontecimento" (o fato novo, direto), "consequencia" (${editorial ? 'um detalhe relevante da matéria; só mencione efeito prático se a base o demonstrar' : 'o efeito na vida prática'}), "tensao" (a pergunta ou tensão central). Explique em 1 frase a diferença. Não escolha a que tiver mais números ou palavras agressivas.
 
-LEGENDA: primeira linha forte, até 600 caracteres, sem repetir os slides, com a fonte principal citada em texto. ${objetivo ? require('../../static/growthModel').OBJETIVOS[objetivo]?.cta || '' : `CTA coerente com o objetivo (${briefing.objetivo}): ${E.OBJETIVOS[briefing.objetivo]?.cta}.`} No máximo 3 hashtags (ou nenhuma). Varie a abertura e o fechamento em relação aos posts recentes.
+LEGENDA: primeira linha forte, até 600 caracteres, com a fonte principal citada em texto. Pode retomar o fato principal e acrescentar somente detalhes das afirmações listadas; não invente consequências para evitar repetição. ${objetivo ? require('../../static/growthModel').OBJETIVOS[objetivo]?.cta || '' : `CTA coerente com o objetivo (${briefing.objetivo}): ${E.OBJETIVOS[briefing.objetivo]?.cta}.`} No máximo 3 hashtags (ou nenhuma). Varie a abertura e o fechamento em relação aos posts recentes.
 ${instrucoes ? `INSTRUÇÃO DO PEDRO: ${instrucoes}\n` : ''}${feedback ? `\nA VERSÃO ANTERIOR TEVE PROBLEMAS. CORRIJA SÓ ISTO:\n${feedback}\n` : ''}
 ${rec.bloco}
 
