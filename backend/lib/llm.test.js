@@ -47,7 +47,7 @@ test('all model quotas preserve 429 for durable backoff even if discovery ends i
   const f = fixture(model => { if (model === 'retired-model') throw Object.assign(new Error('Not found'), { status: 404 }); throw rate(); }, ['retired-model']);
   await assert.rejects(f.client.chat.completions.create(options), e => e.status === 429);
   assert.equal(new Set(f.calls).size, f.calls.length, 'each model attempted at most once');
-  assert.equal(f.calls.length, 5, 'no second cascade without response_format for rate limits');
+  assert.equal(f.calls.length, 4, 'no second cascade without response_format for rate limits');
 });
 
 test('a cached successful model that later fills its quota is not retried twice', async () => {
@@ -58,4 +58,14 @@ test('a cached successful model that later fills its quota is not retried twice'
   const r = await f.client.chat.completions.create(options);
   assert.deepEqual(f.calls, ['openai/gpt-oss-120b', 'openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
   assert.equal(r.__llm.model, 'openai/gpt-oss-20b');
+});
+
+test('discovery never sends a text draft to speech or guard models', async () => {
+  const f = fixture(model => {
+    if (model === 'text-chat-fixture') return ok(model);
+    throw Object.assign(new Error('Not found'), { status: 404 });
+  }, ['canopylabs/orpheus-v1-english', 'canopylabs/orpheus-arabic-saudi', 'whisper-large-v3', 'openai/gpt-oss-safeguard-20b', 'text-chat-fixture']);
+  const r = await f.client.chat.completions.create(options);
+  assert.equal(r.__llm.model, 'text-chat-fixture');
+  assert(!f.calls.some(model => /orpheus|whisper|safeguard/.test(model)));
 });

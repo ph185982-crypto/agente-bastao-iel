@@ -11,8 +11,8 @@ const PROVIDERS = [
     envKey: 'GROQ_API_KEY',
     baseURL: 'https://api.groq.com/openai/v1',
     // Do maior contexto para o menor — 413 faz cair pro próximo.
-    large: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.6-27b', 'groq/compound'],
-    small: ['openai/gpt-oss-20b', 'qwen/qwen3.6-27b', 'groq/compound-mini', 'groq/compound'],
+    large: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],
+    small: ['openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],
   },
   {
     name: 'gemini',
@@ -114,7 +114,7 @@ function errorInfo(err, scope) {
 // ── Descoberta de modelos ─────────────────────────────────────────────────────
 // Quando a lista fixa acaba, perguntamos ao provedor quais modelos ele tem hoje.
 // É o que impede o app de parar quando um modelo é desativado sem aviso.
-const NOT_CHAT = /whisper|tts|embed|guard|moderation|safety|rerank|vision-only|image|audio|video|distil/i;
+const NOT_CHAT = /whisper|tts|orpheus|canopylabs|embed|guard|moderation|safety|rerank|vision-only|image|audio|video|distil/i;
 
 async function discoverModels(provider) {
   if (provider.discover === false) return [];
