@@ -139,7 +139,7 @@ async function processar(id,job,{deps={}}={}) {
         const v=M.versaoAtiva(c);const editorial=v.slides.some(s=>s.design==='editorial_2026');const unidades=[...v.slides.filter(s=>s.layout!=='encerramento'||editorial).map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda},...(editorial&&v.cta?[{id:'cta',texto:v.cta}]:[])].filter(t=>t.texto?.trim());
         if(st.auditoria_verificar_ids?.length){
           const ids=st.auditoria_verificar_ids;
-          let r;try{r=await d.redacao.conferirVinculos({auditoria:ids.map(id=>c.auditoria_textos[id]),claims:c.claims,textos:unidades.filter(t=>ids.includes(t.id))});}
+          let r;try{r=await d.redacao.conferirVinculos({auditoria:ids.map(id=>c.auditoria_textos[id]),claims:c.claims,fonte:c.fonte_principal,textos:unidades.filter(t=>ids.includes(t.id))});}
           catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&ids.length>1){st.auditoria_lote=1;st.auditoria_verificar_ids=ids.slice(0,1);break;}throw e;}
           r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});delete st.auditoria_verificar_ids;
           if(st.indice+ids.length<unidades.length)proxima('auditoria',st.indice+ids.length);else proxima('foto');break;

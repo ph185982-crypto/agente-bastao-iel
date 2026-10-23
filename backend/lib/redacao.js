@@ -37,15 +37,15 @@ async function gerarBriefing({ fonte, claims: todas, evidencias, recentes = [], 
   const d = deps(d0);
   const claims = utilizaveis(todas);
   const lista = claims.map((c) => resumoClaim(c, evidencias));
-  const f = d.llmJson.dado('FONTE_PRINCIPAL', `${fonte.titulo}\n${fonte.veiculo} · ${fonte.publicada_em || 'sem data'}\n\n${String(fonte.texto || '').slice(0, 5000)}`, 6000);
-  const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 8).join('\n'), 2500);
+  const f = d.llmJson.dado('FONTE_PRINCIPAL', `${fonte.titulo}\n${fonte.veiculo} · ${fonte.publicada_em || 'sem data'}\n\n${String(fonte.texto || '').slice(0, 3000)}`, 3500);
+  const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 4).join('\n'), 700);
   const { dados, llm } = await d.llmJson.pedirJson({
-    temperatura: 0.35, maxTokens: 3000,
+    temperatura: 0.35, maxTokens: 1400,
     sistema: `${E.VOZ}${vozDoPedro(voz)}\n\n${d.llmJson.REGRAS_DADOS}`,
     usuario: `Monte o BRIEFING editorial deste conteúdo para ${ACCOUNT.handle}. Use SÓ as afirmações listadas (por id) como fatos disponíveis. Afirmações "nao_verificada", "parcialmente_sustentada" ou "contradita" NÃO são fatos: registre-as em duvidas.
 
 AFIRMAÇÕES (com o estado verificado pelo sistema):
-${JSON.stringify(lista, null, 1)}
+${JSON.stringify(lista)}
 
 ${f.bloco}
 ${rec.bloco}
@@ -337,13 +337,13 @@ Responda APENAS JSON com slides. Cada slide contém id e premissas. Cada premiss
 
 // A second, separately checkpointed task verifies entailment instead of writing
 // or extracting copy. A matching entity/number is not evidence of causation.
-async function conferirVinculos({auditoria,claims,textos},d0){
+async function conferirVinculos({auditoria,claims,textos,fonte},d0){
   const d=deps(d0),unidades=(textos||auditoria.map(a=>({id:a.slide_id,texto:a.premissas.map(p=>p.texto).join(' ')}))).filter(t=>t.texto);
   if(!unidades.length)return {auditoria};
   const bases=claims.filter(c=>c.tipo!=='opiniao'&&c.natureza!=='opiniao'&&c.decisao?.tipo!=='retirar'&&c.estado!=='contradita').map(c=>({id:c.id,texto:c.texto}));
   const {dados,llm}=await d.llmJson.pedirJson({temperatura:0,maxTokens:1800,esforco:'medium',
     sistema:`Confira TODO o texto de cada tela contra as bases, sem conhecimento externo. Pode haver fatos que outro revisor deixou passar. Possibilidades ("podem perder clientes", "pode aumentar a margem") afirmam mecanismos: sem base explícita, bloqueie. "Multas garantem qualidade" também exige prova do efeito; não é só opinião. Perguntas podem insinuar premissas não demonstradas. Mesma empresa ou número não prova uma relação causal. "O dólar caiu" não sustenta "a margem melhora e favorece ações". "A empresa foi multada" não sustenta repasse ao consumidor nem perda de clientes. Não confunda prazo futuro com regra vigente. Avaliações puras ("eu cobraria um plano de melhoria"), perguntas sem pressuposto factual e convites a seguir/salvar não precisam de prova. sustenta:true significa que todos os fatos do texto estão nas bases.\n${d.llmJson.REGRAS_DADOS}`,
-    usuario:`${d.llmJson.dado('BASES_FACTUAIS',JSON.stringify(bases),14000).bloco}\n${d.llmJson.dado('TEXTOS_COMPLETOS',JSON.stringify(unidades),6000).bloco}\nJSON com chave textos. Cada item contém id (um dos IDs reais: ${JSON.stringify(unidades.map(t=>t.id))}), sustenta (boolean) e problemas (array). Para texto sustentado ou convite sem fatos: sustenta:true,problemas:[]. Se faltar base: sustenta:false, problemas com texto (copie literalmente o trecho REAL problemático, até 160 caracteres) e motivo (explique o que falta). Não devolva rótulos ou exemplos como se fossem trechos do texto.`});
+    usuario:`FONTE DAS BASES: ${JSON.stringify({veiculo:fonte?.veiculo||null,titulo:fonte?.titulo||null})}. Uma atribuição a esse veículo é válida. Preserve equivalência semântica quando sujeito, valor, período e condição forem os mesmos; uma paráfrase fiel não é um fato novo. Título e corpo devem ser lidos juntos.\n${d.llmJson.dado('BASES_FACTUAIS',JSON.stringify(bases),14000).bloco}\n${d.llmJson.dado('TEXTOS_COMPLETOS',JSON.stringify(unidades),6000).bloco}\nJSON com chave textos. Cada item contém id (um dos IDs reais: ${JSON.stringify(unidades.map(t=>t.id))}), sustenta (boolean) e problemas (array). Para texto sustentado ou convite sem fatos: sustenta:true,problemas:[]. Se faltar base: sustenta:false, problemas com texto (copie literalmente o trecho REAL problemático, até 160 caracteres) e motivo (explique o que falta). Não devolva rótulos ou exemplos como se fossem trechos do texto.`});
   if(!Array.isArray(dados?.textos)||unidades.some(p=>dados.textos.filter(v=>v?.id===p.id&&typeof v.sustenta==='boolean'&&Array.isArray(v.problemas)&&v.problemas.every(q=>q&&typeof q.texto==='string'&&q.texto.trim()&&normBase(p.texto).includes(normBase(q.texto)))).length!==1))throw Object.assign(new Error('A conferência das fontes não cobriu todos os textos.'),{code:'AUDITORIA_INCOMPLETA'});
   return {auditoria:auditoria.map(a=>{
     const v=dados.textos.find(v=>v.id===a.slide_id);if(!v)return a;

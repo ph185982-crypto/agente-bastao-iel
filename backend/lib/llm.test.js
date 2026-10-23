@@ -34,6 +34,11 @@ test('model-specific Groq 429 tries the next configured model without another pr
   assert.match(f.logs.join(' '), /"metric":"tokens per minute"/);
   assert.match(f.logs.join(' '), /"retry_after_seconds":12/);
 });
+test('a model message-length rejection tries the next model instead of aborting the app',async()=>{
+  const f=fixture(model=>{if(model==='openai/gpt-oss-120b')throw Object.assign(new Error('Please reduce the length of the messages or completion.'),{status:400});return ok(model);});
+  const r=await f.client.chat.completions.create(options);
+  assert.deepEqual(f.calls,['openai/gpt-oss-120b','openai/gpt-oss-20b']);assert.equal(r.__llm.model,'openai/gpt-oss-20b');
+});
 
 test('account quota and authentication errors stop the provider, not a model loop', async () => {
   for (const status of [401, 403, 429]) {

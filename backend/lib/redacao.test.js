@@ -174,8 +174,9 @@ test('segunda conferência lê a tela inteira mesmo se a extração não encontr
   const auditoria=[{slide_id:'s1',premissas:[{texto:'O dólar recuou 0,58%.',claim_id:'a1'}]},{slide_id:'s2',premissas:[]}];
   const textos=[{id:'s1',texto:'O dólar recuou 0,58%.'},{id:'s2',texto:'A margem das empresas melhora e favorece suas ações.'}];
   let prompt='';const llm={REGRAS_DADOS:'',dado:llmReal.dado,pedirJson:async p=>{prompt=p.usuario;return{dados:{textos:[{id:'s1',sustenta:true,problemas:[]},{id:'s2',sustenta:false,problemas:[{texto:textos[1].texto,motivo:'A base não informa margens nem efeito nas ações.'}]}]},llm:{provider:'fixture'}};}};
-  const r=await conferirVinculos({auditoria,claims,textos},{llmJson:llm});
+  const r=await conferirVinculos({auditoria,claims,textos,fonte:{veiculo:'Veículo da matéria',titulo:'Indicadores do dia'}},{llmJson:llm});
   assert(prompt.includes(textos[1].texto));
+  assert(prompt.includes('Veículo da matéria'));assert(prompt.includes('Indicadores do dia'));
   assert.equal(r.auditoria[0].premissas[0].claim_id,'a1');assert(r.auditoria[0].premissas[0].vinculo_conferido);
   assert.equal(r.auditoria[1].premissas[0].claim_id,null);assert.equal(auditoria[1].premissas.length,0,'histórico de entrada preservado');
 });

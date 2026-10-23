@@ -86,7 +86,7 @@ function errorScope(err, provider) {
   if (status === 413) return 'model'; // prompt maior que o contexto do modelo
   if (status === 400) {
     if (/model_decommissioned|model_not_found|json_validate_failed|does not exist/i.test(`${code} ${msg}`)) return 'model';
-    if (/decommissioned|deprecated|not.*support|context length|too large/i.test(msg)) return 'model';
+    if (/decommissioned|deprecated|not.*support|context length|too large|reduce the length of (?:the )?messages|maximum context|token limit.*exceed/i.test(msg)) return 'model';
     // visão/multimodal não suportado por este modelo → tenta o próximo
     if (/image_url|image.*content|vision|multimodal/i.test(`${code} ${msg}`)) return 'model';
     return 'fatal'; // 400 de verdade (payload malformado) — não adianta insistir
