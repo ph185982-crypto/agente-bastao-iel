@@ -18,7 +18,7 @@ async function gerarVoz(texto){
   const key=process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;if(!key)throw new Error('A narração não está disponível nesta configuração.');
   const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({contents:[{parts:[{text:`Leia apenas o texto a seguir, em português brasileiro, com ritmo natural e direto, como uma conversa. Não acrescente nada.\n\n${texto}`}]}],generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:'Charon'}}}}}),signal:AbortSignal.timeout(40000)});
   const d=await r.json().catch(()=>({}));const a=d.candidates?.[0]?.content?.parts?.find(p=>p.inlineData)?.inlineData;
-  if(!r.ok || !a)throw new Error(r.status===429?'A narração está sem cota disponível.':'O serviço de narração não conseguiu gerar a voz.');
+  if(!r.ok || !a)throw Object.assign(new Error(r.status===429?'A narração está temporariamente sem cota disponível.':'O serviço de narração não conseguiu gerar a voz.'),{status:r.status});
   const dados=Buffer.from(a.data,'base64');
   if(String(a.mimeType).includes('wav'))return{dados,duracao:(dados.length-44)/48000};
   return{dados:wav(dados),duracao:dados.length/48000};
@@ -73,6 +73,7 @@ async function avancar(c){
       m.audio_partes.push({key,duracao:alinhado.length/48000});m.indice_voz++;m.tentativas_voz=0;
       if(m.indice_voz>=v.slides.length)m.etapa='juntar_voz';
     }catch(e){
+      if(e.status===429)throw e;
       m.tentativas_voz=(m.tentativas_voz||0)+1;if(m.tentativas_voz<2)return m;
       m.aviso=(/abort|timeout/i.test(e.message)?'A narração demorou mais que o esperado.':e.message)+' O vídeo será preparado com legendas, sem voz.';m.duracao_alvo=60;m.narracao=false;m.etapa='segmentos';
     }

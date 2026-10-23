@@ -52,6 +52,30 @@ test('preparar um rascunho antigo atribui estilo e mantém o histórico',async()
   const r=await studio.reagendar(c.id,{acao:'retomar'});
   assert(prefs.ESTILOS[r.experimento.estilo]);assert.equal(r.studio.estado,'gerando');assert.equal(r.copia.versoes.length,1);
 });
+test('limite temporário da IA agenda nova tentativa e conserva a etapa concluída',async()=>{
+  const c=await studio.criar({texto:'Texto de teste '.repeat(30),request_id:'fixture-cota'});let chamadas=0;
+  const deps={research:{lerFonte:async()=>{chamadas++;if(chamadas===1)throw Object.assign(new Error('Rate limit. Please try again in 6.5175s. org_privada'),{status:429});return {legivel:true,titulo:'Leitura retomada'};}}};
+  const primeiro=await studio.processar(c.id,c.studio.job,{deps});
+  assert.equal(primeiro.status,'produzindo');assert.equal(primeiro.studio.estado,'gerando');assert.equal(primeiro.studio.etapa,'leitura');assert.equal(primeiro.studio.erro,null);assert.equal(primeiro.studio.retentativas,1);
+  assert(Date.parse(primeiro.studio.adiar_ate)>Date.now());assert(!primeiro.studio.aviso.includes('org_privada'));
+  await studio.processar(c.id,c.studio.job,{deps});assert.equal(chamadas,1,'não chama a IA antes do prazo');
+  const reg=await studio.ler(c.id);reg.doc.studio.adiar_ate=new Date(Date.now()-1).toISOString();await arm.conteudos.salvar(conta,c.id,reg.doc,reg.rev);
+  const retomado=await studio.processar(c.id,c.studio.job,{deps});assert.equal(retomado.studio.etapa,'afirmacoes');assert.equal(retomado.studio.retentativas,0);assert.equal(retomado.studio.adiar_ate,undefined);
+});
+test('indisponibilidade persistente tem limite de tentativas e pode ser retomada',async()=>{
+  const c=await studio.criar({texto:'Texto de teste '.repeat(30),request_id:'fixture-cota-persistente'});
+  const deps={research:{lerFonte:async()=>{throw Object.assign(new Error('429 org_privada'),{status:429});}}};
+  let atual;for(let i=0;i<6;i++){atual=await studio.processar(c.id,c.studio.job,{deps});if(atual.studio.estado==='erro')break;const reg=await studio.ler(c.id);reg.doc.studio.adiar_ate=new Date(Date.now()-1).toISOString();await arm.conteudos.salvar(conta,c.id,reg.doc,reg.rev);}
+  assert.equal(atual.studio.estado,'erro');assert(!atual.studio.erro.includes('org_privada'));assert.match(atual.studio.erro,/após novas tentativas/);
+  const r=await studio.reagendar(c.id,{acao:'retomar'});assert.equal(r.studio.retentativas,0);assert.equal(r.studio.estado,'gerando');
+});
+test('uma falha de cota é enviada à fila com espera, sem depender de requisição do navegador',async()=>{
+  const fila=require('./studioFila').fila(),research=require('./research');const enviar=fila.send,lerFonte=research.lerFonte,vercel=process.env.VERCEL;
+  const mensagens=[];fila.send=async(...args)=>{mensagens.push(args);return {messageId:'fixture'};};research.lerFonte=async()=>{throw Object.assign(new Error('Rate limit. Please try again in 15s.'),{status:429});};process.env.VERCEL='1';
+  try{const c=await studio.criar({texto:'Texto de teste '.repeat(30),request_id:'fixture-fila-cota'});await require('../routes/studio')._internos.executar(c.id,c.studio.job);
+    assert.equal(mensagens.length,1);assert.equal(mensagens[0][0],'pedro-studio');assert.deepEqual(mensagens[0][1],{id:c.id,job:c.studio.job});assert(mensagens[0][2].delaySeconds>=15);assert(mensagens[0][2].delaySeconds<=17);
+  }finally{fila.send=enviar;research.lerFonte=lerFonte;if(vercel===undefined)delete process.env.VERCEL;else process.env.VERCEL=vercel;}
+});
 test('os três formatos geram PNG legível e mudar estilo invalida a arte',async()=>{
   const arte=require('./arte');const img=await sharp({create:{width:1080,height:1350,channels:3,background:'#afcfe0'}}).jpeg().toBuffer();
   for(const estilo of Object.keys(prefs.ESTILOS)){const s={layout:'capa_foto',estilo,texto:'O detalhe que muda o jogo.'};const r=await arte.renderizarSlide(s,{indice:1,total:5,imagem:img});const meta=await sharp(r.png).metadata();assert.equal(meta.width,1080);assert.equal(meta.height,1350);assert.equal(r.metrics.cabe,true);}

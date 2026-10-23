@@ -46,7 +46,7 @@
   function filaProduzindo(){
     const lista=x().state.contents.filter(c=>emProducao(c)||(!c.legado&&!versao(c)&&!['publicado','arquivado'].includes(c.status)));
     if(!lista.length)return '';
-    return `<section class="st-production"><h2>Em preparação <span>${lista.length}</span></h2>${lista.map(c=>{const st=c.studio||{},ativo=emProducao(c);return `<div class="st-job">${ativo?'<span class="es-spin"></span>':'<span>↻</span>'}<div><b>${esc(c.titulo)}</b><small>${esc(st.estado==='erro'?st.erro:ativo?ETAPAS[st.etapa]||'Preparando':'Rascunho da sua biblioteca')} ${st.etapa==='arte'?`· slide ${(st.indice||0)+1}`:''}</small>${!ativo?`<button class="st-text-button" data-action="st-preparar" data-id="${esc(c.id)}">${st.estado==='erro'?'Tentar novamente':'Preparar automaticamente'}</button>`:''}</div></div>`;}).join('')}<p>Pode fechar o app. A preparação continua e, com notificações ativas, você recebe o aviso.</p></section>`;
+    return `<section class="st-production"><h2>Em preparação <span>${lista.length}</span></h2>${lista.map(c=>{const st=c.studio||{},ativo=emProducao(c);return `<div class="st-job">${ativo?'<span class="es-spin"></span>':'<span>↻</span>'}<div><b>${esc(c.titulo)}</b><small>${esc(st.estado==='erro'?st.erro:ativo?st.aviso||ETAPAS[st.etapa]||'Preparando':'Rascunho da sua biblioteca')} ${st.etapa==='arte'?`· slide ${(st.indice||0)+1}`:''}</small>${!ativo?`<button class="st-text-button" data-action="st-preparar" data-id="${esc(c.id)}">${st.estado==='erro'?'Tentar novamente':'Preparar automaticamente'}</button>`:''}</div></div>`;}).join('')}<p>Pode fechar o app. A preparação continua e, com notificações ativas, você recebe o aviso.</p></section>`;
   }
   function modal(){
     if(!ui.reprovar)return '';

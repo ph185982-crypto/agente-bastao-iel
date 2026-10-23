@@ -243,6 +243,7 @@ function createCompatClient() {
           try {
             return await cascade(opts, requestOptions);
           } catch (err) {
+            if(err?.status===429||err?.status===401||err?.status===403||/abort|timeout/i.test(`${err?.name||''} ${err?.message||''}`))throw err;
             // Última cartada: se pedimos JSON estruturado e ninguém aceitou,
             // repete sem response_format e pede o JSON no próprio prompt.
             if (opts?.response_format?.type !== 'json_object') throw err;

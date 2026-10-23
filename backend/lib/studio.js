@@ -15,6 +15,13 @@ const now=()=>new Date().toISOString();
 const etapas=['leitura','afirmacoes','pesquisa','briefing','copy','auditoria','foto','arte','motion','finalizar'];
 const base=()=>String(process.env.PUBLIC_BASE_URL || '').replace(/\/$/,'');
 const falha=(message,status=400)=>Object.assign(new Error(message),{status});
+function esperaTemporaria(e){
+  const status=Number(e.status||e.statusCode);const msg=String(e.message||'');
+  if(status!==429&&![502,503,504].includes(status)&&!/rate.?limit|timed? ?out|timeout|aborted|ECONNRESET|ETIMEDOUT|ECONNABORTED/i.test(`${e.code||''} ${e.name||''} ${msg}`))return null;
+  const header=typeof e.headers?.get==='function'?e.headers.get('retry-after'):e.headers?.['retry-after'];
+  const segundos=Number(header)||Number(msg.match(/try again in\s+([\d.]+)\s*s/i)?.[1])||30;
+  return Math.min(120,Math.max(10,Math.ceil(segundos)+2));
+}
 const limparMarcadores=texto=>typeof texto==='string'?texto.replace(/\s*(?:\*\*)?\(\s*[ao]\d+(?:_\d+)?(?:\s*[,;]\s*[ao]\d+(?:_\d+)?)*\s*\)(?:\*\*)?/g,'').trim():texto;
 function manterAtribuicoes(v,c){
   const norm=s=>M.semAcento(s).replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
@@ -67,7 +74,7 @@ async function reagendar(id,{motivos=[],detalhe='',hash,acao='refazer'}={}) {
   if(c.studio?.estado==='gerando')return c;
   if(!prefs.ESTILOS[c.experimento?.estilo]){const estilo=await prefs.escolherEstilo({indice:0});c.experimento={estilo,letra:prefs.ESTILOS[estilo].letra,criado_em:now()};}
   if(acao==='retomar' && c.studio?.estado==='erro'){
-    const st=c.studio;st.job=crypto.randomUUID();st.estado=st.etapa==='publicacao'?'publicando':'gerando';st.erro=null;st.passos=0;delete st.lease;
+    const st=c.studio;st.job=crypto.randomUUID();st.estado=st.etapa==='publicacao'?'publicando':'gerando';st.erro=null;st.passos=0;st.retentativas=0;delete st.lease;delete st.adiar_ate;delete st.aviso;
     c.status=st.estado==='publicando'?'aprovado':'produzindo';await gravar(c,reg.rev);return c;
   }
   if(acao==='refazer') {
@@ -82,6 +89,7 @@ async function reagendar(id,{motivos=[],detalhe='',hash,acao='refazer'}={}) {
 async function processar(id,job,{deps={}}={}) {
   const reg=await ler(id);const c=reg.doc;const st=c.studio;
   if(!st || st.job!==job || st.estado!=='gerando')return c;
+  if(st.adiar_ate&&Date.parse(st.adiar_ate)>Date.now())return c;
   if(st.lease && Date.now()-Date.parse(st.lease)<75000)return c;
   st.lease=now();st.passos=(st.passos||0)+1;
   const lease=await gravar(c,reg.rev).catch(e=>{if(e.code==='CONFLITO')return null;throw e;});if(!lease)return c;
@@ -163,12 +171,18 @@ async function processar(id,job,{deps={}}={}) {
       case 'finalizar':c.status='em_revisao';st.estado='pronto';st.concluido_em=now();M.registrar(c,'sistema','pronto','Conteúdo pronto: basta conferir e aprovar ou pedir ajuste.');break;
       default:throw new Error('Etapa de produção desconhecida.');
     }});
-    delete st.lease;await gravar(c,lease.rev);
+    delete st.lease;delete st.adiar_ate;delete st.aviso;st.retentativas=0;await gravar(c,lease.rev);
     if(st.estado==='pronto' && !st.notificado){await push.notificarLote(1).catch(()=>{});}
     return c;
   }catch(e){
     if(e.code==='CONFLITO')return(await ler(id)).doc;
-    delete st.lease;st.estado='erro';st.erro=e.message;c.status='rascunho';await gravar(c,lease.rev).catch(()=>{});
+    const espera=esperaTemporaria(e);
+    if(espera!==null&&(st.retentativas||0)<5){
+      delete st.lease;st.retentativas=(st.retentativas||0)+1;st.adiar_ate=new Date(Date.now()+espera*1000).toISOString();
+      st.aviso='O serviço de IA está ocupado. A preparação será retomada automaticamente.';st.erro=null;c.status='produzindo';
+      await gravar(c,lease.rev);return c;
+    }
+    delete st.lease;delete st.adiar_ate;delete st.aviso;st.estado='erro';st.erro=espera!==null?'O serviço de IA continua indisponível após novas tentativas. Tente retomar a preparação em alguns minutos.':e.message;c.status='rascunho';await gravar(c,lease.rev).catch(()=>{});
     await push.notificar({corpo:'Um conteúdo precisa de um ajuste. Toque para retomar a preparação.',tag:`erro-${c.id}`}).catch(()=>{});return c;
   }
 }
@@ -190,4 +204,4 @@ async function panorama(){
   const itens=[];for(const r of docs.filter(r=>r.resumo.status==='publicado').slice(0,100)){const c=(await ler(r.id)).doc;itens.push(c);}
   return {estilos:Object.entries(prefs.ESTILOS).map(([id,cfg])=>{const publicados=itens.filter(c=>c.experimento?.estilo===id);return {id,...cfg,aprovacoes:feedback.filter(f=>f.estilo===id&&f.acao==='aprovar').length,ajustes:feedback.filter(f=>f.estilo===id&&f.acao==='refazer').length,publicados:publicados.length,medidos:publicados.filter(c=>c.desempenho?.alcance>0).length,alcance:publicados.reduce((n,c)=>n+(c.desempenho?.alcance||0),0),interacoes:publicados.reduce((n,c)=>n+(c.desempenho?.interacoes||0),0),seguidores:publicados.some(c=>c.desempenho?.seguidores!=null)?publicados.reduce((n,c)=>n+(c.desempenho?.seguidores||0),0):null};}),orientacoes:await prefs.orientacoes(),aviso:'Preferências vêm das suas decisões. Desempenho usa somente métricas devolvidas pelo Instagram; ainda não há vencedor sem amostra suficiente.'};
 }
-module.exports={criar,reagendar,processar,decidir,ler,prepararRevisao,assinatura,confere,panorama,etapas,base,limparMarcadores};
+module.exports={criar,reagendar,processar,decidir,ler,prepararRevisao,assinatura,confere,panorama,etapas,base,limparMarcadores,esperaTemporaria};

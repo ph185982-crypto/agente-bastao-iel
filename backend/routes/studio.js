@@ -11,8 +11,7 @@ function segundoPlano(p){if(process.env.VERCEL)waitUntil(p);else p.catch(e=>cons
 async function kick(c){
   if(!['gerando','publicando'].includes(c.studio?.estado))return;
   if(!process.env.VERCEL){setTimeout(()=>executar(c.id,c.studio.job),c.studio.etapa==='motion'?4000:100);return;}
-  const r=await fetch(`${studio.base()}/api/studio/worker/${encodeURIComponent(c.id)}`,{method:'POST',headers:{'Content-Type':'application/json','x-studio-token':studio.assinatura(c.id,c.studio.job)},body:JSON.stringify({job:c.studio.job}),signal:AbortSignal.timeout(12000)});
-  if(!r.ok)throw new Error(`Não consegui continuar a produção (${r.status}). Reabra o app para retomar.`);
+  await require('../lib/studioFila').enfileirar(c);
 }
 async function executar(id,job){
   const c=(await studio.ler(id)).doc;
@@ -55,10 +54,10 @@ router.post('/worker/:id',async(req,res)=>{
   }catch(e){if(!res.headersSent)erro(res,e);}
 });
 router.post('/criar',limita({max:8,janelaMs:60000,nome:'studio-criar'}),async(req,res)=>{
-  try{const c=await studio.criar(req.body||{});const reg=await studio.ler(c.id);res.status(202).json(reg);segundoPlano(kick(c));}catch(e){erro(res,e);}
+  try{const c=await studio.criar(req.body||{});await kick(c);const reg=await studio.ler(c.id);res.status(202).json(reg);}catch(e){erro(res,e);}
 });
 router.post('/:id/retomar',limita({max:8,janelaMs:60000,nome:'studio-retomar'}),async(req,res)=>{
-  try{let c=(await studio.ler(req.params.id)).doc;if(!['gerando','publicando'].includes(c.studio?.estado))c=await studio.reagendar(c.id,{acao:'retomar'});res.status(202).json(await studio.ler(c.id));segundoPlano(kick(c));}catch(e){erro(res,e);}
+  try{let c=(await studio.ler(req.params.id)).doc;if(!['gerando','publicando'].includes(c.studio?.estado))c=await studio.reagendar(c.id,{acao:'retomar'});await kick(c);res.status(202).json(await studio.ler(c.id));}catch(e){erro(res,e);}
 });
 router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'}),async(req,res)=>{
   try{
@@ -67,8 +66,8 @@ router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'})
     if(req.body.acao==='aprovar'){
       const P=require('../lib/publicador');const cfg=await P.config();if(cfg.publish_paused)return res.status(409).json({error:'As publicações estão pausadas. Libere em Perfil para publicar.',code:'PAUSADO'});
       const reg=await studio.ler(c.id);reg.doc.studio={...(reg.doc.studio||{}),job:require('crypto').randomUUID(),estado:'publicando',etapa:'publicacao',polls:0};
-      await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,reg.doc,reg.rev);res.status(202).json(await studio.ler(c.id));segundoPlano(kick(reg.doc));
-    }else{res.json(await studio.ler(c.id));if(c.studio?.estado==='gerando')segundoPlano(kick(c));}
+      await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,reg.doc,reg.rev);await kick(reg.doc);res.status(202).json(await studio.ler(c.id));
+    }else{if(c.studio?.estado==='gerando')await kick(c);res.json(await studio.ler(c.id));}
   }catch(e){erro(res,e);}
 });
 router.get('/estado',async(req,res)=>{
