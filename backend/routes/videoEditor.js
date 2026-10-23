@@ -1104,12 +1104,8 @@ Return JSON: {"trimTopPct": number, "trimBottomPct": number} — percent (0-40) 
 // O gancho lido do vídeo só serve se for mesmo uma frase editorial — descarta
 // @, sobra de interface e textos curtos/longos demais pra caber no layout.
 function cleanBakedHeadline(raw) {
-  const text = stripEmoji(String(raw || '')).replace(/\s+/g, ' ').trim().replace(/^["“”']|["“”']$/g, '').trim();
-  if (text.length < 12 || text.length > 140) return '';
-  if (/^@/.test(text)) return '';
-  if (!/\s/.test(text)) return '';                       // uma palavra só não é gancho
-  if (/^(seguir|follow|inscreva|compartilhar|curtir)\b/i.test(text)) return '';
-  return text;
+  const text=stripEmoji(String(raw||'')).replace(/^["“”']|["“”']$/g,'');
+  return require('../lib/videoCopySeguro').limparTitulo(text);
 }
 
 // Recorte usado na renderização. Se o /analyze já mandou o retângulo (caminho
@@ -1176,7 +1172,7 @@ async function transcribeAudio(audioPath) {
   if (!process.env.GROQ_API_KEY) throw new Error('Nenhuma chave de transcrição configurada');
   return attempt(
     new OpenAI({ apiKey: process.env.GROQ_API_KEY, baseURL: 'https://api.groq.com/openai/v1', timeout: 30000 }),
-    'whisper-large-v3'
+    'whisper-large-v3-turbo'
   );
 }
 
@@ -1288,15 +1284,7 @@ async function escreverCopy({ givenHeadline, transcript, visual, tema, variante,
     }
   }
 
-  // O robô só sabe escrever em cima de um assunto curto. A transcrição serve
-  // como assunto quando não há tema — gerarCopyReel apara o excesso.
-  const robo = gerarCopyReel({
-    tema: tema || givenHeadline || transcript || visual,
-    headline: givenHeadline,
-    handle: PROFILE_HANDLE,
-    variante,
-  });
-  return { headline: robo.headline, caption: robo.caption, fonte: 'robo' };
+  return require('../lib/videoCopySeguro').daFonte({givenHeadline,transcript,visual,tema,objetivo});
 }
 
 // Copy sem vídeo nenhum: o usuário digita o assunto e recebe gancho e legenda na
@@ -1451,7 +1439,7 @@ router.post('/analyze', async (req, res) => {
     // é uma frase editorial de verdade, não um pedaço solto da fala.
     const givenHeadline = ownHeadline || bakedHeadline;
 
-    const { headline, caption, fonte } = await escreverCopy({
+    const { headline, caption, fonte, aviso } = await escreverCopy({
       givenHeadline, transcript, visual, tema, objetivo,
     });
 
@@ -1462,6 +1450,7 @@ router.post('/analyze', async (req, res) => {
       headlineFromVideo: !ownHeadline && !!bakedHeadline,
       caption,
       fonte,
+      aviso,
       crop: region,
       durationSec: Math.round(info.duration),
       willTrim: info.duration > MAX_CLIP_SEC,
@@ -1470,7 +1459,7 @@ router.post('/analyze', async (req, res) => {
   } catch (e) {
     cleanup();
     console.error('[videoEditor/analyze]', e.message);
-    res.status(500).json({ error: safeErrorMessage(e) });
+    res.status(e.status||500).json({ error: safeErrorMessage(e) });
   }
 });
 

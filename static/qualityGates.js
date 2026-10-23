@@ -174,7 +174,7 @@
       while ((m = re.exec(t.texto))) {
         if (!corpus.includes(norm(m[1]))) out.push(bloqueio('citacao_sem_origem', 'fatos', 'Citação que não está na fonte', `A frase entre aspas “${m[1].slice(0, 60)}…” não aparece em nenhuma fonte consultada.`, t.onde, 'Remover as aspas ou citar exatamente'));
       }
-      const reAt = /\b([Ss]egundo|[Dd]e acordo com|[Cc]onforme|[Dd]isse|[Aa]firmou|[Dd]eclarou|[Aa]firma|[Dd]iz)\s+(?:o |a |os |as |do |da )?((?:[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ.'-]*)(?:\s+(?:d[aeo]s?\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ.'-]*){0,3})/g;
+      const reAt = /\b([Ss]egundo|[Dd]e acordo com|[Cc]onforme|[Dd]isse|[Aa]firmou|[Dd]eclarou|[Aa]firma|[Dd]iz)\s+(?:o |a |os |as |do |da )?((?:[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ'-]*(?:\.[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ'-]*)*)(?:\s+(?:d[aeo]s?\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ'-]*(?:\.[A-ZÁÉÍÓÚÂÊÔÃÕÇ][\wÀ-ÿ'-]*)*){0,3})/g;
       while ((m = reAt.exec(t.texto))) {
         const nome = norm(m[2]);
         if (nome.length >= 3 && !corpus.includes(nome)) out.push(bloqueio('atribuicao_sem_origem', 'fatos', 'Atribuição sem fonte', `“${m[1]} ${m[2]}” não aparece nas fontes consultadas.`, t.onde, 'Confirmar quem disse ou remover'));

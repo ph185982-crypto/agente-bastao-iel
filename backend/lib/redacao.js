@@ -190,33 +190,27 @@ function provisorio({ claims, evidencias, fonte, versao, opinioes }) {
 async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', editorial = false, instrucoes = '', voz }, d0) {
   const d = deps(d0);
   const claims = utilizaveis(todas);
-  const lista = claims.map((c) => { const {motivo,fontes,...essenciais}=resumoClaim(c,evidencias); return essenciais; });
-  const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 8).join('\n'), 2500);
+  const lista = claims.map((c) => { const {motivo,fontes,risco,central,mutavel,...essenciais}=resumoClaim(c,evidencias); return essenciais; });
+  const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 4).join('\n'), 700);
   const budget = { max: 2, usados: 0 };
 
   const pedir = async (feedback) => {
     const { dados, llm } = await d.llmJson.pedirJson({
-      temperatura: 0.45, maxTokens: 3000, esforco: 'low', budget,
+      temperatura: 0.45, maxTokens: editorial ? 2200 : 2600, esforco: 'low', budget,
       sistema: `${E.VOZ}${vozDoPedro(voz)}\n\n${d.llmJson.REGRAS_DADOS}`,
       usuario: `Escreva o conteúdo para ${ACCOUNT.handle} seguindo o BRIEFING. ${formato === 'estatico' ? 'Formato: post estático (UMA imagem que se sustenta sozinha).' : 'Formato: carrossel.'}
 
 BRIEFING: ${JSON.stringify({ assunto: briefing.assunto, acontecimento: briefing.acontecimento, objetivo: briefing.objetivo, tese: briefing.tese, tese_tipo: briefing.tese_tipo, estrutura: E.ESTRUTURAS[briefing.estrutura]?.nome, motivo_compartilhar: briefing.motivo_compartilhar, conflito: briefing.conflito, duvidas: briefing.duvidas })}
 
 AFIRMAÇÕES DISPONÍVEIS (use claim_ids exatos; o estado é o verificado pelo sistema):
-${JSON.stringify(lista, null, 1)}
+${JSON.stringify(lista)}
 
 REGRAS DE FATOS (inegociáveis):
-1. Todo número, data, nome ou acontecimento vem de uma afirmação listada; o slide aponta o(s) id(s) em claim_ids. Nenhum número que não esteja na afirmação ou no cálculo ligado a ela.
-2. Afirmação "sustentada": pode ser dita como fato. "parcialmente_sustentada" ou "nao_verificada": só com atribuição ("segundo o ${fonte.veiculo || 'veículo'}…") e sem apresentar como certeza. "contradita": não use como fato.
-2b. Afirmação com precisa_atribuicao (anúncio, declaração, previsão): o slide que a usa DIZ quem anunciou/disse/estimou ou a condição ("o governo anunciou…", "ainda depende de aprovação", "é uma estimativa do ministério"). Se houver condicao_obrigatoria, use essa expressão. Nunca tire ressalvas para deixar o texto mais forte — isso vale também para a capa.
-3. Citação entre aspas só se for cópia exata de texto das afirmações. Não atribua fala a ninguém que a afirmação não atribua.
-4. Opinião do Pedro deve parecer opinião ("na minha leitura…") e marque o slide com "opiniao": true; nele, claim_ids são as premissas factuais.
-5. Não crie experiência pessoal nem história que o Pedro não contou.
-6. O texto PÚBLICO nunca fala do sistema de checagem: não escreva "parcialmente sustentada", "fonte única", "sem verificação independente", "não verificada". Quando algo ainda é só anúncio, intenção ou declaração, diga isso do jeito de quem fala ("o governo diz que pretende…", "por enquanto é só anúncio", "ainda não há regra publicada"). Limitação da fonte vai para o briefing, não para o slide.
-7. Um slide de prova mostra UM dado ou UMA declaração, com no máximo um trecho em **destaque**. Vários dados vão em slides separados.
-8. Slide de opinião é a posição do Pedro sobre o assunto (o que ele acha e por quê), nunca um comentário sobre a qualidade das fontes.
-9. Slide sem claim_ids só pode ser: capa, transição, pergunta ou OPINIÃO marcada ("opiniao": true). Generalização como "reduzir horas costuma elevar custos" é opinião ou precisa de afirmação com fonte; não escreva como fato.
-10. Não acrescente detalhe factual que não esteja nas afirmações ligadas ao slide (prazo, exceção, quem decide, acordo coletivo etc.).
+1. Use só as afirmações listadas e claim_ids exatos. Todo número, data, nome, citação ou detalhe factual precisa constar na afirmação ligada ou no cálculo dela. Não invente fontes nem causalidade.
+2. sustentada pode ser fato. parcialmente_sustentada e nao_verificada só entram com atribuição explícita ao veículo. contradita não entra. Respeite natureza, precisa_atribuicao e condicao_obrigatoria, inclusive na capa. Anúncio não é regra vigente, previsão não é certeza.
+3. Aspas só para trecho exato. Nome de quem disse vem da fonte. Fonte, condição e ressalvas não podem ser removidas para criar impacto.
+4. Opinião é marcada opiniao:true, com claim_ids das premissas factuais, e deve soar como posição ("na minha leitura"). Nunca invente experiência pessoal. Fatos embutidos em opinião continuam exigindo fonte. Perguntas e convites sem fato novo não precisam de claim_ids.
+5. Um slide de prova mostra um dado ou declaração. Toda explicação acrescenta compreensão. Não escreva sobre a checagem interna: nada de "claim", "fonte única", "parcialmente sustentada" ou "sem verificação independente" no texto público. Uma limitação real é falada normalmente ("o governo diz que pretende", "ainda depende de aprovação").
 
 ESTRUTURA: escolha a que a pauta pede (a sugerida é ${briefing.estrutura}). Cada slide tem UMA função (capa, contexto, prova, explicacao, comparacao, consequencia, opiniao) e acrescenta informação ou compreensão. ${formato === 'estatico' ? 'Uma imagem.' : editorial ? 'Use 5 a 6 slides de conteúdo + CTA final; histórias curtas podem ter 4.' : 'Use entre 4 e 8 slides de conteúdo.'} Capa até ${editorial?12:18} palavras; demais até ${editorial?28:45}, contando título e corpo.
 ${editorial ? DIRECAO_EDITORIAL : ''}

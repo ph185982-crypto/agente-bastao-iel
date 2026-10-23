@@ -18,6 +18,14 @@ test('atribuição aceita artigo português sem duplicar nem apagar a condição
   assert(G.bloqueios(c).some(b=>b.id==='ressalva_ausente'));
 });
 
+test('a frase seguinte não vira parte do nome da fonte na atribuição',()=>{
+  const c=M.novoConteudo({titulo:'Duas frases'});c.fonte_principal={veiculo:'Agência Brasil',origem:'Agência Brasil',texto:'O Brent recuou.'};
+  M.criarVersao(c,{slides:[{id:'s1',layout:'explicacao',texto:'Segundo Agência Brasil. O Brent recuou.',claim_ids:[]}],cta:''});
+  assert(!G.bloqueios(c).some(b=>b.id==='atribuicao_sem_origem'));
+  M.versaoAtiva(c).slides[0].texto='Segundo Fulano Inventado. O Brent recuou.';
+  assert(G.bloqueios(c).some(b=>b.id==='atribuicao_sem_origem'));
+});
+
 test('hash distingue composição e preserva versões anteriores ao novo desenho',()=>{
   const s={id:'s1',layout:'prova',texto:'Um dado da fonte.',estilo:'impacto'};
   assert.notEqual(M.hashRender(s),M.hashRender({...s,design:'editorial_2026',composicao:'numero'}));
