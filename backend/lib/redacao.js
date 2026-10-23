@@ -97,7 +97,7 @@ Responda APENAS JSON com esses campos.`,
 
 const DIRECAO_EDITORIAL = `DIREÇÃO PARA O CELULAR:
 - A capa traz uma tensão CONCRETA da matéria. Não use "Será que... realmente...?", "Você sabia?", "Isso muda tudo" ou pergunta genérica. Curiosidade vem do acontecimento.
-- Título até 7 palavras; corpo de 1 ou 2 frases. Título e corpo se complementam, NUNCA repetem a mesma frase. O dado principal pode ser o título.
+- Selecione o que muda para o leitor. Não enumere votos e trâmites se a pauta não for sobre a votação. Prefira a consequência concreta e a evidência a uma cronologia burocrática.\n- Título até 7 palavras; corpo de 1 ou 2 frases. Título e corpo se complementam, NUNCA repetem a mesma frase. O dado principal pode ser o título.
 - Atribua uma vez: "segundo a Agência Brasil". Não repita "segundo" no slide. Não use rótulos "contexto", "prova" ou "gap" como título.
 - Defina composicao: "numero" para dado como título; "recorte" para resumo fiel da fonte; "foto" para contraste visual; "manifesto" para posição; "pergunta" para UMA pergunta ao leitor sobre escolha concreta; "texto" para transição. Varie pelo menos 3 composições. Isso não autoriza criar afirmações.
 - Perto do fim, UMA pergunta participativa ligada ao caso (o que cobraria, escolheria ou mudaria). funcao explicacao, composicao pergunta. Sem fato novo, sem "comente SIM" nem enquete inventada.
@@ -124,7 +124,7 @@ function montarVersao({ dados, claims, evidencias, formato, editorial = false })
   (dados.slides || []).slice(0, 9).forEach((s, i) => {
     if (!s || !s.texto) return;
     const funcao = E.FUNCOES_SLIDE[s.funcao] ? s.funcao : 'explicacao';
-    if(funcao==='encerramento')return; // appended once from the dedicated CTA field
+    if(funcao==='encerramento' || (!s.opiniao && !(s.claim_ids||[]).length && /^(siga|segue|salve|envie|manda|compartilhe)\b/i.test(String(s.texto).trim())))return; // appended once from the dedicated CTA field
     let claim_ids = limpaIds(s.claim_ids);
     s = { ...s, texto: String(s.texto).replace(/【[^】]*】/g, '').replace(/\s+([.,;:!?])/g, '$1').trim() };
     if (s.opiniao) {
@@ -190,13 +190,13 @@ function provisorio({ claims, evidencias, fonte, versao, opinioes }) {
 async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', editorial = false, instrucoes = '', voz }, d0) {
   const d = deps(d0);
   const claims = utilizaveis(todas);
-  const lista = claims.map((c) => resumoClaim(c, evidencias));
+  const lista = claims.map((c) => { const {motivo,fontes,...essenciais}=resumoClaim(c,evidencias); return essenciais; });
   const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 8).join('\n'), 2500);
   const budget = { max: 2, usados: 0 };
 
   const pedir = async (feedback) => {
     const { dados, llm } = await d.llmJson.pedirJson({
-      temperatura: 0.6, maxTokens: 4500, budget,
+      temperatura: 0.45, maxTokens: 3000, esforco: 'low', budget,
       sistema: `${E.VOZ}${vozDoPedro(voz)}\n\n${d.llmJson.REGRAS_DADOS}`,
       usuario: `Escreva o conteúdo para ${ACCOUNT.handle} seguindo o BRIEFING. ${formato === 'estatico' ? 'Formato: post estático (UMA imagem que se sustenta sozinha).' : 'Formato: carrossel.'}
 

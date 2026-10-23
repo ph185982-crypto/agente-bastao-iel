@@ -51,7 +51,7 @@ function prepararRevisao(c) {
 async function recentes() {
   return (await armazem().conteudos.listar(conta())).slice(0,10).map(x=>x.resumo.titulo).filter(Boolean);
 }
-async function criar({url,texto,formato='carrossel',estilo='auto',indice=0,request_id,voz=''}) {
+async function criar({url,texto,formato='carrossel',estilo='auto',indice=0,request_id,voz='',objetivo='seguidores'}) {
   const a=armazem(); if(!a?.duravel)throw falha('A produção precisa do armazenamento no servidor.',503);
   if(!url && (!texto || String(texto).trim().length<200))throw falha('Envie um link ou um texto com pelo menos 200 caracteres.');
   const request=String(request_id || crypto.randomUUID()).slice(0,80);
@@ -62,8 +62,8 @@ async function criar({url,texto,formato='carrossel',estilo='auto',indice=0,reque
   if(lista.filter(x=>x.resumo.atualizado?.startsWith(hoje)&&x.id.startsWith('st_')).length>=cap)throw falha(`Seu limite diário de ${cap} conteúdos foi atingido.`,429);
   if(lista.filter(x=>x.resumo.status==='produzindo').length>=5)throw falha('Já há cinco conteúdos em preparação. Espere um deles terminar.',429);
   const escolhido=prefs.ESTILOS[estilo]?estilo:await prefs.escolherEstilo({indice});
-  const c=M.novoConteudo({titulo:url?String(url).slice(0,140):String(texto).split('\n')[0].slice(0,140),formato:formato==='reels'?'reels':'carrossel',origem:url?{tipo:'link',url:String(url).slice(0,2000)}:{tipo:'texto',texto_bruto:String(texto).slice(0,60000)}});
-  c.id=id;c.status='produzindo';c.experimento={estilo:escolhido,letra:prefs.ESTILOS[escolhido].letra,criado_em:now()};
+  const c=M.novoConteudo({titulo:url?String(url).slice(0,140):String(texto).split('\n')[0].slice(0,140),formato:['reels','estatico'].includes(formato)?formato:'carrossel',origem:url?{tipo:'link',url:String(url).slice(0,2000)}:{tipo:'texto',texto_bruto:String(texto).slice(0,60000)}});
+  c.id=id;c.status='produzindo';c.crescimento=require('../../static/growthModel').plano(c.formato,objetivo);c.experimento={estilo:escolhido,letra:prefs.ESTILOS[escolhido].letra,criado_em:now()};
   c.studio={job:crypto.randomUUID(),estado:'gerando',etapa:'leitura',indice:0,tentativas:0,passos:0,iniciado_em:now(),voz:String(voz).slice(0,1500)};
   try{await gravar(c,0);}catch(e){if(e.code==='CONFLITO')return(await ler(id)).doc;throw e;}
   return c;
@@ -121,15 +121,16 @@ async function processar(id,job,{deps={}}={}) {
           if(evid.some(e=>e.fonte_principal && e.trecho) && c.fonte_principal.veiculo && c.fonte_principal.tipo!=='texto')k.decisao={tipo:'atribuir',condicao:`segundo ${c.fonte_principal.veiculo}`,quem:'sistema',motivo:'Manter atribuição explícita à matéria; não afirmar como fato confirmado.'};
         });
         const cfg=await armazem().config.obter(conta());const aprendizado=await prefs.orientacoes();
-        const instr=[`Crie para leitura no celular. Até 28 palavras por slide, contando título e corpo. CTA específico para seguir ${ACCOUNT.handle}: diga qual assunto ou decisão o leitor passa a entender, sem "mais análises", "próximas notícias" ou promessa de resultado.`,...aprendizado.regras,c.formato==='reels'?'Roteiro para narração: 6 a 8 blocos, entre 120 e 145 palavras no total, frases faladas e progressão dinâmica.':'Ritmo: capa concreta → lacuna → dado/recorte da fonte → consequência → posição → pergunta específica ao leitor → convite para seguir. Se a matéria for curta, una etapas. Não invente contradição nem dado para preencher slide.',c.ultimo_feedback?`Pedido de ajuste do autor (estilo, não fatos): ${c.ultimo_feedback.motivos.map(k=>prefs.MOTIVOS[k]).join('; ')}. ${c.ultimo_feedback.detalhe}`:'',st.correcao||''].filter(Boolean).join('\n');
-        const r=await d.redacao.gerarCopia({briefing:c.briefing,fonte:c.fonte_principal,claims:c.claims,evidencias:c.evidencias,recentes:await recentes(),formato:'carrossel',editorial:c.formato!=='reels',instrucoes:instr,voz:st.voz||cfg.voice_profile});
+        const instr=[require('../../static/growthModel').instrucoes({formato:c.formato,objetivo:c.crescimento?.objetivo}),`Crie para leitura no celular. Até 28 palavras por slide, contando título e corpo. CTA específico alinhado ao objetivo principal: diga o benefício concreto, sem "mais análises", "próximas notícias" ou promessa de resultado.`,...aprendizado.regras,c.formato==='reels'?'Roteiro para narração: 6 a 8 blocos, entre 120 e 145 palavras no total, frases faladas e progressão dinâmica.':'Ritmo: capa concreta → lacuna → dado/recorte da fonte → consequência → posição → pergunta específica ao leitor → convite para seguir. Se a matéria for curta, una etapas. Não invente contradição nem dado para preencher slide.',c.ultimo_feedback?`Pedido de ajuste do autor (estilo, não fatos): ${c.ultimo_feedback.motivos.map(k=>prefs.MOTIVOS[k]).join('; ')}. ${c.ultimo_feedback.detalhe}`:'',st.correcao||''].filter(Boolean).join('\n');
+        const r=await d.redacao.gerarCopia({briefing:c.briefing,fonte:c.fonte_principal,claims:c.claims,evidencias:c.evidencias,recentes:await recentes(),formato:c.formato==='estatico'?'estatico':'carrossel',editorial:c.formato!=='reels',instrucoes:instr,voz:st.voz||cfg.voice_profile});
         const n=c.copia.versoes.length+1;const mapa={};r.opinioes.forEach((o,i)=>{mapa[o.id]=`o${n}_${i+1}`;});c.claims.push(...r.opinioes.map(o=>({...o,id:mapa[o.id]})));
         const v=M.clone(r.versao);v.legenda=limparMarcadores(v.legenda);v.capas?.forEach(k=>{k.texto=limparMarcadores(k.texto);});v.slides.forEach(s=>{s.texto=limparMarcadores(s.texto);s.titulo=limparMarcadores(s.titulo);s.claim_ids=(s.claim_ids||[]).map(id=>mapa[id]||id);s.estilo=c.experimento.estilo;});
         if(c.formato!=='reels')v.slides.forEach(s=>{s.design='editorial_2026';});
         const foco=c.experimento.estilo==='impacto'?'acontecimento':c.experimento.estilo==='revista'?'tensao':'consequencia';
-        const capa=v.capas?.find(k=>k.foco===foco)||v.capas?.[0];if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}
-        if(!v.cta || !/s[ií]g|segu/i.test(v.cta)){v.cta=`Siga ${ACCOUNT.handle}. Aqui eu conecto decisões da economia ao dia a dia de quem empreende.`;const fim=v.slides.at(-1);if(fim?.layout==='encerramento')fim.texto=v.cta;}
+        const capa=require('../../static/growthModel').escolherCapa(v.capas,foco);if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}
+        if(!v.cta){v.cta=`Siga ${ACCOUNT.handle}. Aqui eu conecto decisões da economia ao dia a dia de quem empreende.`;const fim=v.slides.at(-1);if(fim?.layout==='encerramento')fim.texto=v.cta;}
         manterAtribuicoes(v,c);
+        c.crescimento={...require('../../static/growthModel').plano(c.formato,c.crescimento?.objetivo),ganchos:v.capas?.map(k=>({foco:k.foco,texto:k.texto})),hash_versao:M.hash(M.conteudoDaVersao(v))};
         M.criarVersao(c,v,{quem:'sistema',rotulo:'Versão preparada para aprovação única'});c.status='produzindo';c.auditoria_textos={};c.arte.renders=c.arte.renders || [];delete st.pendencias;proxima('auditoria');break;
       }
       case 'auditoria': {
@@ -151,7 +152,7 @@ async function processar(id,job,{deps={}}={}) {
           else {const s=v.slides.find((s,i)=>i>0&&s.composicao==='foto')||v.slides.find((s,i)=>i>0&&s.funcao==='contexto');if(s){s.imagem_id=foto.meta.id;if(s.design)s.composicao='foto';}}
           v.hash=M.hash(M.conteudoDaVersao(v));st.foto_aviso=null;
         }catch(e){st.foto_aviso=e.message;}
-        if(st.indice===0&&c.formato!=='reels')proxima('foto',1);else proxima('arte');break;
+        if(st.indice===0&&c.formato==='carrossel')proxima('foto',1);else proxima('arte');break;
       }
       case 'arte': {
         const v=M.versaoAtiva(c);const s=v.slides[st.indice];
@@ -208,6 +209,6 @@ async function decidir(id,{acao,motivos,detalhe,hash}) {
 async function panorama(){
   const feedback=await prefs.listar();const docs=await armazem().conteudos.listar(conta());
   const itens=[];for(const r of docs.filter(r=>r.resumo.status==='publicado').slice(0,100)){const c=(await ler(r.id)).doc;itens.push(c);}
-  return {estilos:Object.entries(prefs.ESTILOS).map(([id,cfg])=>{const publicados=itens.filter(c=>c.experimento?.estilo===id);return {id,...cfg,aprovacoes:feedback.filter(f=>f.estilo===id&&f.acao==='aprovar').length,ajustes:feedback.filter(f=>f.estilo===id&&f.acao==='refazer').length,publicados:publicados.length,medidos:publicados.filter(c=>c.desempenho?.alcance>0).length,alcance:publicados.reduce((n,c)=>n+(c.desempenho?.alcance||0),0),interacoes:publicados.reduce((n,c)=>n+(c.desempenho?.interacoes||0),0),seguidores:publicados.some(c=>c.desempenho?.seguidores!=null)?publicados.reduce((n,c)=>n+(c.desempenho?.seguidores||0),0):null};}),orientacoes:await prefs.orientacoes(),aviso:'Preferências vêm das suas decisões. Desempenho usa somente métricas devolvidas pelo Instagram; ainda não há vencedor sem amostra suficiente.'};
+  return {estilos:Object.entries(prefs.ESTILOS).map(([id,cfg])=>{const publicados=itens.filter(c=>c.experimento?.estilo===id);return {id,...cfg,aprovacoes:feedback.filter(f=>f.estilo===id&&f.acao==='aprovar').length,ajustes:feedback.filter(f=>f.estilo===id&&f.acao==='refazer').length,publicados:publicados.length,medidos:publicados.filter(c=>c.desempenho?.alcance>0).length,alcance:publicados.reduce((n,c)=>n+(c.desempenho?.alcance||0),0),...require('../../static/growthModel').consolidar(publicados),interacoes:publicados.reduce((n,c)=>n+(c.desempenho?.interacoes||0),0),seguidores:publicados.some(c=>c.desempenho?.seguidores!=null)?publicados.reduce((n,c)=>n+(c.desempenho?.seguidores||0),0):null};}),orientacoes:await prefs.orientacoes(),aviso:'Preferências vêm das suas decisões. Desempenho usa somente métricas devolvidas pelo Instagram; ainda não há vencedor sem amostra suficiente.'};
 }
 module.exports={criar,reagendar,processar,decidir,ler,prepararRevisao,assinatura,confere,panorama,etapas,base,limparMarcadores,esperaTemporaria};

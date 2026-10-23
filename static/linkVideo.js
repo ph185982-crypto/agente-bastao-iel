@@ -30,7 +30,7 @@
     const fonte=/(^|\.)(instagram\.com|facebook\.com|fb\.watch)$/i.test(u.hostname)?{instagramUrl:u.href}:{videoUrl:u.href};
     v.erro=null;v.fase='analyzing';redraw();
     try{
-      const data=await json('/api/video-editor/analyze',{...fonte,headline:v.gancho.trim()});
+      const data=await json('/api/video-editor/analyze',{...fonte,headline:v.gancho.trim(),objetivo:window.StudioMobile.ui.source.objetivo});
       v.fase='rendering';redraw();
       const r=await fetch('/api/video-editor/render',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...fonte,headline:v.gancho.trim()||data.headline,caption:data.caption,crop:data.crop,template:v.modelo}),signal:AbortSignal.timeout(90000)});
       if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'Não consegui montar o vídeo. Tente novamente.');}
