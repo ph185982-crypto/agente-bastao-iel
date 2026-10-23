@@ -168,14 +168,16 @@ test('pergunta causal sem base bloqueia mesmo quando o auditor responde que não
   assert(r.auditoria[0].premissas.some(p=>p.claim_id===null&&p.texto===texto));
 });
 
-test('segunda conferência rejeita causalidade adicional e preserva o fato demonstrado',async()=>{
+test('segunda conferência lê a tela inteira mesmo se a extração não encontrou fatos',async()=>{
   const {conferirVinculos}=require('./redacao');
   const claims=[{id:'a1',tipo:'fato',texto:'O dólar caiu 0,58%.'}];
-  const auditoria=[{slide_id:'s1',premissas:[{texto:'O dólar recuou 0,58%.',claim_id:'a1'},{texto:'A margem das empresas melhorou e favoreceu suas ações.',claim_id:'a1'}]}];
-  const llm={REGRAS_DADOS:'',dado:llmReal.dado,pedirJson:async()=>({dados:{vinculos:[{id:'s1:0',sustenta:true},{id:'s1:1',sustenta:false,motivo:'A base não informa margens nem efeito nas ações.'}]},llm:{provider:'fixture'}})};
-  const r=await conferirVinculos({auditoria,claims},{llmJson:llm});
+  const auditoria=[{slide_id:'s1',premissas:[{texto:'O dólar recuou 0,58%.',claim_id:'a1'}]},{slide_id:'s2',premissas:[]}];
+  const textos=[{id:'s1',texto:'O dólar recuou 0,58%.'},{id:'s2',texto:'A margem das empresas melhora e favorece suas ações.'}];
+  let prompt='';const llm={REGRAS_DADOS:'',dado:llmReal.dado,pedirJson:async p=>{prompt=p.usuario;return{dados:{textos:[{id:'s1',sustenta:true,problemas:[]},{id:'s2',sustenta:false,problemas:[{texto:textos[1].texto,motivo:'A base não informa margens nem efeito nas ações.'}]}]},llm:{provider:'fixture'}};}};
+  const r=await conferirVinculos({auditoria,claims,textos},{llmJson:llm});
+  assert(prompt.includes(textos[1].texto));
   assert.equal(r.auditoria[0].premissas[0].claim_id,'a1');assert(r.auditoria[0].premissas[0].vinculo_conferido);
-  assert.equal(r.auditoria[0].premissas[1].claim_id,null);assert.equal(auditoria[0].premissas[1].claim_id,'a1','histórico de entrada preservado');
+  assert.equal(r.auditoria[1].premissas[0].claim_id,null);assert.equal(auditoria[1].premissas.length,0,'histórico de entrada preservado');
 });
 
 test('capa sem fonte para os números não substitui uma capa conferida',()=>{
@@ -183,6 +185,13 @@ test('capa sem fonte para os números não substitui uma capa conferida',()=>{
   const v={slides:[{id:'s1',texto:'O Senado aprovou o teto.',claim_ids:['a1']}],capas:[{id:'sem-fonte',texto:'Teto de R$ 140 mil.',claim_ids:[]},{id:'com-fonte',texto:'Teto de R$ 140 mil.',claim_ids:['a1']}]};
   const boas=capasConferidas({claims,evidencias,fonte_principal:fonte},v);
   assert.deepEqual(boas.map(c=>c.id),['com-fonte']);
+});
+
+test('capa editorial identifica o assunto da notícia em vez de uma moral genérica',()=>{
+  const {capasConferidas}=require('./redacao');
+  const c={claims:[],evidencias:[],fonte_principal:{titulo:'Procon multa Enel por falhas no fornecimento'}};
+  const v={slides:[{id:'s1',design:'editorial_2026',texto:'Enel foi multada.'}],capas:[{id:'moral',texto:'Multas pesadas são necessárias para garantir qualidade.',claim_ids:[]},{id:'fato',texto:'Enel recorreu. A penalidade foi mantida.',claim_ids:[]}]};
+  assert.deepEqual(capasConferidas(c,v).map(k=>k.id),['fato']);
 });
 
 test('correção encerra o temporizador quando termina, sem prender a função por 50 segundos', async t => {

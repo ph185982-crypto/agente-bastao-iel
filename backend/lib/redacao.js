@@ -101,7 +101,7 @@ const DIRECAO_EDITORIAL = `DIREÇÃO PARA O CELULAR:
 - Atribua uma vez: "segundo a Agência Brasil". Não repita "segundo" no slide. Não use rótulos "contexto", "prova" ou "gap" como título.
 - Defina composicao: "numero" para dado como título; "recorte" para resumo fiel da fonte; "foto" para contraste visual; "manifesto" para posição; "pergunta" para UMA pergunta ao leitor sobre escolha concreta; "texto" para transição. Varie pelo menos 3 composições. Isso não autoriza criar afirmações.
 - Perto do fim, UMA pergunta participativa ligada ao caso (o que cobraria, escolheria ou mudaria). funcao explicacao, composicao pergunta. Sem fato novo, sem "comente SIM" nem enquete inventada.
-- Sem moral pronta, tom de consultor ou generalização absoluta. Conversa de empreendedor, com raciocínio apoiado nos fatos.
+- Sem moral pronta, tom de consultor ou generalização absoluta. Não force opinião: a posição pode ser uma cobrança concreta, nunca um efeito econômico inventado. A capa anuncia o acontecimento da fonte, não uma lição genérica.
 - CTA até 24 palavras com UMA ação, conforme o objetivo pedido, e benefício concreto ligado ao tema. Escreva a chamada apenas no campo cta, nunca como outro slide. Sem "análises rápidas", "mais insights", "próximas notícias" ou história pessoal de origem inventada.
 `;
 
@@ -113,6 +113,7 @@ function montarVersao({ dados, claims, evidencias, formato, editorial = false })
   const novasOpinioes = [];
   const limpaIds = (arr) => [...new Set((arr || []).map(String).filter((i) => ids.has(i)))];
   const problemas = [];
+  const chamada = texto => /^(siga|segue|salve|guarde|envie|envia|manda|mande|compartilhe)\b/i.test(String(texto||'').replace(/\*+/g,'').trim());
 
   const capas = (E.COMPOSICAO_CAPAS).map((cfg) => {
     const c = (dados.capas || []).find((x) => x && x.foco === cfg.foco);
@@ -124,7 +125,7 @@ function montarVersao({ dados, claims, evidencias, formato, editorial = false })
   (dados.slides || []).slice(0, 9).forEach((s, i) => {
     if (!s || !s.texto) return;
     const funcao = E.FUNCOES_SLIDE[s.funcao] ? s.funcao : 'explicacao';
-    if(funcao==='encerramento' || (!s.opiniao && !(s.claim_ids||[]).length && /^(siga|segue|salve|guarde|envie|envia|manda|mande|compartilhe)\b/i.test(String(s.texto).trim())))return; // appended once from the dedicated CTA field
+    if(funcao==='encerramento' || (!s.opiniao && (chamada(s.titulo) || (!(s.claim_ids||[]).length && chamada(s.texto)))))return; // appended once from the dedicated CTA field
     let claim_ids = limpaIds(s.claim_ids);
     s = { ...s, texto: String(s.texto).replace(/【[^】]*】/g, '').replace(/\s+([.,;:!?])/g, '$1').trim() };
     if (s.opiniao) {
@@ -190,6 +191,8 @@ function provisorio({ claims, evidencias, fonte, versao, opinioes }) {
 
 function capasConferidas(c, v) {
   return (v.capas || []).filter(k=>{
+    const anchors=String(c.fonte_principal?.titulo||'').match(/\b[\p{Lu}][\p{L}\p{N}_-]{2,}/gu)||[];
+    if(v.slides[0]?.design==='editorial_2026' && !M.extrairNumeros(k.texto).length && anchors.length && !anchors.some(a=>normBase(k.texto).includes(normBase(a))))return false;
     const slide={...v.slides[0],titulo:null,texto:k.texto,claim_ids:k.claim_ids||[]};
     const p=provisorio({claims:c.claims,evidencias:c.evidencias,fonte:c.fonte_principal,versao:{...v,slides:[slide]},opinioes:[]});
     // Required attribution is added by manterAtribuicoes after cover selection.
@@ -202,6 +205,7 @@ async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes
   const claims = utilizaveis(todas);
   const semBase = premissasCausais(briefing.tese, claims).length > 0;
   const lista = claims.map((c) => { const {motivo,fontes,risco,central,mutavel,...essenciais}=resumoClaim(c,evidencias); return essenciais; });
+  const direcao=editorial?{assunto:fonte.titulo,objetivo:objetivo||briefing.objetivo,estrutura:E.ESTRUTURAS[briefing.estrutura]?.nome,orientacao:'Explique os fatos listados. A progressão nasce dos detalhes da notícia; não imponha uma tese, moral ou consequência que a fonte não apresenta.'}:{assunto:briefing.assunto,acontecimento:briefing.acontecimento,objetivo:briefing.objetivo,tese:semBase?'Explique somente os fatos abaixo.':briefing.tese,tese_tipo:semBase?'explicacao':briefing.tese_tipo,estrutura:E.ESTRUTURAS[briefing.estrutura]?.nome,motivo_compartilhar:briefing.motivo_compartilhar,conflito:briefing.conflito,duvidas:briefing.duvidas};
   const rec = d.llmJson.dado('POSTS_RECENTES_DO_PERFIL', recentes.slice(0, 4).join('\n'), 700);
   const budget = { max: 2, usados: 0 };
 
@@ -211,7 +215,7 @@ async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes
       sistema: `${E.VOZ}${vozDoPedro(voz)}\n\n${d.llmJson.REGRAS_DADOS}`,
       usuario: `Escreva o conteúdo para ${ACCOUNT.handle} seguindo o BRIEFING. ${formato === 'estatico' ? 'Formato: post estático (UMA imagem que se sustenta sozinha).' : 'Formato: carrossel.'}
 
-BRIEFING (tese é uma hipótese editorial, nunca uma fonte factual): ${JSON.stringify({ assunto: briefing.assunto, acontecimento: briefing.acontecimento, objetivo: briefing.objetivo, tese: semBase ? 'Explique somente os acontecimentos confirmados abaixo, sem criar mecanismos causais.' : briefing.tese, tese_tipo: semBase ? 'explicacao' : briefing.tese_tipo, estrutura: E.ESTRUTURAS[briefing.estrutura]?.nome, motivo_compartilhar: briefing.motivo_compartilhar, conflito: briefing.conflito, duvidas: briefing.duvidas })}
+BRIEFING (tese é uma hipótese editorial, nunca uma fonte factual): ${JSON.stringify(direcao)}
 
 AFIRMAÇÕES DISPONÍVEIS (use claim_ids exatos; o estado é o verificado pelo sistema):
 ${JSON.stringify(lista)}
@@ -329,21 +333,19 @@ Responda APENAS JSON: {"slides":[{"id":${JSON.stringify(ops[0].id)},"premissas":
 
 // A second, separately checkpointed task verifies entailment instead of writing
 // or extracting copy. A matching entity/number is not evidence of causation.
-async function conferirVinculos({auditoria,claims},d0){
-  const d=deps(d0),pares=[];
-  for(const a of auditoria)for(let i=0;i<a.premissas.length;i++){
-    const p=a.premissas[i],k=claims.find(c=>c.id===p.claim_id&&c.tipo!=='opiniao'&&c.natureza!=='opiniao');
-    if(k)pares.push({id:`${a.slide_id}:${i}`,afirmacao:p.texto,base:k.texto});
-  }
-  if(!pares.length)return {auditoria};
+async function conferirVinculos({auditoria,claims,textos},d0){
+  const d=deps(d0),unidades=(textos||auditoria.map(a=>({id:a.slide_id,texto:a.premissas.map(p=>p.texto).join(' ')}))).filter(t=>t.texto);
+  if(!unidades.length)return {auditoria};
+  const bases=claims.filter(c=>c.tipo!=='opiniao'&&c.natureza!=='opiniao'&&c.decisao?.tipo!=='retirar'&&c.estado!=='contradita').map(c=>({id:c.id,texto:c.texto}));
   const {dados,llm}=await d.llmJson.pedirJson({temperatura:0,maxTokens:1800,esforco:'medium',
-    sistema:`Compare cada afirmação com sua base, sem usar conhecimento externo. Responda sustenta:true somente se TODA a afirmação puder ser concluída da base. Mesma empresa ou mesmo número não basta. Efeito econômico, causa, intenção, vigência, certeza ou prazo adicionais tornam sustenta:false. Exemplo: base "O dólar caiu" não sustenta "a margem de lucro das empresas melhora e favorece suas ações". Base "A empresa foi multada" não sustenta "a multa será repassada ao consumidor". Avalie cada par de forma independente.\n${d.llmJson.REGRAS_DADOS}`,
-    usuario:`${d.llmJson.dado('PARES_PARA_CONFERIR',JSON.stringify(pares),18000).bloco}\nDevolva cada ID exatamente uma vez. Motivo com até 12 palavras. JSON: {"vinculos":[{"id":"${pares[0].id}","sustenta":false,"motivo":"o que falta na base"}]}`});
-  if(!Array.isArray(dados?.vinculos)||pares.some(p=>dados.vinculos.filter(v=>v?.id===p.id&&typeof v.sustenta==='boolean').length!==1))throw Object.assign(new Error('A conferência das fontes não cobriu todos os vínculos.'),{code:'AUDITORIA_INCOMPLETA'});
-  return {auditoria:auditoria.map(a=>({...a,premissas:a.premissas.map((p,i)=>{
-    if(!p.claim_id)return p;const v=dados.vinculos.find(v=>v.id===`${a.slide_id}:${i}`);
-    return v?.sustenta?{...p,vinculo_conferido:true}:{...p,claim_id:null,motivo:String(v?.motivo||'A base não demonstra esta afirmação.').slice(0,240)};
-  })})),llm};
+    sistema:`Confira TODO o texto de cada tela contra as bases, sem conhecimento externo. Pode haver fatos que outro revisor deixou passar. Possibilidades ("podem perder clientes", "pode aumentar a margem") afirmam mecanismos: sem base explícita, bloqueie. "Multas garantem qualidade" também exige prova do efeito; não é só opinião. Perguntas podem insinuar premissas não demonstradas. Mesma empresa ou número não prova uma relação causal. "O dólar caiu" não sustenta "a margem melhora e favorece ações". "A empresa foi multada" não sustenta repasse ao consumidor nem perda de clientes. Não confunda prazo futuro com regra vigente. Avaliações puras ("eu cobraria um plano de melhoria"), perguntas sem pressuposto factual e convites a seguir/salvar não precisam de prova. sustenta:true significa que todos os fatos do texto estão nas bases.\n${d.llmJson.REGRAS_DADOS}`,
+    usuario:`${d.llmJson.dado('BASES_FACTUAIS',JSON.stringify(bases),14000).bloco}\n${d.llmJson.dado('TEXTOS_COMPLETOS',JSON.stringify(unidades),6000).bloco}\nDevolva cada ID exatamente uma vez. Se faltar base, copie o trecho problemático (até 160 caracteres). JSON: {"textos":[{"id":"${unidades[0].id}","sustenta":false,"problemas":[{"texto":"afirmação sem base","motivo":"o que falta na base"}]}]}. Para texto sustentado ou convite sem fatos: sustenta:true,problemas:[].`});
+  if(!Array.isArray(dados?.textos)||unidades.some(p=>dados.textos.filter(v=>v?.id===p.id&&typeof v.sustenta==='boolean'&&Array.isArray(v.problemas)).length!==1))throw Object.assign(new Error('A conferência das fontes não cobriu todos os textos.'),{code:'AUDITORIA_INCOMPLETA'});
+  return {auditoria:auditoria.map(a=>{
+    const v=dados.textos.find(v=>v.id===a.slide_id);if(!v)return a;
+    const faltas=v.sustenta&&!v.problemas.length?[]:(v.problemas.length?v.problemas:[{texto:unidades.find(t=>t.id===a.slide_id)?.texto,motivo:'A base não demonstra este texto.'}]);
+    return {...a,texto_conferido:true,premissas:[...a.premissas.map(p=>p.claim_id?{...p,vinculo_conferido:v.sustenta}:p),...faltas.map(p=>({texto:String(p.texto||'Afirmação sem base.').slice(0,240),claim_id:null,motivo:String(p.motivo||'').slice(0,240)}))]};
+  }),llm};
 }
 
 module.exports = { vozDoPedro, auditarOpinioes, conferirVinculos, premissaConferida, premissasCausais, gerarBriefing, gerarCopia, montarVersao, provisorio, capasConferidas, resumoClaim, LAYOUT_POR_FUNCAO };

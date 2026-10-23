@@ -127,7 +127,9 @@ async function processar(id,job,{deps={}}={}) {
         const v=M.clone(r.versao);v.legenda=limparMarcadores(v.legenda);v.capas?.forEach(k=>{k.texto=limparMarcadores(k.texto);});v.slides.forEach(s=>{s.texto=limparMarcadores(s.texto);s.titulo=limparMarcadores(s.titulo);s.claim_ids=(s.claim_ids||[]).map(id=>mapa[id]||id);s.estilo=c.experimento.estilo;});
         if(c.formato!=='reels')v.slides.forEach(s=>{s.design='editorial_2026';});
         const foco=c.experimento.estilo==='impacto'?'acontecimento':c.experimento.estilo==='revista'?'tensao':'consequencia';
-        const capa=require('../../static/growthModel').escolherCapa(redacao.capasConferidas(c,v),foco);if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}else v.capa_escolhida='original';
+        let capa=require('../../static/growthModel').escolherCapa(redacao.capasConferidas(c,v),foco);
+        if(!capa&&c.formato!=='reels'&&c.fonte_principal?.titulo&&c.fonte_principal.titulo.split(/\s+/).length<=18)capa={id:'fonte_principal',texto:c.fonte_principal.titulo,claim_ids:c.claims.filter(k=>k.tipo!=='opiniao'&&k.natureza!=='opiniao'&&k.estado!=='contradita'&&k.decisao?.tipo!=='retirar').map(k=>k.id)};
+        if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}else v.capa_escolhida='original';
         if(!v.cta){v.cta=`Siga ${ACCOUNT.handle}. Aqui eu conecto decisões da economia ao dia a dia de quem empreende.`;const fim=v.slides.at(-1);if(fim?.layout==='encerramento')fim.texto=v.cta;}
         manterAtribuicoes(v,c);
         c.crescimento={...require('../../static/growthModel').plano(c.formato,c.crescimento?.objetivo),ganchos:v.capas?.map(k=>({foco:k.foco,texto:k.texto})),hash_versao:M.hash(M.conteudoDaVersao(v))};
@@ -137,7 +139,7 @@ async function processar(id,job,{deps={}}={}) {
         const v=M.versaoAtiva(c);const editorial=v.slides.some(s=>s.design==='editorial_2026');const unidades=[...v.slides.filter(s=>s.layout!=='encerramento'||editorial).map(s=>({id:s.id,texto:M.textoParaAuditoria(s)})),{id:'legenda',texto:v.legenda},...(editorial&&v.cta?[{id:'cta',texto:v.cta}]:[])];
         if(st.auditoria_verificar_ids?.length){
           const ids=st.auditoria_verificar_ids;
-          let r;try{r=await d.redacao.conferirVinculos({auditoria:ids.map(id=>c.auditoria_textos[id]),claims:c.claims});}
+          let r;try{r=await d.redacao.conferirVinculos({auditoria:ids.map(id=>c.auditoria_textos[id]),claims:c.claims,textos:unidades.filter(t=>ids.includes(t.id))});}
           catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&ids.length>1){st.auditoria_lote=1;st.auditoria_verificar_ids=ids.slice(0,1);break;}throw e;}
           r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});delete st.auditoria_verificar_ids;
           if(st.indice+ids.length<unidades.length)proxima('auditoria',st.indice+ids.length);else proxima('foto');break;
@@ -146,7 +148,7 @@ async function processar(id,job,{deps={}}={}) {
         let r;try{r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims});}
         catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&grupo.length>1){st.auditoria_lote=1;break;}throw e;}
         r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});
-        if(typeof d.redacao.conferirVinculos==='function'&&r.auditoria.some(a=>a.premissas.some(p=>p.claim_id))){st.auditoria_verificar_ids=grupo.map(s=>s.id);break;}
+        if(typeof d.redacao.conferirVinculos==='function'){st.auditoria_verificar_ids=grupo.map(s=>s.id);break;}
         if(st.indice+grupo.length<unidades.length)proxima('auditoria',st.indice+grupo.length);else proxima('foto');break;
       }
       case 'foto': {
