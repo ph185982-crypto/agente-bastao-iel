@@ -69,8 +69,8 @@ test('discovery never sends a text draft to speech or guard models', async () =>
   const f = fixture(model => {
     if (model === 'text-chat-fixture') return ok(model);
     throw Object.assign(new Error('Not found'), { status: 404 });
-  }, ['canopylabs/orpheus-v1-english', 'canopylabs/orpheus-arabic-saudi', 'whisper-large-v3', 'openai/gpt-oss-safeguard-20b', 'text-chat-fixture']);
+  }, ['canopylabs/orpheus-v1-english', 'canopylabs/orpheus-arabic-saudi', 'whisper-large-v3', 'openai/gpt-oss-safeguard-20b', 'allam-2-7b', 'text-chat-fixture']);
   const r = await f.client.chat.completions.create(options);
   assert.equal(r.__llm.model, 'text-chat-fixture');
-  assert(!f.calls.some(model => /orpheus|whisper|safeguard/.test(model)));
+  assert(!f.calls.some(model => /orpheus|whisper|safeguard|allam/.test(model)));
 });

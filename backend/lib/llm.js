@@ -13,6 +13,9 @@ const PROVIDERS = [
     // Do maior contexto para o menor — 413 faz cair pro próximo.
     large: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],
     small: ['openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],
+    // Keep Portuguese editorial work on the general-purpose text models.
+    // A specialized reserve must not turn a temporary quota into poor copy.
+    discoverFilter: id => !/^allam-/i.test(id),
   },
   {
     name: 'gemini',
