@@ -116,9 +116,9 @@
       // Ressalva pública: anúncio, declaração, previsão ou decisão de atribuir.
       const exige = dec === 'atribuir' || cl.exige_atribuicao || M.EXIGE_ATRIBUICAO.has(M.naturezaDe(cl));
       if (exige) {
-        const cond = dec === 'atribuir' ? norm(cl.decisao.condicao) : null;
+        const cond = dec === 'atribuir' ? M.normalizarAtribuicao(cl.decisao.condicao) : null;
         textos.filter((t) => (t.claim_ids || []).includes(cl.id) && t.tipo !== 'cta').forEach((t) => {
-          const ok = cond ? norm(t.texto).includes(cond) : MARCA_ATRIBUICAO.test(t.texto);
+          const ok = cond ? M.normalizarAtribuicao(t.texto).includes(cond) : MARCA_ATRIBUICAO.test(t.texto);
           if (!ok) out.push(bloqueio('ressalva_ausente', 'fatos', 'Falta a atribuição ou condição no texto', cond
             ? `${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} usa “${cl.texto}” sem “${cl.decisao.condicao}”.`
             : `${rotuloOnde(t)[0].toUpperCase()}${rotuloOnde(t).slice(1)} apresenta como fato “${cl.texto}”, que é ${({ anuncio: 'um anúncio', declaracao: 'uma declaração', previsao: 'uma previsão' })[M.naturezaDe(cl)] || 'atribuído'}: diga quem anunciou/disse ou a condição.`, t.onde, 'Recolocar a atribuição ou condição'));
@@ -199,6 +199,9 @@
       if ((r.elementos || []).some((e) => /selo|verificad|badge/i.test(e))) out.push(bloqueio('selo_falso', 'arte', 'Selo de verificação na arte', 'A conta não é verificada: nenhum selo pode aparecer.', { slide: s.id }, 'Gerar a arte de novo'));
     }
     (v.slides || []).forEach((s) => { if (s.selo || /selo|badge/i.test(s.layout || '')) out.push(bloqueio('selo_falso', 'arte', 'Selo de verificação no slide', 'Remova o selo.', { slide: s.id })); });
+    (v.slides || []).filter(s=>s.design==='editorial_2026').forEach(s=>{
+      if(palavras(M.textoParaAuditoria(s)).length>38)out.push(bloqueio('texto_denso','redacao','Texto demais para o celular','Encurte título e corpo para no máximo 38 palavras, preservando a informação e a atribuição.',{slide:s.id},'Encurtar o slide'));
+    });
 
     // Imagens
     const usadasImg = (v.slides || []).map((s) => (c.imagens || []).find((i) => i.id === s.imagem_id)).filter(Boolean);

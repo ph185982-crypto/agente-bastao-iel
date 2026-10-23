@@ -39,6 +39,10 @@
     return slide?.titulo ? `${slide.titulo}. ${texto}` : texto;
   }
 
+  // Optional Portuguese articles do not change an attribution's meaning.
+  const normalizarAtribuicao = s => semAcento(s).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
+    .replace(/\b(segundo|conforme|de acordo com) (?:o|a|os|as) /g, '$1 ');
+
   function hash(v) {
     const s = canonico(v);
     let h1 = 0xdeadbeef; let h2 = 0x41c6ce57;
@@ -127,7 +131,7 @@
   const conteudoDaVersao = (v) => ({
     estrutura: v.estrutura || null,
     capa_escolhida: v.capa_escolhida || null,
-    slides: (v.slides || []).map((s) => ({ id: s.id, layout: s.layout, funcao: s.funcao || null, texto: s.texto, titulo: s.titulo || null, rotulo: s.rotulo || null, dados: s.dados || null, fonte_linha: s.fonte_linha || null, claim_ids: s.claim_ids || [], imagem_id: s.imagem_id || null, ...(s.estilo ? { estilo:s.estilo } : {}) })),
+    slides: (v.slides || []).map((s) => ({ id: s.id, layout: s.layout, funcao: s.funcao || null, texto: s.texto, titulo: s.titulo || null, rotulo: s.rotulo || null, dados: s.dados || null, fonte_linha: s.fonte_linha || null, claim_ids: s.claim_ids || [], imagem_id: s.imagem_id || null, ...(s.estilo ? { estilo:s.estilo } : {}), ...(s.design ? { design:s.design,composicao:s.composicao||null } : {}) })),
     legenda: v.legenda || '',
     cta: v.cta || '',
     hashtags: v.hashtags || [],
@@ -135,7 +139,7 @@
   });
 
   // Hash do que aparece na arte de um slide (detecta arte desatualizada).
-  const hashRender = (s) => hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null, d: s.dados || undefined, r: s.rotulo || undefined, f: s.fonte_linha || undefined, ...(s.estilo ? { estilo:s.estilo } : {}) });
+  const hashRender = (s) => hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null, d: s.dados || undefined, r: s.rotulo || undefined, f: s.fonte_linha || undefined, ...(s.estilo ? { estilo:s.estilo } : {}), ...(s.design ? { design:s.design,composicao:s.composicao||null } : {}) });
 
   const versaoAtiva = (c) => c.copia.versoes.find((v) => v.id === c.copia.versao_ativa) || null;
 
@@ -492,7 +496,7 @@
 
   return {
     SCHEMA, ACCOUNT_PIN, HANDLES_ERRADOS, STATUS, ETAPAS, ESTADOS_CLAIM,
-    textoParaAuditoria, hash, hashRender, linhaDeFonte, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
+    textoParaAuditoria, normalizarAtribuicao, hash, hashRender, linhaDeFonte, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
     novoConteudo, criarVersao, versaoAtiva, conteudoDaVersao, efeitoDaEdicao,
     editarSlide, editarLegenda, reordenarSlides, escolherCapa, alternarBloqueio, desfazer, ativarVersao,
     avaliarAfirmacao, decidirAfirmacao, DECISOES, naturezaDe, NATUREZAS, EXIGE_ATRIBUICAO, valoresPermitidos, migrarItemLegado, aprovar, registrarExportacao, registrarPublicacao,

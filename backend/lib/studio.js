@@ -24,7 +24,7 @@ function esperaTemporaria(e){
 }
 const limparMarcadores=texto=>typeof texto==='string'?texto.replace(/\s*(?:\*\*)?\(\s*[ao]\d+(?:_\d+)?(?:\s*[,;]\s*[ao]\d+(?:_\d+)?)*\s*\)(?:\*\*)?/g,'').trim():texto;
 function manterAtribuicoes(v,c){
-  const norm=s=>M.semAcento(s).replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  const norm=M.normalizarAtribuicao;
   const atribuir=(texto,ids)=>{
     let t=texto;const usadas=c.claims.filter(k=>(ids||[]).includes(k.id));
     const condicoes=[...new Set(usadas.filter(k=>k.decisao?.tipo==='atribuir').map(k=>k.decisao.condicao).filter(Boolean))];
@@ -121,12 +121,14 @@ async function processar(id,job,{deps={}}={}) {
           if(evid.some(e=>e.fonte_principal && e.trecho) && c.fonte_principal.veiculo && c.fonte_principal.tipo!=='texto')k.decisao={tipo:'atribuir',condicao:`segundo ${c.fonte_principal.veiculo}`,quem:'sistema',motivo:'Manter atribuição explícita à matéria; não afirmar como fato confirmado.'};
         });
         const cfg=await armazem().config.obter(conta());const aprendizado=await prefs.orientacoes();
-        const instr=[`Crie para leitura no celular. Até 28 palavras por slide. CTA forte e específico para seguir ${ACCOUNT.handle}.`,...aprendizado.regras,c.formato==='reels'?'Roteiro para narração: 6 a 8 blocos, entre 120 e 145 palavras no total, frases faladas e progressão dinâmica.':'',c.ultimo_feedback?`Pedido de ajuste do autor (estilo, não fatos): ${c.ultimo_feedback.motivos.map(k=>prefs.MOTIVOS[k]).join('; ')}. ${c.ultimo_feedback.detalhe}`:'',st.correcao||''].filter(Boolean).join('\n');
-        const r=await d.redacao.gerarCopia({briefing:c.briefing,fonte:c.fonte_principal,claims:c.claims,evidencias:c.evidencias,recentes:await recentes(),formato:'carrossel',instrucoes:instr,voz:st.voz||cfg.voice_profile});
+        const instr=[`Crie para leitura no celular. Até 28 palavras por slide, contando título e corpo. CTA específico para seguir ${ACCOUNT.handle}: diga qual assunto ou decisão o leitor passa a entender, sem "mais análises", "próximas notícias" ou promessa de resultado.`,...aprendizado.regras,c.formato==='reels'?'Roteiro para narração: 6 a 8 blocos, entre 120 e 145 palavras no total, frases faladas e progressão dinâmica.':'Ritmo: capa concreta → lacuna → dado/recorte da fonte → consequência → posição → pergunta específica ao leitor → convite para seguir. Se a matéria for curta, una etapas. Não invente contradição nem dado para preencher slide.',c.ultimo_feedback?`Pedido de ajuste do autor (estilo, não fatos): ${c.ultimo_feedback.motivos.map(k=>prefs.MOTIVOS[k]).join('; ')}. ${c.ultimo_feedback.detalhe}`:'',st.correcao||''].filter(Boolean).join('\n');
+        const r=await d.redacao.gerarCopia({briefing:c.briefing,fonte:c.fonte_principal,claims:c.claims,evidencias:c.evidencias,recentes:await recentes(),formato:'carrossel',editorial:c.formato!=='reels',instrucoes:instr,voz:st.voz||cfg.voice_profile});
         const n=c.copia.versoes.length+1;const mapa={};r.opinioes.forEach((o,i)=>{mapa[o.id]=`o${n}_${i+1}`;});c.claims.push(...r.opinioes.map(o=>({...o,id:mapa[o.id]})));
         const v=M.clone(r.versao);v.legenda=limparMarcadores(v.legenda);v.capas?.forEach(k=>{k.texto=limparMarcadores(k.texto);});v.slides.forEach(s=>{s.texto=limparMarcadores(s.texto);s.titulo=limparMarcadores(s.titulo);s.claim_ids=(s.claim_ids||[]).map(id=>mapa[id]||id);s.estilo=c.experimento.estilo;});
-        const capa=v.capas?.find(k=>k.foco==='tensao')||v.capas?.[0];if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}
-        if(!v.cta || !/s[ií]g|segu/i.test(v.cta)){v.cta=`Siga ${ACCOUNT.handle} para entender a estratégia por trás das próximas notícias.`;const fim=v.slides.at(-1);if(fim?.layout==='encerramento')fim.texto=v.cta;}
+        if(c.formato!=='reels')v.slides.forEach(s=>{s.design='editorial_2026';});
+        const foco=c.experimento.estilo==='impacto'?'acontecimento':c.experimento.estilo==='revista'?'tensao':'consequencia';
+        const capa=v.capas?.find(k=>k.foco===foco)||v.capas?.[0];if(capa){v.capa_escolhida=capa.id;v.slides[0].titulo=null;v.slides[0].texto=capa.texto;v.slides[0].claim_ids=capa.claim_ids;}
+        if(!v.cta || !/s[ií]g|segu/i.test(v.cta)){v.cta=`Siga ${ACCOUNT.handle}. Aqui eu conecto decisões da economia ao dia a dia de quem empreende.`;const fim=v.slides.at(-1);if(fim?.layout==='encerramento')fim.texto=v.cta;}
         manterAtribuicoes(v,c);
         M.criarVersao(c,v,{quem:'sistema',rotulo:'Versão preparada para aprovação única'});c.status='produzindo';c.auditoria_textos={};c.arte.renders=c.arte.renders || [];delete st.pendencias;proxima('auditoria');break;
       }
@@ -140,15 +142,16 @@ async function processar(id,job,{deps={}}={}) {
       }
       case 'foto': {
         const v=M.versaoAtiva(c);
-        const consulta=/juros|infla|sal[aá]rio|imposto|economia|dinheiro|arrecada/i.test(c.titulo)?'brazil money economy finance':/tecnolog|intelig[eê]ncia|digital/i.test(c.titulo)?'technology computer business':/diesel|petr[oó]leo|combust/i.test(c.titulo)?'gas station fuel truck':'business city brazil';
+        const consultas=require('./fotosStudio').consultasPara(c.titulo);
         try {
-          const foto=await(deps.buscarFoto || require('./fotosStudio').buscarFoto)(consulta);
+          const foto=await(deps.buscarFoto || require('./fotosStudio').buscarFoto)(consultas[Math.min(st.indice,1)],{excluir:st.indice?c.imagens.map(i=>i.id):[]});
           await armazem().arquivos.salvar(conta(),`img:${foto.meta.id}`,foto.dados,'image/jpeg');
           c.imagens=[...(c.imagens||[]).filter(i=>i.id!==foto.meta.id),foto.meta];
-          v.slides.forEach((s,i)=>{if(i===0 || (c.experimento.estilo==='foto_editorial' && i===2)){s.imagem_id=foto.meta.id;if(i===0)s.layout='capa_foto';}});
+          if(st.indice===0){v.slides[0].imagem_id=foto.meta.id;v.slides[0].layout='capa_foto';}
+          else {const s=v.slides.find((s,i)=>i>0&&s.composicao==='foto')||v.slides.find((s,i)=>i>0&&s.funcao==='contexto');if(s){s.imagem_id=foto.meta.id;if(s.design)s.composicao='foto';}}
           v.hash=M.hash(M.conteudoDaVersao(v));st.foto_aviso=null;
-        }catch(e){st.foto_aviso=e.message;if(c.experimento.estilo==='foto_editorial')throw e;}
-        proxima('arte');break;
+        }catch(e){st.foto_aviso=e.message;}
+        if(st.indice===0&&c.formato!=='reels')proxima('foto',1);else proxima('arte');break;
       }
       case 'arte': {
         const v=M.versaoAtiva(c);const s=v.slides[st.indice];

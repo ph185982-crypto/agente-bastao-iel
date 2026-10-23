@@ -94,10 +94,21 @@ Responda APENAS JSON com esses campos.`,
   };
 }
 
+
+const DIRECAO_EDITORIAL = `DIREÇÃO PARA O CELULAR:
+- A capa traz uma tensão CONCRETA da matéria. Não use "Será que... realmente...?", "Você sabia?", "Isso muda tudo" ou pergunta genérica. Curiosidade vem do acontecimento.
+- Título até 7 palavras; corpo de 1 ou 2 frases. Título e corpo se complementam, NUNCA repetem a mesma frase. O dado principal pode ser o título.
+- Atribua uma vez: "segundo a Agência Brasil". Não repita "segundo" no slide. Não use rótulos "contexto", "prova" ou "gap" como título.
+- Defina composicao: "numero" para dado como título; "recorte" para resumo fiel da fonte; "foto" para contraste visual; "manifesto" para posição; "pergunta" para UMA pergunta ao leitor sobre escolha concreta; "texto" para transição. Varie pelo menos 3 composições. Isso não autoriza criar afirmações.
+- Perto do fim, UMA pergunta participativa ligada ao caso (o que cobraria, escolheria ou mudaria). funcao explicacao, composicao pergunta. Sem fato novo, sem "comente SIM" nem enquete inventada.
+- Sem moral pronta, tom de consultor ou generalização absoluta. Conversa de empreendedor, com raciocínio apoiado nos fatos.
+- CTA até 24 palavras: seguir + benefício concreto ligado ao tema. Sem "mais insights", "próximas notícias" ou história pessoal de origem inventada.
+`;
+
 // ── Copy ───────────────────────────────────────────────────────────────────
 const LAYOUT_POR_FUNCAO = { capa: 'capa_tipografica', contexto: 'explicacao', explicacao: 'explicacao', consequencia: 'explicacao', opiniao: 'explicacao', prova: 'prova', comparacao: 'comparacao', encerramento: 'encerramento' };
 
-function montarVersao({ dados, claims, evidencias, formato }) {
+function montarVersao({ dados, claims, evidencias, formato, editorial = false }) {
   const ids = new Set(claims.map((c) => c.id));
   const novasOpinioes = [];
   const limpaIds = (arr) => [...new Set((arr || []).map(String).filter((i) => ids.has(i)))];
@@ -113,6 +124,7 @@ function montarVersao({ dados, claims, evidencias, formato }) {
   (dados.slides || []).slice(0, 9).forEach((s, i) => {
     if (!s || !s.texto) return;
     const funcao = E.FUNCOES_SLIDE[s.funcao] ? s.funcao : 'explicacao';
+    if(funcao==='encerramento')return; // appended once from the dedicated CTA field
     let claim_ids = limpaIds(s.claim_ids);
     s = { ...s, texto: String(s.texto).replace(/【[^】]*】/g, '').replace(/\s+([.,;:!?])/g, '$1').trim() };
     if (s.opiniao) {
@@ -134,6 +146,7 @@ function montarVersao({ dados, claims, evidencias, formato }) {
       id: `s${slides.length + 1}`, funcao: ehCapa ? 'capa' : (funcao === 'capa' ? 'contexto' : funcao), layout,
       titulo: s.titulo ? String(s.titulo).slice(0, 120) : null, texto: String(s.texto).slice(0, 700), rotulo: ehCapa && s.rotulo ? String(s.rotulo).slice(0, 28) : null,
       dados: layout === 'comparacao' ? { esquerda: s.dados.esquerda, direita: s.dados.direita } : null, claim_ids,
+      ...(editorial ? { design:'editorial_2026', composicao:['numero','recorte','pergunta','foto','manifesto','texto'].includes(s.composicao) ? s.composicao : null } : {}),
     });
   });
   if (formato === 'estatico') slides.splice(1);
@@ -174,7 +187,7 @@ function provisorio({ claims, evidencias, fonte, versao, opinioes }) {
   return c;
 }
 
-async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', instrucoes = '', voz }, d0) {
+async function gerarCopia({ briefing, fonte, claims: todas, evidencias, recentes = [], formato = 'carrossel', editorial = false, instrucoes = '', voz }, d0) {
   const d = deps(d0);
   const claims = utilizaveis(todas);
   const lista = claims.map((c) => resumoClaim(c, evidencias));
@@ -205,7 +218,8 @@ REGRAS DE FATOS (inegociáveis):
 9. Slide sem claim_ids só pode ser: capa, transição, pergunta ou OPINIÃO marcada ("opiniao": true). Generalização como "reduzir horas costuma elevar custos" é opinião ou precisa de afirmação com fonte; não escreva como fato.
 10. Não acrescente detalhe factual que não esteja nas afirmações ligadas ao slide (prazo, exceção, quem decide, acordo coletivo etc.).
 
-ESTRUTURA: escolha a que a pauta pede (a sugerida é ${briefing.estrutura}). Cada slide tem UMA função (capa, contexto, prova, explicacao, comparacao, consequencia, opiniao) e precisa acrescentar informação, compreensão ou progressão: se não acrescenta, não escreva. ${formato === 'estatico' ? '' : 'Use o número de slides que a história pedir (entre 4 e 8 de conteúdo); não existe meta de quantidade.'} Texto por slide curto o bastante para ler no celular (capa até 18 palavras; demais até 45).
+ESTRUTURA: escolha a que a pauta pede (a sugerida é ${briefing.estrutura}). Cada slide tem UMA função (capa, contexto, prova, explicacao, comparacao, consequencia, opiniao) e acrescenta informação ou compreensão. ${formato === 'estatico' ? 'Uma imagem.' : editorial ? 'Use 5 a 6 slides de conteúdo + CTA final; histórias curtas podem ter 4.' : 'Use entre 4 e 8 slides de conteúdo.'} Capa até ${editorial?12:18} palavras; demais até ${editorial?28:45}, contando título e corpo.
+${editorial ? DIRECAO_EDITORIAL : ''}
 Marque com **duas estrelas** no máximo 2 trechos por slide.
 Para "comparacao" preencha dados: {"esquerda":{"rotulo":"","valor":"","detalhe":""},"direita":{...}} só com valores das afirmações.
 
@@ -216,7 +230,7 @@ ${instrucoes ? `INSTRUÇÃO DO PEDRO: ${instrucoes}\n` : ''}${feedback ? `\nA VE
 ${rec.bloco}
 
 Responda APENAS JSON:
-{"estrutura":"acontecimento","capas":[{"foco":"acontecimento","texto":"","explicacao":"","claim_ids":[]},{"foco":"consequencia",...},{"foco":"tensao",...}],"slides":[{"funcao":"capa","rotulo":"","titulo":"","texto":"","claim_ids":[],"opiniao":false,"dados":null}],"legenda":"","legenda_claim_ids":[],"cta":"","hashtags":[]}`,
+{"estrutura":"acontecimento","capas":[{"foco":"acontecimento","texto":"","explicacao":"","claim_ids":[]},{"foco":"consequencia",...},{"foco":"tensao",...}],"slides":[{"funcao":"capa","composicao":"texto","rotulo":"","titulo":"","texto":"","claim_ids":[],"opiniao":false,"dados":null}],"legenda":"","legenda_claim_ids":[],"cta":"","hashtags":[]}`,
     });
     return { dados, llm };
   };
@@ -225,7 +239,7 @@ Responda APENAS JSON:
   // primeira terminou cedo. Se não der tempo, os problemas continuam visíveis.
   const t0 = Date.now();
   let r = await pedir('');
-  let m = montarVersao({ dados: r.dados, claims, evidencias, formato });
+  let m = montarVersao({ dados: r.dados, claims, evidencias, formato, editorial });
   let prov = provisorio({ claims, evidencias, fonte, versao: m.versao, opinioes: m.opinioes });
   const fatosProblemas = (c) => G.bloqueios(c, { conta: M.ACCOUNT_PIN }).filter((b) => ['numero_sem_origem', 'numero_sem_afirmacao', 'citacao_sem_origem', 'atribuicao_sem_origem', 'valores_divergentes', 'ressalva_ausente'].includes(b.id));
   let falhas = fatosProblemas(prov);
@@ -239,7 +253,7 @@ Responda APENAS JSON:
     try {
       const restante = 50000 - (Date.now() - t0);
       const r2 = await Promise.race([pedir(fb), new Promise((_, no) => { prazo = setTimeout(() => no(new Error('sem tempo para a correção')), Math.max(1000, restante)); })]);
-      const m2 = montarVersao({ dados: r2.dados, claims, evidencias, formato });
+      const m2 = montarVersao({ dados: r2.dados, claims, evidencias, formato, editorial });
       const prov2 = provisorio({ claims, evidencias, fonte, versao: m2.versao, opinioes: m2.opinioes });
       const f2 = fatosProblemas(prov2);
       tentativas = 2;

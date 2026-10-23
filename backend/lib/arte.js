@@ -326,6 +326,7 @@ async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, ar
     return { png, metrics: { cabe: true, fonte_px: null, blocos: [], layout, elementos: ['arquivo_aprovado', ...(igual ? [] : ['arquivo_aprovado_redimensionado'])], arquivo: { largura: meta.width, altura: meta.height } } };
   }
 
+  if (slide.design === 'editorial_2026') return require('./editorialStudio').renderizar(slide,ctx,imagem);
   if (['foto_editorial','impacto','revista'].includes(slide.estilo)) return renderExperimental(slide,ctx,imagem);
 
   let r;
@@ -362,4 +363,4 @@ function resumirMetricas(blocos, layout, elementos) {
   };
 }
 
-module.exports = { renderizarSlide, ajustar, quebrar, largura, palavras, MINIMO, COR, W, H, MARGEM };
+module.exports = { renderizarSlide, ajustar, quebrar, largura, palavras, textoSvg, rotuloSvg, resumo, MINIMO, COR, W, H, MARGEM };
