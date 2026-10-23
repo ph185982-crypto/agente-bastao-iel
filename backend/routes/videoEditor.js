@@ -1652,7 +1652,10 @@ async function buildViralEditorOverlay(headline, outPath) {
     `<text x="${x}" y="${startY + i * fit.lineH}" font-family="${FONT_BLACK}" font-size="${fit.fontSize}" fill="#FFFFFF">${escXml(ln)}</text>`
   ).join('');
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${TV.W}" height="${TV.H}">${textEls}</svg>`;
+  // The supplied PNG contains a baked verification badge. Cover its whole header
+  // before drawing the actual account identity; the account is not verified.
+  const headerSeguro = `<rect width="1080" height="240" fill="#0A1B33"/><text x="350" y="162" font-family="${FONT_BLACK}" font-size="42" fill="#FFFFFF">${escXml(PROFILE_NAME)}</text><text x="350" y="208" font-family="${FONT_BODY}" font-size="27" fill="#FFFFFF">${escXml(PROFILE_HANDLE)}</text>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${TV.W}" height="${TV.H}">${headerSeguro}${textEls}</svg>`;
   await sharp(holed).composite([{ input: Buffer.from(svg), top: 0, left: 0 }]).png().toFile(outPath);
 }
 
@@ -1744,4 +1747,5 @@ module.exports._internals = {
   cleanBakedHeadline, sanitizeCropRegion, readFramePlan,
   detectMotionRegion, detectContentRegion, longestActiveRun,
   safeErrorMessage, traduzErroDownload, resolveInstagramUrl,
+  buildViralEditorOverlay,
 };

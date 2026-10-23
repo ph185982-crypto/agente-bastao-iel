@@ -49,3 +49,14 @@ test('o novo desenho bloqueia densidade excessiva em vez de cortar a informaçã
   const c=M.novoConteudo({titulo:'Texto longo'});M.criarVersao(c,{slides:[{id:'s1',design:'editorial_2026',layout:'explicacao',texto:'palavra '.repeat(50)}]});
   assert(G.bloqueios(c).some(b=>b.id==='texto_denso'));
 });
+
+test('modelo viral remove o selo que já estava gravado na imagem antiga',async()=>{
+  const fs=require('fs/promises'),os=require('os'),path=require('path');
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'pedro-header-test-'));
+  try{
+    const file=path.join(dir,'viral.png');await require('../routes/videoEditor')._internals.buildViralEditorOverlay('Um gancho para conferir',file);
+    const {data,info}=await sharp(file).extract({left:690,top:110,width:80,height:80}).raw().toBuffer({resolveWithObject:true});
+    let azul=0;for(let i=0;i<data.length;i+=info.channels)if(data[i+2]>190&&data[i+1]>100&&data[i]<70)azul++;
+    assert.equal(azul,0,'o selo azul embutido no PNG não pode aparecer na saída');
+  }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
