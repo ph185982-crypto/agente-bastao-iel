@@ -195,6 +195,16 @@ test('revisão integral confirma o texto e resolve um falso positivo do extrator
   const r=await conferirVinculos({auditoria,claims,textos:[{id:'s1',texto:'Quando e onde. O Senado aprovou o teto.'}]},{llmJson:llm});
   assert.equal(r.auditoria[0].premissas.length,1);assert(r.auditoria[0].premissas[0].verificacao_deterministica);
 });
+test('extração malformada só pode continuar com conferência integral obrigatória',async()=>{
+  const {auditarOpinioes,conferirVinculos}=require('./redacao');
+  const texto='O dólar caiu e pode baratear as ações.';
+  const llm={REGRAS_DADOS:'',dado:llmReal.dado,pedirJson:async()=>({dados:{slides:[{id:'s1',premissas:[{texto:'rótulo que não está no post',claim_id:null}]}]}})};
+  const a=await auditarOpinioes({slides:[{id:'s1',texto}],claims,revisaoIntegral:true},{llmJson:llm});
+  assert(a.auditoria[0].extracao_incompleta);assert(a.auditoria[0].premissas.some(p=>p.verificacao_deterministica));assert(!a.auditoria[0].texto_conferido);
+  llm.pedirJson=async()=>({dados:{textos:[{id:'s1',sustenta:false,problemas:[{texto,motivo:'A base não informa esse efeito.'}]}]}});
+  const r=await conferirVinculos({auditoria:a.auditoria,claims,textos:[{id:'s1',texto}]},{llmJson:llm});
+  assert(r.auditoria[0].texto_conferido);assert(r.auditoria[0].premissas.some(p=>p.claim_id===null));
+});
 
 test('capa sem fonte para os números não substitui uma capa conferida',()=>{
   const {capasConferidas}=require('./redacao');

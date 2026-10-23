@@ -145,7 +145,7 @@ async function processar(id,job,{deps={}}={}) {
           if(st.indice+ids.length<unidades.length)proxima('auditoria',st.indice+ids.length);else proxima('foto');break;
         }
         const grupo=unidades.slice(st.indice,st.indice+(st.auditoria_lote||(editorial?2:3)));
-        let r;try{r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims});}
+        let r;try{r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims,revisaoIntegral:editorial&&typeof d.redacao.conferirVinculos==='function'});}
         catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&grupo.length>1){st.auditoria_lote=1;break;}throw e;}
         r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});
         if(typeof d.redacao.conferirVinculos==='function'){st.auditoria_verificar_ids=grupo.map(s=>s.id);break;}

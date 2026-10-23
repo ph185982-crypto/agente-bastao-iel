@@ -129,6 +129,7 @@
     // Auditoria dos textos que não são opinião: fato sem afirmação conferida.
     const aud = c.auditoria_textos || {};
     const editorial = (v.slides || []).some(s=>s.design==='editorial_2026');
+    if(editorial&&Object.values(aud).some(a=>a.extracao_incompleta&&!a.texto_conferido))out.push(bloqueio('conferencia_integral_pendente','fatos','Conferência completa pendente','A extração não foi conclusiva. O texto completo precisa ser conferido contra as fontes antes da aprovação.',{},'Conferir o texto'));
     if(editorial && /an[aá]lises r[aá]pidas|mais insights|pr[oó]ximas not[ií]cias/i.test(v.cta||''))out.push(bloqueio('cta_generico','redacao','Chamada final genérica','Diga um benefício concreto ligado a esta pauta, sem "análises rápidas", "mais insights" ou "próximas notícias".',{campo:'cta'},'Reescrever a chamada'));
     if(editorial){const a=[/\b(?:siga|segue|seguir|acompanhe)\b/i,/\b(?:salve|salva|salvar|guarde)\b/i,/\b(?:envie|envia|mande|manda|compartilhe|compartilha)\b/i].filter(r=>r.test(v.cta||''));if(a.length>1)out.push(bloqueio('cta_varias_acoes','redacao','Escolha uma ação principal','O fechamento deve pedir somente seguir, salvar ou compartilhar, conforme o objetivo escolhido.',{campo:'cta'},'Simplificar a chamada'));}
     textos.filter((t) => t.tipo !== 'cta'||editorial).forEach((t) => {

@@ -296,7 +296,7 @@ function premissaConferida(p, claims) {
   for(const r of relacoes){const raiz=r.source.split('\\')[0];if(new RegExp(raiz).test(normBase(texto))&&!new RegExp(raiz).test(base))ok=false;}
   return {texto,claim_id:ok?k.id:null,...(ok?{trecho_base:trecho}: {})};
 }
-async function auditarOpinioes({ slides, claims }, d0) {
+async function auditarOpinioes({ slides, claims, revisaoIntegral = false }, d0) {
   const d = deps(d0);
   const ops = (slides || []).filter((s) => s && s.id && (s.texto || s.titulo)).slice(0, 12)
     .map((s) => ({ ...s, texto: M.textoParaAuditoria(s) }));
@@ -319,6 +319,10 @@ Responda APENAS JSON com slides. Cada slide contém id e premissas. Cada premiss
     return itens.length !== 1 || !Array.isArray(itens[0].premissas)
       || itens[0].premissas.some((p) => !p || typeof p.texto !== 'string' || !p.texto.trim() || !normBase(s.texto).includes(normBase(p.texto)));
   })) {
+    // A malformed extraction is not evidence against the post. The mandatory
+    // full-text reviewer can still check every assertion against the sources.
+    // These provisional records cannot pass the gates without that review.
+    if(revisaoIntegral)return {auditoria:ops.map(s=>({slide_id:s.id,hash_texto:M.hash(s.texto),premissas:premissasCausais(s.texto,claims),extracao_incompleta:true})),llm};
     throw Object.assign(new Error('A conferência não cobriu todos os textos. Confira de novo antes de aprovar.'), { code: 'AUDITORIA_INCOMPLETA' });
   }
   const auditoria = recebidos.filter((x) => x && ops.some((s) => s.id === x.id)).map((x) => {

@@ -1275,8 +1275,7 @@ async function escreverCopy({ givenHeadline, transcript, visual, tema, variante,
       const caption = String(parsed.caption || '').trim();
       if (headline && stripEmoji(headline).trim() && caption) {
         const seguro=require('../lib/videoCopySeguro');
-        if(seguro.criticaComoElogio({transcript,headline,caption}))return {...seguro.daFonte({givenHeadline,transcript,visual,tema,objetivo}),aviso:'A legenda preserva a fala original para evitar mudar o tom do vídeo.'};
-        return { headline, caption, fonte: 'ia' };
+        return seguro.preservarFala({headline,caption,fonte:'ia'},{givenHeadline,transcript,visual,tema,objetivo});
       }
       console.warn('[videoEditor] IA devolveu copy incompleta — caindo pro robô');
     } catch (e) {

@@ -1,5 +1,12 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {limparTitulo,daFonte}=require('./videoCopySeguro');
+test('legenda não acrescenta campanha nem lição de marketing ausente da fala',()=>{
+  const {preservarFala}=require('./videoCopySeguro');
+  const transcript='Olha como está a Avenida Paulista. É isso que vocês defendem? Eu discordo dessa situação.';
+  const r=preservarFala({headline:'É isso que vocês defendem?',caption:'A equipe do governo usou isso para mostrar apoio. Aprenda a estratégia de marketing.'},{transcript});
+  assert(r.caption.includes(transcript));assert(!/estratégia de marketing|mostrar apoio/.test(r.caption));assert.equal(r.fonte,'transcricao');
+  assert.equal(preservarFala({headline:'Gancho',caption:'Texto'},{transcript:''}).caption,'Texto');
+});
 test('crítica irônica não vira elogio na legenda nem no gancho extraído',()=>{
   const {criticaComoElogio}=require('./videoCopySeguro');
   const transcript='Olha como está a avenida. A equipe está de parabéns. É isso que vocês defendem? Eu discordo dessa situação.';

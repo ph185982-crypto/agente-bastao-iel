@@ -30,4 +30,9 @@ function daFonte({givenHeadline,transcript,visual,tema,objetivo='seguidores'}={}
   const texto=fala&&fala.length<=1600?`Fala do vídeo de origem:\n${fala}`:headline;
   return {headline,caption:`${texto}\n\n${cta}`,fonte:'transcricao',aviso:'Legenda baseada no conteúdo de origem. Confira o texto antes de postar.'};
 }
-module.exports={limparTitulo,daFonte,criticaComoElogio};
+function preservarFala(copy,opcoes={}){
+  if(criticaComoElogio({...opcoes,...copy}))return {...daFonte(opcoes),aviso:'A legenda preserva a fala original para evitar mudar o tom do vídeo.'};
+  if(limpar(opcoes.transcript).length>=40)return {...daFonte({...opcoes,givenHeadline:opcoes.givenHeadline||copy.headline}),aviso:'A legenda preserva a fala original. Você pode editar o texto antes de postar.'};
+  return copy;
+}
+module.exports={limparTitulo,daFonte,criticaComoElogio,preservarFala};

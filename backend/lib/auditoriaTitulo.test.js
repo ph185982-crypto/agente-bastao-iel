@@ -43,6 +43,13 @@ test('novo encerramento e CTA não escapam da conferência factual',()=>{
   assert(G.bloqueios(c).some(b=>b.id==='fato_sem_fonte'&&b.onde?.slide==='s1'));
   assert(G.bloqueios(c).some(b=>b.id==='fato_sem_fonte'&&b.onde?.campo==='cta'));
 });
+test('registro provisório de extração não libera uma versão sem revisão integral',()=>{
+  const c=fixture();const s=M.versaoAtiva(c).slides[0];s.design='editorial_2026';
+  c.auditoria_textos={s1:{hash_texto:M.hash(M.textoParaAuditoria(s)),premissas:[],extracao_incompleta:true}};
+  assert(G.bloqueios(c).some(b=>b.id==='conferencia_integral_pendente'));
+  c.auditoria_textos.s1.texto_conferido=true;
+  assert(!G.bloqueios(c).some(b=>b.id==='conferencia_integral_pendente'));
+});
 
 test('CTA do novo modelo pede uma ação concreta e evita o fechamento genérico antigo',()=>{
   const c=M.novoConteudo();M.criarVersao(c,{slides:[{id:'s1',design:'editorial_2026',layout:'explicacao',texto:'Um fato.'}],cta:'Salve e siga para mais análises rápidas.',legenda:''});
