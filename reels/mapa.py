@@ -87,7 +87,8 @@ def preparar_base():
 
     Image.MAX_IMAGE_PIXELS = None
     marca = BASE / "L0" / "pronto"
-    if marca.exists():
+    recorte = json.dumps([M["lon0"], M["lat0"], M["lon1"], M["lat1"], M["px_por_grau"]])
+    if marca.exists() and marca.read_text() == recorte:
         return
     ppd = M["px_por_grau"]
     W = int(round((M["lon1"] - M["lon0"]) * ppd))
@@ -103,7 +104,7 @@ def preparar_base():
     h1 = parte1.size[1]
     del b1, parte1
     b2 = Image.open(AQUI / "dados" / "bmng_B2.jpg")
-    parte2 = b2.crop((x0, 0, x0 + W, H - h1))
+    parte2 = b2.crop((x0, 0, x0 + W, min(H - h1, 21600)))
     terra.paste(parte2, (0, h1))
     del b2, parte2
 
@@ -155,7 +156,7 @@ def preparar_base():
         (pasta / "info.json").write_text(json.dumps({"w": w, "h": h, "escala": 1 / 2 ** n}))
         nivel = nivel.resize((max(w // 2, 1), max(h // 2, 1)), Image.LANCZOS)
     for n in range(NIVEIS):
-        (BASE / f"L{n}" / "pronto").write_text("ok")
+        (BASE / f"L{n}" / "pronto").write_text(recorte)
 
 
 # ---------------------------------------------------------------- geometria
@@ -210,7 +211,7 @@ def preparar_geo():
 
     destino = BASE / "geo.json"
     rotas_cfg = yaml.safe_load((AQUI / "mapa_rotas.yaml").read_text(encoding="utf-8"))["rotas"]
-    chave = hashlib.sha1(json.dumps(rotas_cfg, sort_keys=True).encode()).hexdigest()[:12]
+    chave = hashlib.sha1(json.dumps([rotas_cfg, M], sort_keys=True).encode()).hexdigest()[:12]
     if destino.exists() and json.loads(destino.read_text()).get("chave") == chave:
         return
     print("geo: grafo da malha Natural Earth...")
@@ -324,7 +325,7 @@ def _lista(v):
 
 def _camera(texto, geo, anterior):
     """'foco=Brasília zoom=3' -> {cx, cy, escala}. zoom 1 = Brasil inteiro na largura."""
-    kv = dict(re.findall(r"(\w+)\s*=\s*([^\s]+(?:\s+[^\s=]+(?!\s*=))*)", texto or ""))
+    kv = {k: v.strip() for k, v in re.findall(r"(\w+)\s*=\s*(.*?)(?=\s+\w+\s*=|$)", texto or "")}
     foco = kv.get("foco", "").strip()
     zoom = kv.get("zoom", "1").strip()
     W = CFG["video"]["largura"]

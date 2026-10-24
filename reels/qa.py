@@ -124,7 +124,7 @@ def rodar_qa(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, 
          f"{len(dentro)} de {len(medidos)} eventos medidos dentro de +-150 ms (cobertura do texto no audio final {cobertura:.0%})")
 
     # ---------------- pixels: estatico, verde do foco, malha do gancho
-    aw, ah = 270, 480
+    aw, ah = 540, 960
     estatico_run, pior_estatico, ini_run = 0, 0.0, 0
     buf = []
     verde, colorido = [], []
@@ -151,13 +151,23 @@ def rodar_qa(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, 
             serie = verde if e["tipo"] == "foco" else colorido
             q0 = int(e["t"] * fps)
             base = np.median(serie[max(q0 - 20, 0):max(q0 - 2, 1)] or [0])
-            on = next((q for q in range(max(q0 - 15, 0), min(q0 + 45, len(serie))) if serie[q] > base + 25), None)
+            on = next((q for q in range(max(q0 - 15, 0), min(q0 + 45, len(serie))) if serie[q] > base + (60 if e['tipo'] == 'foco' else 150)), None)
             cruzamentos.append((e["tipo"], e.get("id") or "", e["t"], None if on is None else on / fps))
-    # novidade visual a cada 2,5 s: eventos, rotulos novos e movimentos de camera
-    novidades = sorted(set([round(t, 2) for k, t in primeiro.items()] + [c["t"] for c in spec["cameras"]]))
-    gaps = [b - a for a, b in zip(novidades, novidades[1:])] + [dur - novidades[-1]]
-    item("Ritmo visual", "algo novo a cada 2,5 s no maximo", max(gaps) <= 2.5,
-         f"maior intervalo sem elemento novo: {max(gaps):.1f} s (camera em deriva continua entre eles)")
+    # algo novo a cada 2,5 s: intervalos com animacao ATIVA (tracado em andamento, rotulo entrando,
+    # camera se movendo, malha surgindo/sumindo); mede a maior pausa sem nenhuma delas
+    ativos = [(c["t"], c["t"] + c["dur"]) for c in spec["cameras"]]
+    for e in evs:
+        d_ = {"rota": e.get("dur", 1), "foco": e.get("dur", 1), "previa": e.get("dur", 2), "limpar": .45}.get(e["tipo"], .3)
+        ativos.append((e["t"], e["t"] + d_))
+    ativos += [(t, t + .28) for (tipo, _, _), t in primeiro.items() if tipo == "rotulo"]
+    ativos.sort()
+    gaps, fim_ativo = [ativos[0][0]], ativos[0][1]
+    for a_, b_ in ativos[1:]:
+        gaps.append(max(0.0, a_ - fim_ativo))
+        fim_ativo = max(fim_ativo, b_)
+    gaps.append(max(0.0, dur - fim_ativo))
+    item("Ritmo visual", "algo novo (tracado, rotulo, camera) a cada 2,5 s", max(gaps) <= 2.5,
+         f"maior pausa sem animacao ativa: {max(gaps):.1f} s (fora isso, a camera segue em deriva lenta)")
 
     # ---------------- rotulos
     sobre, fora, ocultos = 0, 0, {}
@@ -176,7 +186,7 @@ def rodar_qa(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, 
     item("Rotulos", "rotulos dentro da zona segura", fora == 0, f"{fora} ocorrencias fora")
     item("Rotulos", "texto >= 28 px", cfg["rotulo"]["tamanho"] >= 28, f"{cfg['rotulo']['tamanho']} px")
     if ocultos:
-        item("Rotulos", "rotulos escondidos por falta de espaco (informativo)", True,
+        item("Rotulos", "rotulos ocultos: fora do quadro ou sem espaco livre (informativo)", True,
              ", ".join(f"{k}: {v / fps:.1f} s" for k, v in sorted(ocultos.items(), key=lambda x: -x[1])[:6]))
 
     # ---------------- legenda

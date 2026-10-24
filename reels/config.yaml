@@ -35,10 +35,10 @@ zona_segura:
 
 mapa:
   base: dados/base      # piramide de tiles gerada por mapa.py a partir da NASA Blue Marble
-  lon0: -80.0           # recorte (graus)
-  lat0: 8.0
-  lon1: -30.0
-  lat1: -36.0
+  lon0: -86.0           # recorte (graus): America do Sul inteira, como na referencia
+  lat0: 14.0
+  lon1: -28.0
+  lat1: -57.0
   px_por_grau: 240      # resolucao da Blue Marble NG (~500 m/pixel)
   espessura_rota: 4.5
   brilho_rota: 14

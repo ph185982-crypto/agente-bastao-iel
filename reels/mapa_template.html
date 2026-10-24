@@ -214,6 +214,7 @@ window.seek = async function (t) {
   const info = { t, rotulos: [], ocultos: [], eventos: [] };
   const rotulos = [];
 
+  for (const tl of LIMPAR) if (t >= tl) info.eventos.push({ tipo: 'limpar', t0: tl });
   for (const e of EV) {
     if (t < e.t) continue;
     const a = alfaLimpeza(e.t, t);
@@ -229,7 +230,7 @@ window.seek = async function (t) {
       });
     } else if (e.tipo === 'rota' || e.tipo === 'foco') {
       const r = GEO.rotas[e.id], foco = e.tipo === 'foco';
-      const p = inOut(clamp((t - e.t) / e.dur));
+      const p = out3(clamp((t - e.t) / e.dur));   // sai rapido na palavra-ancora
       desenharRota(r.pts, e.id, p, foco ? C.cores.verde_foco : C.cores.rota,
                    foco ? C.mapa.espessura_rota * 1.45 : C.mapa.espessura_rota, C.mapa.brilho_rota * (foco ? 1.4 : 1), a);
       info.eventos.push({ tipo: e.tipo, id: e.id, t0: e.t, p });
