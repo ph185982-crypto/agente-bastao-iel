@@ -216,10 +216,16 @@ def mixar(pasta: Path, musica, sfx, voz, lufs=-14.0):
                         str(pasta / "mix_bruto.wav")], capture_output=True, text=True)
     if r.returncode:
         raise SystemExit("Erro na mixagem:\n" + r.stderr[-1500:])
-    # normalizacao em passo separado (loudnorm no mesmo grafo do asplit/amix trunca o audio)
-    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(pasta / "mix_bruto.wav"), "-af",
-                        f"loudnorm=I={lufs}:TP=-1.5:LRA=9,aresample=44100", "-ac", "2", str(pasta / "mix.wav")],
-                       capture_output=True, text=True)
+    # normalizacao em duas passadas, separada do mix (loudnorm no grafo do asplit/amix trunca o audio)
+    import json as _j
+    m = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(pasta / "mix_bruto.wav"), "-af",
+                        f"loudnorm=I={lufs}:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"], capture_output=True, text=True).stderr
+    j = _j.loads(m[m.rfind("{"):m.rfind("}") + 1])
+    af = (f"loudnorm=I={lufs}:TP=-1.5:LRA=11:measured_I={j['input_i']}:measured_TP={j['input_tp']}:"
+          f"measured_LRA={j['input_lra']}:measured_thresh={j['input_thresh']}:offset={j['target_offset']}:linear=true,"
+          "alimiter=limit=0.84:level=false,aresample=44100")
+    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(pasta / "mix_bruto.wav"), "-af", af, "-ac", "2",
+                        str(pasta / "mix.wav")], capture_output=True, text=True)
     if r.returncode:
         raise SystemExit("Erro na normalizacao:\n" + r.stderr[-1500:])
     return pasta / "mix.wav"

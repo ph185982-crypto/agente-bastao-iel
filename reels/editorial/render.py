@@ -86,8 +86,9 @@ def resolver(cfg, narr):
         padrao = lambda j: ini + 0.6 + j * 0.6  # noqa: E731
         for j, l in enumerate(c.get("texto", [])):
             if "ancora" in l:
-                l["t"] = round(r.palavra(l["ancora"], padrao=padrao(j)) + l.get("atraso", 0), 3)
-                ancoras_qa.append((c["id"], l["ancora"], l["t"], l["linha"]))
+                t_pal = r.palavra(l["ancora"], padrao=padrao(j))
+                l["t"] = round(t_pal + l.get("atraso", 0), 3)
+                ancoras_qa.append((c["id"], l["ancora"], t_pal, l["linha"] + (f" (+{l['atraso']} s de proposito)" if l.get("atraso") else "")))
             elif "palavras_ancoras" in l:
                 l["ts"] = [r.palavra(a, padrao=padrao(j) + q * .3) for q, a in enumerate(l["palavras_ancoras"])]
                 ancoras_qa += [(c["id"], a, tt, l["linha"]) for a, tt in zip(l["palavras_ancoras"], l["ts"])]
@@ -283,6 +284,7 @@ def main(cfg_path):
     (trabalho / "spec.json").write_text(json.dumps(spec, ensure_ascii=False, indent=1))
     pagina = html(cfg, spec, trabalho, proj)
     pasta, reg = renderizar(pagina, trabalho, fps, total)
+    (trabalho / "registro.json").write_text(json.dumps(reg))
     t_video = time.time() - t_ini
 
     log("Audio: trilha e efeitos sintetizados, narracao, ducking e loudness...")

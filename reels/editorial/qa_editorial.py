@@ -53,14 +53,15 @@ def _sincronia(final, cenas, narr, ancoras_qa, trabalho):
             continue
         a, b = max(0.0, c["_voz_inicio"] - .2), min(c["fim"], c["_voz_inicio"] + n["dur"] + .3)
         wav = trabalho / f"qa_{c['id']}.wav"
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(final), "-vn", "-ac", "1",
-                        "-ar", "16000", str(wav)])
+        # faixa de narracao exatamente como foi mixada (mesma linha do tempo do video, sem trilha por cima)
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(trabalho / "audio" / "narracao.wav"),
+                        "-ac", "1", "-ar", "16000", str(wav)])
         segs, _ = wm.transcribe(str(wav), language="pt", word_timestamps=True, condition_on_previous_text=False)
         ws = expandir_numeros([(w.word.strip(), w.start + a, w.end + a) for s in segs for w in s.words if w.word.strip()])
         al, cob = alinhar(n["fala"], ws, b)
         al = refinar_inicios(al, wav, deslocamento=a)
         pos = 0
-        for cid, palavra, t_plan, rotulo in ancoras_qa:
+        for cid, palavra, t_plan, rotulo in sorted(ancoras_qa, key=lambda x: x[2]):
             if cid != c["id"]:
                 continue
             t_med = None
@@ -135,8 +136,8 @@ def rodar(final, previa, cfg, cenas, narr, legendas, escondidas, reg, ancoras_qa
     sinc = _sincronia(final, cenas, narr, ancoras_qa, trabalho)
     med = [s for s in sinc if s[5] is not None]
     ok150 = [s for s in med if abs(s[5]) <= 150]
-    item("Sincronia", "entradas de texto ate +-150 ms da palavra falada", len(ok150) == len(med) and med,
-         f"{len(ok150)} de {len(med)} medidas no audio final (whisper por cena)")
+    item("Sincronia", "entradas de texto ate +-150 ms da palavra falada", bool(med) and len(ok150) == len(med),
+         f"{len(ok150)} de {len(med)} medidas (whisper novo sobre a faixa de narracao mixada, cena a cena)")
 
     # legendas
     tam = [len(l["palavras"]) for l in legendas]

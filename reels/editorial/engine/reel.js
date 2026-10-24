@@ -179,6 +179,7 @@ const KineticText = {
     const larg = palavras.map(p => ctx.measureText(p).width);
     const total = larg.reduce((a, b) => a + b, 0) + esp * (palavras.length - 1);
     let x = op.alinhar === 'esquerda' ? op.x : op.x - total / 2;
+    const x0linha = x;
     const asc = op.px * .86;
     let visivel = 0, xmin = 1e9, xmax = -1e9;
     if (op.etiqueta) {   // faixa rasgada atras da linha (ex.: ESCONDEM?)
@@ -193,7 +194,9 @@ const KineticText = {
       const d = op.modo === 'carimbo' ? .16 : .42, u = pr(t, tw, d);
       let s = 1, dx = 0, dy = 0, rot = 0, a = clamp((t - tw) / .1);
       const dir = op.dir || [0, 60];
-      if (op.modo === 'scale') s = 1.22 - .22 * E.out5(u);
+      if (op.modo === 'scale') {   // scale-in de 105% a 122%, sem passar da zona segura
+        const sMax = Math.max(1.05, Math.min(1.22, SAFE_W / total));
+        s = sMax - (sMax - 1) * E.out5(u); dx += (xi + larg[i] / 2 - (x0linha + total / 2)) * (s - 1); }
       else if (op.modo === 'carimbo') { s = u < 1 ? 1.75 - .75 * E.in3(u) : 1; rot = -3 * (1 - u) - 1.2; }
       else { dx = dir[0] * (1 - E.out5(u)); dy = dir[1] * (1 - E.out5(u)); }
       if (op.fixa && p.replace(/[.,!?]/g, '') !== op.fixa && op.deriva && t > tw + .4) {   // as outras palavras respiram
@@ -406,7 +409,7 @@ const MODELOS = {
       ctx.restore();
     }
     vinheta(.55);
-    const tam = blocoTexto(c.texto, 150, SAFE_W);
+    const tam = blocoTexto(c.texto, 150, SAFE_W / 1.06);
     let y = 860;
     c.texto.forEach((l, i) => {
       y += tam[i] * .98;
@@ -558,7 +561,7 @@ const MODELOS = {
     c.texto.forEach((l, i) => {
       y += tam[i] * 1.0;
       const info = KineticText.draw(t, { txt: l.linha, x: ZS.lados + 10, y, px: tam[i], cor: l.cor, palavra_cor: l.palavra_cor, alinhar: 'esquerda', t: l.t,
-        modo: l.lateral ? 'deslize' : 'subir', dir: l.lateral ? [-100, 0] : [0, 55], nome: 'titulo' });
+        modo: l.lateral ? 'deslize' : 'subir', dir: l.lateral ? [100, 0] : [0, 55], nome: 'titulo' });
       if (l.sublinhar && t > l.t + .3) KineticText.sublinhar(t, { x0: info.x0, x1: info.x0 + info.larg[0], y: y + 22, t0: l.t + .35, dur: .4 });
     });
   },
@@ -614,7 +617,7 @@ const MODELOS = {
     ctx.restore();
     etiqueta(c.documento.etiqueta, 96, 205, t, c.inicio + .4);
     vinheta(.4);
-    const tam = blocoTexto(c.texto, 150, SAFE_W);
+    const tam = blocoTexto(c.texto, 150, SAFE_W / 1.06);
     let y = 1170;
     c.texto.forEach((l, i) => {
       y += tam[i] * .98;
@@ -631,12 +634,12 @@ const MODELOS = {
     ArchivePhoto.draw(t, { nome: c.imagens.direita, x: 540 + off - L * 1.5, y: 0, w: 552 });
     PaperReveal.draw(t, { id: 'costura7', x: 520 - L * .3, y: -40, w: 40, h: H + 80, fill: COR('orange'), amp: 10, passo: 14, sombra: true });
     PaperReveal.draw(t, { id: 'faixa7', x: -40, y: 760, w: W + 80, h: 520, fill: COR('charcoal'), amp: 20, passo: 18, rot: -1.5, sombra: true, t0: c.inicio - .05, dur: .3, lado: 'esquerda' });
-    const tam = blocoTexto(c.texto, 118, SAFE_W);
+    const tam = blocoTexto(c.texto, 118, SAFE_W - 100);   // folga para o deslize lateral das palavras
     let y = 820;
     c.texto.forEach((l, i) => {
       y += tam[i] * 1.03;
       KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tam[i], cor: l.cor, palavra_cor: l.palavra_cor, ts: l.ts, modo: 'deslize',
-        dir: [i % 2 ? 80 : -80, 0], fixa: l.fixa || '__nenhuma__', deriva: l.fixa ? 5 : 3, nome: 'titulo' });
+        dir: [i % 2 ? 60 : -60, 0], fixa: l.fixa || '__nenhuma__', deriva: l.fixa ? 5 : 3, nome: 'titulo' });
     });
     vinheta(.45);
   },

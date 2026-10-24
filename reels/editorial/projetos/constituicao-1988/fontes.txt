@@ -1,0 +1,31 @@
+FONTES — "Você aprendeu essa história errado" (Constituição de 1988)
+
+Fatos citados na narração
+- Saúde como direito de todos e dever do Estado: Constituição Federal de 1988, art. 196.
+  O SUS é instituído pelo art. 198 e regulamentado pela Lei 8.080/1990 ("criou as bases do SUS").
+  Texto oficial: https://www.planalto.gov.br/ccivil_03/constituicao/constituicao.htm
+- O PT (bancada de 16 constituintes, entre eles Lula) votou contra a redação final em 22/09/1988 e,
+  depois, assinou a Constituição promulgada em 05/10/1988. Lula anunciou o voto contrário em plenário
+  e disse que o partido assinaria "por uma formalidade".
+  - Fundação Perseu Abramo (ligada ao PT): https://fpabramo.org.br/evento/o-pt-no-processo-constituinte/
+  - Poder360: https://www.poder360.com.br/governo/lula-diz-que-constituicao-garante-direitos-e-cobra-sua-protecao/
+  - Arpen-SP: https://arpensp.org.br/noticia/7886
+  Recomendação: conferir o Diário da Assembleia Nacional Constituinte (registro oficial da votação)
+  antes de publicar, para citar a fonte primária na legenda do post.
+
+Imagens
+- Recortes dos frames de referência enviados pelo Pedro (pasta referencia/), sem imagens novas geradas.
+- Partes animadas removidas por inpainting local (OpenCV): X do frame 4, assinatura do frame 5, seta do frame 8.
+- Frame 4: ilustração de Lula enviada pelo Pedro, marcada no vídeo como "ilustração".
+- Cena 6: registro de votação ESQUEMÁTICO desenhado em código (sem nomes, sem partidos), marcado
+  "ilustração: registro esquemático, sem nomes". O frame 6 original NÃO foi usado: trazia partidos que
+  não existiam em 1988 (União, PP, Republicanos etc.).
+- Cena 1: o documento de fundo é a Constituição do IMPÉRIO (1824), conforme o frame 1 enviado.
+  Aparece desfocado; se preferir, troque por uma imagem da Constituição de 1988.
+- Frame 7 (com Bolsonaro e AI-5) não foi usado, conforme o briefing; a cena 7 usa a versão corrigida.
+
+Produção
+- Fontes tipográficas: Anton e Montserrat (SIL Open Font License 1.1).
+- Trilha e efeitos sonoros: sintetizados pelo próprio código (editorial/audio.py), sem direitos autorais de terceiros.
+- Narração: voz clonada do Pedro (Chatterbox, MIT), gerada localmente.
+- A chave da OpenAI enviada no chat foi recusada pela API (401) e NÃO foi usada; revogue-a.
