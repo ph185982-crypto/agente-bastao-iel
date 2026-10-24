@@ -1,0 +1,16 @@
+reels-voz/
+amostras/*
+!amostras/.gitkeep
+testes/*
+!testes/.gitkeep
+saida/*
+!saida/.gitkeep
+midia/*
+!midia/.gitkeep
+musica/*
+!musica/.gitkeep
+.cache/
+__pycache__/
+*.wav
+*.mp3
+*.mp4
