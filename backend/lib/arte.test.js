@@ -25,7 +25,7 @@ test('todos os layouts saem em 1080x1350 e cabem', async () => {
 });
 
 test('medição pela fonte real concorda com o que é desenhado', async () => {
-  for (const [k, familia, peso, tam, txt] of [['display', 'Poppins ExtraBold', 800, 80, 'Salário mínimo'], ['corpo', 'PT Serif', 400, 50, 'O IPCA acompanha a variação']]) {
+  for (const [k, familia, peso, tam, txt] of [['mDisplay', 'Manrope ExtraBold', 800, 80, 'Salário mínimo'], ['iCorpo', 'Inter', 400, 50, 'O IPCA acompanha a variação'], ['display', 'Poppins ExtraBold', 800, 80, 'Salário mínimo'], ['corpo', 'PT Serif', 400, 50, 'O IPCA acompanha a variação']]) {
     const esperado = A.largura(k, txt, tam);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="200"><rect width="1400" height="200" fill="#fff"/><text x="40" y="130" font-family="'${familia}'" font-weight="${peso}" font-size="${tam}" fill="#000">${txt}</text></svg>`;
     const { info } = await sharp(Buffer.from(svg)).trim({ background: '#ffffff', threshold: 40 }).toBuffer({ resolveWithObject: true });
@@ -36,26 +36,26 @@ test('medição pela fonte real concorda com o que é desenhado', async () => {
 test('texto longo demais NÃO é espremido: marca cabe:false e não passa do tamanho mínimo', async () => {
   const r = await A.renderizarSlide({ layout: 'explicacao', funcao: 'contexto', texto: 'texto muito longo '.repeat(120) }, { indice: 2, total: 5 });
   assert.strictEqual(r.metrics.cabe, false);
-  assert.ok(r.metrics.fonte_px >= A.MINIMO.corpo, `fonte ${r.metrics.fonte_px}`);
+  assert.ok(r.metrics.fonte_px >= A.MINIMO.id_corpo, `fonte ${r.metrics.fonte_px}`);
   assert.ok(r.metrics.problemas.length >= 1);
-  const t = A.ajustar({ texto: 'palavra '.repeat(400), k: 'corpo', larg: 888, alt: 700, max: 56, min: 38, papel: 'corpo' });
+  const t = A.ajustar({ texto: 'palavra '.repeat(400), k: 'corpo', larg: 888, alt: 700, max: 56, min: 38, papel: "corpo" });
   assert.strictEqual(t.cabe, false);
   assert.strictEqual(t.tam, 38);
 });
 
-test('texto normal fica dentro das margens (nenhum pixel de texto nas laterais)', async () => {
+test('texto normal fica dentro das margens (nenhum pixel nas laterais, margem de segurança de 72 px)', async () => {
   for (const c of CASOS.filter((x) => x.layout !== 'encerramento')) {
     const r = await A.renderizarSlide(c, { indice: 3, total: 6 });
     const { data, info } = await sharp(r.png).raw().toBuffer({ resolveWithObject: true });
     const bg = [data[0], data[1], data[2]];
     let fora = 0;
     for (let y = 0; y < info.height; y++) {
-      for (const x of [...Array(60).keys(), ...Array.from({ length: 60 }, (_, i) => info.width - 1 - i)]) {
+      for (const x of [...Array(72).keys(), ...Array.from({ length: 72 }, (_, i) => info.width - 1 - i)]) {
         const i = (y * info.width + x) * info.channels;
         if (Math.abs(data[i] - bg[0]) + Math.abs(data[i + 1] - bg[1]) + Math.abs(data[i + 2] - bg[2]) > 30) fora += 1;
       }
     }
-    assert.strictEqual(fora, 0, `${c.layout}: ${fora} pixels fora da margem de 60px`);
+    assert.strictEqual(fora, 0, `${c.layout}: ${fora} pixels fora da margem de 72px`);
   }
 });
 
@@ -131,4 +131,50 @@ test('foto: ampliada demais é sinalizada; orientação da câmera respeitada; s
   assert.deepStrictEqual([r3.metrics.foto.largura, r3.metrics.foto.altura], [1200, 1600], 'lida já na orientação certa');
   const meta = await sharp(r3.png).metadata();
   assert.deepStrictEqual([meta.width, meta.height], [1080, 1350]);
+});
+
+const pixel = (data, info, x, y) => { const i = (y * info.width + x) * info.channels; return [data[i], data[i + 1], data[i + 2]]; };
+const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+
+test('identidade: fundos da paleta oficial (capa azul, texto claro, opinião grafite, consequência azul)', async () => {
+  for (const [slide, esperado] of [
+    [{ layout: 'capa_tipografica', texto: 'Seu dinheiro compra **menos**' }, '#2448FF'],
+    [{ layout: 'explicacao', funcao: 'contexto', titulo: 'O que mudou', texto: 'Texto curto.' }, '#F6F5F0'],
+    [{ layout: 'explicacao', funcao: 'consequencia', titulo: 'Na prática', texto: 'Texto curto.' }, '#2448FF'],
+    [{ layout: 'explicacao', funcao: 'opiniao', titulo: 'Minha leitura', texto: 'Texto curto.' }, '#18191D'],
+    [{ layout: 'encerramento', texto: 'Manda para alguém' }, '#2448FF'],
+  ]) {
+    const r = await A.renderizarSlide(slide, { indice: 2, total: 6 });
+    const { data, info } = await sharp(r.png).raw().toBuffer({ resolveWithObject: true });
+    assert.deepStrictEqual(pixel(data, info, 3, 700), hex(esperado), `${slide.layout}/${slide.funcao}`);
+  }
+});
+
+test('capa usa título de 88 a 116 px e interna usa título de 64 a 84 px', async () => {
+  const capa = await A.renderizarSlide({ layout: 'capa_tipografica', texto: 'R$ 100 de 1994 valem R$ 11 hoje' }, { indice: 1, total: 6 });
+  assert.ok(capa.metrics.fonte_px >= 88 && capa.metrics.fonte_px <= 116, `capa ${capa.metrics.fonte_px}`);
+  const interna = await A.renderizarSlide({ layout: 'explicacao', funcao: 'contexto', titulo: 'O que mudou', texto: 'O poder de compra caiu e o preço subiu.' }, { indice: 2, total: 6 });
+  const t = interna.metrics.blocos.find((b) => b.nome === 'titulo');
+  assert.ok(t.tam >= 64 && t.tam <= 84, `título interno ${t.tam}`);
+  const c = interna.metrics.blocos.find((b) => b.nome === 'corpo');
+  assert.ok(c.tam >= 36 && c.tam <= 44, `texto de apoio ${c.tam}`);
+});
+
+test('uma expressão em destaque por tela: o segundo destaque vira texto comum', () => {
+  const p = A.palavras('O **primeiro** destaque e o **segundo** destaque', { unico: true });
+  assert.deepStrictEqual(p.filter((w) => w.hi).map((w) => w.t), ['primeiro']);
+  assert.ok(p.find((w) => w.t === 'primeiro').gIni && p.find((w) => w.t === 'primeiro').gFim);
+  assert.strictEqual(A.palavras('O **primeiro** e o **segundo**').filter((w) => w.hi).length, 2, 'sem a opção, o comportamento original é mantido');
+});
+
+test('sem rótulos internos nas telas; só a opinião leva a marca "minha leitura"', async () => {
+  const ctx = await A.renderizarSlide({ layout: 'explicacao', funcao: 'contexto', titulo: 'T', texto: 'Texto.' }, { indice: 2, total: 5 });
+  assert.ok(!ctx.metrics.elementos.includes('rotulo_opiniao'));
+  const op = await A.renderizarSlide({ layout: 'explicacao', funcao: 'opiniao', titulo: 'T', texto: 'Texto.' }, { indice: 4, total: 5 });
+  assert.ok(op.metrics.elementos.includes('rotulo_opiniao'));
+});
+
+test('tela com só uma frase curta vira manchete (letra de título)', async () => {
+  const r = await A.renderizarSlide({ layout: 'explicacao', funcao: 'contexto', texto: 'O trabalhador não faz plano. Faz milagre.' }, { indice: 2, total: 5 });
+  assert.ok(r.metrics.fonte_px >= 64, `manchete ${r.metrics.fonte_px}`);
 });

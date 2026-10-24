@@ -9,7 +9,7 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.QualityGates = api;
 })(typeof self !== 'undefined' ? self : this, function (M) {
-  const LIMITE_PALAVRAS = { capa_foto: 18, capa_tipografica: 20, explicacao: 55, prova: 45, comparacao: 45, encerramento: 30 };
+  const LIMITE_PALAVRAS = { capa_foto: 12, capa_tipografica: 12, explicacao: 45, prova: 40, comparacao: 40, encerramento: 25 };
 
   const ABERTURAS_GENERICAS = [/^voc[eê] sabia/i, /^prepare-se/i, /^aten[cç][aã]o[:!]/i, /^isso muda tudo/i, /^uma reflex[aã]o/i, /^vamos falar sobre/i, /^hoje eu (quero|vou) falar/i, /^nesse (post|v[ií]deo)/i];
   const A_EVITAR = [/isso muda tudo/i, /uma reflex[aã]o necess[aá]ria/i, /voc[eê] n[aã]o vai acreditar/i, /ningu[eé]m (te )?conta/i];
@@ -268,6 +268,8 @@
     const cta = norm(v.cta);
     if (obj === 'alcance' && cta && !/(manda|envia|compartilha|marca|salva)/.test(cta)) out.push(sugestao('cta_sem_relacao', 'redacao', 'CTA não combina com o objetivo', 'O objetivo é alcance: peça para enviar ou salvar.'));
     if (obj === 'autoridade' && cta && !/(segue|salva|comenta|le |leia)/.test(cta)) out.push(sugestao('cta_sem_relacao', 'redacao', 'CTA não combina com o objetivo', 'O objetivo é autoridade: convide a seguir, salvar ou comentar.'));
+    // "Segue o perfil" sem dizer o que a pessoa ganha seguindo não dá motivo para seguir.
+    if (cta && palavras(v.cta).length <= 6 && /\b(segue|siga|seguir)\b/.test(cta) && !/\b(para|pra|que|toda|todo|cada|ver|receber)\b/.test(cta)) out.push(sugestao('cta_generico', 'redacao', 'Chamada final genérica', 'Só “segue o perfil” não dá motivo. Diga o que a pessoa recebe seguindo (ex.: “todo dia, o que a notícia muda no seu bolso”) ou peça para enviar a alguém.'));
     if (!cta) out.push(sugestao('cta_ausente', 'redacao', 'Sem chamada final', 'Nenhum pedido ao leitor. Pode ser proposital; confirme.'));
 
     // Imagens

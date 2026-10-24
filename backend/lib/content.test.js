@@ -314,6 +314,18 @@ test('sugestões não bloqueiam e ficam separadas dos bloqueios', () => {
   assert.ok(G.avaliar(longo).sugestoes.some((s) => s.id === 'excesso_texto'));
 });
 
+test('sugestões da identidade: capa longa e "segue o perfil" sem promessa; ambas só sugerem', () => {
+  const c = exemplo();
+  M.editarSlide(c, 's1', { texto: 'Congresso aprova o fim da escala seis por um e cria aposentadoria especial para agentes de saúde em todo o país' });
+  M.versaoAtiva(c).cta = 'Segue o @pedro_destrava';
+  const r = G.avaliar(c);
+  assert.ok(r.sugestoes.some((s) => s.id === 'excesso_texto' && /palavras/.test(s.detalhe)), 'capa com mais de 12 palavras');
+  assert.ok(r.sugestoes.some((s) => s.id === 'cta_generico'));
+  assert.ok(!r.bloqueios.some((b) => b.eixo === 'redacao'));
+  M.versaoAtiva(c).cta = 'Segue o @pedro_destrava para ver, toda semana, o que a notícia muda no seu bolso';
+  assert.ok(!G.avaliar(c).sugestoes.some((s) => s.id === 'cta_generico'), 'com promessa não sugere');
+});
+
 test('texto bem escrito e factualmente pendente aparece separado no resumo', () => {
   const c = exemplo();
   c.claims[1].estado = 'nao_verificada';
