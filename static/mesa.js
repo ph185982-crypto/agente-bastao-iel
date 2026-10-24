@@ -174,6 +174,7 @@
     mesa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 10h18M5 10v9M19 10v9M3 6h18"/></svg>',
     semana: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>',
     central: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12.5l3 3 5-6"/></svg>',
+    resultados: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
     criar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
     ajustes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#fff"/><circle cx="15" cy="12" r="2" fill="#fff"/><circle cx="7" cy="18" r="2" fill="#fff"/></svg>',
   };
@@ -520,10 +521,11 @@
     let corpo = '';
     if (state.tab === 'mesa') corpo = state.sub === 'descobrir' ? telaDescobrir() : state.sub === 'conteudo' ? telaConteudo() : telaMesa();
     else if (state.tab === 'central') corpo = window.MesaCentral ? window.MesaCentral.render(ctxEditor()) : '';
+    else if (state.tab === 'resultados') corpo = window.MeuInstagram ? window.MeuInstagram.render(ctxEditor()) : '';
     else if (state.tab === 'semana') corpo = telaSemana();
     else if (state.tab === 'ajustes') corpo = telaAjustes();
     const nCentral = window.MesaCentral ? window.MesaCentral.badge() : 0;
-    const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['criar', 'Ferramentas'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['criar', 'Criar'], ['ajustes', 'Ajustes']];
+    const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['criar', 'Ferramentas'], ['resultados', 'Resultados'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['criar', 'Criar'], ['resultados', 'Resultados'], ['ajustes', 'Ajustes']];
     const [saveClass, saveText] = estadoSalvamento();
     root.innerHTML = `
       <a class="studio-skip" href="#${state.tab === 'criar' ? 'pico-legacy-app' : 'studio-main'}">Ir para o conteúdo</a>
@@ -568,8 +570,9 @@
     try {
       if (window.MesaEditor?.acao && await window.MesaEditor.acao(a, el, ctxEditor())) return;
       if (window.MesaCentral?.acao && await window.MesaCentral.acao(a, el, ctxEditor())) return;
+      if (window.MeuInstagram?.acao && await window.MeuInstagram.acao(a, el, ctxEditor())) return;
       switch (a) {
-        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
+        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
         case 'criar': state.criarModulo = el.dataset.m; trocarAntigo(state.criarModulo); return render();
         case 'voltar': state.sub = null; state.atual = null; state.novo = null; return render();
         case 'abrir': return abrirConteudo(id);

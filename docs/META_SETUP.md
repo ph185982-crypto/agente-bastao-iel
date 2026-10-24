@@ -11,7 +11,7 @@ developers.facebook.com → Instagram Platform → Content Publishing e Facebook
 ## O que a Meta exige (conferido na documentação)
 
 - Permissões: `instagram_basic`, `instagram_content_publish`, `pages_read_engagement` (e `pages_show_list`
-  para listar suas Páginas). Se o seu acesso à Página vem do Business Manager, também `ads_management` e `ads_read`.
+  para listar suas Páginas). Para a aba **Resultados** (métricas por post) acrescente `instagram_manage_insights`. Se o seu acesso à Página vem do Business Manager, também `ads_management` e `ads_read`.
 - Imagem do feed: **só JPEG** (o app converte e entrega JPEG). Carrossel: até **20** itens. Legenda: até
   **2.200** caracteres e **30** hashtags. Reel: MP4, 3 s a 15 min, até 300 MB, 9:16 recomendado.
 - **Limite de publicações por API**: a própria documentação cita 100 por 24 h em um trecho e 50 em outro.
@@ -81,3 +81,20 @@ developers.facebook.com → Instagram Platform → Content Publishing e Facebook
   mídias recentes antes de tentar de novo.
 - **Reels:** a publicação de vídeo depende de um lugar público para guardar o MP4 (a Meta o baixa por URL);
   isso ainda não está contratado. Carrossel e imagem única funcionam sem armazenamento de arquivos.
+
+## Aba Resultados (Meu Instagram)
+
+Lê, só para consulta, as métricas dos seus posts dos últimos 90 dias com a mesma conexão usada para publicar.
+Não publica, não comenta e não altera nada. Precisa da permissão `instagram_manage_insights` no token
+(gere o token de novo com ela, passos 3 a 5, e troque `META_PAGE_ACCESS_TOKEN` na Vercel).
+
+- **Métricas** (conferidas na referência de Instagram Media Insights da Meta): `reach`, `saved`, `shares`,
+  `total_interactions`, `views` para feed e Reels; `follows` e `profile_visits` **só para feed** (a Meta não
+  informa seguidor ganho por post de Reel). Os dados podem atrasar até 48 h e métrica sem dado vem vazia, não zero.
+- **Como ler:** medianas (não médias), números "por mil alcançados", posts com menos de 72 h fora das comparações
+  e formato com menos de 5 posts marcado como "amostra pequena". A tela nunca declara "vencedor".
+- **Série diária da conta** (novos seguidores por dia): pedida à Meta como `follower_count` e `reach` por dia. Não consegui
+  confirmar esse trecho na documentação consultada; se a Meta recusar, o painel mostra "indisponível".
+- **Sem banco de dados** a leitura funciona, mas não fica guardada entre as consultas.
+- Cada toque em "Atualizar números" faz de 1 a 2 chamadas por post (até 60 posts) e é limitado a 2 por minuto.
+

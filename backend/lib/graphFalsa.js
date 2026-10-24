@@ -19,7 +19,20 @@ function graphFalsa(TOKEN_FALSO, ACCOUNT) {
       if (est.tokenInvalido) return json({ error: { message: 'Error validating access token', code: 190, error_subcode: 463, fbtrace_id: 'abc' } }, 400);
       if (params.access_token !== TOKEN_FALSO && caminho !== 'debug_token') return json({ error: { message: 'Invalid OAuth access token', code: 190 } }, 400);
       if (caminho === 'debug_token') return json({ data: { is_valid: true, expires_at: 2000000000, scopes: ['instagram_basic', 'instagram_content_publish', 'pages_read_engagement'], type: 'PAGE' } });
-      if (caminho === process.env.META_IG_USER_ID && req.method === 'GET') return json({ id: est.id, username: est.username });
+      if (caminho === process.env.META_IG_USER_ID && req.method === 'GET') return json({ id: est.id, username: est.username, followers_count: est.seguidores ?? 166772, media_count: est.midias.length });
+      // Leitura de métricas (só leitura): por conta e por mídia. `est.insights[id]` = { metrica: valor }.
+      if (caminho === `${process.env.META_IG_USER_ID}/insights` && req.method === 'GET') {
+        if (est.insightsContaFalha) return json({ error: est.insightsContaFalha }, 400);
+        return json({ data: [{ name: 'reach', values: [{ value: 1500, end_time: '2026-10-22T07:00:00+0000' }] }, { name: 'follower_count', values: [{ value: 42, end_time: '2026-10-22T07:00:00+0000' }] }] });
+      }
+      if (/^[\w]+\/insights$/.test(caminho) && req.method === 'GET') {
+        if (est.insightsFalha) return json({ error: est.insightsFalha }, 400);
+        const pedidas = String(params.metric || '').split(',');
+        const nao = pedidas.filter((m) => (est.metricasNaoSuportadas || []).includes(m));
+        if (nao.length) return json({ error: { message: `metric ${nao[0]} not supported`, code: 100 } }, 400);
+        const dados = (est.insights || {})[caminho.split('/')[0]] || {};
+        return json({ data: pedidas.filter((m) => dados[m] !== undefined).map((m) => ({ name: m, period: 'lifetime', values: [{ value: dados[m] }] })) });
+      }
       if (caminho.endsWith('/content_publishing_limit')) return json({ data: [{ quota_usage: est.quota.usado, config: { quota_total: est.quota.total, quota_duration: 86400 } }] });
       if (caminho === `${process.env.META_PAGE_ID}/photos` && req.method === 'POST') {
         est.fotos = est.fotos || [];

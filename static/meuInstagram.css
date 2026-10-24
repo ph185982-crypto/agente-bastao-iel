@@ -1,0 +1,25 @@
+/* Aba Resultados (Meu Instagram) */
+.ig-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 8px 0 14px; }
+.ig-card { background: #fff; border: 1.5px solid #E3E5EA; border-radius: 14px; padding: 14px; }
+.ig-dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin: 10px 0 6px; }
+.ig-dl dt { font-size: 12px; color: #686A73; line-height: 1.25; }
+.ig-dl dd { margin: 2px 0 0; font-size: 20px; font-weight: 700; color: #18191D; }
+.ig-mudo { color: #686A73; font-size: 13px; }
+.ig-grande { font-size: 40px; font-weight: 800; line-height: 1.05; margin-top: 2px; }
+.ig-lado { text-align: right; color: #fff; font-size: 15px; }
+.ig-lado small { opacity: .8; }
+.ig-obs { margin: 8px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
+.ig-lista { list-style: none; margin: 6px 0 14px; padding: 0; display: grid; gap: 8px; }
+.ig-post { background: #fff; border: 1.5px solid #E3E5EA; border-radius: 12px; padding: 12px; }
+.ig-tipo { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #2448FF; font-weight: 700; }
+.ig-leg { margin: 6px 0; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.ig-leg a { color: #18191D; text-decoration: underline; text-decoration-color: #2448FF; }
+.ig-nums { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: #686A73; }
+.ig-nums b { color: #18191D; }
+.ig-limites { margin: 8px 0 24px; font-size: 13px; color: #686A73; }
+.ig-limites summary { cursor: pointer; font-weight: 600; color: #18191D; min-height: 44px; display: flex; align-items: center; }
+.ig-limites li { margin: 4px 0; line-height: 1.4; }
+
+.ig-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.ig-topo .es-h1 { margin: 0; }
+.ig-topo .es-btn { width: auto; flex: none; padding: 0 16px; }
