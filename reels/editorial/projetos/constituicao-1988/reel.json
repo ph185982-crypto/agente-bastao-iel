@@ -93,8 +93,8 @@
       "id": "1988",
       "modelo": "numero_trava",
       "inicio": 5,
-      "fim": 12,
-      "voz_atraso": 0.25,
+      "fim": 13,
+      "voz_atraso": 0.2,
       "imagens": {
         "topo": "s2_congresso",
         "documento": "s2_livro"
@@ -125,7 +125,7 @@
     {
       "id": "suspense",
       "modelo": "suspense_papel",
-      "inicio": 12,
+      "inicio": 13,
       "fim": 20,
       "voz_atraso": 0.6,
       "imagens": {
