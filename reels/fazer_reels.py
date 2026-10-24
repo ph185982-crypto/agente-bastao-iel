@@ -34,6 +34,7 @@ EXT_VIDEO = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 CORES = ["1B2A41", "0C7C59", "7A306C", "B5451B", "2D3142", "14606B"]
 AMARELO = "&H0000E5FF&"  # ASS usa BGR
 TENTATIVAS_SEEDS = [7, 11, 23]
+ALINHADOR = 2            # versao do alinhamento (numeros por extenso); muda -> realinha o cache
 COBERTURA_MINIMA = 0.88  # fracao das palavras do roteiro que o Whisper deve reconhecer
 
 
@@ -155,10 +156,46 @@ def aparar_silencio(wav, sr, limiar=0.01, margem=0.06):
     return wav[:, ini:fim]
 
 
+def expandir_numeros(ws):
+    """O Whisper escreve '45', 'R$ 6,50', '14,8%'; o roteiro escreve por extenso. Expande os numeros em
+    palavras (dividindo o tempo do token) para o alinhamento casar palavra a palavra."""
+    from num2words import num2words
+
+    out, moeda = [], False
+    for w, s, e in ws:
+        tok = w.strip()
+        if tok in ("R$", "R$:"):
+            moeda = True
+            continue
+        m = re.fullmatch(r"(R\$)?([\d.]+)(?:,(\d+))?(%)?([.,!?;:]*)", tok)
+        if not m:
+            out.append((tok, s, e))
+            moeda = False
+            continue
+        moeda = moeda or bool(m.group(1))
+        inteiro = int(m.group(2).replace(".", "") or 0)
+        partes = num2words(inteiro, lang="pt_BR").replace(",", "").split()
+        if m.group(3):
+            dec = m.group(3)
+            if moeda and len(dec) == 2:
+                partes += ["reais", "e"] + num2words(int(dec), lang="pt_BR").split()
+            else:
+                partes += ["vírgula"] + " ".join(num2words(int(d), lang="pt_BR") for d in dec).split()
+        elif moeda:
+            partes += ["reais"]
+        if m.group(4):
+            partes += ["por", "cento"]
+        partes[-1] += m.group(5)
+        passo = (e - s) / len(partes)
+        out += [(p_, s + i * passo, s + (i + 1) * passo) for i, p_ in enumerate(partes)]
+        moeda = False
+    return out
+
+
 def palavras_whisper(whisper, caminho: Path):
     segs, _ = whisper.transcribe(str(caminho), language="pt", word_timestamps=True,
                                  vad_filter=False, condition_on_previous_text=False)
-    return [(w.word.strip(), w.start, w.end) for s in segs for w in s.words if w.word.strip()]
+    return expandir_numeros([(w.word.strip(), w.start, w.end) for s in segs for w in s.words if w.word.strip()])
 
 
 def alinhar(fala: str, ws, dur: float):
@@ -224,7 +261,13 @@ def gerar_vozes(cenas, trabalho: Path, args):
         if wav_path.exists() and meta_path.exists():
             meta = json.loads(meta_path.read_text())
             if meta.get("chave") == chave:
-                print(f"[cena {c.n}] voz em cache")
+                if meta.get("alinhador") != ALINHADOR:
+                    palavras, cob = alinhar(c.fala, palavras_whisper(whisper, wav_path), duracao(wav_path))
+                    meta.update(palavras=palavras, alinhador=ALINHADOR, cobertura=cob)
+                    meta_path.write_text(json.dumps(meta, ensure_ascii=False))
+                    print(f"[cena {c.n}] voz em cache, realinhada (cobertura {cob:.0%})")
+                else:
+                    print(f"[cena {c.n}] voz em cache")
                 resultado[c.n] = meta["palavras"]
                 continue
         if sint is None:
@@ -249,7 +292,8 @@ def gerar_vozes(cenas, trabalho: Path, args):
             print(f"AVISO: cena {c.n} com cobertura {melhor[0]:.0%}; ouça o trecho antes de publicar.")
         wav_path.write_bytes(melhor[1])
         (trabalho / f"cena_{c.n:02d}_tmp.wav").unlink(missing_ok=True)
-        meta_path.write_text(json.dumps({"chave": chave, "palavras": melhor[2]}, ensure_ascii=False))
+        meta_path.write_text(json.dumps({"chave": chave, "palavras": melhor[2], "alinhador": ALINHADOR,
+                                         "cobertura": melhor[0]}, ensure_ascii=False))
         resultado[c.n] = melhor[2]
     return resultado
 

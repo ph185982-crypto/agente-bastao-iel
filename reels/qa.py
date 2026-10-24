@@ -266,13 +266,13 @@ def _sincronia(destino, cenas, eventos, primeiro, dur, trabalho, whisper_nome):
     """Palavra-ancora no audio FINAL (whisper independente, alinhado ao roteiro) x primeiro quadro do evento."""
     from faster_whisper import WhisperModel
 
-    from fazer_reels import alinhar, norm
+    from fazer_reels import alinhar, expandir_numeros, norm
 
     wav = trabalho / "qa_audio.wav"
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(destino), "-vn", "-ac", "1", "-ar", "16000", str(wav)])
     wm = WhisperModel(whisper_nome, device="cpu", compute_type="int8")
     segs, _ = wm.transcribe(str(wav), language="pt", word_timestamps=True, condition_on_previous_text=False)
-    ws = [(w.word.strip(), w.start, w.end) for s in segs for w in s.words if w.word.strip()]
+    ws = expandir_numeros([(w.word.strip(), w.start, w.end) for s in segs for w in s.words if w.word.strip()])
     alinhadas, cobertura = alinhar(" ".join(c.fala for c in cenas), ws, dur)
     base, acc = {}, 0
     for c in cenas:
