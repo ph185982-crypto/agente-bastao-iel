@@ -613,9 +613,16 @@
     if (!v) return '';
     const capas = v.capas || [];
     const FOCO = { acontecimento: 'O fato', consequencia: 'A consequência', tensao: 'A tensão' };
+  const notaCapa = (k) => {
+    const h = window.HookGuard ? window.HookGuard.checks(String(k.texto).replace(/\*\*/g, '')) : null;
+    if (!h) return '';
+    const falhas = h.itens.filter((i) => !i.ok).map((i) => i.label);
+    const f = h.formula && window.HookGuard.FORMULAS[h.formula] ? window.HookGuard.FORMULAS[h.formula].nome : 'sem fórmula reconhecida';
+    return `<small class="ed-capa-checks">${esc(f)} · ${h.ok}/${h.total} verificações${falhas.length ? ' · atenção: ' + esc(falhas.join('; ')) : ''}</small>`;
+  };
     return `<div class="es-between"><div class="es-label">Texto e arte · versão ${esc(v.id)}</div><button class="es-btn ghost sm" style="width:auto" data-action="ed-desfazer" ${v.pai ? '' : 'disabled'}>↶ Desfazer</button></div>
       ${capas.length ? `<div class="es-card"><b>Escolha a capa</b><div class="es-text">Três jeitos diferentes de abrir, com a mesma base factual. Nenhuma foi escolhida por você ainda${v.capa_escolhida ? ' — escolhida: ' + esc(FOCO[(capas.find((x) => x.id === v.capa_escolhida) || {}).foco] || '') : ''}.</div>
-        ${capas.map((k) => `<label class="ed-capa ${v.capa_escolhida === k.id ? 'sel' : ''}"><input type="radio" name="capa" data-ed-capa="${esc(k.id)}" ${v.capa_escolhida === k.id ? 'checked' : ''}><span><b>${esc(FOCO[k.foco] || k.foco)}</b><br>${esc(k.texto)}<br><small>${esc(k.explicacao)}</small></span></label>`).join('')}</div>` : ''}
+        ${capas.map((k) => `<label class="ed-capa ${v.capa_escolhida === k.id ? 'sel' : ''}"><input type="radio" name="capa" data-ed-capa="${esc(k.id)}" ${v.capa_escolhida === k.id ? 'checked' : ''}><span><b>${esc(FOCO[k.foco] || k.foco)}</b><br>${esc(k.texto)}<br><small>${esc(k.explicacao)}</small>${notaCapa(k)}</span></label>`).join('')}</div>` : ''}
       <div class="es-stack">${v.slides.map((s, i) => cartaoSlide(c, v, s, i)).join('')}</div>
       <button class="es-btn ghost" data-action="ed-auditar" ${rodando[c.id] ? 'disabled' : ''}>Conferir fatos dos títulos, textos e legenda</button>
       <div class="es-label">Legenda</div>
@@ -644,7 +651,7 @@
     const chip = (ok, t) => `<span class="mz-chip ${ok ? 'ok' : 'warn'}">${t}</span>`;
     return `<div class="es-label">Revisão</div>
       <div class="es-card">
-        <div class="mz-top">${chip(r.conta === 'ok', 'Conta: ' + (r.conta === 'ok' ? '@pedro_destrava' : 'incorreta'))}${chip(r.fatos === 'ok', 'Fatos: ' + (r.fatos === 'ok' ? 'ok' : r.fatos === 'contradicao' ? 'contradição' : 'pendências'))}${chip(r.arte === 'ok', 'Arte: ' + (r.arte === 'ok' ? 'ok' : 'pendências'))}${chip(r.redacao === 'ok', 'Redação: ' + (r.redacao === 'ok' ? 'sem sugestões' : g.sugestoes.length + ' sugestão(ões)'))}</div>
+        <div class="mz-top">${chip(r.conta === 'ok', 'Conta: ' + (r.conta === 'ok' ? '@pedro_destrava' : 'incorreta'))}${chip(r.fatos === 'ok', 'Fatos: ' + (r.fatos === 'ok' ? 'ok' : r.fatos === 'contradicao' ? 'contradição' : 'pendências'))}${chip(r.arte === 'ok', 'Arte: ' + (r.arte === 'ok' ? 'ok' : 'pendências'))}${chip(r.redacao === 'ok', 'Redação: ' + (r.redacao === 'ok' ? 'sem sugestões' : r.redacao === 'bloqueada' ? 'a capa precisa mudar' : g.sugestoes.length + ' sugestão(ões)'))}</div>
         ${g.bloqueios.length ? `<b>Impedem aprovar (${g.bloqueios.length})</b>${agrupar(g.bloqueios).map((gr) => `<div class="ed-bloq"><b>${esc(gr.titulo)}${gr.itens.length > 1 ? ` (${gr.itens.length})` : ''}</b>${gr.itens.length === 1 ? `<br>${esc(gr.itens[0].detalhe)}` : `<ul>${gr.itens.map((b) => `<li>${esc(b.detalhe)}</li>`).join('')}</ul>`}${gr.acao ? `<br><small>${esc(gr.acao)}</small>` : ''}${gr.itens.some((b) => b.onde?.claim) ? '<br><small>Decida em cada afirmação, na seção “Conferência dos fatos”.</small>' : ''}</div>`).join('')}` : '<div class="es-text"><b>Nenhum bloqueio.</b> Fatos, conta e arte estão em ordem.</div>'}
         ${g.sugestoes.length ? `<details class="mz-det" data-aberto="sug" ${abertos.has('sug') ? 'open' : ''}><summary>Sugestões de redação (não impedem nada)</summary>${g.sugestoes.map((b) => `<div class="mz-bloco"><b>${esc(b.titulo)}</b><span>${esc(b.detalhe)}</span></div>`).join('')}</details>` : ''}
         ${aprovado ? `<div class="es-text" style="margin-top:8px"><b>Aprovada</b> em ${esc(quando(c.revisao.aprovada_em))} (versão ${esc(v.id)}).</div>` : `<button class="es-btn" style="margin-top:10px" data-action="ed-aprovar" ${g.bloqueios.length ? 'disabled' : ''}>Aprovar esta versão</button>`}

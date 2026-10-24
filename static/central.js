@@ -9,6 +9,7 @@
   const M = window.ContentModel;
   const G = window.QualityGates;
   const S = window.Store;
+  const notaCapaCentral = (k, esc) => { const h = window.HookGuard ? window.HookGuard.checks(String(k.texto).replace(/\*\*/g, '')) : null; if (!h) return ''; const falhas = h.itens.filter((i) => !i.ok).map((i) => i.label); const f = h.formula && window.HookGuard.FORMULAS[h.formula] ? window.HookGuard.FORMULAS[h.formula].nome : 'sem fórmula reconhecida'; return `<br><small>${esc(f)} · ${h.ok}/${h.total} verificações${falhas.length ? ' · atenção: ' + esc(falhas.join('; ')) : ''}</small>`; };
 
   const ABAS = [['aprovar', 'Para aprovar'], ['publicando', 'Publicando'], ['publicados', 'Publicados'], ['erro', 'Com erro'], ['descartados', 'Descartados']];
   const INTERMEDIARIOS = ['iniciada', 'aguardando_processamento', 'publicando_final'];
@@ -185,7 +186,7 @@
           <div class="es-text">${esc(v.cta || '')} ${esc((v.hashtags || []).join(' '))}</div>
           <div class="es-text">Editar a legenda cria uma versão nova e pede aprovação de novo.</div>
         </details>
-        ${(v.capas || []).length && !v.capa_escolhida ? `<div class="cn-capas"><b>Escolha a capa</b><div class="es-text">Três jeitos de abrir, com a mesma base factual. A escolha é sua.</div>${v.capas.map((k) => `<button class="cn-capa" data-action="cn-capa" data-id="${esc(c.id)}" data-capa="${esc(k.id)}" ${ocupado ? 'disabled' : ''}><b>${esc({ acontecimento: 'O fato', consequencia: 'A consequência', tensao: 'A tensão' }[k.foco] || k.foco)}</b><br>${esc(String(k.texto).replace(/\*\*/g, ''))}</button>`).join('')}</div>` : ''}
+        ${(v.capas || []).length && !v.capa_escolhida ? `<div class="cn-capas"><b>Escolha a capa</b><div class="es-text">Três jeitos de abrir, com a mesma base factual. A escolha é sua.</div>${v.capas.map((k) => `<button class="cn-capa" data-action="cn-capa" data-id="${esc(c.id)}" data-capa="${esc(k.id)}" ${ocupado ? 'disabled' : ''}><b>${esc({ acontecimento: 'O fato', consequencia: 'A consequência', tensao: 'A tensão' }[k.foco] || k.foco)}</b><br>${esc(String(k.texto).replace(/\*\*/g, ''))}${notaCapaCentral(k, esc)}</button>`).join('')}</div>` : ''}
         ${terceiros ? '<div class="es-warn">Conteúdo de terceiros: confira o direito de uso. O crédito da fonte já vai na legenda.</div>' : ''}
         ${g.bloqueios.length ? `<div class="ed-bloq"><b>${g.bloqueios.length} pendência(s) de revisão</b><br>${esc(g.bloqueios[0].titulo)}${g.bloqueios.length > 1 ? ` e mais ${g.bloqueios.length - 1}` : ''}</div>` : ''}
         ${semServidor && !pausado ? '<div class="es-warn">Para publicar é preciso a cópia no servidor (banco de dados). Aprovar funciona; publicar não.</div>' : ''}

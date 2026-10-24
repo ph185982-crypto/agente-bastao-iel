@@ -5,10 +5,10 @@
 // Um post pode estar bem escrito e factualmente pendente: o resumo mostra os dois.
 // Puro e sem rede. Não existe "nota": cada item diz o que está errado e onde.
 (function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('./contentModel') : root.ContentModel);
+  const api = factory(typeof module === 'object' && module.exports ? require('./contentModel') : root.ContentModel, typeof module === 'object' && module.exports ? require('./hookGuard') : root.HookGuard);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.QualityGates = api;
-})(typeof self !== 'undefined' ? self : this, function (M) {
+})(typeof self !== 'undefined' ? self : this, function (M, HG) {
   const LIMITE_PALAVRAS = { capa_foto: 12, capa_tipografica: 12, explicacao: 45, prova: 40, comparacao: 40, encerramento: 25 };
 
   const ABERTURAS_GENERICAS = [/^voc[eê] sabia/i, /^prepare-se/i, /^aten[cç][aã]o[:!]/i, /^isso muda tudo/i, /^uma reflex[aã]o/i, /^vamos falar sobre/i, /^hoje eu (quero|vou) falar/i, /^nesse (post|v[ií]deo)/i];
@@ -187,6 +187,12 @@
     }
 
     // Capa: o Pedro escolhe entre as opções
+    // Capa copiada de um exemplo do playbook (ou de um gancho já publicado sem resultado): não sai.
+    const capaTexto = limpa(((v.slides || [])[0] || {}).texto || '');
+    if (HG && capaTexto) {
+      const r = HG.verificar(capaTexto);
+      if (!r.ok) out.push(bloqueio('hook_copiado', 'redacao', 'Capa copiada de um exemplo', r.motivo, { slide: v.slides[0].id, indice: 1 }, 'Escrever uma capa nova'));
+    }
     if ((v.capas || []).length && !v.capa_escolhida) out.push(bloqueio('capa_nao_escolhida', 'arte', 'Escolha uma das capas', 'Há três opções de capa e nenhuma foi escolhida.', null, 'Escolher a capa'));
 
     // Arte
@@ -304,6 +310,10 @@
 
     // Igual a posts recentes
     const recentes = (ctx && ctx.recentes) || [];
+    if (HG && capa && recentes.length) {
+      const r = HG.verificar(capa.texto, { contra: recentes.map((x) => String(x).split(/\n/)[0]), soContra: true, limite: 2 });
+      if (r.parecido_com && r.similaridade >= 0.65) out.push(sugestao('hook_parecido_recente', 'redacao', 'Capa parecida com um post recente', `Parecida com “${String(r.parecido_com).slice(0, 80)}”. Mude o ângulo ou o número para não repetir o perfil.`, capa.onde));
+    }
     if (capa && recentes.length) {
       const ini = norm(capa.texto).split(' ').slice(0, 4).join(' ');
       if (ini.length > 8 && recentes.some((r) => norm(r).startsWith(ini))) out.push(sugestao('abertura_igual_recentes', 'redacao', 'Abertura igual à de um post recente', 'Mude a forma de abrir para não repetir o perfil.', capa.onde));
@@ -326,7 +336,7 @@
         fatos: temContradita ? 'contradicao' : fatos.length ? 'pendente' : 'ok',
         conta: b.some((x) => x.eixo === 'conta') ? 'incorreta' : 'ok',
         arte: b.some((x) => x.eixo === 'arte') ? 'pendente' : 'ok',
-        redacao: s.some((x) => x.eixo === 'redacao') ? 'com_sugestoes' : 'ok',
+        redacao: b.some((x) => x.eixo === 'redacao') ? 'bloqueada' : s.some((x) => x.eixo === 'redacao') ? 'com_sugestoes' : 'ok',
         pode_aprovar: b.length === 0,
       },
     };

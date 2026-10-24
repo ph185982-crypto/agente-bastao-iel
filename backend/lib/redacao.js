@@ -8,6 +8,7 @@
 const M = require('../../static/contentModel');
 const G = require('../../static/qualityGates');
 const E = require('../../static/editorial');
+const HG = require('../../static/hookGuard');
 const { ACCOUNT } = require('./account');
 
 const deps = (d = {}) => ({ llmJson: d.llmJson || require('./llmJson') });
@@ -108,17 +109,22 @@ const DIRECAO_EDITORIAL = `DIREÇÃO PARA O CELULAR:
 // ── Copy ───────────────────────────────────────────────────────────────────
 const LAYOUT_POR_FUNCAO = { capa: 'capa_tipografica', contexto: 'explicacao', explicacao: 'explicacao', consequencia: 'explicacao', opiniao: 'explicacao', prova: 'prova', comparacao: 'comparacao', encerramento: 'encerramento' };
 
-function montarVersao({ dados, claims, evidencias, formato, editorial = false }) {
+function montarVersao({ dados, claims, evidencias, formato, editorial = false, recentes = [] }) {
   const ids = new Set(claims.map((c) => c.id));
   const novasOpinioes = [];
   const limpaIds = (arr) => [...new Set((arr || []).map(String).filter((i) => ids.has(i)))];
   const problemas = [];
   const chamada = texto => /^(siga|segue|salve|guarde|envie|envia|manda|mande|compartilhe)\b/i.test(String(texto||'').replace(/\*+/g,'').trim());
 
+  const contraRecentes = (recentes || []).map((r) => String(r).split(/\n/)[0]).filter(Boolean);
   const capas = (E.COMPOSICAO_CAPAS).map((cfg) => {
     const c = (dados.capas || []).find((x) => x && x.foco === cfg.foco);
     if (!c || !c.texto) { problemas.push(`faltou a capa de foco "${cfg.foco}"`); return null; }
-    return { id: `k_${cfg.foco}`, foco: cfg.foco, texto: String(c.texto).slice(0, 220), explicacao: String(c.explicacao || '').slice(0, 220), claim_ids: limpaIds(c.claim_ids) };
+    const texto = String(c.texto).slice(0, 220);
+    // Capa copiada de exemplo/gancho já publicado, ou parecida com post recente, volta para correção.
+    const g = HG.verificar(texto, { contra: contraRecentes });
+    if (!g.ok) problemas.push(`a capa de foco "${cfg.foco}" ${g.motivo.charAt(0).toLowerCase()}${g.motivo.slice(1)}`);
+    return { id: `k_${cfg.foco}`, foco: cfg.foco, texto, explicacao: String(c.explicacao || '').slice(0, 220), claim_ids: limpaIds(c.claim_ids), formula: HG.detectarFormula(texto) };
   }).filter(Boolean);
 
   const slides = [];
@@ -233,6 +239,7 @@ Marque com **duas estrelas** UM único trecho por slide (a expressão principal)
 Para "comparacao" preencha dados: {"esquerda":{"rotulo":"","valor":"","detalhe":""},"direita":{...}} só com valores das afirmações.
 
 TRÊS CAPAS realmente diferentes para a MESMA base factual, uma de cada foco: "acontecimento" (o fato novo, direto), "consequencia" (${editorial ? 'um detalhe relevante da matéria; só mencione efeito prático se a base o demonstrar' : 'o efeito na vida prática'}), "tensao" (a pergunta ou tensão central). Explique em 1 frase a diferença. Não escolha a que tiver mais números ou palavras agressivas.
+GANCHO DA CAPA: cada capa usa uma FÓRMULA diferente entre estas (a mecânica se repete, o texto não): ${Object.values(HG.FORMULAS).map((f) => `${f.nome} (${f.dica})`).join('; ')}. EXEMPLOS PROIBIDOS: não copie nem parafraseie nenhum destes (eles só mostram o mecanismo, e dois deles já saíram sem resultado algum): ${HG.proibidos().map((x) => `“${x.texto}”`).join(' · ')}. Também não repita a abertura de nenhum post recente listado.
 
 LEGENDA: primeira linha forte, até 600 caracteres, com a fonte principal citada em texto. Pode retomar o fato principal e acrescentar somente detalhes das afirmações listadas; não invente consequências para evitar repetição. ${objetivo ? require('../../static/growthModel').OBJETIVOS[objetivo]?.cta || '' : `CTA coerente com o objetivo (${briefing.objetivo}): ${E.OBJETIVOS[briefing.objetivo]?.cta}.`} O CTA do último slide pede ENVIO a uma pessoa específica ("manda para quem…") ou salvamento, e quando convida a seguir diz O QUE a pessoa recebe seguindo; nunca apenas "segue o perfil". O único @ permitido é @pedro_destrava (com underscore). No máximo 3 hashtags (ou nenhuma). Varie a abertura e o fechamento em relação aos posts recentes.
 ${instrucoes ? `INSTRUÇÃO DO PEDRO: ${instrucoes}\n` : ''}${feedback ? `\nA VERSÃO ANTERIOR TEVE PROBLEMAS. CORRIJA SÓ ISTO:\n${feedback}\n` : ''}
@@ -248,7 +255,7 @@ Responda APENAS JSON:
   // primeira terminou cedo. Se não der tempo, os problemas continuam visíveis.
   const t0 = Date.now();
   let r = await pedir('');
-  let m = montarVersao({ dados: r.dados, claims, evidencias, formato, editorial });
+  let m = montarVersao({ dados: r.dados, claims, evidencias, formato, editorial, recentes });
   let prov = provisorio({ claims, evidencias, fonte, versao: m.versao, opinioes: m.opinioes });
   const fatosProblemas = (c) => G.bloqueios(c, { conta: M.ACCOUNT_PIN }).filter((b) => ['numero_sem_origem', 'numero_sem_afirmacao', 'citacao_sem_origem', 'atribuicao_sem_origem', 'valores_divergentes', 'ressalva_ausente'].includes(b.id));
   let falhas = fatosProblemas(prov);
@@ -262,7 +269,7 @@ Responda APENAS JSON:
     try {
       const restante = 50000 - (Date.now() - t0);
       const r2 = await Promise.race([pedir(fb), new Promise((_, no) => { prazo = setTimeout(() => no(new Error('sem tempo para a correção')), Math.max(1000, restante)); })]);
-      const m2 = montarVersao({ dados: r2.dados, claims, evidencias, formato, editorial });
+      const m2 = montarVersao({ dados: r2.dados, claims, evidencias, formato, editorial, recentes });
       const prov2 = provisorio({ claims, evidencias, fonte, versao: m2.versao, opinioes: m2.opinioes });
       const f2 = fatosProblemas(prov2);
       tentativas = 2;

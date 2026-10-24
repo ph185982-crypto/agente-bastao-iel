@@ -57,6 +57,30 @@ test('copy: opiniões de versões anteriores não viram premissas factuais da no
   assert(llm.chamadas.every(p=>!p.includes('OPINIAO_GERADA_ANTIGA')&&!p.includes('o_antiga')));assert.deepStrictEqual(r.opinioes[0].premissas,['a1']);assert.equal(antigas.length,3,'o histórico de afirmações permanece preservado');
 });
 
+test('copy: capa copiada de exemplo do playbook volta para correção e a segunda tentativa recebe o motivo', async () => {
+  const copiada = copiaOk('Seus R$ 100 de 1994 valem R$ 11,19 hoje.');
+  const llm = llmFalso([copiada, copiaOk('Senado aprova teto de R$ 140 mil para o MEI')]);
+  const r = await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias }, { llmJson: llm });
+  assert.ok(llm.chamadas.length >= 2, 'houve segunda tentativa');
+  assert.match(llm.chamadas[1], /muito parecido com exemplo do playbook/i, 'o motivo vai no pedido de correção');
+  assert.ok(!r.versao.capas.some((k) => /1994/.test(k.texto)), 'a capa copiada não sobrevive');
+});
+
+test('copy: o prompt traz as fórmulas e proíbe os exemplos; cada capa registra a fórmula detectada pelo código', async () => {
+  const llm = llmFalso([copiaOk()]);
+  const r = await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias }, { llmJson: llm });
+  assert.match(llm.chamadas[0], /EXEMPLOS PROIBIDOS/);
+  assert.match(llm.chamadas[0], /Seus R\$ 100 de 1994/);
+  assert.match(llm.chamadas[0], /Número grande/);
+  assert.ok(r.versao.capas.every((k) => 'formula' in k), 'fórmula calculada pelo código, não pelo modelo');
+});
+
+test('copy: capa idêntica à abertura de um post recente também volta para correção', async () => {
+  const llm = llmFalso([copiaOk('Senado aprova teto de R$ 140 mil para o MEI'), copiaOk('MEI ganha mais espaço: o limite anual chega a R$ 140 mil')]);
+  await gerarCopia({ briefing: { objetivo: 'autoridade', estrutura: 'acontecimento', duvidas: [] }, fonte, claims, evidencias, recentes: ['Senado aprova teto de R$ 140 mil para o MEI\nlegenda do post'] }, { llmJson: llm });
+  assert.ok(llm.chamadas.length >= 2);
+});
+
 test('copy: número inventado dispara uma segunda tentativa com o erro exato', async () => {
   const ruim = copiaOk();
   ruim.slides[1].texto = 'O Senado aprovou o teto de **R$ 180 mil**.';

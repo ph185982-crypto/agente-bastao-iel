@@ -326,6 +326,29 @@ test('sugestões da identidade: capa longa e "segue o perfil" sem promessa; amba
   assert.ok(!G.avaliar(c).sugestoes.some((s) => s.id === 'cta_generico'), 'com promessa não sugere');
 });
 
+test('capa copiada de um exemplo do playbook ou de gancho já publicado sem resultado BLOQUEIA; reescrita nova passa', () => {
+  const c = exemplo();
+  M.editarSlide(c, 's1', { texto: 'Seus R$ 100 de 1994 valem R$ 11,19 hoje.' });
+  let r = G.avaliar(c);
+  const b = r.bloqueios.find((x) => x.id === 'hook_copiado');
+  assert.ok(b && b.eixo === 'redacao' && /exemplo do playbook/.test(b.detalhe));
+  assert.strictEqual(r.resumo.pode_aprovar, false);
+  assert.strictEqual(r.resumo.redacao, 'bloqueada');
+  M.editarSlide(c, 's1', { texto: 'R$ 100 de 1994 só valem R$ 11,19 hoje' });
+  assert.ok(G.avaliar(c).bloqueios.some((x) => x.id === 'hook_copiado'), 'o gancho que já saiu sem resultado também não volta');
+  M.editarSlide(c, 's1', { texto: 'Em julho de 1994 o salário mínimo era **R$ 64,79**: quanto vale hoje?' });
+  r = G.avaliar(c);
+  assert.ok(!r.bloqueios.some((x) => x.id === 'hook_copiado'));
+});
+
+test('capa parecida com post recente vira sugestão, não bloqueio', () => {
+  const c = exemplo();
+  M.editarSlide(c, 's1', { texto: 'Aluguel sobe mais que o salário há quatro anos' });
+  const r = G.avaliar(c, { recentes: ['Aluguel sobe mais que salário há quatro anos\nLegenda longa do post...'] });
+  assert.ok(r.sugestoes.some((x) => x.id === 'hook_parecido_recente'));
+  assert.ok(!r.bloqueios.some((x) => x.id === 'hook_copiado'));
+});
+
 test('texto bem escrito e factualmente pendente aparece separado no resumo', () => {
   const c = exemplo();
   c.claims[1].estado = 'nao_verificada';
