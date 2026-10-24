@@ -29,3 +29,14 @@ Tudo é desenhado por `backend/lib/arte.js`, de forma determinística: mesma ent
 
 As fontes ficam em `backend/assets` (Manrope e Inter, licença SIL OFL; ver `backend/assets/FONTES-LICENCAS.md`).
 Os módulos antigos (Editor de Vídeo, cortes de TV) ainda usam Poppins e PT Serif e não foram alterados.
+
+## Onde a identidade vale
+
+- **Mesa (fluxo completo)**: layouts de `arte.js` (capa, explicação, prova, comparação, encerramento, capa com foto).
+- **Estúdio de um toque** (`design: 'editorial_2026'`, `editorialStudio.js`): mesmas cores, Manrope e Inter e colchetes.
+  A estrutura das composições (capa, texto, número, recorte, comparação, pergunta, manifesto, encerramento) é a do Codex e não mudou.
+  Estilos que dependiam de serifa ou de outra cor de acento (`revista`) agora seguem a identidade.
+- **Encerramento com o retrato do Pedro**: o arquivo `backend/assets/template-editor-viral.png` traz o azul-marinho antigo no fundo.
+  Enquanto não houver um retrato recortado (PNG com fundo transparente), esse slide mantém `#0A1B33` para não aparecer uma caixa escura sobre o azul.
+- **Não alterados**: Editor de Vídeo, cortes de TV, vídeos em movimento (`motionLocal.js`) e os estilos experimentais `impacto`/`foto_editorial`
+  desenhados por `renderExperimental`: continuam com Poppins e a paleta anterior.
