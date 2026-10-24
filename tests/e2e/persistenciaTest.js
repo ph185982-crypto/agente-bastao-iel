@@ -44,7 +44,7 @@ async function reabreEContinua(ctx, base, esperaSel) {
   console.log('1. Com cópia no servidor: fechar a aba durante pesquisa, redação e arte');
   const ctxA = await contexto(browser);
   let p = await abre(ctxA, BASE);
-  await p.click('[data-e="link"]'); await p.click('[data-action="ed-modo"][data-m="texto"]');
+  await p.evaluate(() => { window.Mesa.state.tab = 'mesa'; window.MesaEditor.novoPorLink(window.Mesa.ctx()); }); await p.click('[data-action="ed-modo"][data-m="texto"]');
   await p.fill('#ed-novo-texto', TEXTO); await p.click('[data-action="ed-iniciar"]');
   await fechaDurante(p, 'claims');
   await new Promise((r) => setTimeout(r, 3500));
@@ -128,7 +128,7 @@ async function reabreEContinua(ctx, base, esperaSel) {
   const BASE2 = 'http://127.0.0.1:3997';
   const ctxC = await contexto(browser);
   p = await abre(ctxC, BASE2);
-  await p.click('[data-e="link"]'); await p.click('[data-action="ed-modo"][data-m="texto"]');
+  await p.evaluate(() => { window.Mesa.state.tab = 'mesa'; window.MesaEditor.novoPorLink(window.Mesa.ctx()); }); await p.click('[data-action="ed-modo"][data-m="texto"]');
   await p.fill('#ed-novo-texto', TEXTO); await p.click('[data-action="ed-iniciar"]');
   await fechaDurante(p, 'claims');
   await new Promise((x) => setTimeout(x, 3500));

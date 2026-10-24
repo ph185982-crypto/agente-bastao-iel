@@ -55,13 +55,15 @@ test('render-slide: devolve PNG 1080x1350 com métricas; imagem inválida é rec
   assert.ok(svg.json.error && /PNG, JPG ou WebP/.test(svg.json.error));
 });
 
-test('render-slide: texto longo demais não é espremido — avisa que não cabe', async () => {
-  // A rota corta o texto em 900 caracteres, que cabem no tamanho de apoio (36 px) da identidade;
-  // o que não cabe é um título gigante: a arte avisa em vez de espremer a letra.
-  const slide = { id: 's1', funcao: 'explicacao', layout: 'explicacao', titulo: 'título longo demais '.repeat(20), texto: 'palavra '.repeat(400) };
+test('render-slide: texto longo demais não é espremido nem cortado em silêncio — avisa que não cabe', async () => {
+  // 1.600 caracteres: antes eram cortados em 900 e o texto cortado "cabia"; agora a arte recebe tudo e marca cabe:false.
+  const slide = { id: 's1', funcao: 'explicacao', layout: 'explicacao', texto: 'palavra '.repeat(200) };
   const r = await post('render-slide', { slide });
   assert.strictEqual(r.json.metrics.cabe, false);
   assert.ok(r.json.metrics.fonte_px >= 36);
+  // título gigante também é apontado
+  const t = await post('render-slide', { slide: { ...slide, texto: 'curto', titulo: 'título longo demais '.repeat(20) } });
+  assert.strictEqual(t.json.metrics.cabe, false);
 });
 
 test('request_id repetido devolve o mesmo resultado sem refazer o trabalho', async () => {

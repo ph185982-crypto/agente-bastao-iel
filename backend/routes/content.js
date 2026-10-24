@@ -265,7 +265,8 @@ const decodificaImagem = async (dataUrl, nome) => {
 etapa('render-slide', 40, async (b) => {
   const s = b.slide;
   if (!s || typeof s !== 'object') throw Object.assign(new Error('Falta o slide.'), { code: 'ENTRADA' });
-  const slide = { ...s, texto: txt(s.texto, 900), titulo: s.titulo ? txt(s.titulo, 200) : null, rotulo: s.rotulo ? txt(s.rotulo, 40) : null };
+  // Sem corte silencioso: o texto inteiro vai para a arte (teto alto só contra abuso) e, se não couber, a arte marca cabe:false e a revisão bloqueia.
+  const slide = { ...s, texto: txt(s.texto, 6000), titulo: s.titulo ? txt(s.titulo, 200) : null, rotulo: s.rotulo ? txt(s.rotulo, 40) : null };
   const imagem = await decodificaImagem(b.imagem, 'Imagem do slide');
   const arquivoEncerramento = await decodificaImagem(b.encerramento, 'Arquivo de encerramento');
   const r = await arte.renderizarSlide(slide, { indice: Number(b.indice) || 1, total: Number(b.total) || 1, imagem, arquivoEncerramento });

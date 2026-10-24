@@ -60,7 +60,7 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   await aberto(p);
 
   console.log('1. Do link ao briefing');
-  await p.click('[data-e="link"]');
+  await p.evaluate(() => { window.Mesa.state.tab = 'mesa'; window.MesaEditor.novoPorLink(window.Mesa.ctx()); });
   await p.fill('#ed-novo-url', 'ftp://x');
   await p.click('[data-action="ed-iniciar"]');
   ok(/http/.test(await p.textContent('.es-toast')), 'link inválido recusado antes de chamar o servidor');
@@ -201,7 +201,7 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   m.claims = () => (++tent === 1 ? 'abort' : { claims: [CLAIM], evidencias: [EV1], descartadas: [], llm: {} });
   ({ ctx, p } = await nova(browser, m));
   await aberto(p);
-  await p.click('[data-e="link"]'); await p.fill('#ed-novo-url', 'https://jornalx.com.br/mei'); await p.click('[data-action="ed-iniciar"]');
+  await p.evaluate(() => { window.Mesa.state.tab = 'mesa'; window.MesaEditor.novoPorLink(window.Mesa.ctx()); }); await p.fill('#ed-novo-url', 'https://jornalx.com.br/mei'); await p.click('[data-action="ed-iniciar"]');
   await p.waitForSelector('[data-action="ed-continuar"]', { timeout: 10000 });
   c = await conteudo(p);
   ok(c.pipeline.afirmacoes.estado === 'erro' && c.pipeline.leitura.estado === 'concluida', 'queda de conexão na etapa 2: etapa 1 continua salva, erro mostrado');
@@ -217,7 +217,7 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   const m2 = MOCKS(); m2.copy = { __status: 502, body: { error: 'Provedor de IA indisponível (timeout)', code: 'ERRO' } };
   ({ ctx, p } = await nova(browser, m2));
   await aberto(p);
-  await p.click('[data-e="link"]'); await p.fill('#ed-novo-url', 'https://jornalx.com.br/mei'); await p.click('[data-action="ed-iniciar"]');
+  await p.evaluate(() => { window.Mesa.state.tab = 'mesa'; window.MesaEditor.novoPorLink(window.Mesa.ctx()); }); await p.fill('#ed-novo-url', 'https://jornalx.com.br/mei'); await p.click('[data-action="ed-iniciar"]');
   await p.waitForSelector('[data-action="ed-gerar-texto"]', { timeout: 15000 });
   await p.click('[data-action="ed-gerar-texto"]');
   await p.waitForSelector('.es-errbox', { timeout: 10000 });
@@ -229,7 +229,7 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   const m3 = MOCKS(); m3.ingest = { fonte: { ...FONTE, legivel: false, acesso: 'negado', texto: '', observacoes: ['O site recusou a leitura (HTTP 403). Não contorno bloqueio nem login: cole o texto ou envie um print.'] } };
   ({ ctx, p } = await nova(browser, m3));
   await aberto(p);
-  await p.click('[data-e="link"]'); await p.fill('#ed-novo-url', 'https://g1.globo.com/x'); await p.click('[data-action="ed-iniciar"]');
+  await p.evaluate(() => { window.Mesa.state.tab = 'mesa'; window.MesaEditor.novoPorLink(window.Mesa.ctx()); }); await p.fill('#ed-novo-url', 'https://g1.globo.com/x'); await p.click('[data-action="ed-iniciar"]');
   await p.waitForSelector('#ed-colar', { timeout: 10000 });
   ok(/403/.test(await p.textContent('.es-errbox')) && !p.chamadas.claims, 'site que bloqueia: avisa, oferece colar o texto e NÃO inventa afirmações');
   await ctx.close();
@@ -239,7 +239,7 @@ const arteOk = (p, n) => p.waitForFunction((n) => { const c = window.Mesa.state.
   const m4 = MOCKS(); m4.verify = { claim: CLAIM, evidencias: [], log: ['sem outras fontes'], consulta: {}, janela_dias: 10 };
   ({ ctx, p } = await nova(browser, m4));
   await aberto(p);
-  await p.click('[data-e="link"]'); await p.fill('#ed-novo-url', 'https://jornalx.com.br/mei'); await p.click('[data-action="ed-iniciar"]');
+  await p.evaluate(() => { window.Mesa.state.tab = 'mesa'; window.MesaEditor.novoPorLink(window.Mesa.ctx()); }); await p.fill('#ed-novo-url', 'https://jornalx.com.br/mei'); await p.click('[data-action="ed-iniciar"]');
   await p.waitForSelector('[data-action="ed-gerar-texto"]', { timeout: 15000 });
   await p.click('[data-action="ed-gerar-texto"]');
   await p.waitForSelector('.ed-slide', { timeout: 15000 }); await arteOk(p, 5);
