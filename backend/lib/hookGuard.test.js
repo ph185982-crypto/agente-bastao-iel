@@ -49,7 +49,8 @@ test('checks objetivos: sem nota, cada item diz sim ou não', () => {
 
 test('fórmulas nomeadas são reconhecidas pelo formato', () => {
   assert.strictEqual(H.detectarFormula('Quanto sobra do seu salário depois do imposto'), 'quanto_sobra');
-  assert.strictEqual(H.detectarFormula('Em 2010 o mínimo era R$ 510; hoje é R$ 1.518'), 'numero_grande');
+  assert.strictEqual(H.detectarFormula('Em 2010 o mínimo era R$ 510; hoje é R$ 1.518'), 'antes_depois');
+  assert.strictEqual(H.detectarFormula('O teto do MEI chega a R$ 140 mil'), 'numero_grande', 'só o número, sem outra forma');
   assert.strictEqual(H.detectarFormula('Seu aluguel vai subir quanto este ano?'), 'pergunta_que_doi');
   assert.strictEqual(H.detectarFormula('Promoção quase nunca é desconto'), 'contraintuitiva');
   assert.strictEqual(H.detectarFormula('Palavras soltas sem nada'), null);

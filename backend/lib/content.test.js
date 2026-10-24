@@ -349,6 +349,23 @@ test('capa parecida com post recente vira sugestão, não bloqueio', () => {
   assert.ok(!r.bloqueios.some((x) => x.id === 'hook_copiado'));
 });
 
+test('adicionarCapas: acrescenta candidatas numa nova versão sem mexer nos slides; escolher uma troca só a capa', () => {
+  const c = exemplo();
+  const antes = M.versaoAtiva(c);
+  const slidesAntes = JSON.stringify(antes.slides);
+  const r = M.adicionarCapas(c, [{ texto: 'Em 2010 o mínimo era R$ 510; hoje é R$ 1.518', formula: 'antes_depois', claim_ids: ['a1'] }]);
+  assert.notStrictEqual(r.versao.id, antes.id, 'nova versão');
+  assert.strictEqual(JSON.stringify(r.versao.slides), slidesAntes, 'slides intactos');
+  assert.strictEqual(r.versao.capas.at(-1).foco, 'gancho');
+  assert.strictEqual(r.versao.capas.at(-1).formula, 'antes_depois');
+  assert.strictEqual(M.versaoAtiva(c).capa_escolhida, antes.capa_escolhida);
+  assert.ok(c.copia.versoes.some((v) => v.id === antes.id), 'a versão anterior continua guardada');
+  const nova = r.versao.capas.at(-1).id;
+  M.escolherCapa(c, nova);
+  assert.match(M.versaoAtiva(c).slides[0].texto, /Em 2010 o mínimo era/);
+  assert.deepStrictEqual(M.versaoAtiva(c).slides[0].claim_ids, ['a1']);
+});
+
 test('texto bem escrito e factualmente pendente aparece separado no resumo', () => {
   const c = exemplo();
   c.claims[1].estado = 'nao_verificada';

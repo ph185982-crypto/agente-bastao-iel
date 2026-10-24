@@ -18,6 +18,12 @@ llmJson.pedirJson = async ({ usuario }) => {
     const textos = JSON.parse(usuario.split('TEXTOS DO POST: ')[1].split('\n\n')[0]);
     return { llm: { provider: 'simulado', model: 'teste' }, dados: { slides: textos.map(s => ({ id: s.id, premissas: [] })) } };
   }
+  if (usuario.includes('FATOS_CONFERIDOS')) return { llm: { provider: 'simulado', model: 'teste', tokens: { entrada: 100, saida: 100, total: 200 }, tentativas_provedor: 1 }, dados: { ganchos: [
+    { formula: 'antes_depois', texto: 'Em julho de 1994 o mínimo era R$ 64,79: quanto vale hoje?', claim_ids: ['a1'] },
+    { formula: 'quanto_sobra', texto: 'Quanto sobra de R$ 64,79 em 1994 para o salário de hoje?', claim_ids: ['a1'] },
+    { formula: 'numero_grande', texto: 'O mínimo de 1994 era R$ 64,79 e hoje seria R$ 840', claim_ids: ['a1'] },
+    { formula: 'numero_grande', texto: 'Seus R$ 100 de 1994 valem R$ 11,19 hoje.', claim_ids: [] },
+  ] } };
   const tipo = /liste as afirmações FACTUAIS/.test(usuario) ? 'claims' : /BRIEFING editorial/.test(usuario) ? 'briefing' : /TRÊS CAPAS/.test(usuario) ? 'copy' : /AFIRMAÇÃO A VERIFICAR/.test(usuario) ? 'verify' : /AFIRMAÇÃO: /.test(usuario) ? 'conferir' : 'outro';
   chamadas[tipo] = (chamadas[tipo] || 0) + 1;
   await new Promise((r) => setTimeout(r, atraso));

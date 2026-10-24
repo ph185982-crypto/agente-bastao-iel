@@ -120,7 +120,8 @@
     } catch (e) { state.insightsError = e.message; } finally { state.insightsLoading = false; render(); }
   }
 
-  const recentesParaPrompt = () => (state.insights?.posts || []).filter((p) => !p.colab).slice(0, 8).map((p) => p.legenda || p.gancho).filter(Boolean);
+  // Posts recentes do perfil: leitura antiga (se houver) + os posts lidos pela aba Resultados (Meta).
+  const recentesParaPrompt = () => [...(state.insights?.posts || []).filter((p) => !p.colab).slice(0, 8).map((p) => p.legenda || p.gancho), ...((window.MeuInstagram?._st?.dados?.posts) || []).slice(0, 12).map((p) => p.legenda)].filter(Boolean).slice(0, 16);
 
   // ── Descoberta (entrada A) ──────────────────────────────────────────────────
   async function descobrir() {

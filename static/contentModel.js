@@ -247,6 +247,20 @@
     return { versao: v, efeito };
   }
 
+  // Acrescenta capas candidatas (ex.: "mais ganchos") sem mexer nos slides nem na capa escolhida.
+  // Cria uma nova versão, como toda edição; as versões anteriores continuam intactas.
+  function adicionarCapas(c, novas, { quem = 'pedro' } = {}) {
+    const ativa = versaoAtiva(c);
+    const dados = clone(ativa);
+    dados.capas = [...(ativa.capas || []), ...(novas || []).filter((k) => k && k.texto).map((k) => ({
+      id: k.id || uid('k_g'), foco: 'gancho', texto: String(k.texto).slice(0, 220), explicacao: String(k.explicacao || '').slice(0, 220),
+      claim_ids: Array.isArray(k.claim_ids) ? k.claim_ids : [], formula: k.formula || null,
+    }))];
+    const efeito = efeitoDaEdicao(ativa, dados, c.claims);
+    const v = criarVersao(c, dados, { quem, rotulo: 'Mais ganchos' });
+    return { versao: v, efeito };
+  }
+
   function alternarBloqueio(c, slideId, bloquear) {
     const ativa = versaoAtiva(c);
     const s = ativa.slides.find((x) => x.id === slideId);
@@ -498,7 +512,7 @@
     SCHEMA, ACCOUNT_PIN, HANDLES_ERRADOS, STATUS, ETAPAS, ESTADOS_CLAIM,
     textoParaAuditoria, normalizarAtribuicao, hash, hashRender, linhaDeFonte, canonico, uid, clone, extrairNumeros, exigeOrigem, igual, semAcento,
     novoConteudo, criarVersao, versaoAtiva, conteudoDaVersao, efeitoDaEdicao,
-    editarSlide, editarLegenda, reordenarSlides, escolherCapa, alternarBloqueio, desfazer, ativarVersao,
+    editarSlide, editarLegenda, reordenarSlides, escolherCapa, adicionarCapas, alternarBloqueio, desfazer, ativarVersao,
     avaliarAfirmacao, decidirAfirmacao, DECISOES, naturezaDe, NATUREZAS, EXIGE_ATRIBUICAO, valoresPermitidos, migrarItemLegado, aprovar, registrarExportacao, registrarPublicacao,
     registrar, resumoParaLista,
   };

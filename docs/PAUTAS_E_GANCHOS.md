@@ -12,6 +12,15 @@
 - **Verificações por capa** (sem nota): até 10 palavras, tem número ou forma clara, sem clichê nem abertura genérica, não copia.
   Aparecem ao lado de cada opção de capa.
 
+## Mais ganchos (botão na escolha de capa)
+
+- A IA escreve até 10 candidatos (2 por fórmula) usando **só os fatos sustentados** do conteúdo. O código descarta, com motivo visível:
+  cópia de exemplo do playbook ou de post recente, número que os fatos ligados não têm, número sem fato apontado e repetição entre candidatos.
+- O "júri" é objetivo: quantas das 4 verificações cada gancho atende (curto, concreto, sem clichê, original). Desempate: o mais curto.
+  As 3 primeiras tentam fórmulas diferentes; a fórmula declarada pelo modelo só vale se o texto tiver essa forma. **Não há nota de viralização.**
+- "Usar como capa" acrescenta o gancho como capa candidata numa nova versão (as anteriores ficam guardadas), escolhe essa capa e refaz a arte.
+- Os "posts recentes" vêm dos posts lidos pela aba Resultados (o que o perfil realmente publicou) mais o que o navegador mandar.
+
 ## Temas usados
 
 - Registro em `config.temas_usados` (até 400): alimentado pelos posts lidos na aba **Resultados** (inclui os antigos, origem
@@ -38,7 +47,6 @@ são uma hipótese e ainda não foram comparados com resultados reais; a aba Res
 
 ## Ainda não existe
 
-- Geração de dez ganchos com júri e botão "mais ganchos" na tela de capas (só as três capas de sempre, agora com fórmulas distintas).
 - Camadas alcance/prova/oferta (50/30/20) e o gerador "A Conta Aberta" com dados de cliente.
 - CTA por palavra-chave com lead magnet (os links ainda não existem) e contagem de DMs.
 - Ajuste dos pesos pelo resultado dos posts.

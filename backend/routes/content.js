@@ -145,7 +145,7 @@ const arr = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
 // se a aba fechar no meio, o navegador recupera o resultado pelo request_id
 // sem refazer (nem pagar) a pesquisa ou a redação. Sem armazenamento, só vale
 // a proteção em memória desta instância.
-const DURAVEIS = new Set(['claims', 'verify', 'briefing', 'copy', 'conferir', 'auditar']);
+const DURAVEIS = new Set(['claims', 'verify', 'briefing', 'copy', 'conferir', 'auditar', 'ganchos']);
 const etapa = (nome, max, fn) => router.post(`/${nome}`, porMinuto(max, nome), async (req, res) => {
   try {
     const rid = req.body?.request_id ? `${nome}:${txt(req.body.request_id, 80)}` : null;
@@ -171,6 +171,16 @@ const fonteDoCorpo = (f) => {
 };
 const claimsDoCorpo = (c) => arr(c, 12).filter((x) => x && x.id && x.texto).map((x) => ({ ...x, texto: txt(x.texto, 500) }));
 const evidsDoCorpo = (e) => arr(e, 80).filter((x) => x && x.id);
+
+// Mais ganchos para a capa: 10 candidatos filtrados pelo código (não copia, não inventa número).
+etapa('ganchos', 6, async (b) => {
+  exigeIA();
+  const claims = claimsDoCorpo(b.claims).filter((c) => c.estado === 'sustentada');
+  // Além do que o navegador mandou, usa os posts lidos do Instagram (aba Resultados): é o que o perfil realmente publicou.
+  let doPerfil = [];
+  try { const a = armazem(); if (a?.duravel) doPerfil = ((await a.config.obter(require('../lib/account').ACCOUNT.ig_id)).meu_instagram?.posts || []).slice(0, 20).map((p) => p.legenda).filter(Boolean); } catch { /* sem banco */ }
+  return require('../lib/ganchos').gerarGanchos({ assunto: txt(b.assunto, 200), angulo: txt(b.angulo, 200), claims, recentes: [...arr(b.recentes, 8).map((r) => txt(r, 300)), ...doPerfil].slice(0, 24) });
+});
 
 etapa('ingest', 10, async (b) => {
   if (!b.url && !b.texto) throw Object.assign(new Error('Envie um link ou o texto.'), { code: 'ENTRADA' });

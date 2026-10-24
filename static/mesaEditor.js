@@ -24,6 +24,7 @@
   const LAYOUTS = { capa_tipografica: 'Capa só texto', capa_foto: 'Capa com minha foto', explicacao: 'Explicação', prova: 'Prova / documento', comparacao: 'Comparação', encerramento: 'Encerramento' };
 
   const rodando = {};            // id do conteúdo → true enquanto uma sequência roda
+  const ganchosUi = {};   // painel "Mais ganchos" por conteúdo (só na memória da tela)
   const urls = new Map();        // blob_key → object URL (só para exibir)
   const abertos = new Set();     // detalhes que o Pedro abriu
 
@@ -612,7 +613,19 @@
     const v = M.versaoAtiva(c);
     if (!v) return '';
     const capas = v.capas || [];
-    const FOCO = { acontecimento: 'O fato', consequencia: 'A consequência', tensao: 'A tensão' };
+    const FOCO = { acontecimento: 'O fato', consequencia: 'A consequência', tensao: 'A tensão', gancho: 'Gancho extra' };
+  const painelGanchos = (c) => {
+    const g = ganchosUi[c.id];
+    if (!g) return '';
+    if (g.carregando) return '<div class="es-text">Escrevendo e filtrando ganchos…</div>';
+    if (g.erro) return `<div class="es-warn">${esc(g.erro)}</div>`;
+    const item = (k, i) => `<div class="ed-gancho"><b>${esc(k.texto)}</b><br><small>${esc((window.HookGuard?.FORMULAS[k.formula]?.nome) || 'sem fórmula reconhecida')} · ${k.checks.ok}/${k.checks.total} verificações${k.checks.itens.filter((q) => !q.ok).length ? ' · atenção: ' + esc(k.checks.itens.filter((q) => !q.ok).map((q) => q.label).join('; ')) : ''}</small><br><button class="es-btn ghost sm" data-action="ed-gancho-usar" data-g="${i}">Usar como capa</button></div>`;
+    const todos = [...g.top, ...g.outros];
+    return `<div class="ed-ganchos"><div class="es-label">Melhores ganchos (verificações objetivas, sem nota)</div>${g.top.map((k, i) => item(k, i)).join('') || '<div class="es-text">Nenhum gancho passou nas regras desta vez. Tente de novo.</div>'}
+      ${g.outros.length ? `<details class="mz-det"><summary>${g.outros.length} outro(s) candidato(s)</summary>${g.outros.map((k, i) => item(k, g.top.length + i)).join('')}</details>` : ''}
+      ${g.descartados.length ? `<details class="mz-det"><summary>${g.descartados.length} descartado(s): ver por quê</summary>${g.descartados.map((d) => `<div class="es-text"><b>${esc(d.texto)}</b><br>${esc(d.motivo)}</div>`).join('')}</details>` : ''}
+      <div class="es-text">${esc(g.aviso || '')}</div></div>`;
+  };
   const notaCapa = (k) => {
     const h = window.HookGuard ? window.HookGuard.checks(String(k.texto).replace(/\*\*/g, '')) : null;
     if (!h) return '';
@@ -622,7 +635,8 @@
   };
     return `<div class="es-between"><div class="es-label">Texto e arte · versão ${esc(v.id)}</div><button class="es-btn ghost sm" style="width:auto" data-action="ed-desfazer" ${v.pai ? '' : 'disabled'}>↶ Desfazer</button></div>
       ${capas.length ? `<div class="es-card"><b>Escolha a capa</b><div class="es-text">Três jeitos diferentes de abrir, com a mesma base factual. Nenhuma foi escolhida por você ainda${v.capa_escolhida ? ' — escolhida: ' + esc(FOCO[(capas.find((x) => x.id === v.capa_escolhida) || {}).foco] || '') : ''}.</div>
-        ${capas.map((k) => `<label class="ed-capa ${v.capa_escolhida === k.id ? 'sel' : ''}"><input type="radio" name="capa" data-ed-capa="${esc(k.id)}" ${v.capa_escolhida === k.id ? 'checked' : ''}><span><b>${esc(FOCO[k.foco] || k.foco)}</b><br>${esc(k.texto)}<br><small>${esc(k.explicacao)}</small>${notaCapa(k)}</span></label>`).join('')}</div>` : ''}
+        ${capas.map((k) => `<label class="ed-capa ${v.capa_escolhida === k.id ? 'sel' : ''}"><input type="radio" name="capa" data-ed-capa="${esc(k.id)}" ${v.capa_escolhida === k.id ? 'checked' : ''}><span><b>${esc(FOCO[k.foco] || k.foco)}</b><br>${esc(k.texto)}<br><small>${esc(k.explicacao)}</small>${notaCapa(k)}</span></label>`).join('')}
+        <button class="es-btn ghost sm" data-action="ed-ganchos" ${ganchosUi[c.id]?.carregando ? 'disabled' : ''}>${ganchosUi[c.id]?.carregando ? 'Escrevendo ganchos…' : 'Mais ganchos'}</button>${painelGanchos(c)}</div>` : ''}
       <div class="es-stack">${v.slides.map((s, i) => cartaoSlide(c, v, s, i)).join('')}</div>
       <button class="es-btn ghost" data-action="ed-auditar" ${rodando[c.id] ? 'disabled' : ''}>Conferir fatos dos títulos, textos e legenda</button>
       <div class="es-label">Legenda</div>
@@ -790,6 +804,25 @@
     const id = el.dataset.id;
     const claim = () => c.claims.find((k) => k.id === id);
     switch (a) {
+      case 'ed-ganchos': {
+        const fatos = (c.claims || []).filter((k) => k.estado === 'sustentada').slice(0, 12).map((k) => ({ id: k.id, texto: k.texto, estado: k.estado }));
+        if (!fatos.length) { x.toast('Confira os fatos antes: não há afirmação sustentada para escrever ganchos.'); return true; }
+        ganchosUi[c.id] = { carregando: true }; x.render();
+        try {
+          const r = await x.api('/api/content/ganchos', { method: 'POST', body: { request_id: x.novoId('gan'), conteudo_id: c.id, assunto: c.briefing?.assunto || c.titulo, angulo: c.briefing?.tese || '', claims: fatos, recentes: x.recentesParaPrompt ? x.recentesParaPrompt(c.id) : [] } });
+          ganchosUi[c.id] = { top: r.top || [], outros: r.outros || [], descartados: r.descartados || [], aviso: r.aviso };
+        } catch (e) { ganchosUi[c.id] = { erro: e.message || 'Não consegui escrever ganchos agora.' }; }
+        x.render(); return true;
+      }
+      case 'ed-gancho-usar': {
+        const g = ganchosUi[c.id]; const k = g && [...g.top, ...g.outros][Number(el.dataset.g)];
+        if (!k) return true;
+        const r1 = M.adicionarCapas(c, [{ texto: k.texto, formula: k.formula, claim_ids: k.claim_ids, explicacao: 'Gancho extra gerado e filtrado pelo código' }]);
+        const novo = r1.versao.capas[r1.versao.capas.length - 1].id;
+        const r2 = M.escolherCapa(c, novo);
+        delete ganchosUi[c.id];
+        await aposEdicao(x, c, r2.efeito, 'Capa trocada. Confira a arte e a revisão.'); return true;
+      }
       case 'ed-modo': x.state.novo = { ...x.state.novo, modo: el.dataset.m }; x.render(); return true;
       case 'ed-iniciar': await iniciarNovo(x); return true;
       case 'ed-continuar': sequencia(x, c, ATE_BRIEFING.every((p) => feito(c, p)) ? TEXTO_E_ARTE : ATE_BRIEFING); return true;

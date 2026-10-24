@@ -55,12 +55,13 @@
   }
 
   // Fórmulas nomeadas. `teste` só reconhece o formato do texto; não diz se é bom.
+  // Ordem = prioridade na detecção: as formas específicas vêm antes de "número grande" (basta ter um dígito).
   const FORMULAS = {
-    numero_grande: { nome: 'Número grande', dica: 'abra com um número exato (R$, %, ano) e diga o que ele faz com o bolso de quem lê', teste: (t) => /\d/.test(t) },
     antes_depois: { nome: 'Antes e depois', dica: 'dois momentos com o mesmo objeto (antes × hoje) e o que mudou', teste: (t) => /\d/.test(t) && /\b(antes|hoje|agora|depois|desde|em (19|20)\d\d)\b/i.test(semAcento(t)) },
+    quanto_sobra: { nome: 'Quanto sobra', dica: 'quanto fica no bolso depois de imposto, taxa, juros ou preço', teste: (t) => /\b(sobra|sobrou|sobram|fica com|leva|come|pesa|custa|paga)\b/i.test(semAcento(t)) },
     contraintuitiva: { nome: 'Afirmação contraintuitiva', dica: 'contrarie o que a maioria acha, de forma que dê vontade de conferir', teste: (t) => /\b(nao|nunca|quase nunca|ao contrario|engano|mentira|ilusao)\b/i.test(semAcento(t)) },
     pergunta_que_doi: { nome: 'Pergunta que dói', dica: 'uma pergunta sobre o dinheiro ou o trabalho de quem lê, que ele não sabe responder', teste: (t) => /\?/.test(t) },
-    quanto_sobra: { nome: 'Quanto sobra', dica: 'quanto fica no bolso depois de imposto, taxa, juros ou preço', teste: (t) => /\b(sobra|sobrou|sobram|fica com|leva|come|pesa|custa|paga)\b/i.test(semAcento(t)) },
+    numero_grande: { nome: 'Número grande', dica: 'abra com um número exato (R$, %, ano) e diga o que ele faz com o bolso de quem lê', teste: (t) => /\d/.test(t) },
   };
   const detectarFormula = (texto) => Object.keys(FORMULAS).find((k) => FORMULAS[k].teste(texto)) || null;
 
