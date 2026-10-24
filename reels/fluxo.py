@@ -302,6 +302,9 @@ def planejar(cenas, palavras, offsets, starts, durs, total, calc, meta):
     c_fim = cenas[-1]
     t_fecho = ini_cena[c_fim.n] + 0.15
     t_sub = palavra_em(c_fim, "desconto") or (t_fecho + 1.2)
+    t_manda = palavra_em(c_fim, "manda") or (t_sub + 1.0)
+    t_bf = palavra_em(c_fim, "black", depois=t_manda) or (t_manda + 1.5)
+    t_paga = palavra_em(c9, "paga", depois=t_prej) or (t_prej + 0.8)
 
     telas = []
     for i, c in enumerate(cenas):
@@ -328,7 +331,8 @@ def planejar(cenas, palavras, offsets, starts, durs, total, calc, meta):
 
     ativos = ([(0.05, 0.9), (ancoras["preco"], ancoras["preco"] + 0.4), (ancoras["sobra"], ancoras["sobra"] + 1.2),
                (ancoras["desconto"], t_reset + 0.7), (t_caem, t_caem + 0.8), (t_prej, t_prej + 0.9),
-               (t_slider0, t_lim + 1.4), (t_passou, t_passou + 0.5), (t_fecho, t_fecho + 0.8), (t_sub, t_sub + 0.6)]
+               (t_slider0, t_lim + 1.4), (t_passou, t_passou + 0.5), (t_fecho, t_fecho + 0.8), (t_sub, t_sub + 0.6),
+                (t_manda, t_manda + 0.6), (t_bf, t_bf + 0.6), (t_paga, t_paga + 0.8)]
               + [(t, t + 0.5) for t in t_igual.values() if t] + [(c["t_entra"], c["t_entra"] + 0.45) for c in chips]
               + [(p["t0"], p["t1"]) for p in pecas1 + pecas2] + [(tl["t0"], tl["t0"] + 0.4) for tl in telas])
 
@@ -339,12 +343,15 @@ def planejar(cenas, palavras, offsets, starts, durs, total, calc, meta):
         "chips": chips, "telas": telas, "eventos": eventos, "sons": sons, "ativos": ativos,
         "t": {"preco": ancoras["preco"], "sobra": ancoras["sobra"], "desconto": ancoras["desconto"], "reset": t_reset,
               "caem": t_caem, "igual": t_igual, "come": t_come, "prejuizo": t_prej, "slider0": t_slider0,
-              "limite": t_lim, "passou": t_passou, "fecho": t_fecho, "sub": t_sub,
+              "limite": t_lim, "passou": t_passou, "fecho": t_fecho, "sub": t_sub, "manda": t_manda, "bf": t_bf, "paga": t_paga,
               "cena9": ini_cena[c9.n], "cena10": ini_cena[c10.n], "cena7_fim": t_reset},
         "num": {"preco": float(calc["preco"]), "preco2": float(calc["preco2"]), "sobra1": float(calc["sobra1"]),
                 "sobra2": float(calc["sobra2"]), "desconto": float(calc["desconto"]), "soma_pct": float(calc["soma_pct"]),
                 "fixos": float(calc["fixos"]), "limite_baixo": float(calc["limite_baixo"]), "deficit": float(deficit)},
         "fecho": cenas[-1].tela or "Faça a conta antes.",
+        "janelas": [[c.n, starts[i], starts[i] + durs[i], offsets[c.n]] for i, c in enumerate(cenas)],
+        "paga": f"Você paga {brl(-calc['sobra2'])} pra vender" if calc["sobra2"] < 0 else "",
+        "compartilhar": F.get("compartilhar", "Manda pra quem vai vender na Black Friday"),
     }
 
 

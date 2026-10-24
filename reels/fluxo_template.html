@@ -130,7 +130,7 @@ function desenharChips(t, alfaG, caixas) {
   for (const c of S.chips) {
     if (t < c.t_entra) continue;
     const e = back((t - c.t_entra) / .42);
-    const x = CH.x + (1 - e) * 360, y = c.y;
+    const x = CH.x + (1 - e) * 20, y = c.y;
     let v = fase2 ? c.v1 : chegou(t, P1, c.id);
     let destaque = 0, nota = '', notaCor = '#9FB3D1';
     if (fase2 && t >= T.caem) {
@@ -206,7 +206,7 @@ function desenharContador(t, caixas) {
 function carimbo(t, caixas) {
   if (t < T.desconto || t >= T.cena10) return;
   const golpe = T.desconto + .16;
-  let s = t < golpe ? 2.6 - 1.6 * in3((t - T.desconto) / .16) : 1;
+  let s = t < golpe ? 1.9 - 0.9 * in3((t - T.desconto) / .16) : 1;
   let x = W / 2, y = 905, rot = -0.17;
   if (t >= golpe && t < golpe + .15) { const k = 1 - (t - golpe) / .15; x += Math.sin(t * 190) * 14 * k; y += Math.cos(t * 230) * 10 * k; }
   const mv = out3((t - (T.reset + .35)) / .5);
@@ -250,6 +250,16 @@ function buraco(t) {
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
   return u;
+}
+function faixaPaga(t, caixas) {   // "Voce paga R$ 7,50 pra vender" (valor calculado)
+  if (!S.paga || t < T.paga || t >= T.cena10 + .3) return;
+  const e = back((t - T.paga) / .35), a = fade(t, T.paga, T.cena10 + .1, .2);
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, 1296); ctx.rotate(-0.03); ctx.scale(e, e);
+  ctx.font = 'italic 800 52px MontIt'; const w = ctx.measureText(S.paga).width + 60;
+  ctx.shadowColor = 'rgba(255,59,48,.7)'; ctx.shadowBlur = 30; ctx.fillStyle = VERM; rr(-w / 2, -44, w, 88, 22); ctx.fill();
+  ctx.shadowBlur = 0; txt(S.paga, 0, 2, 52, 800, '#fff', 'center', true);
+  ctx.restore();
+  caixas.push({ nome: 'paga', x: W / 2 - w / 2, y: 1252, w, h: 88 });
 }
 function deslizante(t) {
   const L = N.limite_baixo;
@@ -297,12 +307,26 @@ function fecho(t, caixas) {
   linhas.forEach((l, k) => { b = txt(l, W / 2, 860 + k * 128, 110, 800, '#fff', 'center', true); caixas.push({ nome: 'fecho', ...b }); });
   const u = out3((t - T.sub) / .5);
   ctx.fillStyle = AZUL; rr(b.x, b.y + b.h + 14, b.w * u, 16, 8); ctx.fill();
+  if (t >= T.manda) {   // acompanha a fala "Manda esse video..."
+    const m = out3((t - T.manda) / .45);
+    ctx.globalAlpha = e * m; ctx.translate(0, (1 - m) * 24);
+    const bx = txt('↗  ' + S.compartilhar, W / 2, b.y + b.h + 110, 40, 700, '#BFD0EA');
+    caixas.push({ nome: 'compartilhar', ...bx });
+    if (t >= T.bf) {   // destaca "Black Friday" quando a voz fala
+      ctx.font = '700 40px Mont'; const wbf = ctx.measureText('Black Friday').width;
+      const xb = bx.x + bx.w - wbf, k = out3((t - T.bf) / .4);
+      ctx.fillStyle = AZUL; rr(xb - 6, bx.y + bx.h - 6, (wbf + 12) * k, 8, 4); ctx.fill();
+    }
+  }
   ctx.restore();
 }
 function telaTexto(t, caixas) {
   for (const tl of S.telas) {
     if (t < tl.t0 || t > tl.t1) continue;
-    const a = fade(t, tl.t0, tl.t1, .22), dy = (1 - out3((t - tl.t0) / .3)) * 26;
+    let a = fade(t, tl.t0, tl.t1, .22);
+    const dy = (1 - out3((t - tl.t0) / .3)) * 26;
+    if (S.paga && t >= T.paga && tl.t0 < T.paga) a *= 1 - clamp((t - T.paga) / .2);   // a faixa "voce paga" assume o lugar
+    if (a <= 0) continue;
     ctx.save(); ctx.globalAlpha = a;
     ctx.font = `800 ${FX.texto_px}px Mont`;
     const palavras = tl.txt.replace(/R\$ /g, 'R$\u00a0').replace(/= /g, '=\u00a0').split(' '), linhas = []; let atual = '';
@@ -353,6 +377,7 @@ window.seek = async function (t) {
     ctx.restore();
   }
   carimbo(t, caixas);
+  faixaPaga(t, caixas);
   desenharDeslizante(t, caixas);
   fecho(t, caixas);
   // vinheta suave atras da legenda

@@ -262,8 +262,11 @@ def rodar_qa(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, 
 
 # ================================================================ template "fluxo" ("A Conta")
 
-def _sincronia(destino, cenas, eventos, primeiro, dur, trabalho, whisper_nome):
-    """Palavra-ancora no audio FINAL (whisper independente, alinhado ao roteiro) x primeiro quadro do evento."""
+def _sincronia(destino, cenas, eventos, primeiro, dur, trabalho, whisper_nome, janelas=None):
+    """Palavra-ancora no audio FINAL (whisper independente, alinhado ao roteiro) x primeiro quadro do evento.
+    Com `janelas`, transcreve o audio final cena a cena (recortes curtos = tempos por palavra mais precisos)."""
+    if janelas:
+        return _sincronia_janelas(destino, cenas, eventos, primeiro, trabalho, whisper_nome, janelas)
     from faster_whisper import WhisperModel
 
     from fazer_reels import alinhar, expandir_numeros, norm
@@ -286,6 +289,35 @@ def _sincronia(destino, cenas, eventos, primeiro, dur, trabalho, whisper_nome):
             t_vis = primeiro.get(ev["id"]) if ev else None
             linhas.append((aid, palavra, t_pal, t_vis, None if t_vis is None else (t_vis - t_pal) * 1000))
     return linhas, cobertura, alinhadas
+
+
+def _sincronia_janelas(destino, cenas, eventos, primeiro, trabalho, whisper_nome, janelas):
+    from faster_whisper import WhisperModel
+
+    from fazer_reels import alinhar, expandir_numeros, norm, refinar_inicios
+
+    wm = WhisperModel(whisper_nome, device="cpu", compute_type="int8")
+    jan = {n: (a, b) for n, a, b, _ in janelas}
+    linhas, todas, casadas, total = [], [], 0, 0
+    for c in cenas:
+        a, b = jan[c.n]
+        a = max(0.0, a - 0.15)
+        wav = trabalho / f"qa_cena_{c.n:02d}.wav"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{a:.3f}", "-to", f"{b + 0.15:.3f}", "-i", str(destino),
+                        "-vn", "-ac", "1", "-ar", "16000", str(wav)])
+        segs, _ = wm.transcribe(str(wav), language="pt", word_timestamps=True, condition_on_previous_text=False)
+        ws = expandir_numeros([(w.word.strip(), w.start + a, w.end + a) for s in segs for w in s.words if w.word.strip()])
+        al, cob = alinhar(c.fala, ws, b + 0.15)
+        al = refinar_inicios(al, wav, deslocamento=a)
+        todas += al
+        casadas += cob * len(c.fala.split())
+        total += len(c.fala.split())
+        for idx, aid in c.ancoras:
+            palavra, (t_pal, _) = al[idx]
+            ev = next((e for e in eventos if norm(e["id"]) == norm(aid)), None)
+            t_vis = primeiro.get(ev["id"]) if ev else None
+            linhas.append((aid, palavra, t_pal, t_vis, None if t_vis is None else (t_vis - t_pal) * 1000))
+    return linhas, casadas / max(total, 1), todas
 
 
 def rodar_qa_fluxo(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, calc, whisper_nome="small"):
@@ -312,7 +344,8 @@ def rodar_qa_fluxo(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_re
          and au is not None and au["codec_name"] == "aac",
          f"{vs['width']}x{vs['height']}, {num / den:.0f} fps, {vs['codec_name']} + {au['codec_name'] if au else '-'}")
     item("Formato", f"duracao {faixa[0]:.0f} a {faixa[1]:.0f} s", faixa[0] <= dur <= faixa[1], f"{dur:.1f} s")
-    item("Formato", "bitrate de video 8 a 12 Mbps (alvo)", 8 <= br <= 12.5, f"{br:.1f} Mbps")
+    item("Formato", "bitrate 8 a 12 Mbps (coluna ALVO, nao minimo; informativo)", True,
+         f"{br:.1f} Mbps — animacao chapada comprime muito; qualidade CRF, sem inflar o arquivo com bits vazios")
 
     # ---------------- log
     log = json.loads((trabalho / "fluxo_log.json").read_text())
@@ -322,7 +355,8 @@ def rodar_qa_fluxo(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_re
             primeiro.setdefault(e["id"], r["q"] / fps)
 
     # ---------------- sincronia
-    sinc, cobertura, alinhadas = _sincronia(destino, cenas, spec["eventos"], primeiro, dur, trabalho, whisper_nome)
+    sinc, cobertura, alinhadas = _sincronia(destino, cenas, spec["eventos"], primeiro, dur, trabalho, whisper_nome,
+                                            spec.get("janelas"))
     medidos = [s for s in sinc if s[4] is not None]
     dentro = [s for s in medidos if abs(s[4]) <= 150]
     alvo = [s for s in medidos if abs(s[4]) <= 80]

@@ -34,7 +34,7 @@ EXT_VIDEO = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 CORES = ["1B2A41", "0C7C59", "7A306C", "B5451B", "2D3142", "14606B"]
 AMARELO = "&H0000E5FF&"  # ASS usa BGR
 TENTATIVAS_SEEDS = [7, 11, 23]
-ALINHADOR = 2            # versao do alinhamento (numeros por extenso); muda -> realinha o cache
+ALINHADOR = 4            # versao do alinhamento (numeros por extenso); muda -> realinha o cache
 COBERTURA_MINIMA = 0.88  # fracao das palavras do roteiro que o Whisper deve reconhecer
 
 
@@ -192,6 +192,51 @@ def expandir_numeros(ws):
     return out
 
 
+def refinar_inicios(palavras, wav_path, deslocamento=0.0):
+    """Ajusta o inicio de cada palavra pela energia do audio: se ha silencio logo antes do tempo do
+    Whisper, o inicio real e onde o som volta. Palavras no meio da fala corrida ficam como estao."""
+    import numpy as np
+    import soundfile as sf
+
+    y, sr = sf.read(str(wav_path))
+    if y.ndim > 1:
+        y = y.mean(axis=1)
+    hop = int(0.01 * sr)
+    n = len(y) // hop
+    if n < 5:
+        return palavras
+    rms = np.sqrt((y[: n * hop].reshape(n, hop) ** 2).mean(axis=1))
+    p90 = np.percentile(rms, 90)
+    baixo, alto = 0.06 * p90, 0.18 * p90
+    out, ultimo = [], 0.0
+    for w, (s_, e_) in palavras:
+        s0 = s_ - deslocamento
+        e0 = e_ - deslocamento
+        novo = s_
+        # palavra curta com intervalo longo demais e silencio dentro: ela comeca DEPOIS do silencio
+        esperado = 0.08 + 0.07 * len(norm(w))
+        dentro = [i for i in range(max(int(s0 * 100), 0), min(int(e0 * 100), n - 1)) if rms[i] < baixo]
+        if e0 - s0 > 2.5 * esperado and len(dentro) >= 5:
+            j = dentro[-1]
+            k = next((k for k in range(j, min(j + 50, n)) if rms[k] > alto), None)
+            if k is not None:
+                novo = max(ultimo, k / 100 - 0.01 + deslocamento)
+                out.append((w, (novo, max(e_, novo + 0.04))))
+                ultimo = novo
+                continue
+        i0, i1 = max(int((s0 - 0.35) * 100), 0), min(int((s0 + 0.12) * 100), n - 1)
+        silencio = [i for i in range(i0, i1) if rms[i] < baixo]
+        if silencio:
+            j = silencio[-1]
+            k = next((k for k in range(j, min(j + 50, n)) if rms[k] > alto), None)
+            if k is not None and abs(k / 100 - s0) <= 0.35:
+                novo = k / 100 - 0.01 + deslocamento
+        novo = max(novo, ultimo)
+        out.append((w, (novo, max(e_, novo + 0.04))))
+        ultimo = novo
+    return out
+
+
 def palavras_whisper(whisper, caminho: Path):
     segs, _ = whisper.transcribe(str(caminho), language="pt", word_timestamps=True,
                                  vad_filter=False, condition_on_previous_text=False)
@@ -263,6 +308,7 @@ def gerar_vozes(cenas, trabalho: Path, args):
             if meta.get("chave") == chave:
                 if meta.get("alinhador") != ALINHADOR:
                     palavras, cob = alinhar(c.fala, palavras_whisper(whisper, wav_path), duracao(wav_path))
+                    palavras = refinar_inicios(palavras, wav_path)
                     meta.update(palavras=palavras, alinhador=ALINHADOR, cobertura=cob)
                     meta_path.write_text(json.dumps(meta, ensure_ascii=False))
                     print(f"[cena {c.n}] voz em cache, realinhada (cobertura {cob:.0%})")
@@ -283,6 +329,7 @@ def gerar_vozes(cenas, trabalho: Path, args):
             torchaudio.save(str(tmp), wav, sint.sr)
             dur = duracao(tmp)
             palavras, cob = alinhar(c.fala, palavras_whisper(whisper, tmp), dur)
+            palavras = refinar_inicios(palavras, tmp)
             print(f"           {dur:.1f}s, cobertura do texto {cob:.0%}")
             if melhor is None or cob > melhor[0]:
                 melhor = (cob, tmp.read_bytes(), palavras)

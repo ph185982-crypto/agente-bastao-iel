@@ -70,3 +70,4 @@ fluxo:                  # template "A Conta"
   chip: {x: 600, largura: 452, altura: 104, espaco: 12}
   valor_px: 104         # contador de saldo (minimo da barra: 48 px para valores)
   texto_px: 50          # texto-na-tela
+  compartilhar: Manda pra quem vai vender na Black Friday
