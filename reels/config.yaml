@@ -47,3 +47,26 @@ mapa:
 
 audio:
   whoosh_db: -26        # whoosh sintetizado nas trocas de camera
+
+fluxo:                  # template "A Conta"
+  fonte_texto: fontes/Montserrat-VF.ttf
+  fundo: "#0A1B33"
+  verde: "#00C853"
+  vermelho: "#FF3B30"
+  som_db: -34           # efeitos ~18 dB abaixo da voz (-16 LUFS), com ducking na fala
+  cores:
+    produto: "#8FA3BF"  # cinza-azulado
+    comissao: "#FF3B30"
+    frete: "#FFB800"
+    imposto: "#7E3FF2"
+    anuncio: "#38B1FF"
+  nomes:
+    produto: Produto
+    comissao: Comissão
+    frete: Frete
+    imposto: Imposto
+    anuncio: Anúncio
+  grade: {colunas: 10, celula: 50, espaco: 6, x0: 30, y0: 610}
+  chip: {x: 600, largura: 452, altura: 104, espaco: 12}
+  valor_px: 104         # contador de saldo (minimo da barra: 48 px para valores)
+  texto_px: 50          # texto-na-tela

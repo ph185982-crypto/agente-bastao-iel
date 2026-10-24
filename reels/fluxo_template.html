@@ -1,0 +1,382 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>html, body { margin: 0; padding: 0; background: #0A1B33; overflow: hidden; } canvas { display: block; }</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const D = /*__DADOS__*/null;
+const S = D.spec, C = S.cfg, FX = C.fluxo, G = S.grade, T = S.t, N = S.num;
+const W = S.w, H = S.h;
+const cv = document.getElementById('c'); cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+const PASSO = G.celula + G.espaco, CEL = G.celula;
+const GW = G.colunas * PASSO - G.espaco;
+const GCX = G.x0 + GW / 2, GCY = G.y0 + GW / 2;
+const CH = C.fluxo.chip;
+const BRANCO = '#EAF0FF', VERDE = FX.verde, VERM = FX.vermelho, AZUL = C.cores.destaque;
+
+// ---------------------------------------------------------------- utilidades
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const out3 = x => 1 - Math.pow(1 - clamp(x), 3);
+const in3 = x => Math.pow(clamp(x), 3);
+const inOut = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const back = x => { x = clamp(x); const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const fade = (t, t0, t1, d = .25) => Math.min(clamp((t - t0) / d), clamp((t1 - t) / d));
+function brl(v) {
+  const neg = v < -0.004; v = Math.abs(Math.round(v * 100) / 100);
+  const [i, c] = v.toFixed(2).split('.');
+  return (neg ? '−' : '') + 'R$ ' + i.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + c;
+}
+const pctTxt = f => (Math.round(f * 1000) / 10).toFixed(1).replace('.', ',') + '%';
+const slotXY = i => [G.x0 + (i % G.colunas) * PASSO, G.y0 + Math.floor(i / G.colunas) * PASSO];
+const DMAX = Math.hypot(GW / 2, GW / 2);
+const ondaT = (i, t0, dur) => { const [x, y] = slotXY(i); return t0 + Math.hypot(x + CEL / 2 - GCX, y + CEL / 2 - GCY) / DMAX * dur; };
+function txt(s, x, y, px, peso = 800, cor = '#fff', alinh = 'center', italico = false, fam = 'Mont') {
+  ctx.font = `${italico ? 'italic ' : ''}${peso} ${px}px ${italico ? 'MontIt' : fam}`;
+  ctx.fillStyle = cor; ctx.textAlign = alinh; ctx.textBaseline = 'middle';
+  ctx.fillText(s, x, y);
+  const w = ctx.measureText(s).width;
+  return { x: alinh === 'center' ? x - w / 2 : alinh === 'right' ? x - w : x, y: y - px * .6, w, h: px * 1.2 };
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, Math.max(0, Math.min(r, h / 2, w / 2))); }
+
+// ---------------------------------------------------------------- dados derivados
+const CHIP = Object.fromEntries(S.chips.map(c => [c.id, c]));
+const P1 = S.pecas1, P2 = S.pecas2;
+const porSlot1 = {}, porSlot2 = {};
+P1.forEach(p => (porSlot1[p.slot] ||= []).push(p));
+P2.forEach(p => (porSlot2[p.slot] ||= []).push(p));
+const EV = S.eventos;
+
+// ---------------------------------------------------------------- grade
+function desenharSegmento(x, y, a, b, cor, alfa, brilho = 0) {
+  if (b - a <= 0.001) return;
+  const yt = y + (1 - b) * CEL, h = (b - a) * CEL;
+  ctx.save(); ctx.globalAlpha = alfa;
+  if (brilho) { ctx.shadowColor = cor; ctx.shadowBlur = brilho; }
+  ctx.fillStyle = cor; rr(x, yt, CEL, h, 9); ctx.fill();
+  ctx.restore();
+}
+function fantasma(x, y, alfa) {
+  ctx.save(); ctx.globalAlpha = alfa; ctx.strokeStyle = 'rgba(255,255,255,.10)'; ctx.lineWidth = 2;
+  rr(x + 1, y + 1, CEL - 2, CEL - 2, 9); ctx.stroke(); ctx.restore();
+}
+// desenha a grade de uma fase e devolve as unidades efetivamente desenhadas (conferencia do contador)
+function desenharGrade(t, fase, alfaG) {
+  const n = fase === 1 ? S.n1 : S.n2;
+  const porSlot = fase === 1 ? porSlot1 : porSlot2;
+  const t0 = fase === 1 ? 0.05 : T.reset + 0.05, dur = fase === 1 ? 0.75 : 0.45;
+  const precoFase = fase === 1 ? N.preco : N.preco2;
+  let unidades = 0;
+  for (let i = 0; i < n; i++) {
+    const [x, y] = slotXY(i);
+    const ta = ondaT(i, t0, dur);
+    const topo0 = (i === n - 1 && precoFase % 1) ? precoFase % 1 : 1;
+    if (t < ta) {   // ainda nao "pulou" na onda, mas ja vale na conta
+      const ps = porSlot[i] || [];
+      unidades += (ps.length ? Math.min(...ps.map(p => p.a)) : topo0) + ps.reduce((s, p) => s + (t < p.t0 ? p.b - p.a : 0), 0);
+      continue;
+    }
+    const pop = back((t - ta) / .32), s = 0.4 + 0.6 * pop;
+    ctx.save(); ctx.translate(x + CEL / 2, y + CEL / 2); ctx.scale(s, s); ctx.translate(-x - CEL / 2, -y - CEL / 2);
+    fantasma(x, y, alfaG);
+    const topo = (i === n - 1 && precoFase % 1) ? precoFase % 1 : 1;
+    const pecas = porSlot[i] || [];
+    const menorA = pecas.length ? Math.min(...pecas.map(p => p.a)) : topo;
+    // parte que nunca sai (o que sobra)
+    if (menorA > 0) {
+      let cor = BRANCO, br = 0;
+      if (fase === 1 && t >= T.sobra) { cor = VERDE; br = 18 + 14 * Math.sin((t - T.sobra) * 6); }
+      desenharSegmento(x, y, 0, menorA, cor, alfaG, br);
+      unidades += menorA;
+    }
+    for (const p of pecas) {
+      if (t >= p.t0) continue;               // ja saiu da grade
+      const tinge = t >= p.t0 - .18;
+      desenharSegmento(x, y, p.a, p.b, tinge ? CHIP[p.custo].cor : BRANCO, alfaG, tinge ? 12 : 0);
+      unidades += p.b - p.a;
+    }
+    ctx.restore();
+  }
+  return unidades;
+}
+function voando(t, pecas, alfaG) {
+  for (const p of pecas) {
+    if (t < p.t0 || t > p.t1) continue;
+    const u = inOut((t - p.t0) / (p.t1 - p.t0));
+    const [sx0, sy0] = slotXY(p.slot);
+    const x0 = sx0 + CEL / 2, y0 = sy0 + (1 - (p.a + p.b) / 2) * CEL;
+    const ch = CHIP[p.custo], x1 = CH.x + 46, y1 = ch.y + CH.altura / 2;
+    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2 - 110;
+    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1;
+    const cx = mx - dy / L * p.curva, cy = my + dx / L * p.curva;
+    const x = (1 - u) ** 2 * x0 + 2 * (1 - u) * u * cx + u * u * x1;
+    const y = (1 - u) ** 2 * y0 + 2 * (1 - u) * u * cy + u * u * y1;
+    const s = 1 - 0.55 * u, h = (p.b - p.a) * CEL * s, w = CEL * s;
+    ctx.save(); ctx.globalAlpha = alfaG * (1 - 0.3 * u); ctx.translate(x, y); ctx.rotate((p.curva / 160) * 0.6 * Math.sin(Math.PI * u));
+    ctx.shadowColor = ch.cor; ctx.shadowBlur = 16; ctx.fillStyle = ch.cor;
+    rr(-w / 2, -h / 2, w, h, 8 * s); ctx.fill(); ctx.restore();
+  }
+}
+const chegou = (t, pecas, custo) => pecas.reduce((s, p) => s + (p.custo === custo && t >= p.t1 ? p.b - p.a : 0), 0);
+const saiu = (t, pecas) => pecas.reduce((s, p) => s + (t >= p.t0 ? p.b - p.a : 0), 0);
+
+// ---------------------------------------------------------------- rotulos dos custos (chips)
+function desenharChips(t, alfaG, caixas) {
+  const fase2 = t >= T.reset;
+  for (const c of S.chips) {
+    if (t < c.t_entra) continue;
+    const e = back((t - c.t_entra) / .42);
+    const x = CH.x + (1 - e) * 360, y = c.y;
+    let v = fase2 ? c.v1 : chegou(t, P1, c.id);
+    let destaque = 0, nota = '', notaCor = '#9FB3D1';
+    if (fase2 && t >= T.caem) {
+      if (c.pct !== null) {          // acompanha o preco: cai junto
+        const u = out3((t - T.caem) / .8); v = c.v1 + (c.v2 - c.v1) * u;
+        destaque = Math.max(0, 1 - (t - T.caem) / 1.6); nota = '↓ acompanha o preço'; notaCor = '#7CF3A0';
+      } else {
+        const ti = T.igual[c.id];
+        if (ti && t >= ti) { destaque = Math.max(0, 1 - (t - ti) / 1.2); nota = '= continua igual'; notaCor = '#FFD27A'; }
+      }
+    }
+    ctx.save(); ctx.globalAlpha = alfaG * clamp((t - c.t_entra) / .15);
+    if (destaque > 0) { ctx.shadowColor = c.cor; ctx.shadowBlur = 30 * destaque; }
+    ctx.fillStyle = 'rgba(255,255,255,.07)'; rr(x, y, CH.largura, CH.altura, 18); ctx.fill();
+    ctx.shadowBlur = 0; ctx.lineWidth = 2 + 3 * destaque; ctx.strokeStyle = c.cor; ctx.globalAlpha *= .85; ctx.stroke();
+    ctx.globalAlpha = alfaG * clamp((t - c.t_entra) / .15);
+    ctx.fillStyle = c.cor; rr(x + 20, y + 31, 46, 46, 10); ctx.fill();
+    txt(c.nome, x + 80, y + 38, 26, 700, '#fff', 'left');
+    if (!(fase2 && t >= T.prejuizo && c.falta2 > 0.004)) txt(nota || (c.pct !== null ? `${String(c.pct).replace('.', ',')}% do preço` : 'fixo por venda'), x + 80, y + 80, 24, 600, notaCor, 'left');
+    const b = txt(brl(v).replace(',00', ''), x + CH.largura - 18, y + 36, 48, 800, '#fff', 'right');
+    // fase 2: barra do quanto foi pago com o que a venda rendeu
+    if (fase2 && t >= T.come) {
+      const pago = chegou(t, P2, c.id), frac = clamp(pago / c.v2);
+      ctx.fillStyle = 'rgba(255,255,255,.12)'; rr(x + 22, y + CH.altura - 14, CH.largura - 44, 6, 3); ctx.fill();
+      ctx.fillStyle = c.cor; rr(x + 22, y + CH.altura - 14, (CH.largura - 44) * frac, 6, 3); ctx.fill();
+      if (t >= T.prejuizo && c.falta2 > 0.004) {   // so o custo que a venda nao cobre
+        const f = back((t - T.prejuizo) / .35);
+        ctx.save(); ctx.globalAlpha = alfaG * clamp((t - T.prejuizo) / .15);
+        ctx.strokeStyle = VERM; ctx.lineWidth = 6; ctx.shadowColor = VERM; ctx.shadowBlur = 24; rr(x, y, CH.largura, CH.altura, 18); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.translate(x + CH.largura - 18, y + 80); ctx.scale(f, f);
+        ctx.fillStyle = VERM; rr(-196, -18, 196, 36, 10); ctx.fill();
+        txt('faltam ' + brl(c.falta2), -98, 0, 24, 800, '#fff'); ctx.restore();
+      }
+    }
+    ctx.restore();
+    caixas.push({ nome: 'chip_' + c.id, x, y, w: CH.largura, h: CH.altura });
+  }
+}
+
+// ---------------------------------------------------------------- contador de saldo (topo)
+function contador(t) {
+  if (t < T.preco || t >= T.fecho) return null;
+  if (t >= T.cena10) {
+    const d = deslizante(t);
+    const p = N.preco * (1 - d);
+    return { v: p - (p * N.soma_pct + N.fixos), d, rotulo: `SOBRA COM ${pctTxt(d)} DE DESCONTO` };
+  }
+  if (t >= T.reset) {
+    const verm = S.vermelhos.reduce((s, r) => s + (t >= r.t ? r.u : 0), 0);
+    return { v: N.preco2 - saiu(t, P2) - verm, rotulo: `SALDO · PREÇO COM −${pctTxt(N.desconto).replace(',0%', '%')}` };
+  }
+  const v = N.preco - saiu(t, P1);
+  return { v, rotulo: t >= T.sobra ? `SOBRA · ${pctTxt(N.sobra1 / N.preco).replace(',0%', '%')} DO PREÇO` : 'SALDO DA VENDA' };
+}
+function desenharContador(t, caixas) {
+  const c = contador(t);
+  if (!c) return c;
+  const e = back((t - T.preco) / .45);
+  let cor = '#fff';
+  if (c.v < -0.004) cor = VERM; else if ((t >= T.sobra && t < T.reset) || (t >= T.cena10 && c.v > 0.004)) cor = '#3EF08A';
+  const pulso = (t >= T.sobra && t < T.reset) ? 1 + 0.05 * Math.max(0, Math.sin((t - T.sobra) * 7)) : 1;
+  ctx.save(); ctx.globalAlpha = fade(t, T.preco, T.fecho, .2);
+  txt(c.rotulo, W / 2, 322, 28, 700, '#9FB3D1');
+  ctx.translate(W / 2, 412); ctx.scale(e * pulso * (1 + 0.6 * (1 - clamp((t - T.preco) / .25))), e * pulso);
+  ctx.shadowColor = cor === '#fff' ? 'rgba(0,82,255,.6)' : cor; ctx.shadowBlur = 26;
+  txt(brl(c.v), 0, 0, FX.valor_px, 800, cor);
+  ctx.restore();
+  caixas.push({ nome: 'saldo', x: W / 2 - 330, y: 300, w: 660, h: 170 });
+  return c;
+}
+
+// ---------------------------------------------------------------- carimbo, buraco, controle, fecho
+function carimbo(t, caixas) {
+  if (t < T.desconto || t >= T.cena10) return;
+  const golpe = T.desconto + .16;
+  let s = t < golpe ? 2.6 - 1.6 * in3((t - T.desconto) / .16) : 1;
+  let x = W / 2, y = 905, rot = -0.17;
+  if (t >= golpe && t < golpe + .15) { const k = 1 - (t - golpe) / .15; x += Math.sin(t * 190) * 14 * k; y += Math.cos(t * 230) * 10 * k; }
+  const mv = out3((t - (T.reset + .35)) / .5);
+  x += (G.x0 + GW - 70 - x) * mv; y += (G.y0 - 18 - y) * mv; s *= 1 - 0.7 * mv; rot *= 1 - .5 * mv;
+  ctx.save(); ctx.globalAlpha = clamp((t - T.desconto) / .08) * fade(t, T.desconto, T.cena10, .3);
+  ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 30; ctx.fillStyle = VERM; rr(-260, -130, 520, 260, 34); ctx.fill();
+  ctx.shadowBlur = 0; ctx.lineWidth = 10; ctx.strokeStyle = '#fff'; rr(-238, -108, 476, 216, 24); ctx.stroke();
+  txt('−' + pctTxt(N.desconto).replace(',0%', '%'), 0, 6, 190, 900, '#fff', 'center', true);
+  ctx.restore();
+  caixas.push({ nome: 'carimbo', x: x - 260 * s, y: y - 130 * s, w: 520 * s, h: 260 * s });
+}
+function caindo(t) {   // os quadrados que o desconto levou embora
+  if (t < T.reset || t > T.reset + 1) return;
+  for (let i = S.n2; i < S.n1; i++) {
+    const [x, y] = slotXY(i), u = clamp((t - T.reset - (i - S.n2) * .012) / .7);
+    ctx.save(); ctx.globalAlpha = 1 - u; ctx.translate(0, 220 * in3(u));
+    ctx.strokeStyle = 'rgba(234,240,255,.7)'; ctx.setLineDash([8, 6]); ctx.lineWidth = 3;
+    rr(x + 2, y + 2, CEL - 4, CEL - 4, 9); ctx.stroke(); ctx.restore();
+  }
+}
+function buraco(t) {
+  let u = 0;
+  for (const r of S.vermelhos) {
+    if (t < r.t) continue;
+    const [x, y] = slotXY(r.slot), e = back((t - r.t) / .3), s = .3 + .7 * e;
+    ctx.save(); ctx.translate(x + CEL / 2, y + CEL / 2); ctx.scale(s, s); ctx.translate(-x - CEL / 2, -y - CEL / 2);
+    ctx.strokeStyle = VERM; ctx.lineWidth = 4; ctx.setLineDash([7, 5]); rr(x + 2, y + 2, CEL - 4, CEL - 4, 9); ctx.stroke(); ctx.setLineDash([]);
+    const yt = y + (1 - r.u) * CEL, hh = r.u * CEL;
+    ctx.save(); rr(x, yt, CEL, hh, 9); ctx.clip();
+    ctx.fillStyle = 'rgba(255,59,48,.28)'; ctx.fillRect(x, yt, CEL, hh);
+    ctx.strokeStyle = VERM; ctx.lineWidth = 5;
+    for (let k = -CEL; k < CEL * 2; k += 13) { ctx.beginPath(); ctx.moveTo(x + k, yt + hh); ctx.lineTo(x + k + hh, yt); ctx.stroke(); }
+    ctx.restore();
+    ctx.restore(); u += r.u;
+  }
+  if (t >= T.prejuizo && t < T.prejuizo + .8) {  // a tela esquenta por um instante
+    const a = .38 * Math.sin(Math.PI * (t - T.prejuizo) / .8);
+    const g = ctx.createRadialGradient(W / 2, H / 2, 200, W / 2, H / 2, 1100);
+    g.addColorStop(0, `rgba(255,59,48,${a * .35})`); g.addColorStop(1, `rgba(255,59,48,${a})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  return u;
+}
+function deslizante(t) {
+  const L = N.limite_baixo;
+  if (t < T.slider0) return 0;
+  if (t < T.limite) return L * out3((t - T.slider0) / (T.limite - T.slider0));
+  return L + (0.25 - L) * out3((t - T.limite) / 1.4);
+}
+function desenharDeslizante(t, caixas) {
+  if (t < T.cena10 || t >= T.fecho + .4) return;
+  const a = fade(t, T.cena10 + .1, T.fecho, .35), d = deslizante(t);
+  const x0 = 130, x1 = 950, y = 980, X = f => x0 + (x1 - x0) * f / 0.25;
+  ctx.save(); ctx.globalAlpha = a;
+  txt('DESCONTO', W / 2, 700, 30, 700, '#9FB3D1');
+  txt(pctTxt(d), W / 2, 790, 120, 800, d > N.limite_baixo + 1e-6 ? VERM : '#fff');
+  ctx.fillStyle = 'rgba(255,255,255,.14)'; rr(x0, y - 9, x1 - x0, 18, 9); ctx.fill();
+  const xl = X(N.limite_baixo), xk = X(d);
+  ctx.fillStyle = '#3EF08A'; rr(x0, y - 9, Math.min(xk, xl) - x0, 18, 9); ctx.fill();
+  if (xk > xl) { ctx.fillStyle = VERM; rr(xl, y - 9, xk - xl, 18, 9); ctx.fill(); }
+  if (t >= T.passou) { ctx.globalAlpha = a * .22 * clamp((t - T.passou) / .4); ctx.fillStyle = VERM; rr(xl, y - 40, x1 - xl, 80, 14); ctx.fill(); ctx.globalAlpha = a; }
+  for (let k = 0; k <= 25; k += 5) txt(k + '%', X(k / 100), y + 66, 40, 700, '#9FB3D1');
+  if (t >= T.limite) {   // ponto de equilibrio
+    const e = back((t - T.limite) / .35);
+    ctx.save(); ctx.translate(xl, y); ctx.scale(e, e);
+    ctx.strokeStyle = '#fff'; ctx.setLineDash([10, 8]); ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(0, -60); ctx.lineTo(0, 118); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = AZUL; rr(-205, 118, 410, 104, 20); ctx.fill();
+    txt('ponto de equilíbrio', 0, 146, 30, 700, '#fff'); txt(pctTxt(N.limite_baixo), 0, 190, 48, 800, '#fff');
+    ctx.restore();
+    caixas.push({ nome: 'equilibrio', x: xl - 205, y: y + 118, w: 410, h: 104 });
+  }
+  ctx.shadowColor = '#fff'; ctx.shadowBlur = 24; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(xk, y, 28, 0, 7); ctx.fill();
+  ctx.restore();
+  caixas.push({ nome: 'deslizante', x: x0 - 30, y: 640, w: x1 - x0 + 60, h: 460 });
+}
+function fecho(t, caixas) {
+  if (t < T.fecho) return;
+  const e = out3((t - T.fecho) / .5);
+  ctx.save(); ctx.globalAlpha = e; ctx.translate(0, (1 - e) * 40);
+  ctx.font = 'italic 800 110px MontIt';
+  let linhas = [S.fecho];
+  if (ctx.measureText(S.fecho).width > 940) {
+    const p = S.fecho.split(' '), meio = Math.ceil(p.length / 2);
+    linhas = [p.slice(0, meio).join(' '), p.slice(meio).join(' ')];
+  }
+  let b;
+  linhas.forEach((l, k) => { b = txt(l, W / 2, 860 + k * 128, 110, 800, '#fff', 'center', true); caixas.push({ nome: 'fecho', ...b }); });
+  const u = out3((t - T.sub) / .5);
+  ctx.fillStyle = AZUL; rr(b.x, b.y + b.h + 14, b.w * u, 16, 8); ctx.fill();
+  ctx.restore();
+}
+function telaTexto(t, caixas) {
+  for (const tl of S.telas) {
+    if (t < tl.t0 || t > tl.t1) continue;
+    const a = fade(t, tl.t0, tl.t1, .22), dy = (1 - out3((t - tl.t0) / .3)) * 26;
+    ctx.save(); ctx.globalAlpha = a;
+    ctx.font = `800 ${FX.texto_px}px Mont`;
+    const palavras = tl.txt.replace(/R\$ /g, 'R$\u00a0').replace(/= /g, '=\u00a0').split(' '), linhas = []; let atual = '';
+    for (const p of palavras) { const tt = atual ? atual + ' ' + p : p; if (ctx.measureText(tt).width > 960 && atual) { linhas.push(atual); atual = p; } else atual = tt; }
+    linhas.push(atual);
+    const y0 = 1290 - (linhas.length - 1) * 30 + dy;
+    linhas.forEach((l, k) => { const bx = txt(l, W / 2, y0 + k * 60, FX.texto_px, 800, '#fff'); caixas.push({ nome: 'tela', ...bx }); });
+    ctx.restore();
+  }
+}
+function aviso(caixas) {
+  ctx.save(); ctx.globalAlpha = .9;
+  ctx.font = `700 24px Mont`; const w = ctx.measureText(S.aviso).width + 44;
+  ctx.fillStyle = 'rgba(255,255,255,.08)'; rr(W / 2 - w / 2, 232, w, 46, 23); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2; ctx.stroke();
+  txt('⚠  ' + S.aviso, W / 2, 256, 24, 700, '#DCE6F7');
+  ctx.restore();
+  caixas.push({ nome: 'aviso', x: W / 2 - w / 2, y: 232, w, h: 46 });
+}
+
+// ---------------------------------------------------------------- quadro
+window.seek = async function (t) {
+  const caixas = [];
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const g = ctx.createRadialGradient(W / 2, 520, 50, W / 2, 700, 1500);
+  g.addColorStop(0, '#12305A'); g.addColorStop(1, FX.fundo);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  const alfaG = fade(t, -1, T.cena10 + .1, .35);
+  let unidades = null;
+  if (alfaG > 0) {
+    // camera: aproxima levemente na sobra, volta no desconto
+    const z = 1 + .035 * (t < T.reset ? out3((t - T.sobra) / .8) : 1 - out3((t - T.reset) / .5));
+    ctx.save(); ctx.translate(W / 2, GCY); ctx.scale(z, z); ctx.translate(-W / 2, -GCY);
+    if (t < T.reset + .3) {
+      const a1 = alfaG * (t < T.reset ? 1 : 1 - clamp((t - T.reset) / .25));
+      const u1 = desenharGrade(t, 1, a1); if (t < T.reset) unidades = u1;
+      voando(t, P1, a1);
+    }
+    if (t >= T.reset) {
+      caindo(t);
+      const u2 = desenharGrade(t, 2, alfaG);
+      const uv = buraco(t);
+      unidades = u2 - uv;
+      voando(t, P2, alfaG);
+    }
+    desenharChips(t, alfaG, caixas);
+    ctx.restore();
+  }
+  carimbo(t, caixas);
+  desenharDeslizante(t, caixas);
+  fecho(t, caixas);
+  // vinheta suave atras da legenda
+  const v = ctx.createLinearGradient(0, H * .66, 0, H);
+  v.addColorStop(0, 'rgba(5,12,26,0)'); v.addColorStop(1, 'rgba(5,12,26,.55)');
+  ctx.fillStyle = v; ctx.fillRect(0, H * .66, W, H * .34);
+  telaTexto(t, caixas);
+  const c = desenharContador(t, caixas);
+  aviso(caixas);
+  return {
+    t, eventos: EV.filter(e => t >= e.t).map(e => ({ tipo: e.id, id: e.id, t0: e.t })),
+    saldo: c ? Math.round(c.v * 1000) / 1000 : null, d: c && c.d !== undefined ? c.d : null,
+    grade: (c && c.d === undefined && t < T.cena10) ? Math.round(unidades * 1000) / 1000 : null,
+    aviso: true, caixas, rotulos: [], ocultos: [],
+  };
+};
+
+(async () => {
+  const f1 = new FontFace('Mont', `url(${D.fonte})`, { weight: '100 900' });
+  const f2 = new FontFace('MontIt', `url(${D.fonte_it})`, { style: 'italic', weight: '800' });
+  await Promise.all([f1.load(), f2.load()]); document.fonts.add(f1); document.fonts.add(f2);
+  await document.fonts.load('800 50px Mont'); await document.fonts.load('italic 800 50px MontIt');
+  window.pronto = true;
+})();
+</script>
+</body>
+</html>

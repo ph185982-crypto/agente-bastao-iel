@@ -48,13 +48,22 @@ class Cena:
     ancoras: list = field(default_factory=list)  # [(indice da palavra na fala, id)] vindos de {palavra} ou {palavra|id}
 
 
-EXTRAS = ("camera", "mostrar", "destacar", "previa", "limpar", "dados", "escala", "entradas")
+EXTRAS = ("camera", "mostrar", "destacar", "previa", "limpar", "dados", "escala", "entradas", "evento")
 
 
-def extrair_ancoras(fala: str):
-    """'A {BR-040} liga ao {Rio de Janeiro|rio}' -> ('A BR-040 liga ao Rio de Janeiro', [(1,'BR-040'),(4,'rio')])."""
+def extrair_ancoras(fala: str, marcador=False):
+    """'A {BR-040} liga ao {Rio de Janeiro|rio}' -> ('A BR-040 liga ao Rio de Janeiro', [(1,'BR-040'),(4,'rio')]).
+
+    marcador=True (template fluxo): um '{id}' solto entre espacos nao e falado; marca a PROXIMA palavra.
+    'Primeiro, {produto} o custo' -> ('Primeiro, o custo', [(1,'produto')])."""
     limpo, ancoras, pos = "", [], 0
     for m in re.finditer(r"\{([^{}|]+)(?:\|([^{}]+))?\}", fala):
+        solto = (m.start() == 0 or fala[m.start() - 1].isspace()) and (m.end() == len(fala) or fala[m.end()].isspace())
+        if marcador and solto and not m.group(2):
+            limpo += fala[pos:m.start()]
+            ancoras.append((len(limpo.split()), m.group(1).strip()))
+            pos = m.end()
+            continue
         limpo += fala[pos:m.start()]
         idx = len(limpo.split()) if limpo.strip() else 0
         if limpo and not limpo[-1].isspace():
@@ -99,7 +108,7 @@ def parse_roteiro(caminho: Path):
                 campos[atual] += " " + linha.strip()
         if not campos.get("fala"):
             sys.exit(f"Erro: a Cena {i} do roteiro nao tem 'fala:'.")
-        fala, ancoras = extrair_ancoras(campos["fala"])
+        fala, ancoras = extrair_ancoras(campos["fala"], marcador=meta.get("template", "").startswith("fluxo"))
         cenas.append(Cena(i, fala, campos.get("midia", ""), campos.get("texto-na-tela", ""), visuais,
                           {k: campos[k] for k in EXTRAS if k in campos}, ancoras))
     if not cenas:
@@ -442,7 +451,9 @@ def montar_mapa_final(mapa_mp4: Path, narracao: Path, sfx: Path, musica, total, 
         entradas += ["-stream_loop", "-1", "-i", musica]
     fontsdir = (AQUI / cfg["fonte"]["arquivo"]).parent
     filtros = [f"[0:v]ass=legendas.ass:fontsdir={fontsdir}[vout]",
-               "[1:a][2:a]amix=inputs=2:duration=first:normalize=0[voz]"]
+               "[1:a]asplit=2[v1][v2]",
+               "[2:a][v2]sidechaincompress=threshold=0.015:ratio=6:attack=8:release=300[sfxd]",
+               "[v1][sfxd]amix=inputs=2:duration=first:normalize=0[voz]"]
     if musica:
         filtros += ["[voz]asplit=2[fala][lado]",
                     f"[3:a]atrim=0:{total:.3f},asetpts=PTS-STARTPTS,afade=t=out:st={max(total - 1.2, 0):.3f}:d=1.2[mus]",
@@ -517,6 +528,7 @@ def main():
     p.add_argument("--whisper", default="small", help="modelo faster-whisper (tiny/base/small/medium)")
     p.add_argument("--fonte", default="Inter", help="fonte das legendas (precisa estar instalada)")
     p.add_argument("--refazer", action="store_true", help="ignora o cache de voz")
+    p.add_argument("--so-voz", action="store_true", help="so gera/atualiza a voz das cenas (cache) e para")
     p.add_argument("--motion", choices=["auto", "manual", "off"], default="auto",
                    help="graficos animados: auto (explicitos + automaticos), manual (so 'visual:'), off")
     a = p.parse_args()
@@ -531,8 +543,22 @@ def main():
         for f in trabalho.glob("cena_*"):
             f.unlink()
     print(f"== {meta.get('titulo', nome)}: {len(cenas)} cenas ==")
+    if meta.get("template", "").startswith("fluxo"):   # contas e roteiro conferidos ANTES da voz
+        import fluxo
+
+        calc = fluxo.calcular(meta)
+        falhas = [f"{n_}: {d_}" for n_, ok, d_ in fluxo.testar(calc, meta) if not ok]
+        if falhas:
+            sys.exit("Testes de numeros falharam:\n- " + "\n- ".join(falhas))
+        probs = fluxo.conferir_roteiro(cenas, calc)
+        if probs:
+            sys.exit("O roteiro diverge do calculo (nada foi ajustado; corrija o roteiro ou as entradas):\n- "
+                     + "\n- ".join(probs))
+        print("Numeros conferidos: testes ok e roteiro coerente com o calculo.")
 
     palavras = gerar_vozes(cenas, trabalho, a)
+    if a.so_voz:
+        return
 
     durs_audio = {c.n: duracao(trabalho / f"cena_{c.n:02d}.wav") for c in cenas}
     print("Duracoes:", ", ".join(f"cena {n}: {d:.1f}s" for n, d in durs_audio.items()))
@@ -548,6 +574,8 @@ def main():
         t += d - TRANS
     total = starts[-1] + durs[-1]
 
+    if meta.get("template", "").split()[0:1] == ["fluxo"]:
+        return fazer_fluxo(a, meta, cenas, palavras, offsets, starts, durs, total, trabalho, nome)
     if meta.get("template", "").split()[0:1] == ["mapa"]:
         return fazer_mapa(a, meta, cenas, palavras, offsets, starts, durs, total, trabalho, nome)
 
@@ -626,6 +654,43 @@ def fazer_mapa(a, meta, cenas, palavras, offsets, starts, durs, total, trabalho,
     montar_mapa_final(mapa_mp4, narracao, sfx, musica, total, destino, trabalho, cfg)
     print(f"Video: {destino} ({total:.1f}s). Rodando o QA...")
     qa.rodar_qa(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, a.whisper)
+
+
+def fazer_fluxo(a, meta, cenas, palavras, offsets, starts, durs, total, trabalho, nome):
+    import time
+
+    import yaml
+
+    import fluxo
+    import qa
+
+    cfg = yaml.safe_load((AQUI / "config.yaml").read_text(encoding="utf-8"))
+    calc = fluxo.calcular(meta)
+    t0 = time.time()
+    bruta = trabalho / "narracao_bruta.wav"
+    narracao = trabalho / "narracao.wav"
+    montar_narracao(cenas, trabalho, offsets, total, bruta)
+    normalizar_volume(bruta, narracao, LUFS_FALA)
+    grupos = construir_ass_mapa(cenas, palavras, offsets, trabalho / "legendas.ass", cfg)
+    spec = fluxo.planejar(cenas, palavras, offsets, starts, durs, total, calc, meta)
+    print(f"Fluxo: {len(spec['pecas1']) + len(spec['pecas2'])} quadrados animados, {len(spec['eventos'])} eventos ancorados")
+    mp4 = fluxo.renderizar(spec, trabalho)
+    t_render = time.time() - t0
+    sfx = trabalho / "sfx.wav"
+    fluxo.gerar_sons(spec["sons"], total, sfx)
+    musica = None
+    if meta.get("musica"):
+        cand = MUSICA / meta["musica"]
+        if cand.is_file():
+            musica = trabalho / "musica.wav"
+            normalizar_volume(cand, musica, LUFS_MUSICA)
+        else:
+            print(f"AVISO: musica '{meta['musica']}' nao encontrada em {MUSICA}; seguindo sem musica.")
+    destino = SAIDA / f"{nome}.mp4"
+    print("Montando o video final...")
+    montar_mapa_final(mp4, narracao, sfx, musica, total, destino, trabalho, cfg)
+    print(f"Video: {destino} ({total:.1f}s). Rodando o QA...")
+    qa.rodar_qa_fluxo(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, calc, a.whisper)
 
 
 if __name__ == "__main__":

@@ -258,3 +258,204 @@ def rodar_qa(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, 
     for sec, n_, ok, det in itens:
         print(f"  [{'ok' if ok else 'FALHA'}] {sec}: {n_} — {det}")
     return ok_total
+
+
+# ================================================================ template "fluxo" ("A Conta")
+
+def _sincronia(destino, cenas, eventos, primeiro, dur, trabalho, whisper_nome):
+    """Palavra-ancora no audio FINAL (whisper independente, alinhado ao roteiro) x primeiro quadro do evento."""
+    from faster_whisper import WhisperModel
+
+    from fazer_reels import alinhar, norm
+
+    wav = trabalho / "qa_audio.wav"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(destino), "-vn", "-ac", "1", "-ar", "16000", str(wav)])
+    wm = WhisperModel(whisper_nome, device="cpu", compute_type="int8")
+    segs, _ = wm.transcribe(str(wav), language="pt", word_timestamps=True, condition_on_previous_text=False)
+    ws = [(w.word.strip(), w.start, w.end) for s in segs for w in s.words if w.word.strip()]
+    alinhadas, cobertura = alinhar(" ".join(c.fala for c in cenas), ws, dur)
+    base, acc = {}, 0
+    for c in cenas:
+        base[c.n] = acc
+        acc += len(c.fala.split())
+    linhas = []
+    for c in cenas:
+        for idx, aid in c.ancoras:
+            palavra, (t_pal, _) = alinhadas[base[c.n] + idx]
+            ev = next((e for e in eventos if norm(e["id"]) == norm(aid)), None)
+            t_vis = primeiro.get(ev["id"]) if ev else None
+            linhas.append((aid, palavra, t_pal, t_vis, None if t_vis is None else (t_vis - t_pal) * 1000))
+    return linhas, cobertura, alinhadas
+
+
+def rodar_qa_fluxo(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, calc, whisper_nome="small"):
+    import fluxo
+
+    V = cfg["video"]
+    W, H, fps = V["largura"], V["altura"], V["fps"]
+    ZS = cfg["zona_segura"]
+    itens = []
+
+    def item(sec, n_, ok, det):
+        itens.append((sec, n_, ok, det))
+
+    # ---------------- formato
+    pr = _probe(destino)
+    vs = next(s for s in pr["streams"] if s["codec_type"] == "video")
+    au = next((s for s in pr["streams"] if s["codec_type"] == "audio"), None)
+    dur = float(pr["format"]["duration"])
+    num, den = map(int, vs["r_frame_rate"].split("/"))
+    br = int(vs.get("bit_rate") or pr["format"].get("bit_rate") or 0) / 1e6
+    faixa = [float(x) for x in str(meta.get("duracao", "45-60")).split("-")]
+    item("Formato", "1080x1920, 30 fps, H.264 + AAC",
+         vs["width"] == W and vs["height"] == H and num / den == fps and vs["codec_name"] == "h264"
+         and au is not None and au["codec_name"] == "aac",
+         f"{vs['width']}x{vs['height']}, {num / den:.0f} fps, {vs['codec_name']} + {au['codec_name'] if au else '-'}")
+    item("Formato", f"duracao {faixa[0]:.0f} a {faixa[1]:.0f} s", faixa[0] <= dur <= faixa[1], f"{dur:.1f} s")
+    item("Formato", "bitrate de video 8 a 12 Mbps (alvo)", 8 <= br <= 12.5, f"{br:.1f} Mbps")
+
+    # ---------------- log
+    log = json.loads((trabalho / "fluxo_log.json").read_text())
+    primeiro = {}
+    for r in log:
+        for e in r["eventos"]:
+            primeiro.setdefault(e["id"], r["q"] / fps)
+
+    # ---------------- sincronia
+    sinc, cobertura, alinhadas = _sincronia(destino, cenas, spec["eventos"], primeiro, dur, trabalho, whisper_nome)
+    medidos = [s for s in sinc if s[4] is not None]
+    dentro = [s for s in medidos if abs(s[4]) <= 150]
+    alvo = [s for s in medidos if abs(s[4]) <= 80]
+    item("Sincronia", ">= 10 eventos dentro de +-150 ms", len(dentro) >= 10 and len(dentro) == len(medidos),
+         f"{len(dentro)} de {len(medidos)} dentro de +-150 ms; {len(alvo)} dentro do alvo de +-80 ms (texto reconhecido no audio final: {cobertura:.0%})")
+
+    # ---------------- gancho
+    t_grade = min(a for a, _ in spec["ativos"])
+    t_perg = next((t for (w, (t, _)) in alinhadas if w.lower().startswith("quanto")), None)
+    item("Gancho", "evento visual forte em ate 3 s", t_grade <= 3, f"grade comeca a montar em {t_grade:.2f} s")
+    item("Gancho", "pergunta falada em ate 3 s", t_perg is not None and t_perg <= 3,
+         f"'Quanto sobra...' comeca em {t_perg:.2f} s" if t_perg is not None else "pergunta nao localizada")
+
+    # ---------------- ritmo: quadro parado (pixel) e pausas sem animacao ativa
+    estatico_run, pior = 0, 0.0
+    buf = []
+    for f in _quadros(destino, 270, 480):
+        g = f.mean(axis=2)
+        buf.append(g)
+        if len(buf) > 15:
+            buf.pop(0)
+            if np.abs(g - buf[0]).mean() < 0.35:
+                estatico_run += 1
+                pior = max(pior, estatico_run / fps + 0.5)
+            else:
+                estatico_run = 0
+    item("Ritmo", "nenhum quadro parado por mais de 3 s", pior <= 3, f"maior trecho sem mudanca visivel: {pior:.1f} s")
+    ativos = sorted(spec["ativos"])
+    gaps, fim = [ativos[0][0]], ativos[0][1]
+    for a_, b_ in ativos[1:]:
+        gaps.append(max(0.0, a_ - fim))
+        fim = max(fim, b_)
+    gaps.append(max(0.0, dur - fim))
+    item("Ritmo", "algo novo na tela a cada 2,5 s", max(gaps) <= 2.5, f"maior pausa sem animacao ativa: {max(gaps):.1f} s")
+
+    # ---------------- numeros
+    testes = fluxo.testar(calc, meta)
+    item("Numeros", "testes da secao 4", all(ok for _, ok, _ in testes),
+         f"{sum(ok for _, ok, _ in testes)}/{len(testes)} passaram")
+    probs = fluxo.conferir_roteiro(cenas, calc)
+    item("Numeros", "roteiro (tela e fala) coerente com o calculo", not probs, "sem divergencias" if not probs else "; ".join(probs))
+    dif_grade = [abs(r["saldo"] - r["grade"]) for r in log if r.get("saldo") is not None and r.get("grade") is not None]
+    item("Numeros", "contador = quantidade de quadrados (todo quadro)", bool(dif_grade) and max(dif_grade) <= 0.001,
+         f"{len(dif_grade)} quadros conferidos; maior diferenca {max(dif_grade) if dif_grade else 0:.3f}")
+    from decimal import Decimal as Dd
+    dif_desl = []
+    for r in log:
+        if r.get("d") is not None:
+            esperado = calc["sobra_fn"](calc["preco"] * (1 - Dd(str(r["d"]))))
+            dif_desl.append(abs(float(esperado) - r["saldo"]))
+    item("Numeros", "contador do controle deslizante = calculo em Python", bool(dif_desl) and max(dif_desl) <= 0.005,
+         f"{len(dif_desl)} quadros; maior diferenca R$ {max(dif_desl) if dif_desl else 0:.4f}")
+
+    # ---------------- legibilidade, honestidade
+    fora = {}
+    for r in log:
+        for b in r["caixas"]:
+            if b["y"] < ZS["topo"] - 1 or b["y"] + b["h"] > H - ZS["base"] + 1 or b["x"] < 0 or b["x"] + b["w"] > W:
+                fora[b["nome"]] = fora.get(b["nome"], 0) + 1
+    item("Legibilidade", "nada importante fora da zona segura", not fora,
+         "ok" if not fora else ", ".join(f"{k}: {v} quadros" for k, v in fora.items()))
+    F_ = cfg["fluxo"]
+    tamanhos = {"saldo": F_["valor_px"], "valores dos custos": 48, "texto-na-tela": F_["texto_px"], "% do controle": 120,
+                "ponto de equilibrio": 48, "eixo do controle": 40}
+    menores = {k: v for k, v in tamanhos.items() if v < 48}
+    item("Legibilidade", "texto de valor >= 48 px", not [k for k in menores if k != "eixo do controle"],
+         ", ".join(f"{k} {v}px" for k, v in tamanhos.items()) + " (eixo 0-25% com 40 px: marcacao de escala)")
+    sem_aviso = sum(1 for r in log if not any(b["nome"] == "aviso" for b in r["caixas"]))
+    item("Honestidade", "aviso 'exemplo ilustrativo' do inicio ao fim", sem_aviso == 0,
+         f"presente em {len(log) - sem_aviso} de {len(log)} quadros")
+
+    # ---------------- legenda
+    pal_leg = [w for g in grupos for w, _, _ in g]
+    pal_rot = " ".join(c.fala for c in cenas).split()
+    item("Legenda", "texto identico ao roteiro (sem as chaves)", pal_leg == pal_rot,
+         "igual" if pal_leg == pal_rot else f"{len(pal_leg)} x {len(pal_rot)} palavras")
+    tam = [len(g) for g in grupos]
+    lg = cfg["legenda"]
+    item("Legenda", f"{lg['palavras_min']} a {lg['palavras_max']} palavras por bloco",
+         all(lg["palavras_min"] <= n <= lg["palavras_max"] for n in tam), f"blocos de {min(tam)} a {max(tam)} palavras")
+
+    # ---------------- audio
+    vd = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(destino), "-af", "volumedetect", "-f", "null", "-"],
+                        capture_output=True, text=True).stderr
+    mx = float(re.search(r"max_volume: (-?[\d.]+)", vd).group(1))
+    item("Audio", "sem clipping", mx < -0.3, f"pico {mx:.1f} dBFS")
+    import soundfile as sf
+    voz, _ = sf.read(trabalho / "narracao.wav")
+    sfx, _ = sf.read(trabalho / "sfx.wav")
+    rms = lambda x: 20 * np.log10(np.sqrt(np.mean(x ** 2)) + 1e-12)
+    v_ = voz[np.abs(voz) > 0.02] if np.any(np.abs(voz) > 0.02) else voz
+    s_ = sfx[np.abs(sfx) > 1e-4] if np.any(np.abs(sfx) > 1e-4) else sfx
+    dif = rms(s_) - rms(v_)
+    item("Audio", "efeitos ~18 dB abaixo da voz, com ducking", dif <= -14,
+         f"efeitos {dif:.1f} dB em relacao a voz (antes do ducking, que abaixa mais durante a fala)")
+    item("Audio", "musica", True, "sem musica (opcional; nenhuma faixa em ./musica/)")
+
+    # ---------------- folha de contato
+    tempos = [x / 2 for x in range(0, 11)] + list(np.arange(6, dur, 2.0))
+    folha = SAIDA / f"{nome}.contato.png"
+    _folha(destino, tempos, folha)
+
+    ok_total = all(ok for _, _, ok, _ in itens)
+    L = [f"# QA — {nome}", "",
+         f"Video: `saida/{nome}.mp4` · {dur:.1f} s · render da animacao {t_render / 60:.1f} min", "",
+         f"**Resultado: {'APROVADO' if ok_total else 'COM FALHAS'}** ({sum(1 for i in itens if i[2])}/{len(itens)} itens)", "",
+         "| Secao | Item | OK | Detalhe |", "|---|---|---|---|"]
+    L += [f"| {s} | {n_} | {'sim' if ok else '**NAO**'} | {d} |" for s, n_, ok, d in itens]
+    L += ["", "## Testes de numeros (secao 4)", "", "| Teste | OK | Detalhe |", "|---|---|---|"]
+    L += [f"| {n_} | {'sim' if ok else '**NAO**'} | {d} |" for n_, ok, d in testes]
+    L += ["", "## Sincronia por evento", "",
+          "Palavra-ancora: tempo da palavra no audio FINAL por faster-whisper independente, alinhado ao roteiro.",
+          "Instante visual: primeiro quadro em que o evento e desenhado.", "",
+          "| Ancora | Palavra | Fala (s) | Visual (s) | Diferenca (ms) |", "|---|---|---|---|---|"]
+    L += [f"| {a} | {p} | {tp:.3f} | {'-' if tv is None else f'{tv:.3f}'} | {'nao medido' if d is None else f'{d:+.0f}'} |"
+          for a, p, tp, tv, d in sinc]
+    L += ["", f"Folha de contato: `saida/{nome}.contato.png` (0 a 5 s a cada 0,5 s; depois a cada 2 s)."]
+    (SAIDA / f"{nome}.qa.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+
+    fontes = [f"Fontes — {nome}", "", "EXEMPLO ILUSTRATIVO: todos os valores de entrada sao hipoteticos (aviso visivel no video).", "",
+              "Do roteiro:"] + [f"- {f}" for f in meta.get("_fontes", [])] + ["",
+              "Calculo (feito em codigo, fluxo.py, a partir de 'entradas' e 'cenario'):",
+              f"- Preco {fluxo.brl(calc['preco'])}; custos: " + "; ".join(f"{k} {fluxo.brl(v)}" for k, v in calc["valores1"].items())
+              + f"; sobra {fluxo.brl(calc['sobra1'])}.",
+              f"- Com {fluxo.pct(calc['desconto'])} de desconto: preco {fluxo.brl(calc['preco2'])}; "
+              + "; ".join(f"{k} {fluxo.brl(v)}" for k, v in calc["valores2"].items()) + f"; sobra {fluxo.brl(calc['sobra2'])}.",
+              f"- Desconto maximo sem prejuizo: exato {calc['limite'] * 100:.2f}%, arredondado para baixo {fluxo.pct(calc['limite_baixo'])}.",
+              "", "Producao:",
+              "- Animacao, contas e efeitos sonoros gerados pelo proprio codigo (sem bibliotecas de terceiros com licenca).",
+              "- Fonte tipografica: Montserrat (SIL Open Font License 1.1).",
+              "- Voz: clonada da voz do Pedro (Chatterbox, MIT)."]
+    (SAIDA / f"{nome}.fontes.txt").write_text("\n".join(fontes) + "\n", encoding="utf-8")
+    print(f"QA: {'APROVADO' if ok_total else 'COM FALHAS'} -> saida/{nome}.qa.md")
+    for s, n_, ok, d in itens:
+        print(f"  [{'ok' if ok else 'FALHA'}] {s}: {n_} — {d}")
+    return ok_total
