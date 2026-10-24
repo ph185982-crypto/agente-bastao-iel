@@ -1,0 +1,345 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+#stage { position: relative; width: 1080px; height: 1920px; overflow: hidden;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; color: #fff; }
+#stage div, #stage svg { position: absolute; box-sizing: border-box; }
+.txt { font-weight: 900; letter-spacing: -0.02em; text-shadow: 0 6px 24px rgba(0,0,0,.55); }
+.emo { font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif; line-height: 1; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const SPEC = /*__SPEC__*/null;
+const W = 1080, H = 1920, CX = 540;
+const stage = document.getElementById('stage');
+
+// ---------------------------------------------------------------- utilidades
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const E = {
+  out3: x => 1 - Math.pow(1 - x, 3),
+  in3: x => x * x * x,
+  inOut: x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2,
+  back: x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); },
+  elastic: x => x <= 0 ? 0 : x >= 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - .75) * (2 * Math.PI / 3)) + 1,
+};
+const pr = (lt, t0, d) => clamp((lt - t0) / d);
+const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+function D(parent, css, html) {
+  const d = document.createElement('div');
+  d.style.cssText = css || '';
+  if (html !== undefined) d.innerHTML = html;
+  parent.appendChild(d);
+  return d;
+}
+const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+const fmt = n => Math.round(n).toLocaleString('pt-BR');
+const ZC = 800; // centro vertical da zona de graficos
+const dtItem = (it, k) => (it.dt !== undefined ? it.dt : k * .75);
+
+// ---------------------------------------------------------------- fundo animado por cena
+const bgLayer = D(stage, 'left:0;top:0;width:1080px;height:1920px');
+const fgLayer = D(stage, 'left:0;top:0;width:1080px;height:1920px');
+const topLayer = D(stage, 'left:0;top:0;width:1080px;height:1920px');
+
+function criarFundo(cena, idx) {
+  const root = D(bgLayer, 'left:0;top:0;width:1080px;height:1920px');
+  const rnd = mulberry(1000 + idx * 77);
+  const ac = cena.accent, cheio = cena.fundo === 'cheio';
+  const blobs = [0, 1, 2].map(k => D(root,
+    `width:760px;height:760px;border-radius:50%;background:radial-gradient(circle, ${rgba(ac, cheio ? .34 : .16)} 0%, transparent 68%)`));
+  let grid = null;
+  if (cheio) grid = D(root, 'left:0;top:-90px;width:1080px;height:2100px;opacity:.9;' +
+    'background-image:linear-gradient(rgba(255,255,255,.055) 2px,transparent 2px),linear-gradient(90deg,rgba(255,255,255,.055) 2px,transparent 2px);background-size:90px 90px');
+  if (!cheio) {
+    D(root, 'left:0;top:0;width:1080px;height:1920px;background:linear-gradient(rgba(0,0,0,.55) 0%,transparent 26%),linear-gradient(transparent 52%,rgba(0,0,0,.62) 100%)');
+  }
+  const nForm = cheio ? 15 : 6, forms = [];
+  for (let k = 0; k < nForm; k++) {
+    const tipo = ['ring', 'dot', 'square', 'plus'][Math.floor(rnd() * 4)];
+    const size = 34 + rnd() * 90;
+    const col = rnd() < .6 ? ac : '#ffffff';
+    const alpha = (cheio ? .16 : .10) + rnd() * .12;
+    const el = D(root, `width:${size}px;height:${size}px;opacity:${alpha}`);
+    if (tipo === 'ring') el.style.cssText += `;border:${Math.max(5, size / 12)}px solid ${col};border-radius:50%`;
+    if (tipo === 'dot') el.style.cssText += `;background:${col};border-radius:50%;width:${size / 3}px;height:${size / 3}px`;
+    if (tipo === 'square') el.style.cssText += `;border:${Math.max(5, size / 12)}px solid ${col};border-radius:${size / 6}px`;
+    if (tipo === 'plus') {
+      D(el, `left:0;top:${size * .4}px;width:${size}px;height:${size * .2}px;background:${col};border-radius:99px`);
+      D(el, `left:${size * .4}px;top:0;width:${size * .2}px;height:${size}px;background:${col};border-radius:99px`);
+    }
+    forms.push({ el, x: rnd() * (W - 100), y0: rnd() * (H + 300), v: 22 + rnd() * 46, rot: (rnd() - .5) * 90, ph: rnd() * 6.28, size });
+  }
+  return {
+    cena, root,
+    update(t) {
+      const lt = t - cena.start, dur = cena.end - cena.start;
+      const vis = lt >= -0.01 && lt <= dur + 0.01;
+      root.style.display = vis ? 'block' : 'none';
+      if (!vis) return;
+      root.style.opacity = Math.min(clamp(lt / .22), clamp((dur - lt) / .22));
+      blobs.forEach((b, k) => {
+        const x = [160, 880, 520][k] + Math.sin(t * .55 + k * 2.1) * 150 - 380;
+        const y = [380, 1180, 1620][k] + Math.cos(t * .45 + k * 1.7) * 130 - 380;
+        b.style.transform = `translate(${x}px,${y}px) scale(${1 + .08 * Math.sin(t * 1.3 + k)})`;
+      });
+      if (grid) grid.style.transform = `translateY(${(t * 34) % 90}px)`;
+      forms.forEach(f => {
+        const y = ((f.y0 - t * f.v) % (H + 240) + (H + 240)) % (H + 240) - 120;
+        f.el.style.transform = `translate(${f.x + Math.sin(t * .8 + f.ph) * 22}px,${y}px) rotate(${t * f.rot}deg)`;
+      });
+    },
+  };
+}
+
+// ---------------------------------------------------------------- elementos
+function envolver(e, construtor) {
+  const root = D(fgLayer, 'left:0;top:0;width:1080px;height:1920px');
+  const upd = construtor(root, e);
+  return {
+    e, root,
+    update(t) {
+      const lt = t - e.t0;
+      const vivo = t >= e.t0 - .01 && t <= e.t1 + .01;
+      root.style.display = vivo ? 'block' : 'none';
+      if (!vivo) return;
+      const a = Math.min(clamp(lt / .16), clamp((e.t1 - t) / .3));
+      root.style.opacity = a;
+      upd(lt, e.t1 - t, a);
+    },
+  };
+}
+
+const TIPOS = {};
+
+// ---- titulo: palavras que "pulam" numa faixa no topo
+TIPOS.titulo = (root, e) => {
+  const box = D(root, `left:70px;top:150px;width:940px;padding:26px 36px 34px;border-radius:44px;` +
+    `background:linear-gradient(135deg, rgba(8,10,22,.78), rgba(8,10,22,.58));border:3px solid ${rgba(e.accent, .55)};` +
+    `text-align:center;box-shadow:0 18px 60px rgba(0,0,0,.4)`);
+  const palavras = String(e.texto).split(/\s+/).filter(Boolean);
+  const spans = palavras.map(p => {
+    const s = document.createElement('span');
+    s.className = 'txt';
+    s.style.cssText = 'display:inline-block;font-size:76px;line-height:1.12;margin:0 .16em;text-transform:uppercase;will-change:transform';
+    s.textContent = p;
+    box.appendChild(s);
+    return s;
+  });
+  const barra = D(box, `left:50%;bottom:14px;height:10px;border-radius:9px;background:${e.accent};transform:translateX(-50%)`);
+  return lt => {
+    spans.forEach((s, k) => {
+      const p = E.back(pr(lt, .05 + k * .09, .45));
+      s.style.transform = `translateY(${(1 - p) * 60}px) scale(${.55 + .45 * p})`;
+      s.style.opacity = clamp(pr(lt, .05 + k * .09, .2));
+    });
+    barra.style.width = (260 * E.out3(pr(lt, .3 + palavras.length * .06, .5))) + 'px';
+    box.style.transform = `translateY(${(1 - E.out3(pr(lt, 0, .35))) * -40}px)`;
+  };
+};
+
+// ---- destaque: frase com marca-texto varrendo
+TIPOS.destaque = (root, e) => {
+  const box = D(root, 'left:80px;top:170px;width:920px;text-align:center');
+  const sp = document.createElement('span');
+  sp.className = 'txt';
+  sp.textContent = e.texto;
+  sp.style.cssText = `font-size:84px;line-height:1.38;color:#0b0b14;text-shadow:none;padding:4px 18px;` +
+    `-webkit-box-decoration-break:clone;box-decoration-break:clone;` +
+    `background:linear-gradient(${e.accent},${e.accent}) no-repeat 0 100%/0% 100%`;
+  box.appendChild(sp);
+  return lt => {
+    sp.style.backgroundSize = (100 * E.inOut(pr(lt, .12, .55))) + '% 100%';
+    box.style.transform = `translateY(${(1 - E.out3(pr(lt, 0, .4))) * 40}px)`;
+  };
+};
+
+// ---- numero: anel + numero grande (contagem ou "pop" para anos)
+TIPOS.numero = (root, e) => {
+  const cy = ZC - 30, R = 240;
+  const glow = D(root, `left:${CX - 420}px;top:${cy - 420}px;width:840px;height:840px;border-radius:50%;` +
+    `background:radial-gradient(circle, ${rgba(e.accent, .42)} 0%, transparent 66%)`);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', 620); svg.setAttribute('height', 620);
+  svg.style.cssText = `left:${CX - 310}px;top:${cy - 310}px`;
+  const C = 2 * Math.PI * R;
+  svg.innerHTML = `<circle cx="310" cy="310" r="${R}" fill="rgba(8,10,22,.55)" stroke="rgba(255,255,255,.14)" stroke-width="16"/>` +
+    `<circle id="arco" cx="310" cy="310" r="${R}" fill="none" stroke="${e.accent}" stroke-width="16" stroke-linecap="round" ` +
+    `stroke-dasharray="${C}" stroke-dashoffset="${C}" transform="rotate(-90 310 310)"/>` +
+    `<circle id="orb" cx="310" cy="310" r="${R + 34}" fill="none" stroke="${rgba(e.accent, .55)}" stroke-width="5" stroke-dasharray="4 26" stroke-linecap="round"/>`;
+  root.appendChild(svg);
+  const arco = svg.querySelector('#arco'), orb = svg.querySelector('#orb');
+  const valor = Number(e.valor);
+  const txt = String(e.valor);
+  const tam = txt.length <= 3 ? 250 : txt.length === 4 ? 210 : 160;
+  const num = D(root, `left:${CX - 330}px;top:${cy - tam * .62}px;width:660px;text-align:center;font-size:${tam}px;line-height:1.1;` +
+    `background:linear-gradient(180deg,#fff 20%,${e.accent} 100%);-webkit-background-clip:text;background-clip:text;color:transparent`);
+  num.className = 'txt';
+  const rot = e.rotulo ? D(root, `left:90px;top:${cy + R + 36}px;width:900px;text-align:center;font-size:58px;font-weight:800;` +
+    `color:#fff;text-shadow:0 4px 18px rgba(0,0,0,.7)`, esc(e.rotulo)) : null;
+  return lt => {
+    const entra = E.back(pr(lt, 0, .5));
+    svg.style.transform = `scale(${.5 + .5 * entra})`;
+    glow.style.opacity = .7 + .3 * Math.sin(lt * 3);
+    glow.style.transform = `scale(${1 + .05 * Math.sin(lt * 3)})`;
+    arco.setAttribute('stroke-dashoffset', C * (1 - E.out3(pr(lt, .1, 1.1))));
+    orb.setAttribute('transform', `rotate(${lt * 40} 310 310)`);
+    let shown;
+    if (e.modo === 'ano') shown = txt; else shown = fmt(valor * E.out3(pr(lt, .1, 1.1))) + (e.sufixo || '');
+    num.textContent = shown;
+    num.style.transform = `scale(${.4 + .6 * entra}) rotate(${(1 - entra) * -6}deg)`;
+    if (rot) { rot.style.opacity = pr(lt, .35, .3); rot.style.transform = `translateY(${(1 - E.out3(pr(lt, .35, .4))) * 30}px)`; }
+  };
+};
+
+// ---- icone: emoji grande com aneis pulsando e orbita de pontos
+TIPOS.icone = (root, e) => {
+  const cy = ZC - 20;
+  const rings = [0, 1, 2].map(() => D(root, `border:6px solid ${e.accent};border-radius:50%;left:0;top:0;width:100px;height:100px`));
+  const dots = Array.from({ length: 9 }, (_, k) => D(root, `width:${k % 3 === 0 ? 26 : 16}px;height:${k % 3 === 0 ? 26 : 16}px;border-radius:50%;background:${k % 2 ? '#fff' : e.accent}`));
+  const emo = D(root, `left:${CX - 300}px;top:${cy - 230}px;width:600px;text-align:center;font-size:400px`, esc(e.emoji));
+  emo.className = 'emo';
+  const rot = e.rotulo ? D(root, `left:140px;top:${cy + 290}px;width:800px;text-align:center;font-size:56px;font-weight:800;padding:12px 28px;` +
+    `border-radius:99px;background:rgba(8,10,22,.7);border:3px solid ${rgba(e.accent, .6)};width:max-content;left:50%`, esc(e.rotulo)) : null;
+  return lt => {
+    const p = E.elastic(pr(lt, 0, .8));
+    emo.style.transform = `translateY(${Math.sin(lt * 2.6) * 14}px) scale(${.15 + .85 * p}) rotate(${(1 - p) * -25}deg)`;
+    rings.forEach((r, k) => {
+      const ph = ((lt * .75 + k / 3) % 1), s = 160 + ph * 520;
+      r.style.cssText += `;width:${s}px;height:${s}px;left:${CX - s / 2}px;top:${cy - s / 2}px;opacity:${(1 - ph) * .55 * pr(lt, .1, .3)}`;
+    });
+    dots.forEach((d, k) => {
+      const ang = lt * 1.1 + k * 2 * Math.PI / dots.length, rr = 330 + 22 * Math.sin(lt * 2 + k);
+      d.style.transform = `translate(${CX + Math.cos(ang) * rr - 10}px,${cy + Math.sin(ang) * rr * .92 - 10}px) scale(${E.back(pr(lt, .3 + k * .03, .4))})`;
+    });
+    if (rot) { rot.style.transform = `translate(-50%, ${(1 - E.out3(pr(lt, .4, .4))) * 30}px)`; rot.style.opacity = pr(lt, .4, .3); }
+  };
+};
+
+// ---- linha-do-tempo vertical
+TIPOS['linha-do-tempo'] = (root, e) => {
+  const itens = e.itens.slice(0, 4), n = itens.length;
+  const passo = n > 1 ? 178 : 0, y0 = ZC - (n - 1) * passo / 2;
+  const x = 150;
+  const linha = D(root, `left:${x - 5}px;top:${y0}px;width:10px;height:0px;border-radius:9px;background:linear-gradient(${e.accent},${rgba(e.accent, .35)})`);
+  const els = itens.map((it, k) => {
+    const y = y0 + k * passo;
+    const g = D(root, `left:0;top:0;width:1080px;height:1920px`);
+    D(g, `left:${x - 26}px;top:${y - 26}px;width:52px;height:52px;border-radius:50%;background:${e.accent};border:8px solid #0b0d1a;box-shadow:0 0 0 5px ${rgba(e.accent, .4)}`);
+    D(g, `left:${x + 60}px;top:${y - 56}px;font-size:84px;color:${e.accent};line-height:1`, esc(it.ano)).className = 'txt';
+    D(g, `left:${x + 62}px;top:${y + 34}px;width:780px;font-size:52px;font-weight:700;line-height:1.15;text-shadow:0 4px 16px rgba(0,0,0,.7)`, esc(it.texto));
+    return g;
+  });
+  return lt => {
+    let h = 0;
+    itens.forEach((it, k) => { if (k > 0) h += passo * E.out3(pr(lt, .05 + dtItem(it, k) , .6)); });
+    linha.style.height = h + 'px';
+    els.forEach((g, k) => {
+      const t0 = .15 + dtItem(itens[k], k);
+      g.style.opacity = clamp(pr(lt, t0, .25));
+      g.style.transform = `translateX(${(1 - E.back(pr(lt, t0, .5))) * -140}px)`;
+    });
+  };
+};
+
+// ---- lista: cartoes que deslizam
+TIPOS.lista = (root, e) => {
+  const itens = e.itens.slice(0, 4), n = itens.length, h = 138, gap = 30;
+  const y0 = ZC - (n * h + (n - 1) * gap) / 2;
+  const cards = itens.map((t, k) => {
+    const c = D(root, `left:90px;top:${y0 + k * (h + gap)}px;width:900px;height:${h}px;border-radius:40px;` +
+      `background:linear-gradient(135deg, rgba(8,10,22,.82), rgba(8,10,22,.62));border:3px solid ${rgba(e.accent, .55)};` +
+      `box-shadow:0 16px 46px rgba(0,0,0,.4)`);
+    D(c, `left:26px;top:27px;width:80px;height:80px;border-radius:50%;background:${e.accent};color:#0b0b14;font-size:44px;font-weight:900;` +
+      `display:flex;align-items:center;justify-content:center`, String(k + 1));
+    D(c, `left:132px;top:0;width:740px;height:${h}px;display:flex;align-items:center;font-size:54px;font-weight:800;line-height:1.1`, esc(t.texto));
+    return c;
+  });
+  return lt => cards.forEach((c, k) => {
+    const t0 = .12 + (itens[k].dt !== undefined ? itens[k].dt : k * .4);
+    c.style.opacity = clamp(pr(lt, t0, .25));
+    c.style.transform = `translateX(${(1 - E.back(pr(lt, t0, .55))) * 1000}px)`;
+  });
+};
+
+// ---- comparacao: dois cartoes + VS
+TIPOS.comparacao = (root, e) => {
+  const mk = (txt, x, cor, from) => {
+    const c = D(root, `left:${x}px;top:${ZC - 270}px;width:430px;height:540px;border-radius:48px;` +
+      `background:linear-gradient(160deg, rgba(8,10,22,.86), rgba(8,10,22,.62));border:5px solid ${cor};box-shadow:0 20px 60px rgba(0,0,0,.45);` +
+      `display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;font-size:68px;font-weight:900;line-height:1.1;color:${cor}`, esc(txt));
+    c.className = 'txt'; c.dataset.from = from;
+    return c;
+  };
+  const a = mk(e.a, 70, e.accent, -1), b = mk(e.b, 580, e.accent2 || '#ffffff', 1);
+  const vs = D(root, `left:${CX - 80}px;top:${ZC - 80}px;width:160px;height:160px;border-radius:50%;background:${e.accent};color:#0b0b14;` +
+    `font-size:64px;font-weight:900;display:flex;align-items:center;justify-content:center;border:10px solid #0b0d1a;box-shadow:0 10px 36px rgba(0,0,0,.5)`, 'VS');
+  return lt => {
+    [a, b].forEach((c, k) => {
+      const p = E.back(pr(lt, .08, .55));
+      c.style.opacity = clamp(pr(lt, .08, .25));
+      c.style.transform = `translateX(${(1 - p) * (k ? 700 : -700)}px)`;
+    });
+    vs.style.transform = `scale(${E.elastic(pr(lt, .55, .7))}) rotate(${(1 - E.out3(pr(lt, .55, .7))) * 90}deg)`;
+  };
+};
+
+// ---- grafico de barras horizontais
+TIPOS.grafico = (root, e) => {
+  const itens = e.itens.slice(0, 5), n = itens.length, passo = 150;
+  const y0 = ZC - (n * passo) / 2 + 10, max = Math.max(...itens.map(i => i.valor), 1);
+  const rows = itens.map((it, k) => {
+    const y = y0 + k * passo;
+    const g = D(root, 'left:0;top:0;width:1080px;height:1920px');
+    D(g, `left:90px;top:${y}px;width:640px;font-size:44px;font-weight:800;text-shadow:0 4px 14px rgba(0,0,0,.7)`, esc(it.rotulo));
+    const val = D(g, `left:690px;top:${y}px;width:300px;text-align:right;font-size:44px;font-weight:900;color:${e.accent}`, '0');
+    D(g, `left:90px;top:${y + 62}px;width:900px;height:44px;border-radius:22px;background:rgba(255,255,255,.16)`);
+    const bar = D(g, `left:90px;top:${y + 62}px;width:0px;height:44px;border-radius:22px;background:linear-gradient(90deg,${rgba(e.accent, .7)},${e.accent});box-shadow:0 0 24px ${rgba(e.accent, .6)}`);
+    return { g, val, bar, it };
+  });
+  return lt => rows.forEach((r, k) => {
+    const t0 = .15 + (r.it.dt !== undefined ? r.it.dt : k * .3);
+    const p = E.out3(pr(lt, t0, .9));
+    r.g.style.opacity = clamp(pr(lt, t0, .2));
+    r.bar.style.width = (900 * (r.it.valor / max) * p) + 'px';
+    r.val.textContent = fmt(r.it.valor * p) + (r.it.sufixo || '');
+  });
+};
+
+// ---------------------------------------------------------------- montagem da cena
+const fundos = SPEC.cenas.map((c, i) => criarFundo(c, i));
+const elementos = SPEC.elementos.map(e => envolver(e, TIPOS[e.tipo]));
+
+// barra de progresso do video (retencao) + cortinas nas trocas de cena
+const progTrilho = D(topLayer, `left:60px;top:72px;width:960px;height:10px;border-radius:9px;background:rgba(255,255,255,.2)`);
+const progFill = D(topLayer, `left:60px;top:72px;width:0px;height:10px;border-radius:9px;background:#fff;box-shadow:0 0 14px rgba(255,255,255,.7)`);
+const cortinas = SPEC.cortes.map(c => ({
+  c, el: D(topLayer, `left:0;top:-200px;width:420px;height:2400px;background:linear-gradient(90deg,transparent,${c.accent} 35%,#fff 50%,${c.accent} 65%,transparent);opacity:.92`),
+}));
+
+window.seek = function (t, cam) {
+  // cam: 'bg' (so o fundo), 'fg' (so elementos/cortinas/progresso) ou nada (tudo)
+  bgLayer.style.display = cam === 'fg' ? 'none' : 'block';
+  fgLayer.style.display = topLayer.style.display = cam === 'bg' ? 'none' : 'block';
+  fundos.forEach(f => f.update(t));
+  elementos.forEach(x => x.update(t));
+  progFill.style.width = (960 * clamp(t / SPEC.total)) + 'px';
+  cortinas.forEach(({ c, el }) => {
+    const p = (t - (c.t - .14)) / .5;
+    if (p <= 0 || p >= 1) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.style.transform = `translateX(${-520 + E.inOut(p) * (W + 620)}px) skewX(-12deg)`;
+  });
+  return true;
+};
+seek(0);
+</script>
+</body>
+</html>

@@ -17,7 +17,7 @@ import subprocess
 import sys
 import unicodedata
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 warnings.filterwarnings("ignore")
@@ -43,6 +43,7 @@ class Cena:
     fala: str
     midia: str = ""
     tela: str = ""
+    visuais: list = field(default_factory=list)  # linhas 'visual:' (ver motion.py)
 
 
 # ---------------------------------------------------------------- roteiro
@@ -60,17 +61,23 @@ def parse_roteiro(caminho: Path):
     blocos = re.split(r"^##\s*Cena[^\n]*$", texto, flags=re.M | re.I)[1:]
     cenas = []
     for i, bloco in enumerate(blocos, 1):
-        campos, atual = {}, None
+        campos, atual, visuais = {}, None, []
         for linha in bloco.strip().splitlines():
-            k = re.match(r"^(m[ií]dia|texto-na-tela|fala)\s*:\s*(.*)$", linha.strip(), re.I)
+            k = re.match(r"^(m[ií]dia|texto-na-tela|fala|visual)\s*:\s*(.*)$", linha.strip(), re.I)
             if k:
                 atual = k.group(1).lower().replace("í", "i")
-                campos[atual] = k.group(2).strip()
+                if atual == "visual":
+                    visuais.append(k.group(2).strip())
+                else:
+                    campos[atual] = k.group(2).strip()
+            elif atual == "visual" and linha.strip():
+                visuais[-1] += " " + linha.strip()
             elif atual and linha.strip():
                 campos[atual] += " " + linha.strip()
         if not campos.get("fala"):
             sys.exit(f"Erro: a Cena {i} do roteiro nao tem 'fala:'.")
-        cenas.append(Cena(i, campos["fala"], campos.get("midia", ""), campos.get("texto-na-tela", "")))
+        cenas.append(Cena(i, campos["fala"], campos.get("midia", ""), campos.get("texto-na-tela", ""),
+                          visuais))
     if not cenas:
         sys.exit("Erro: nenhuma '## Cena N' encontrada no roteiro.")
     return meta, cenas
@@ -283,7 +290,8 @@ def limpar(p: str) -> str:
     return p.strip(" ,").upper().replace("{", "(").replace("}", ")")
 
 
-def construir_ass(cenas, palavras, offsets, starts, durs, usou_midia, args, destino: Path):
+def construir_ass(cenas, palavras, offsets, starts, durs, usou_midia, args, destino: Path,
+                  com_motion=False):
     cab = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {W}
@@ -307,6 +315,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         chave = c.tela
         if not usou_midia[i] and not chave:
             chave = " ".join(c.fala.split()[:5]).rstrip(".,;:")
+        if com_motion:
+            chave = ""  # o texto-na-tela vira o titulo animado da camada de motion
         if chave:
             estilo = "Tela" if usou_midia[i] else "Chave"
             ev.append(f"Dialogue: 0,{tempo_ass(visivel_ini)},{tempo_ass(visivel_fim)},{estilo},,0,0,0,,"
@@ -339,7 +349,8 @@ def normalizar_volume(origem: Path, destino: Path, lufs: float):
            f"loudnorm=I={lufs}:TP=-1.5:LRA=11,aresample=44100", "-ac", "1", destino])
 
 
-def montar_video(videos, narracao: Path, musica, total, starts, destino: Path, trabalho: Path):
+def montar_video(videos, narracao: Path, musica, total, starts, destino: Path, trabalho: Path,
+                 motion: tuple | None = None):
     entradas = []
     for v in videos:
         entradas += ["-i", v]
@@ -347,11 +358,20 @@ def montar_video(videos, narracao: Path, musica, total, starts, destino: Path, t
     i_nar = len(videos)
     if musica:
         entradas += ["-stream_loop", "-1", "-i", musica]
+    if motion:  # (fundo, elementos): WebM VP9 com alpha, precisa do decodificador libvpx
+        i_motion = i_nar + 1 + (1 if musica else 0)
+        for arq in motion:
+            entradas += ["-c:v", "libvpx-vp9", "-i", arq]
     filtros, ult = [], "0:v"
     for k in range(1, len(videos)):
         saida = f"v{k}"
         filtros.append(f"[{ult}][{k}:v]xfade=transition=fade:duration={TRANS}:offset={starts[k]:.3f}[{saida}]")
         ult = saida
+    if motion:  # motion graphics entre o video e as legendas
+        filtros.append(f"[{i_motion}:v]scale={W}:{H}:flags=bicubic,format=rgba[mbg]")
+        filtros.append(f"[{ult}][mbg]overlay=format=auto:shortest=0[vbg]")
+        filtros.append(f"[vbg][{i_motion + 1}:v]overlay=format=auto:shortest=0[vmot]")
+        ult = "vmot"
     filtros.append(f"[{ult}]ass=legendas.ass[vout]")
     if musica:
         i_mus = i_nar + 1
@@ -382,6 +402,8 @@ def main():
     p.add_argument("--whisper", default="small", help="modelo faster-whisper (tiny/base/small/medium)")
     p.add_argument("--fonte", default="Inter", help="fonte das legendas (precisa estar instalada)")
     p.add_argument("--refazer", action="store_true", help="ignora o cache de voz")
+    p.add_argument("--motion", choices=["auto", "manual", "off"], default="auto",
+                   help="graficos animados: auto (explicitos + automaticos), manual (so 'visual:'), off")
     a = p.parse_args()
 
     if not a.roteiro.is_file():
@@ -422,7 +444,17 @@ def main():
     narracao = trabalho / "narracao.wav"
     montar_narracao(cenas, trabalho, offsets, total, bruta)
     normalizar_volume(bruta, narracao, LUFS_FALA)
-    construir_ass(cenas, palavras, offsets, starts, durs, usou, a, trabalho / "legendas.ass")
+    com_motion = a.motion != "off"
+    construir_ass(cenas, palavras, offsets, starts, durs, usou, a, trabalho / "legendas.ass",
+                  com_motion=com_motion)
+
+    motion_mov = None
+    if com_motion:
+        import motion
+
+        spec = motion.planejar(cenas, palavras, offsets, starts, durs, usou, total, a.motion)
+        print(f"Motion: {len(spec['elementos'])} elementos animados em {len(cenas)} cenas")
+        motion_mov = motion.renderizar(spec, trabalho / "motion.mov", FPS)
 
     musica = None
     if meta.get("musica"):
@@ -436,7 +468,7 @@ def main():
     SAIDA.mkdir(exist_ok=True)
     destino = SAIDA / f"{nome}.mp4"
     print("Montando o video final...")
-    montar_video(videos, narracao, musica, total, starts, destino, trabalho)
+    montar_video(videos, narracao, musica, total, starts, destino, trabalho, motion_mov)
     print(f"\nPronto: {destino} ({total:.1f}s)")
 
 
