@@ -1,0 +1,287 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const D = /*__DADOS__*/null;
+const GEO = /*__GEO__*/null;
+const S = D.spec, C = S.cfg;
+const W = S.w, H = S.h, FY = H * 0.44;           // ponto focal um pouco acima do meio (legenda embaixo)
+const cv = document.getElementById('c');
+cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+const FONTE = 'MontBI';
+const ZS = C.zona_segura, LEG_Y = C.legenda.posicao_y * H;
+const FAIXA_LEGENDA = [LEG_Y - 95, LEG_Y + 95];   // rotulos nao entram na faixa da legenda
+
+// ---------------------------------------------------------------- utilidades
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const inOut = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const out3 = x => 1 - Math.pow(1 - x, 3);
+const back = x => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+
+// ---------------------------------------------------------------- camera
+function camBase(k, t) {
+  // camera k depois de chegar: deriva lenta de zoom (o mapa nunca fica parado)
+  const c = S.cameras[k];
+  const dt = Math.max(0, t - (c.t + c.dur));
+  return { cx: c.cx, cy: c.cy, escala: c.escala * (1 + C.mapa.deriva_zoom * dt) };
+}
+function camAt(t) {
+  let k = 0;
+  for (let i = 0; i < S.cameras.length; i++) if (S.cameras[i].t <= t) k = i;
+  const c = S.cameras[k];
+  if (k === 0 || t >= c.t + c.dur) return camBase(k, t);
+  const de = camAt(c.t - 1e-6), p = inOut(clamp((t - c.t) / c.dur));
+  const le = Math.log(de.escala), lp = Math.log(c.escala);
+  // trajeto "voando": abre um pouco no meio quando o deslocamento e grande
+  const dist = Math.hypot(c.cx - de.cx, c.cy - de.cy) * Math.min(de.escala, c.escala);
+  const voo = Math.min(0.35, dist / W * 0.25) * Math.sin(Math.PI * p);
+  return { cx: de.cx + (c.cx - de.cx) * p, cy: de.cy + (c.cy - de.cy) * p,
+           escala: Math.exp(le + (lp - le) * p - voo) };
+}
+let CAM = null;
+const sx = x => (x - CAM.cx) * CAM.escala + W / 2;
+const sy = y => (y - CAM.cy) * CAM.escala + FY;
+
+// ---------------------------------------------------------------- tiles da base
+const cache = new Map();
+function tile(l, x, y) {
+  const k = `${l}/${x}_${y}`;
+  if (!cache.has(k)) {
+    const img = new Image();
+    img.src = `${D.base}/L${l}/${x}_${y}.jpg`;
+    cache.set(k, { img, ok: img.decode().then(() => true, () => false) });
+  }
+  return cache.get(k);
+}
+async function desenharBase() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const l = Math.max(0, Math.min(5, Math.floor(Math.log2(1 / CAM.escala))));
+  const f = 2 ** l, info = D.niveis[l], T = D.tile;
+  const x0 = (CAM.cx - (W / 2) / CAM.escala) / f, x1 = (CAM.cx + (W / 2) / CAM.escala) / f;
+  const y0 = (CAM.cy - FY / CAM.escala) / f, y1 = (CAM.cy + (H - FY) / CAM.escala) / f;
+  const tx0 = Math.max(0, Math.floor(x0 / T)), tx1 = Math.min(Math.ceil(info.w / T) - 1, Math.floor(x1 / T));
+  const ty0 = Math.max(0, Math.floor(y0 / T)), ty1 = Math.min(Math.ceil(info.h / T) - 1, Math.floor(y1 / T));
+  const lista = [];
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) lista.push([tx, ty, tile(l, tx, ty)]);
+  await Promise.all(lista.map(t => t[2].ok));
+  for (const [tx, ty, t] of lista) {
+    const ax = Math.round(sx(tx * T * f)), ay = Math.round(sy(ty * T * f));
+    const bx = Math.round(sx((tx * T + t.img.width) * f)), by = Math.round(sy((ty * T + t.img.height) * f));
+    ctx.drawImage(t.img, ax, ay, bx - ax + 1, by - ay + 1);
+  }
+}
+
+// ---------------------------------------------------------------- vetores
+function caminho(pts, ate) {   // ate: comprimento (px do nivel 0) a percorrer; devolve ponta
+  ctx.beginPath();
+  ctx.moveTo(sx(pts[0][0]), sy(pts[0][1]));
+  let resta = ate, ponta = pts[0];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (resta >= seg) { ctx.lineTo(sx(b[0]), sy(b[1])); resta -= seg; ponta = b; }
+    else { const u = resta / seg; ponta = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+           ctx.lineTo(sx(ponta[0]), sy(ponta[1])); break; }
+  }
+  return ponta;
+}
+const COMPR = {};
+function comprimento(id, pts) {
+  if (!COMPR[id]) { let s = 0; for (let i = 1; i < pts.length; i++) s += Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]); COMPR[id] = s; }
+  return COMPR[id];
+}
+function pontoEm(pts, frac) {
+  let tot = 0; for (let i = 1; i < pts.length; i++) tot += Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]);
+  const L = tot * frac; let s = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (s + seg >= L) { const u = (L - s) / seg; return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]; }
+    s += seg;
+  }
+  return pts[pts.length - 1];
+}
+
+function desenharFronteiras() {
+  ctx.save();
+  ctx.lineJoin = ctx.lineCap = 'round';
+  for (const l of GEO.linhas) {
+    ctx.strokeStyle = l.tipo === 'pais' ? 'rgba(255,255,255,.38)' : 'rgba(255,255,255,.2)';
+    ctx.lineWidth = l.tipo === 'pais' ? 1.6 : 1.1;
+    ctx.beginPath();
+    l.pts.forEach((p, i) => i ? ctx.lineTo(sx(p[0]), sy(p[1])) : ctx.moveTo(sx(p[0]), sy(p[1])));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// malha do gancho: revela do centro (Brasilia) para fora, colorida por tipo
+const BSB = GEO.cidades['Brasília'];
+const MALHA = GEO.malha.map(m => ({ ...m, d: Math.min(...m.pts.map(p => Math.hypot(p[0] - BSB[0], p[1] - BSB[1]))) }))
+  .sort((a, b) => a.d - b.d);
+const COR_TIPO = { 'Major Highway': C.cores.previa[0], 'Road': C.cores.previa[1], 'Unknown': C.cores.previa[2] };
+function desenharMalha(p, alfa) {
+  if (alfa <= 0 || p <= 0) return;
+  const n = Math.floor(MALHA.length * p);
+  ctx.save(); ctx.globalAlpha = alfa; ctx.lineJoin = ctx.lineCap = 'round';
+  for (const larg of [5, 1.8]) {
+    ctx.lineWidth = larg;
+    for (let i = 0; i < n; i++) {
+      const m = MALHA[i];
+      ctx.strokeStyle = larg > 2 ? 'rgba(0,0,0,.25)' : (COR_TIPO[m.tipo] || '#fff');
+      ctx.beginPath();
+      m.pts.forEach((q, j) => j ? ctx.lineTo(sx(q[0]), sy(q[1])) : ctx.moveTo(sx(q[0]), sy(q[1])));
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function desenharRota(pts, id, p, cor, larg, brilho, alfa) {
+  if (p <= 0 || alfa <= 0) return null;
+  const L = comprimento(id, pts) * p;
+  ctx.save(); ctx.globalAlpha = alfa; ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.shadowColor = cor; ctx.shadowBlur = brilho;
+  ctx.strokeStyle = cor; ctx.lineWidth = larg;
+  const ponta = caminho(pts, L); ctx.stroke();
+  ctx.shadowBlur = 0; ctx.globalAlpha = alfa * .9; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = Math.max(1.2, larg * .35);
+  caminho(pts, L); ctx.stroke();
+  if (p < 1) {  // ponta brilhante enquanto traca
+    ctx.globalAlpha = alfa; ctx.fillStyle = '#fff'; ctx.shadowColor = cor; ctx.shadowBlur = 24;
+    ctx.beginPath(); ctx.arc(sx(ponta[0]), sy(ponta[1]), larg * 1.3, 0, 7); ctx.fill();
+  }
+  ctx.restore();
+  return ponta;
+}
+
+// ---------------------------------------------------------------- rotulos (pilulas brancas, texto preto)
+const TAM = C.rotulo.tamanho;
+function medir(txt) { ctx.font = `italic 800 ${TAM}px ${FONTE}`; return ctx.measureText(txt).width; }
+function caixa(cx, cy, txt) { const w = medir(txt) + 30, h = TAM + 18; return { x: cx - w / 2, y: cy - h / 2, w, h }; }
+const cruza = (a, b) => a.x < b.x + b.w + 6 && b.x < a.x + a.w + 6 && a.y < b.y + b.h + 6 && b.y < a.y + a.h + 6;
+function valida(b) {
+  if (b.x < 24 || b.x + b.w > W - 24 || b.y < ZS.topo || b.y + b.h > H - ZS.base) return false;
+  if (b.y + b.h > FAIXA_LEGENDA[0] && b.y < FAIXA_LEGENDA[1]) return false;
+  return true;
+}
+function pilula(b, txt, s, alfa, verde) {
+  ctx.save(); ctx.globalAlpha = alfa;
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  ctx.translate(cx, cy); ctx.scale(s, s); ctx.translate(-cx, -cy);
+  ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 12; ctx.shadowOffsetY = 3;
+  ctx.fillStyle = verde ? C.cores.verde_foco : '#fff';
+  const r = C.rotulo.raio;
+  ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, r); ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.fillStyle = '#0b0b0b'; ctx.font = `italic 800 ${TAM}px ${FONTE}`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(txt, cx, cy + 1);
+  ctx.restore();
+}
+const ESCOLHA = {};   // rotulo -> indice do candidato (estabilidade entre quadros)
+function colocar(rot, ocupadas) {
+  const ordem = [ESCOLHA[rot.id] ?? 0, ...rot.cands.keys()].filter((v, i, a) => a.indexOf(v) === i);
+  for (const k of ordem) {
+    const [wx, wy] = rot.cands[k];
+    const b = caixa(sx(wx) + (rot.dx || 0), sy(wy) + (rot.dy || 0), rot.txt);
+    if (valida(b) && !ocupadas.some(o => cruza(o, b))) { ESCOLHA[rot.id] = k; return b; }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- estado por tempo
+const EV = S.eventos;
+const LIMPAR = EV.filter(e => e.tipo === 'limpar').map(e => e.t);
+function alfaLimpeza(t0, t) {      // elementos que comecaram antes de um "limpar" somem com ele
+  let a = 1;
+  for (const tl of LIMPAR) if (t0 < tl && t >= tl) a = Math.min(a, 1 - clamp((t - tl) / .45));
+  return a;
+}
+const FRACS = [.55, .42, .68, .3, .8, .2, .9];
+
+window.seek = async function (t) {
+  CAM = camAt(t);
+  await desenharBase();
+  desenharFronteiras();
+  const info = { t, rotulos: [], ocultos: [], eventos: [] };
+  const rotulos = [];
+
+  for (const e of EV) {
+    if (t < e.t) continue;
+    const a = alfaLimpeza(e.t, t);
+    if (a <= 0) continue;
+    if (e.tipo === 'previa') {
+      const p = out3(clamp((t - e.t) / e.dur));
+      desenharMalha(p, a);
+      info.eventos.push({ tipo: e.tipo, t0: e.t });
+      // rotulos das rotas conhecidas entram junto na previa
+      Object.keys(GEO.rotas).forEach((id, k) => {
+        const ts = e.t + .35 + k * .28;
+        if (t >= ts) rotulos.push({ id: 'prev_' + id, txt: id, t0: ts, alfa: a, cands: FRACS.map(f => pontoEm(GEO.rotas[id].pts, f)) });
+      });
+    } else if (e.tipo === 'rota' || e.tipo === 'foco') {
+      const r = GEO.rotas[e.id], foco = e.tipo === 'foco';
+      const p = inOut(clamp((t - e.t) / e.dur));
+      desenharRota(r.pts, e.id, p, foco ? C.cores.verde_foco : C.cores.rota,
+                   foco ? C.mapa.espessura_rota * 1.45 : C.mapa.espessura_rota, C.mapa.brilho_rota * (foco ? 1.4 : 1), a);
+      info.eventos.push({ tipo: e.tipo, id: e.id, t0: e.t, p });
+      const fr = FRACS.filter(f => f <= Math.max(p, .2));
+      if (p >= .2 && !EV.some(o => o.tipo === 'foco' && o.id === e.id && o !== e && t >= o.t && !foco))
+        rotulos.push({ id: e.id, txt: e.id, t0: e.t + e.dur * .2, alfa: a, verde: foco, cands: fr.map(f => pontoEm(r.pts, f)) });
+    } else if (e.tipo === 'cidade') {
+      const [wx, wy] = GEO.cidades[e.id];
+      const pp = back(clamp((t - e.t) / .3));
+      ctx.save(); ctx.globalAlpha = a; ctx.fillStyle = e.foco ? C.cores.verde_foco : '#fff';
+      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(sx(wx), sy(wy), 9 * clamp(pp, 0, 1.3), 0, 7); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = '#0b0b0b'; ctx.stroke(); ctx.restore();
+      rotulos.push({ id: 'cid_' + e.id, txt: e.id, t0: e.t, alfa: a, verde: e.foco,
+                     cands: [[wx, wy], [wx, wy], [wx, wy], [wx, wy]], dxs: [0, 0, 130, -130], dys: [-46, 46, 0, 0] });
+      info.eventos.push({ tipo: e.tipo, id: e.id, t0: e.t });
+    }
+  }
+
+  // vinheta: legibilidade da legenda e do topo
+  let g = ctx.createLinearGradient(0, H * .6, 0, H);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
+  ctx.fillStyle = g; ctx.fillRect(0, H * .6, W, H * .4);
+
+  // rotulos: mais antigos primeiro; sem sobreposicao, fora das zonas proibidas
+  const ocupadas = [];
+  rotulos.sort((a, b) => a.t0 - b.t0);
+  for (const r of rotulos) {
+    let b = null;
+    if (r.dxs) {  // cidade: tenta acima, abaixo, direita, esquerda do ponto
+      const ordem = [ESCOLHA[r.id] ?? 0, 0, 1, 2, 3].filter((v, i, a) => a.indexOf(v) === i);
+      for (const k of ordem) {
+        const c = caixa(sx(r.cands[k][0]) + r.dxs[k], sy(r.cands[k][1]) + r.dys[k], r.txt);
+        if (valida(c) && !ocupadas.some(o => cruza(o, c))) { b = c; ESCOLHA[r.id] = k; break; }
+      }
+    } else b = colocar(r, ocupadas);
+    if (!b) { info.ocultos.push(r.id); continue; }
+    ocupadas.push(b);
+    const s = back(clamp((t - r.t0) / .28));
+    pilula(b, r.txt, Math.max(0.01, s), r.alfa * clamp((t - r.t0) / .12), r.verde);
+    info.rotulos.push({ id: r.id, x: b.x, y: b.y, w: b.w, h: b.h, alfa: r.alfa });
+  }
+  info.cam = CAM;
+  return info;
+};
+
+(async () => {
+  const ff = new FontFace(FONTE, `url(${D.fonte})`, { style: 'italic', weight: '800' });
+  await ff.load(); document.fonts.add(ff);
+  await document.fonts.load(`italic 800 ${TAM}px ${FONTE}`);
+  window.pronto = true;
+})();
+</script>
+</body>
+</html>

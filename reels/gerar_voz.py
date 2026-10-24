@@ -32,6 +32,12 @@ def normalizar_texto(texto: str) -> str:
     """Prepara o texto para a sintese: numeros por extenso e pronuncias."""
     from num2words import num2words
 
+    def rodovia(m):  # BR-040 -> "bê-érre zero quarenta"; BR-101 -> "bê-érre cento e um"
+        d = m.group(2)
+        falado = ("zero " if d.startswith("0") else "") + num2words(int(d), lang="pt_BR").replace(",", "")
+        return f"{'bê-érre' if m.group(1).upper() == 'BR' else m.group(1)} {falado}"
+
+    texto = re.sub(r"\b(BR|SP|MG|RJ|GO|BA|PR|SC|RS)-?(\d{3})\b", rodovia, texto)
     texto = re.sub(r"(?<=\d)\.(?=\d{3}\b)", "", texto)  # 1.500 -> 1500
     texto = re.sub(r"(\d+)\s*%", r"\1 por cento", texto)
     texto = re.sub(

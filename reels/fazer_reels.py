@@ -44,6 +44,26 @@ class Cena:
     midia: str = ""
     tela: str = ""
     visuais: list = field(default_factory=list)  # linhas 'visual:' (ver motion.py)
+    extras: dict = field(default_factory=dict)   # camera/mostrar/destacar/... (templates mapa, grafico, fluxo)
+    ancoras: list = field(default_factory=list)  # [(indice da palavra na fala, id)] vindos de {palavra} ou {palavra|id}
+
+
+EXTRAS = ("camera", "mostrar", "destacar", "previa", "limpar", "dados", "escala", "entradas")
+
+
+def extrair_ancoras(fala: str):
+    """'A {BR-040} liga ao {Rio de Janeiro|rio}' -> ('A BR-040 liga ao Rio de Janeiro', [(1,'BR-040'),(4,'rio')])."""
+    limpo, ancoras, pos = "", [], 0
+    for m in re.finditer(r"\{([^{}|]+)(?:\|([^{}]+))?\}", fala):
+        limpo += fala[pos:m.start()]
+        idx = len(limpo.split()) if limpo.strip() else 0
+        if limpo and not limpo[-1].isspace():
+            idx -= 1  # chave colada a palavra anterior
+        ancoras.append((idx, (m.group(2) or m.group(1)).strip()))
+        limpo += m.group(1)
+        pos = m.end()
+    limpo += fala[pos:]
+    return re.sub(r"\s+", " ", limpo).strip(), ancoras
 
 
 # ---------------------------------------------------------------- roteiro
@@ -58,12 +78,15 @@ def parse_roteiro(caminho: Path):
                 k, v = linha.split(":", 1)
                 meta[k.strip().lower()] = v.strip()
         texto = texto[m.end():]
+    meta["_fontes"] = [c.strip() for c in re.findall(r"<!--(.*?)-->", texto, re.S)]
+    texto = re.sub(r"<!--.*?-->", "", texto, flags=re.S)  # comentarios = fontes, fora do parser
     blocos = re.split(r"^##\s*Cena[^\n]*$", texto, flags=re.M | re.I)[1:]
     cenas = []
     for i, bloco in enumerate(blocos, 1):
         campos, atual, visuais = {}, None, []
         for linha in bloco.strip().splitlines():
-            k = re.match(r"^(m[ií]dia|texto-na-tela|fala|visual)\s*:\s*(.*)$", linha.strip(), re.I)
+            k = re.match(r"^(m[ií]dia|texto-na-tela|fala|visual|" + "|".join(EXTRAS) + r")\s*:\s*(.*)$",
+                         linha.strip(), re.I)
             if k:
                 atual = k.group(1).lower().replace("í", "i")
                 if atual == "visual":
@@ -76,8 +99,9 @@ def parse_roteiro(caminho: Path):
                 campos[atual] += " " + linha.strip()
         if not campos.get("fala"):
             sys.exit(f"Erro: a Cena {i} do roteiro nao tem 'fala:'.")
-        cenas.append(Cena(i, campos["fala"], campos.get("midia", ""), campos.get("texto-na-tela", ""),
-                          visuais))
+        fala, ancoras = extrair_ancoras(campos["fala"])
+        cenas.append(Cena(i, fala, campos.get("midia", ""), campos.get("texto-na-tela", ""), visuais,
+                          {k: campos[k] for k in EXTRAS if k in campos}, ancoras))
     if not cenas:
         sys.exit("Erro: nenhuma '## Cena N' encontrada no roteiro.")
     return meta, cenas
@@ -343,6 +367,97 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     destino.write_text(cab + "\n".join(ev) + "\n", encoding="utf-8")
 
 
+def construir_ass_mapa(cenas, palavras, offsets, destino: Path, cfg):
+    """Legenda da referencia: branca, negrito italico, sem caixa, 2 a 5 palavras, troca com a fala."""
+    lg = cfg["legenda"]
+    mv = round(H - lg["posicao_y"] * H - lg["tamanho"] / 2)
+    cab = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {W}
+PlayResY: {H}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Leg,{cfg["fonte"]["familia"]},{lg["tamanho"]},&H00FFFFFF,&H00FFFFFF,&H64000000,&H78000000,-1,-1,0,0,100,100,0,0,1,1.2,{lg["sombra"]},2,60,60,{mv},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    todos = [(p, offsets[c.n] + s_, offsets[c.n] + e_) for c in cenas for p, (s_, e_) in palavras[c.n]]
+    grupos, atual = [], []
+    for w in todos:
+        atual.append(w)
+        txt = " ".join(x[0] for x in atual)
+        fim_frase = re.search(r"[.!?;:]$", w[0]) is not None
+        if len(atual) >= lg["palavras_max"] or len(txt) >= 24 or (fim_frase and len(atual) >= lg["palavras_min"]):
+            grupos.append(atual)
+            atual = []
+    if atual:
+        grupos.append(atual)
+    # nada de bloco com 1 palavra quando da para juntar
+    for k in range(len(grupos) - 1, 0, -1):
+        if len(grupos[k]) < lg["palavras_min"] and len(grupos[k - 1]) + len(grupos[k]) <= lg["palavras_max"]:
+            grupos[k - 1] += grupos.pop(k)
+    ev = []
+    for k, g in enumerate(grupos):
+        ini = g[0][1]
+        fim = g[-1][2] + 0.25
+        if k + 1 < len(grupos) and grupos[k + 1][0][1] - g[-1][2] < 0.6:
+            fim = grupos[k + 1][0][1]
+        txt = " ".join(x[0] for x in g).replace("{", "(").replace("}", ")")
+        ev.append(f"Dialogue: 0,{tempo_ass(ini)},{tempo_ass(fim)},Leg,,0,0,0,,{{\\blur0.8}}{txt}")
+    destino.write_text(cab + "\n".join(ev) + "\n", encoding="utf-8")
+    return grupos
+
+
+def gerar_whooshes(tempos, total: float, destino: Path, db: float, sr=44100):
+    """Whoosh sintetizado (ruido filtrado com envelope), centrado em cada tempo. Sem licenca envolvida."""
+    import numpy as np
+    import soundfile as sf
+    from scipy.signal import butter, sosfilt
+
+    rng = np.random.default_rng(7)
+    faixa = np.zeros(int((total + 1) * sr), dtype=np.float32)
+    dur = 0.7
+    n = int(dur * sr)
+    env = np.sin(np.linspace(0, np.pi, n)) ** 2 * np.linspace(0.6, 1.0, n)
+    for t in tempos:
+        ruido = rng.standard_normal(n)
+        baixo = sosfilt(butter(4, [300, 2200], "bandpass", fs=sr, output="sos"), ruido)
+        alto = sosfilt(butter(4, [1800, 7000], "bandpass", fs=sr, output="sos"), ruido)
+        mix = np.linspace(0, 1, n)  # sobe o brilho ao longo do whoosh
+        w = (baixo * (1 - mix) + alto * mix) * env
+        w = w / (np.sqrt(np.mean(w ** 2)) + 1e-9) * 10 ** (db / 20)
+        i0 = max(int((t - dur * 0.55) * sr), 0)
+        faixa[i0:i0 + n] += w[: len(faixa) - i0].astype(np.float32)
+    sf.write(destino, faixa[: int(total * sr)], sr)
+
+
+def montar_mapa_final(mapa_mp4: Path, narracao: Path, sfx: Path, musica, total, destino: Path,
+                      trabalho: Path, cfg):
+    entradas = ["-i", mapa_mp4, "-i", narracao, "-i", sfx]
+    if musica:
+        entradas += ["-stream_loop", "-1", "-i", musica]
+    fontsdir = (AQUI / cfg["fonte"]["arquivo"]).parent
+    filtros = [f"[0:v]ass=legendas.ass:fontsdir={fontsdir}[vout]",
+               "[1:a][2:a]amix=inputs=2:duration=first:normalize=0[voz]"]
+    if musica:
+        filtros += ["[voz]asplit=2[fala][lado]",
+                    f"[3:a]atrim=0:{total:.3f},asetpts=PTS-STARTPTS,afade=t=out:st={max(total - 1.2, 0):.3f}:d=1.2[mus]",
+                    "[mus][lado]sidechaincompress=threshold=0.03:ratio=4:attack=15:release=450[duck]",
+                    "[fala][duck]amix=inputs=2:duration=first:normalize=0[aout]"]
+    else:
+        filtros.append("[voz]anull[aout]")
+    v = cfg["video"]
+    rodar(["ffmpeg", "-y", "-v", "error", *entradas, "-filter_complex", ";".join(filtros),
+           "-map", "[vout]", "-map", "[aout]", "-t", f"{total:.3f}",
+           "-c:v", "libx264", "-preset", "slow", "-b:v", v["bitrate"], "-maxrate", "12M", "-bufsize", "20M",
+           "-pix_fmt", "yuv420p", "-r", str(v["fps"]), "-c:a", "aac", "-b:a", "192k", "-ar", "44100",
+           "-movflags", "+faststart", destino], cwd=trabalho)
+
+
 def normalizar_volume(origem: Path, destino: Path, lufs: float):
     """Normaliza em passo separado: loudnorm dentro do grafo com asplit/amix trunca o audio."""
     rodar(["ffmpeg", "-y", "-v", "error", "-i", origem, "-af",
@@ -433,6 +548,9 @@ def main():
         t += d - TRANS
     total = starts[-1] + durs[-1]
 
+    if meta.get("template", "").split()[0:1] == ["mapa"]:
+        return fazer_mapa(a, meta, cenas, palavras, offsets, starts, durs, total, trabalho, nome)
+
     videos, usou = [], []
     for i, c in enumerate(cenas):
         print(f"[cena {c.n}] renderizando video ({durs[i]:.1f}s)")
@@ -470,6 +588,44 @@ def main():
     print("Montando o video final...")
     montar_video(videos, narracao, musica, total, starts, destino, trabalho, motion_mov)
     print(f"\nPronto: {destino} ({total:.1f}s)")
+
+
+def fazer_mapa(a, meta, cenas, palavras, offsets, starts, durs, total, trabalho, nome):
+    import time
+
+    import yaml
+
+    import mapa
+    import qa
+
+    cfg = yaml.safe_load((AQUI / "config.yaml").read_text(encoding="utf-8"))
+    t0 = time.time()
+    mapa.preparar()
+    bruta = trabalho / "narracao_bruta.wav"
+    narracao = trabalho / "narracao.wav"
+    montar_narracao(cenas, trabalho, offsets, total, bruta)
+    normalizar_volume(bruta, narracao, LUFS_FALA)
+    grupos = construir_ass_mapa(cenas, palavras, offsets, trabalho / "legendas.ass", cfg)
+    spec = mapa.planejar(cenas, palavras, offsets, starts, durs, total)
+    print(f"Mapa: {len(spec['eventos'])} eventos, {len(spec['cameras'])} enquadramentos")
+    mapa_mp4 = mapa.renderizar(spec, trabalho)
+    t_render = time.time() - t0
+    sfx = trabalho / "sfx.wav"
+    tempos_sfx = spec["cortes"] + [e["t"] for e in spec["eventos"] if e["tipo"] in ("previa", "limpar")]
+    gerar_whooshes(tempos_sfx, total, sfx, cfg["audio"]["whoosh_db"])
+    musica = None
+    if meta.get("musica"):
+        cand = MUSICA / meta["musica"]
+        if cand.is_file():
+            musica = trabalho / "musica.wav"
+            normalizar_volume(cand, musica, LUFS_MUSICA)
+        else:
+            print(f"AVISO: musica '{meta['musica']}' nao encontrada em {MUSICA}; seguindo sem musica.")
+    destino = SAIDA / f"{nome}.mp4"
+    print("Montando o video final...")
+    montar_mapa_final(mapa_mp4, narracao, sfx, musica, total, destino, trabalho, cfg)
+    print(f"Video: {destino} ({total:.1f}s). Rodando o QA...")
+    qa.rodar_qa(destino, nome, meta, cenas, spec, grupos, trabalho, cfg, t_render, a.whisper)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,26 @@
+# Rotas usadas pelo template "mapa".
+#
+# A geometria vem do Natural Earth 10m roads (dominio publico): o codigo procura o caminho mais
+# curto PELA MALHA REAL de estradas passando pelas cidades listadas. O Natural Earth nao traz o
+# numero das rodovias, entao a identidade "esta linha e a BR-xxx" e INFERIDA pelas cidades de
+# passagem e aparece como "verificar" no relatorio de QA. Para dado oficial, troque pela malha do
+# DNIT/SNV ou do OpenStreetMap (ODbL) quando o acesso estiver liberado.
+#
+# Cidades: Natural Earth populated places (dominio publico).
+
+rotas:
+  BR-040:
+    passa_por: [Brasília, Cristalina, Paracatu, Sete Lagoas, Belo Horizonte, Juiz de Fora, Petrópolis, Rio de Janeiro]
+    categoria: radial
+  BR-050:
+    passa_por: [Brasília, Cristalina, Catalão, Uberlândia, Uberaba]
+    categoria: radial
+  BR-060:
+    passa_por: [Brasília, Anápolis, Goiânia, Rio Verde, Jataí, Campo Grande]
+    categoria: radial
+  BR-070:
+    passa_por: [Brasília, Barra do Garças, Cuiabá]
+    categoria: radial
+  BR-020:
+    passa_por: [Brasília, Formosa, Barreiras]
+    categoria: radial

@@ -1,0 +1,49 @@
+# Identidade visual e parametros dos templates (lido por fazer_reels.py e mapa.py)
+
+video:
+  largura: 1080
+  altura: 1920
+  fps: 30
+  bitrate: 10M          # alvo 8 a 12 Mbps
+
+cores:
+  destaque: "#0052FF"   # cor da marca
+  verde_foco: "#3CFF6E" # rota/elemento em foco
+  rota: "#FFFFFF"       # rotas na explicacao
+  texto: "#FFFFFF"
+  fundo: "#0A1B33"      # quando nao ha mapa
+  previa: ["#FFD23F", "#FF4FA3", "#2EE6FF", "#FFFFFF"]  # malha do gancho, por categoria
+
+fonte:
+  arquivo: fontes/Montserrat-BoldItalic.ttf
+  familia: Montserrat
+
+legenda:
+  tamanho: 66           # px em 1080 de largura
+  posicao_y: 0.76       # centro da legenda, fracao da altura (como na referencia)
+  palavras_min: 2
+  palavras_max: 5
+  sombra: 3
+
+rotulo:
+  tamanho: 32           # minimo da barra: 28 px
+  raio: 10
+
+zona_segura:
+  topo: 220
+  base: 280
+
+mapa:
+  base: dados/base      # piramide de tiles gerada por mapa.py a partir da NASA Blue Marble
+  lon0: -80.0           # recorte (graus)
+  lat0: 8.0
+  lon1: -30.0
+  lat1: -36.0
+  px_por_grau: 240      # resolucao da Blue Marble NG (~500 m/pixel)
+  espessura_rota: 4.5
+  brilho_rota: 14
+  deriva_zoom: 0.012    # empurrao lento por segundo: o mapa nunca fica parado
+  transicao_camera: 1.4 # segundos de movimento entre enquadramentos
+
+audio:
+  whoosh_db: -26        # whoosh sintetizado nas trocas de camera
