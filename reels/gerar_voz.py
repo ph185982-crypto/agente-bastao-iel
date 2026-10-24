@@ -3,21 +3,44 @@
 
 Uso: python gerar_voz.py "texto" -o saida.wav [--modelo chatterbox|xtts]
 
-Padrao: Chatterbox multilingue (MIT, uso comercial liberado).
+Padrao: Chatterbox multilingue (MIT, uso comercial liberado), com os ajustes
+"v4" escolhidos para a voz do Pedro (calma, pouca aspereza).
 XTTS-v2 so serve para comparacao: os pesos sao NAO COMERCIAIS (CPML).
 """
 import argparse
+import json
 import os
 import re
 import sys
+import warnings
 from pathlib import Path
 
+warnings.filterwarnings("ignore")
 import torch
 import torchaudio
 
 AQUI = Path(__file__).resolve().parent
 REF_PADRAO = AQUI / "amostras" / "minha-voz.wav"
+PRONUNCIAS = AQUI / "pronuncias.json"  # {"Roseta": "Rozeta"} - so afeta a fala
 MAX_CHARS = 220  # trechos longos degradam a qualidade; quebramos por frase
+
+# Ajustes v4 (escolhidos de ouvido): menos expressivo, ritmo e temperatura baixos.
+EXAGERO, CFG, TEMPERATURA = 0.25, 0.3, 0.5
+
+
+def normalizar_texto(texto: str) -> str:
+    """Prepara o texto para a sintese: numeros por extenso e pronuncias."""
+    from num2words import num2words
+
+    texto = re.sub(r"(?<=\d)\.(?=\d{3}\b)", "", texto)  # 1.500 -> 1500
+    texto = re.sub(r"(\d+)\s*%", r"\1 por cento", texto)
+    texto = re.sub(
+        r"\d+", lambda m: num2words(int(m.group()), lang="pt_BR").replace(",", ""), texto
+    )
+    if PRONUNCIAS.exists():
+        for palavra, falada in json.loads(PRONUNCIAS.read_text(encoding="utf-8")).items():
+            texto = re.sub(rf"\b{re.escape(palavra)}\b", falada, texto)
+    return re.sub(r"\s+", " ", texto).strip()
 
 
 def dividir_texto(texto: str, limite: int = MAX_CHARS) -> list[str]:
@@ -40,36 +63,51 @@ def escolher_dispositivo(pedido: str) -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def gerar_chatterbox(trechos, ref, lang, device, exagero, cfg):
-    from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+class Sintetizador:
+    """Carrega o modelo uma vez e gera varias falas com a mesma voz."""
 
-    modelo = ChatterboxMultilingualTTS.from_pretrained(device=device)
-    pecas = []
-    for i, t in enumerate(trechos, 1):
-        print(f"[chatterbox {i}/{len(trechos)}] {t[:60]}", file=sys.stderr)
-        kw = dict(language_id=lang, exaggeration=exagero, cfg_weight=cfg)
-        if ref:
-            kw["audio_prompt_path"] = str(ref)
-        wav = modelo.generate(t, **kw)
-        pecas.append(wav.cpu())
-    return torch.cat(pecas, dim=-1), modelo.sr
+    def __init__(self, modelo="chatterbox", ref=REF_PADRAO, lang="pt", device="auto",
+                 exagero=EXAGERO, cfg=CFG, temperatura=TEMPERATURA):
+        self.modelo, self.lang = modelo, lang
+        self.device = escolher_dispositivo(device)
+        self.exagero, self.cfg, self.temperatura = exagero, cfg, temperatura
+        ref = Path(ref)
+        if not ref.exists():
+            print(f"AVISO: referencia {ref} nao encontrada; usando a voz padrao do modelo.",
+                  file=sys.stderr)
+            ref = None
+        self.ref = ref
+        if modelo == "chatterbox":
+            from chatterbox.mtl_tts import ChatterboxMultilingualTTS
 
+            self._m = ChatterboxMultilingualTTS.from_pretrained(device=self.device)
+            self.sr = self._m.sr
+        else:
+            print("AVISO: pesos do XTTS-v2 sao NAO COMERCIAIS (CPML). Use so para comparar.",
+                  file=sys.stderr)
+            if not ref:
+                sys.exit("XTTS precisa de uma amostra de voz (--ref).")
+            os.environ.setdefault("COQUI_TOS_AGREED", "1")
+            from TTS.api import TTS
 
-def gerar_xtts(trechos, ref, lang, device):
-    print("AVISO: pesos do XTTS-v2 sao NAO COMERCIAIS (CPML). Use so para comparar.",
-          file=sys.stderr)
-    os.environ.setdefault("COQUI_TOS_AGREED", "1")
-    from TTS.api import TTS
+            self._m = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(self.device)
+            self.sr = self._m.synthesizer.output_sample_rate
 
-    if not ref:
-        sys.exit("XTTS precisa de uma amostra de voz (--ref).")
-    tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
-    pecas = []
-    for i, t in enumerate(trechos, 1):
-        print(f"[xtts {i}/{len(trechos)}] {t[:60]}", file=sys.stderr)
-        wav = tts.tts(text=t, speaker_wav=str(ref), language=lang)
-        pecas.append(torch.tensor(wav).unsqueeze(0))
-    return torch.cat(pecas, dim=-1), tts.synthesizer.output_sample_rate
+    def sintetizar(self, texto: str, seed: int = 7) -> torch.Tensor:
+        """Devolve um tensor [1, amostras] na taxa self.sr."""
+        torch.manual_seed(seed)
+        pecas = []
+        for t in dividir_texto(normalizar_texto(texto)):
+            if self.modelo == "chatterbox":
+                kw = dict(language_id=self.lang, exaggeration=self.exagero,
+                          cfg_weight=self.cfg, temperature=self.temperatura)
+                if self.ref:
+                    kw["audio_prompt_path"] = str(self.ref)
+                pecas.append(self._m.generate(t, **kw).cpu())
+            else:
+                wav = self._m.tts(text=t, speaker_wav=str(self.ref), language=self.lang)
+                pecas.append(torch.tensor(wav).unsqueeze(0))
+        return torch.cat(pecas, dim=-1)
 
 
 def main():
@@ -80,27 +118,18 @@ def main():
     p.add_argument("--ref", default=str(REF_PADRAO), help="WAV de referencia da voz")
     p.add_argument("--lang", default="pt")
     p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
-    p.add_argument("--exagero", type=float, default=0.5, help="Chatterbox: expressividade")
-    p.add_argument("--cfg", type=float, default=0.5, help="Chatterbox: cfg_weight (ritmo)")
+    p.add_argument("--exagero", type=float, default=EXAGERO, help="Chatterbox: expressividade")
+    p.add_argument("--cfg", type=float, default=CFG, help="Chatterbox: cfg_weight (ritmo)")
+    p.add_argument("--temperatura", type=float, default=TEMPERATURA)
+    p.add_argument("--seed", type=int, default=7)
     a = p.parse_args()
 
-    ref = Path(a.ref)
-    if not ref.exists():
-        print(f"AVISO: referencia {ref} nao encontrada; usando a voz padrao do modelo.",
-              file=sys.stderr)
-        ref = None
-
-    device = escolher_dispositivo(a.device)
-    trechos = dividir_texto(a.texto)
-    if a.modelo == "chatterbox":
-        wav, sr = gerar_chatterbox(trechos, ref, a.lang, device, a.exagero, a.cfg)
-    else:
-        wav, sr = gerar_xtts(trechos, ref, a.lang, device)
-
+    s = Sintetizador(a.modelo, a.ref, a.lang, a.device, a.exagero, a.cfg, a.temperatura)
+    wav = s.sintetizar(a.texto, a.seed)
     saida = Path(a.saida)
     saida.parent.mkdir(parents=True, exist_ok=True)
-    torchaudio.save(str(saida), wav, sr)
-    print(f"{saida} ({wav.shape[-1] / sr:.1f}s, {sr} Hz)")
+    torchaudio.save(str(saida), wav, s.sr)
+    print(f"{saida} ({wav.shape[-1] / s.sr:.1f}s, {s.sr} Hz)")
 
 
 if __name__ == "__main__":
