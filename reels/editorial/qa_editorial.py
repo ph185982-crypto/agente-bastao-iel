@@ -46,7 +46,7 @@ def _sincronia(final, cenas, narr, ancoras_qa, trabalho):
     from faster_whisper import WhisperModel
 
     from fazer_reels import alinhar, expandir_numeros, norm, refinar_inicios
-    wm = WhisperModel("small", device="cpu", compute_type="int8")
+    wm = WhisperModel("medium", device="cpu", compute_type="int8")
     linhas = []
     for c, n in zip(cenas, narr):
         if not n:
@@ -96,7 +96,8 @@ def rodar(final, previa, cfg, cenas, narr, legendas, escondidas, reg, ancoras_qa
     item("Formato", "30 fps", abs(fr - 30) < .01, f"{fr:.2f} fps")
     item("Formato", "H.264 + AAC", vs["codec_name"] == "h264" and au and au["codec_name"] == "aac",
          f"{vs['codec_name']} ({vs.get('profile')}) + {au['codec_name'] if au else '-'}")
-    item("Formato", "duracao 55 a 60 s", 55 <= dur <= 60.05, f"{dur:.2f} s")
+    faixa = cfg.get("duracao_alvo", [55, 60])
+    item("Formato", f"duracao {faixa[0]} a {faixa[1]} s", faixa[0] <= dur <= faixa[1] + .05, f"{dur:.2f} s")
     item("Formato", "arquivo leve para o Instagram (< 100 MB)", mb < 100, f"{mb:.1f} MB")
 
     # zona segura e cortes nas bordas, a partir do registro de cada quadro
@@ -156,9 +157,10 @@ def rodar(final, previa, cfg, cenas, narr, legendas, escondidas, reg, ancoras_qa
 
     # capturas
     saida = RAIZ / "saida"
-    tempos = [x / 2 for x in range(0, 11)] + [float(x) for x in range(6, int(dur), 2)] + [dur - .1]
+    tempos = [x / 2 for x in range(0, 7)] + [x * 1.5 for x in range(3, int(dur / 1.5))] + [dur - .1]
     _folha(final, tempos, saida / f"{nome}.contato.png")
-    _folha(final, [1.5, 4.5, 8.5, 10.5, 16, 19, 23, 26, 31, 34, 39.5, 42, 47, 51, 56.5, 59.5], saida / f"{nome}.zona-segura.png", zona=Z)
+    meio = [c["inicio"] + (c["fim"] - c["inicio"]) * f for c in cenas for f in (.45, .9)]
+    _folha(final, meio, saida / f"{nome}.zona-segura.png", zona=Z)
 
     ok_total = all(ok for _, _, ok, _ in itens)
     L = [f"# QA — {cfg['titulo']}", "",

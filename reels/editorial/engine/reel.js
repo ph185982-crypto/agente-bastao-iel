@@ -112,7 +112,7 @@ const ArchivePhoto = {
     let vel = [0, 0];
     if (op.t0 !== undefined) {
       if (t < op.t0) return;
-      const d = op.dur || .55, p = E.out5(pr(t, op.t0, d)), dist = op.dist || 160;
+      const d = op.dur || .4, p = E.out5(pr(t, op.t0, d)), dist = op.dist || 160;
       const m = { subir: [0, 1], descer: [0, -1], esquerda: [-1, 0], direita: [1, 0] }[op.entra] || [0, 0];
       x += m[0] * dist * (1 - p); y += m[1] * dist * (1 - p);
       vel = [-m[0] * dist * (1 - p), -m[1] * dist * (1 - p)];
@@ -191,7 +191,7 @@ const KineticText = {
       const tw = op.ts ? op.ts[Math.min(i, op.ts.length - 1)] : op.t;
       const xi = x; x += larg[i] + esp;
       if (tw === undefined || t < tw) return;
-      const d = op.modo === 'carimbo' ? .16 : .42, u = pr(t, tw, d);
+      const d = op.modo === 'carimbo' ? .13 : .28, u = pr(t, tw, d);
       let s = 1, dx = 0, dy = 0, rot = 0, a = clamp((t - tw) / .1);
       const dir = op.dir || [0, 60];
       if (op.modo === 'scale') {   // scale-in de 105% a 122%, sem passar da zona segura
@@ -252,17 +252,17 @@ const ImpactTransition = {
     for (const tr of S.transicoes) {
       const d = t - tr.t;
       if (tr.tipo === 'flash' && d >= -.03 && d < .1) { ctx.fillStyle = `rgba(247,243,234,${.85 * (1 - clamp(d / .1))})`; ctx.fillRect(0, 0, W, H); }
-      if (tr.tipo === 'folha' && d > -.55 && d < .5) {   // folha de papel cobre a camera e passa
-        const u = E.inOut3((d + .55) / 1.05), y = H + 60 - u * (H * 2 + 400);
+      if (tr.tipo === 'folha' && d > -.32 && d < .3) {   // folha de papel cobre a camera e passa
+        const u = E.inOut3((d + .32) / .62), y = H + 60 - u * (H * 2 + 400);
         PaperReveal.draw(t, { id: 'folha' + tr.t, x: -60, y, w: W + 120, h: H + 260, textura: 'papel_marfim', amp: 26, passo: 22, rot: -3, sombra: true, fill: '#d9d2c3' });
       }
-      if (tr.tipo === 'rasgo' && d > -.35 && d < .35) {   // faixa rasgada carvao atravessa na diagonal
-        const u = E.inOut3((d + .35) / .7), x = -W * 1.6 + u * W * 3.2;
+      if (tr.tipo === 'rasgo' && d > -.24 && d < .24) {   // faixa rasgada carvao atravessa na diagonal
+        const u = E.inOut3((d + .24) / .48), x = -W * 1.6 + u * W * 3.2;
         PaperReveal.draw(t, { id: 'rasgo' + tr.t, x, y: -300, w: W * 1.4, h: H + 600, fill: COR('charcoal'), amp: 30, passo: 26, rot: 14, sombra: true });
         PaperReveal.draw(t, { id: 'rasgoL' + tr.t, x: x + W * 1.25, y: -300, w: 70, h: H + 600, fill: COR('orange'), amp: 14, passo: 20, rot: 14, sombra: false });
       }
-      if (tr.tipo === 'whip' && d > -.2 && d < .2) {   // chicote: listras de velocidade cobrindo o corte
-        const k = 1 - Math.abs(d) / .2, r = rnd(Math.floor(t * S.fps));
+      if (tr.tipo === 'whip' && d > -.14 && d < .14) {   // chicote: listras de velocidade cobrindo o corte
+        const k = 1 - Math.abs(d) / .14, r = rnd(Math.floor(t * S.fps));
         for (let i = 0; i < 26; i++) { ctx.fillStyle = i % 3 ? `rgba(20,87,217,${.85 * k})` : `rgba(244,122,31,${.9 * k})`;
           ctx.fillRect(0, r() * H, W, 30 + r() * 120); }
       }
@@ -379,7 +379,8 @@ const MODELOS = {
     const L = t - c.inicio;
     textura('papel_carvao', 0, 0, W, H);
     riscosVelocidade(t, c, 46, [COR('orange'), '#000', '#3a2a1c', COR('orange')]);
-    const avanca = E.outExpo(pr(t, c.inicio, 1.4));
+    const k = c.ritmo || 1;
+    const avanca = E.outExpo(pr(t, c.inicio, 1.4 * k));
     const doc = img(c.imagens.documento);
     if (doc) {   // o documento vem rapido em direcao a camera
       const s = .55 + .85 * avanca + .05 * L, w = 900 * s, h = w * doc.height / doc.width;
@@ -392,7 +393,7 @@ const MODELOS = {
     const r = rnd(5);
     c.imagens.fragmentos.forEach((n, i) => {
       const f = img(n); if (!f) return;
-      const t0 = c.inicio + .05 + i * .12, u = E.out3(pr(t, t0, 1.1));
+      const t0 = c.inicio + .05 + i * .1, u = E.out3(pr(t, t0, 1.1 * k));
       const alvo = [[870, 300], [150, 1500], [930, 1520]][i], ini = [W / 2, 640];
       const x = ini[0] + (alvo[0] - ini[0]) * u + Math.sin(L * 1.2 + i) * 10, y = ini[1] + (alvo[1] - ini[1]) * u;
       const s = .35 + .75 * u;
@@ -445,7 +446,7 @@ const MODELOS = {
     registrar('numero', W / 2 - totalW / 2, yb - px * .86, totalW, px * .9);
     // o livro sobe por baixo
     const lv = c.texto.find(l => l.documento_sobe);
-    ArchivePhoto.draw(t, { nome: c.imagens.documento, x: 0, y: 1395, w: 1080, t0: (lv ? lv.t : c.inicio + 2) - .3, entra: 'subir', dist: 520, dur: .8, deriva: [0, -5], cena: [c.inicio, c.fim], sombra: true });
+    ArchivePhoto.draw(t, { nome: c.imagens.documento, x: 0, y: 1395, w: 1080, t0: (lv ? lv.t : c.inicio + 2) - .3, entra: 'subir', dist: 520, dur: .5, deriva: [0, -5], cena: [c.inicio, c.fim], sombra: true });
     const tam = blocoTexto(c.texto, 130, SAFE_W);
     let y = 1050;
     c.texto.forEach((l, i) => {
@@ -539,12 +540,13 @@ const MODELOS = {
     // documento + caneta: comeca no detalhe da ponta e abre com calma
     const doc = img(c.imagens.documento);
     if (doc) {
-      const u = E.inOut3(pr(t, c.inicio, 2.2)), z = 1.75 - .75 * u, px0 = c.caneta.x, py0 = 760 + c.caneta.y;
+      const k = c.ritmo || 1;
+      const u = E.inOut3(pr(t, c.inicio, 2.2 * k)), z = 1.75 - .75 * u, px0 = c.caneta.x, py0 = 760 + c.caneta.y;
       const abre = .94 + .06 * u;
       ctx.save(); ctx.translate(px0, py0); ctx.scale(z * abre, z); ctx.translate(-px0, -py0);
       ctx.drawImage(doc, 0, 760, 1080, 1080 * doc.height / doc.width);
       // assinatura sendo escrita a partir da ponta da caneta
-      const p = E.inOut3(pr(t, c.inicio + .35, 2.0));
+      const p = E.inOut3(pr(t, c.inicio + .35 * k, 2.0 * k));
       if (p > 0) {
         ctx.strokeStyle = '#1d3fb8'; ctx.lineWidth = 4.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         const n = 140; ctx.beginPath();
@@ -573,7 +575,8 @@ const MODELOS = {
     const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, 'rgba(20,87,217,.25)'); g.addColorStop(1, 'rgba(20,87,217,.55)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     ArchivePhoto.draw(t, { nome: c.imagens.base, x: 0, y: H - 358, w: 1080, deriva: [-4, 0], cena: [c.inicio, c.fim], tom: 'azul' });
-    const zoom = 1 + .05 * E.out3(pr(t, c.inicio + 2.7, .25)) - .03 * E.out3(pr(t, c.inicio + 3.0, 1.2));
+    const k = c.ritmo || 1;
+    const zoom = 1 + .05 * E.out3(pr(t, c.inicio + 2.7 * k, .2)) - .03 * E.out3(pr(t, c.inicio + 3.0 * k, 1.0));
     ctx.save(); ctx.translate(540, 640); ctx.scale(zoom, zoom); ctx.translate(-540, -640);
     // documento esquematico (sem nomes, sem partidos): faixas borradas + coluna de voto
     const dx = 70, dy = 190, dw = 940, dh = 900, linhas = c.documento.linhas, alvo = c.documento.alvo;
@@ -590,23 +593,23 @@ const MODELOS = {
         ctx.fillText(k === alvo ? 'NÃO' : (k % 5 === 3 ? 'ABST.' : 'SIM'), dw - 210, yy + 30);
         ctx.fillStyle = 'rgba(30,30,30,.18)'; ctx.fillRect(40, yy + 46, dw - 80, 2);
       }
-      const tm = c.inicio + 2.55;   // marca-texto laranja na linha encontrada
+      const tm = c.inicio + 2.55 * k;   // marca-texto laranja na linha encontrada
       if (t >= tm) { const p = E.out3(pr(t, tm, .3)); ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = COR('orange');
         ctx.fillRect(40, 160 + alvo * 66 - 6, (dw - 80) * p, 50); ctx.globalCompositeOperation = 'source-over'; }
       ctx.restore();
     };
     desenhaDoc();
     // scanner de cima para baixo
-    const ps = pr(t, c.inicio + .35, 1.7);
+    const ps = pr(t, c.inicio + .35 * k, 1.7 * k);
     if (ps > 0 && ps < 1) { const ys = dy + 30 + ps * (dh - 60);
       const gs = ctx.createLinearGradient(0, ys - 90, 0, ys); gs.addColorStop(0, 'rgba(244,122,31,0)'); gs.addColorStop(1, 'rgba(244,122,31,.28)');
       ctx.fillStyle = gs; ctx.fillRect(dx, ys - 90, dw, 90);
       ctx.save(); ctx.shadowColor = COR('orange'); ctx.shadowBlur = 30; ctx.fillStyle = '#fff3e6'; ctx.fillRect(dx - 20, ys - 3, dw + 40, 6); ctx.restore(); }
     // lupa vai ate a linha destacada
-    const pl = E.inOut3(pr(t, c.inicio + 1.8, .8));
-    if (t >= c.inicio + 1.6) {
+    const pl = E.inOut3(pr(t, c.inicio + 1.8 * k, .8 * k));
+    if (t >= c.inicio + 1.6 * k) {
       const lx = 1100 + (dx + dw - 160 - 1100) * pl, ly = 1250 + (dy + 160 + alvo * 66 + 20 - 1250) * pl, R = 150;
-      ctx.save(); ctx.globalAlpha = clamp((t - c.inicio - 1.6) / .2);
+      ctx.save(); ctx.globalAlpha = clamp((t - c.inicio - 1.6 * k) / .15);
       ctx.beginPath(); ctx.arc(lx, ly, R, 0, 7); ctx.save(); ctx.clip();
       ctx.translate(lx, ly); ctx.scale(1.6, 1.6); ctx.translate(-lx, -ly); desenhaDoc(); ctx.restore();
       ctx.lineWidth = 18; ctx.strokeStyle = '#1b1b1b'; ctx.beginPath(); ctx.arc(lx, ly, R, 0, 7); ctx.stroke();
@@ -627,7 +630,7 @@ const MODELOS = {
 
   // ---- 7. tela dividida que se aproxima; MEMORIA fixa; NARRATIVA por ultimo
   tela_dividida(t, c) {
-    const L = t - c.inicio, u = E.inOut3(pr(t, c.inicio, 2.6));
+    const L = t - c.inicio, u = E.inOut3(pr(t, c.inicio, 2.6 * (c.ritmo || 1)));
     ctx.fillStyle = COR('charcoal'); ctx.fillRect(0, 0, W, H);
     const off = 70 * (1 - u);
     ArchivePhoto.draw(t, { nome: c.imagens.esquerda, x: -off - 12 + L * 1.5, y: 0, w: 552 });
@@ -650,7 +653,7 @@ const MODELOS = {
     textura('papel_azul', 0, 0, W, H, L * 3, L * 2);
     ArchivePhoto.draw(t, { nome: c.imagens.silhueta, x: -60, y: 1300, w: 640, tom: 'azul', deriva: [3, 0], cena: [c.inicio, c.fim], alfa: .85 });
     ArchivePhoto.draw(t, { nome: c.imagens.base, x: 0, y: H - 250, w: 1080, tom: 'azul', deriva: [0, -2], cena: [c.inicio, c.fim] });
-    EndCard.seta(t, { pontos: [[60, 1560], [330, 1420], [470, 1470], [760, 1240], [700, 1235], [960, 1080]], t0: c.inicio + .3, dur: 1.1, esp: 66 });
+    EndCard.seta(t, { pontos: [[60, 1560], [330, 1420], [470, 1470], [760, 1240], [700, 1235], [960, 1080]], t0: c.inicio + .3 * (c.ritmo || 1), dur: 1.1 * (c.ritmo || 1), esp: 66 });
     const tam = blocoTexto(c.texto, 140, SAFE_W);
     let y = 240;
     c.texto.forEach((l, i) => {
@@ -674,7 +677,8 @@ const MotionReel = {
     const cam = ImpactTransition.camera(t);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    ctx.save(); ctx.translate(W / 2 + cam.ox, H / 2 + cam.oy); ctx.scale(cam.z, cam.z); ctx.translate(-W / 2, -H / 2);
+    const empurra = 1 + (S.empurrao || 0) * E.inOut3(pr(t, c.inicio, c.fim - c.inicio));   // a camera nunca para
+    ctx.save(); ctx.translate(W / 2 + cam.ox, H / 2 + cam.oy); ctx.scale(cam.z * empurra, cam.z * empurra); ctx.translate(-W / 2, -H / 2);
     MODELOS[c.modelo](t, c);
     ctx.restore();
     ImpactTransition.draw(t);

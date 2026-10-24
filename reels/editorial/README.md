@@ -47,3 +47,19 @@ ducking, loudness); validação em `qa_editorial.py`.
 Cada linha de texto tem `ancora` (palavra falada) ou `palavras_ancoras` (uma por palavra). O render acha o
 tempo dessas palavras na narração e entra o texto nelas. Legendas repetidas com a tela são omitidas
 automaticamente (`esconder_se_repetida`). Trilha própria: ponha um arquivo em `trilha.arquivo`.
+
+## Ritmo (bloco `ritmo` no reel.json)
+
+`"modo": "compacto"` faz cada cena durar só respiro + fala + respiro (o vídeo encolhe junto com a fala) e
+encolhe as animações internas pelo `fator` (0.45 a 1.0). Outras chaves:
+
+| Chave | Efeito |
+|---|---|
+| `velocidade` | acelera a narração sem mudar o tom (1.12 = 12% mais rápida) |
+| `pausa_max` | corta pausas internas da fala para no máximo esse tempo (s) |
+| `antes` / `depois` / `final` | respiro antes da fala, depois da fala e segurada da última cena (CTA) |
+| `socos` | pequeno impacto de câmera em cada linha de texto que entra |
+| `empurrao` | zoom contínuo da câmera em toda cena (0.05 = 5%) |
+
+Os cortes caem na meia batida da trilha sintetizada. Para voltar ao formato de janelas fixas, apague o bloco
+`ritmo` (vale o `inicio`/`fim` de cada cena) e ajuste `duracao_alvo`.

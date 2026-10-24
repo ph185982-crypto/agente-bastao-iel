@@ -55,6 +55,75 @@ def carregar_narracao(cfg, cenas_cfg):
     return out
 
 
+# ---------------------------------------------------------------- ritmo: fala mais rapida e cenas compactas
+def acelerar_narracao(cfg, narr, trabalho):
+    """Corta pausas internas longas e acelera a fala (sem mudar o tom); realinha as palavras."""
+    rt = cfg.get("ritmo", {})
+    vel, pausa = rt.get("velocidade", 1.0), rt.get("pausa_max", None)
+    if vel == 1.0 and pausa is None:
+        return narr
+    from faster_whisper import WhisperModel
+
+    from fazer_reels import alinhar, palavras_whisper, refinar_inicios
+    pasta = trabalho / "voz_rapida"
+    pasta.mkdir(parents=True, exist_ok=True)
+    wm = None
+    out = []
+    for i, n in enumerate(narr):
+        if not n:
+            out.append(n)
+            continue
+        dst, meta = pasta / f"cena_{i + 1:02d}.wav", pasta / f"cena_{i + 1:02d}.json"
+        chave = json.dumps([vel, pausa, n["wav"].stat().st_mtime, n["fala"], "medium"])
+        if not (dst.exists() and meta.exists() and json.loads(meta.read_text()).get("chave") == chave):
+            filtros = []
+            if pausa is not None:
+                filtros.append(f"silenceremove=stop_periods=-1:stop_duration={pausa + .05}:stop_threshold=-38dB:stop_silence={pausa}")
+            if vel != 1.0:
+                filtros.append(f"atempo={vel}")
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(n["wav"]), "-af", ",".join(filtros), str(dst)], check=True)
+            if wm is None:   # medium: tempos por palavra mais precisos que o small em clipes curtos
+                wm = WhisperModel("medium", device="cpu", compute_type="int8")
+            import soundfile as sf
+            dur = sf.info(str(dst)).duration
+            pal, cob = alinhar(n["fala"], palavras_whisper(wm, dst), dur)
+            pal = refinar_inicios(pal, dst)
+            meta.write_text(json.dumps({"chave": chave, "palavras": pal, "cobertura": cob}, ensure_ascii=False))
+        import soundfile as sf
+        m = json.loads(meta.read_text())
+        out.append({**n, "wav": dst, "palavras": m["palavras"], "dur": sf.info(str(dst)).duration})
+    antes = sum(n["dur"] for n in narr if n)
+    depois = sum(n["dur"] for n in out if n)
+    log(f"Narracao: {antes:.1f} s -> {depois:.1f} s (pausas cortadas e fala {vel:.2f}x)")
+    return out
+
+
+def compactar(cfg, narr):
+    """Cada cena dura a fala + respiros curtos; as animacoes internas encolhem junto (fator 'ritmo')."""
+    rt = cfg.get("ritmo", {})
+    if rt.get("modo") != "compacto":
+        return cfg
+    t = 0.0
+    for i, (c, n) in enumerate(zip(cfg["cenas"], narr)):
+        ultima = i == len(cfg["cenas"]) - 1
+        lead = rt.get("antes", {}).get(c["modelo"], rt.get("antes_padrao", .15))
+        tail = rt.get("final", 1.7) if ultima else rt.get("depois", .3)
+        dur = (n["dur"] if n else 2.0)
+        c["inicio"] = round(t, 3)
+        c["voz_atraso"] = lead
+        fim = t + max(rt.get("cena_min", 1.6), lead + dur + tail)
+        bpm = cfg.get("trilha", {}).get("sintetizada", {}).get("bpm")
+        if bpm and not cfg.get("trilha", {}).get("arquivo"):   # corte cai na meia batida da trilha
+            passo = 30 / bpm
+            fim = -(-fim // passo) * passo
+        c["fim"] = round(fim, 3)
+        c["ritmo"] = rt.get("fator", {}).get(c["modelo"], rt.get("fator_padrao", .7))
+        t = c["fim"]
+    cfg["duration"] = round(round(t * cfg["fps"]) / cfg["fps"], 3)
+    log(f"Linha do tempo compacta: {cfg['duration']:.1f} s")
+    return cfg
+
+
 # ---------------------------------------------------------------- tempos
 class Relogio:
     """Acha o tempo absoluto de uma palavra falada dentro da cena (busca em ordem)."""
@@ -83,6 +152,7 @@ def resolver(cfg, narr):
         c = json.loads(json.dumps(c))
         r = Relogio(c, n)
         ini = c["inicio"]
+        q = c.get("ritmo", 1.0)   # animacoes internas encolhem no modo compacto
         padrao = lambda j: ini + 0.6 + j * 0.6  # noqa: E731
         for j, l in enumerate(c.get("texto", [])):
             if "ancora" in l:
@@ -101,6 +171,8 @@ def resolver(cfg, narr):
                 l["sub_t"] = r.palavra(l["sublinhar_ancora"], seq=False)
             if l.get("impacto"):
                 impactos.append({"t": l["t"], "forca": 1.0})
+            elif cfg.get("ritmo", {}).get("socos"):
+                impactos.append({"t": l["t"], "forca": .35})
                 sons.append({"tipo": "impacto", "t": l["t"]})
             if l.get("carimbo"):
                 sons.append({"tipo": "carimbo", "t": l["t"] + .12})
@@ -126,26 +198,26 @@ def resolver(cfg, narr):
         # efeitos proprios de cada modelo
         m = c["modelo"]
         if m == "impacto_documento":
-            sons += [{"tipo": "whoosh", "t": ini + .02}, {"tipo": "papel", "t": ini + .1, "dur": .9}]
+            sons += [{"tipo": "whoosh", "t": ini + .02}, {"tipo": "papel", "t": ini + .1, "dur": .9 * q}]
         if m == "numero_trava":
             lv = next((l for l in c["texto"] if l.get("documento_sobe")), None)
             if lv:
                 sons.append({"tipo": "papel", "t": lv["t"] - .3, "dur": .5})
         if m == "assinatura":
-            sons.append({"tipo": "caneta", "t": ini + .35, "dur": 2.0})
+            sons.append({"tipo": "caneta", "t": ini + .35 * q, "dur": 2.0 * q})
         if m == "documento_scanner":
-            sons += [{"tipo": "scanner", "t": ini + .35, "dur": 1.7}, {"tipo": "whoosh", "t": ini + 1.8},
-                     {"tipo": "marcador", "t": ini + 2.55}]
+            sons += [{"tipo": "scanner", "t": ini + .35 * q, "dur": 1.7 * q}, {"tipo": "whoosh", "t": ini + 1.8 * q},
+                     {"tipo": "marcador", "t": ini + 2.55 * q}]
         if m == "tela_dividida":
             sons.append({"tipo": "whoosh", "t": ini + .05})
         if m == "chamada_final":
-            sons.append({"tipo": "whoosh", "t": ini + .3})
+            sons.append({"tipo": "whoosh", "t": ini + .3 * q})
         tr = c.get("transicao_saida")
         if tr and k + 1 < len(cfg["cenas"]):
             transicoes.append({"t": c["fim"], "tipo": tr})
-            sons.append({"tipo": "whoosh", "t": c["fim"] - .25})
+            sons.append({"tipo": "whoosh", "t": c["fim"] - .2})
             if tr in ("folha", "rasgo"):
-                sons.append({"tipo": "papel", "t": c["fim"] - .4, "dur": .7})
+                sons.append({"tipo": "papel", "t": c["fim"] - .3, "dur": .5})
             if tr == "flash":
                 impactos.append({"t": c["fim"], "forca": .6})
         if r.faltas:
@@ -267,10 +339,12 @@ def main(cfg_path):
     proj = cfg_path.parent
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     nome = cfg["nome"]
-    fps, total = cfg["fps"], float(cfg["duration"])
     trabalho = RAIZ / "saida" / ".trabalho" / f"{nome}-editorial"
     trabalho.mkdir(parents=True, exist_ok=True)
     narr = carregar_narracao(cfg, cfg["cenas"])
+    narr = acelerar_narracao(cfg, narr, trabalho)
+    cfg = compactar(cfg, narr)
+    fps, total = cfg["fps"], float(cfg["duration"])
     cenas, impactos, transicoes, sons, ancoras_qa = resolver(cfg, narr)
     legendas, escondidas = montar_legendas(cfg, cenas, narr)
     # cenas: a fala precisa caber na janela de cada cena
@@ -280,7 +354,8 @@ def main(cfg_path):
             estouro.append((c["id"], round(c["_voz_inicio"] + n["dur"] - c["fim"], 2)))
     spec = {"w": 1080, "h": 1920, "fps": fps, "total": total, "cores": cfg["colors"], "zona_segura": cfg["zona_segura"],
             "cenas": cenas, "impactos": impactos, "transicoes": transicoes, "legendas": legendas,
-            "legenda_px": cfg["legendas"]["tamanho"], "legenda_y": cfg["legendas"]["y"]}
+            "legenda_px": cfg["legendas"]["tamanho"], "legenda_y": cfg["legendas"]["y"],
+            "empurrao": cfg.get("ritmo", {}).get("empurrao", 0)}
     (trabalho / "spec.json").write_text(json.dumps(spec, ensure_ascii=False, indent=1))
     pagina = html(cfg, spec, trabalho, proj)
     pasta, reg = renderizar(pagina, trabalho, fps, total)
@@ -293,7 +368,7 @@ def main(cfg_path):
     for c, n in zip(cenas, narr):   # pausa dramatica depois da frase da memoria
         if c["modelo"] == "tela_dividida" and n:
             fim = c["_voz_inicio"] + n["dur"]
-            pausa7.append((fim + .1, min(fim + 1.0, c["fim"])))
+            pausa7.append((fim + .05, min(fim + .45, c["fim"])))
     cen_aud = [{"inicio": c["inicio"], "fim": c["fim"], "riser": c["modelo"] in ("retrato_carimbo", "chamada_final")} for c in cenas]
     if tr.get("arquivo"):
         import soundfile as sf
@@ -309,7 +384,8 @@ def main(cfg_path):
     saida = RAIZ / "saida"
     final = saida / f"{nome}.mp4"
     r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-framerate", str(fps), "-i", str(pasta / "q%05d.jpg"), "-i", str(mix),
-                        "-map", "0:v", "-map", "1:a", "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "slow", "-crf", "19",
+                        "-map", "0:v", "-map", "1:a", "-t", f"{total:.3f}",
+                        "-af", "alimiter=limit=0.6:attack=1:release=40:level=false",   # segura picos do AAC (true peak) "-c:v", "libx264", "-preset", "slow", "-crf", "19",
                         "-maxrate", "9M", "-bufsize", "18M", "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(fps),
                         "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-movflags", "+faststart", str(final)],
                        capture_output=True, text=True)
