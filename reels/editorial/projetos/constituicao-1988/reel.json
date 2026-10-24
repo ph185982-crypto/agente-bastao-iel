@@ -1,0 +1,371 @@
+{
+  "titulo": "Você aprendeu essa história errado — Constituição de 1988",
+  "nome": "constituicao-1988",
+  "duration": 60,
+  "fps": 30,
+  "format": "1080x1920",
+  "profile": "@pedro_destrava",
+  "colors": {
+    "blue": "#1457D9",
+    "orange": "#F47A1F",
+    "ivory": "#F7F3EA",
+    "charcoal": "#171717"
+  },
+  "fontes": {
+    "titulo": "fontes/Anton-Regular.ttf",
+    "apoio": "fontes/Montserrat-VF.ttf"
+  },
+  "zona_segura": {
+    "topo": 180,
+    "base": 300,
+    "lados": 80
+  },
+  "narracao": {
+    "roteiro": "roteiros/constituicao-1988.md",
+    "pasta": "saida/.trabalho/constituicao-1988",
+    "observacao": "voz clonada do Pedro (Chatterbox, local); sem voz, o render usa so os tempos padrao de cada cena"
+  },
+  "trilha": {
+    "arquivo": null,
+    "sintetizada": {
+      "bpm": 120,
+      "tom": "D",
+      "intensidade": [
+        0.75,
+        0.85,
+        0.35,
+        0.95,
+        0.8,
+        0.9,
+        0.7,
+        0.85
+      ]
+    },
+    "loudness_lufs": -14
+  },
+  "legendas": {
+    "ativo": true,
+    "y": 1520,
+    "tamanho": 56,
+    "palavras_min": 2,
+    "palavras_max": 5,
+    "esconder_se_repetida": 0.7
+  },
+  "cenas": [
+    {
+      "id": "gancho",
+      "modelo": "impacto_documento",
+      "inicio": 0,
+      "fim": 5,
+      "voz_atraso": 0.35,
+      "imagens": {
+        "documento": "s1_documento",
+        "fragmentos": [
+          "s1_frag_tr",
+          "s1_frag_bl",
+          "s1_frag_br"
+        ]
+      },
+      "texto": [
+        {
+          "linha": "VOCÊ APRENDEU",
+          "cor": "ivory",
+          "ancora": "Você"
+        },
+        {
+          "linha": "ESSA HISTÓRIA",
+          "cor": "blue",
+          "ancora": "essa"
+        },
+        {
+          "linha": "ERRADO.",
+          "cor": "orange",
+          "ancora": "errado",
+          "escala": 1.75,
+          "desgaste": true,
+          "impacto": true
+        }
+      ],
+      "destaque_legenda": "errado",
+      "transicao_saida": "flash"
+    },
+    {
+      "id": "1988",
+      "modelo": "numero_trava",
+      "inicio": 5,
+      "fim": 12,
+      "voz_atraso": 0.25,
+      "imagens": {
+        "topo": "s2_congresso",
+        "documento": "s2_livro"
+      },
+      "numero": {
+        "valor": "1988",
+        "ancora": "1988",
+        "cor": "blue"
+      },
+      "texto": [
+        {
+          "linha": "A CONSTITUIÇÃO",
+          "cor": "charcoal",
+          "ancora": "Constituição",
+          "documento_sobe": true
+        },
+        {
+          "linha": "CRIOU O SUS.",
+          "cor": "orange",
+          "ancora": "criou",
+          "sublinhar": "SUS.",
+          "sublinhar_ancora": "SUS"
+        }
+      ],
+      "destaque_legenda": "saúde",
+      "transicao_saida": "folha"
+    },
+    {
+      "id": "suspense",
+      "modelo": "suspense_papel",
+      "inicio": 12,
+      "fim": 20,
+      "voz_atraso": 0.6,
+      "imagens": {
+        "topo": "s3_plenario",
+        "base": "s3_botoes"
+      },
+      "botao": {
+        "x": 264,
+        "y": 407,
+        "w": 290,
+        "h": 60,
+        "cliques": [
+          "nunca",
+          "aparece"
+        ]
+      },
+      "texto": [
+        {
+          "linha": "MAS",
+          "cor": "blue",
+          "ancora": "Mas",
+          "escala": 2.1
+        },
+        {
+          "linha": "NA HORA",
+          "cor": "charcoal",
+          "palavras_ancoras": [
+            "parte",
+            "história"
+          ]
+        },
+        {
+          "linha": "DO VOTO",
+          "cor": "charcoal",
+          "palavras_ancoras": [
+            "quase",
+            "nunca"
+          ],
+          "reticencias": "aparece"
+        }
+      ],
+      "destaque_legenda": "nunca",
+      "fundo_legenda": true,
+      "transicao_saida": "rasgo"
+    },
+    {
+      "id": "voto-contra",
+      "modelo": "retrato_carimbo",
+      "inicio": 20,
+      "fim": 28,
+      "voz_atraso": 0.3,
+      "imagens": {
+        "lateral": "s4_plenario",
+        "documento": "s4_doc",
+        "retrato": "s4_lula"
+      },
+      "retrato": {
+        "ancora": "Lula",
+        "etiqueta": "ilustração"
+      },
+      "documento": {
+        "ancora": "texto",
+        "x_ancora": "contra"
+      },
+      "texto": [
+        {
+          "linha": "LULA E O PT",
+          "cor": "ivory",
+          "ancora": "Lula"
+        },
+        {
+          "linha": "VOTARAM CONTRA",
+          "cor": "orange",
+          "ancora": "votaram",
+          "carimbo": true,
+          "impacto": true
+        },
+        {
+          "linha": "O TEXTO FINAL.",
+          "cor": "ivory",
+          "ancora": "contra",
+          "atraso": 0.45
+        }
+      ],
+      "destaque_legenda": "bancada",
+      "fundo_legenda": true,
+      "transicao_saida": "whip"
+    },
+    {
+      "id": "assinatura",
+      "modelo": "assinatura",
+      "inicio": 28,
+      "fim": 36,
+      "voz_atraso": 1.2,
+      "imagens": {
+        "topo": "s5_congresso",
+        "documento": "s5_assinatura"
+      },
+      "caneta": {
+        "x": 379,
+        "y": 585
+      },
+      "texto": [
+        {
+          "linha": "DEPOIS,",
+          "cor": "charcoal",
+          "ancora": "Depois"
+        },
+        {
+          "linha": "ASSINARAM",
+          "cor": "blue",
+          "ancora": "assinou",
+          "sublinhar": "ASSINARAM",
+          "lateral": true
+        },
+        {
+          "linha": "A CONSTITUIÇÃO.",
+          "cor": "charcoal",
+          "ancora": "Constituição"
+        }
+      ],
+      "destaque_legenda": "partido",
+      "fundo_legenda": true,
+      "transicao_saida": "folha"
+    },
+    {
+      "id": "registro",
+      "modelo": "documento_scanner",
+      "inicio": 36,
+      "fim": 44,
+      "voz_atraso": 2.5,
+      "imagens": {
+        "base": "s6_congresso"
+      },
+      "documento": {
+        "linhas": 11,
+        "alvo": 6,
+        "etiqueta": "ilustração: registro esquemático, sem nomes"
+      },
+      "texto": [
+        {
+          "linha": "O VOTO FICOU",
+          "cor": "ivory",
+          "ancora": "voto"
+        },
+        {
+          "linha": "REGISTRADO.",
+          "cor": "orange",
+          "ancora": "registrado",
+          "escala": 1.45,
+          "impacto": true,
+          "desgaste": true
+        }
+      ],
+      "destaque_legenda": "registrado",
+      "transicao_saida": "rasgo"
+    },
+    {
+      "id": "memoria",
+      "modelo": "tela_dividida",
+      "inicio": 44,
+      "fim": 53,
+      "voz_atraso": 0.7,
+      "imagens": {
+        "esquerda": "s7_esquerda",
+        "direita": "s7_direita"
+      },
+      "texto": [
+        {
+          "linha": "A MEMÓRIA É INIMIGA",
+          "cor": "ivory",
+          "palavra_cor": {
+            "MEMÓRIA": "orange"
+          },
+          "fixa": "MEMÓRIA",
+          "palavras_ancoras": [
+            "A",
+            "memória",
+            "é",
+            "inimiga"
+          ]
+        },
+        {
+          "linha": "DE QUEM DEPENDE",
+          "cor": "ivory",
+          "palavras_ancoras": [
+            "de",
+            "quem",
+            "depende"
+          ]
+        },
+        {
+          "linha": "DE NARRATIVA.",
+          "cor": "ivory",
+          "palavra_cor": {
+            "NARRATIVA.": "orange"
+          },
+          "palavras_ancoras": [
+            "de",
+            "narrativa"
+          ]
+        }
+      ],
+      "destaque_legenda": "memória",
+      "transicao_saida": "flash"
+    },
+    {
+      "id": "cta",
+      "modelo": "chamada_final",
+      "inicio": 53,
+      "fim": 60,
+      "voz_atraso": 0.3,
+      "imagens": {
+        "base": "s8_multidao",
+        "silhueta": "s2_congresso"
+      },
+      "texto": [
+        {
+          "linha": "QUER A PARTE DA",
+          "cor": "ivory",
+          "ancora": "Quer"
+        },
+        {
+          "linha": "HISTÓRIA QUE",
+          "cor": "ivory",
+          "ancora": "história"
+        },
+        {
+          "linha": "ESCONDEM?",
+          "cor": "charcoal",
+          "etiqueta_cor": "orange",
+          "ancora": "esconder"
+        }
+      ],
+      "cta": {
+        "texto": "SEGUE",
+        "perfil": "@PEDRO_DESTRAVA",
+        "ancora": "Segue"
+      },
+      "destaque_legenda": "esconder"
+    }
+  ]
+}

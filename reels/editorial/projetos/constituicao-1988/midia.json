@@ -1,0 +1,205 @@
+{
+  "frames": {
+    "f1": "editorial/projetos/constituicao-1988/referencia/6a63fc92-image.png",
+    "f2": "editorial/projetos/constituicao-1988/referencia/48861b9d-image.png",
+    "f3": "editorial/projetos/constituicao-1988/referencia/1bdadf43-image.png",
+    "f4": "editorial/projetos/constituicao-1988/referencia/3827027c-image.png",
+    "f5": "editorial/projetos/constituicao-1988/referencia/8aae38b5-image.png",
+    "f6": "editorial/projetos/constituicao-1988/referencia/557e62ff-image.png",
+    "f8": "editorial/projetos/constituicao-1988/referencia/8aab4702-image.png",
+    "f9": "editorial/projetos/constituicao-1988/referencia/6edcc3e9-image.png"
+  },
+  "camadas": {
+    "s1_documento": {
+      "frame": "f1",
+      "recorte": [
+        150,
+        70,
+        790,
+        480
+      ]
+    },
+    "s1_frag_tr": {
+      "frame": "f1",
+      "recorte": [
+        715,
+        0,
+        941,
+        330
+      ],
+      "rasgado": "tblr"
+    },
+    "s1_frag_bl": {
+      "frame": "f1",
+      "recorte": [
+        0,
+        1200,
+        300,
+        1672
+      ],
+      "rasgado": "tblr"
+    },
+    "s1_frag_br": {
+      "frame": "f1",
+      "recorte": [
+        640,
+        1240,
+        941,
+        1640
+      ],
+      "rasgado": "tblr"
+    },
+    "s2_congresso": {
+      "frame": "f2",
+      "recorte": [
+        240,
+        0,
+        941,
+        315
+      ],
+      "rasgado": "b"
+    },
+    "s2_livro": {
+      "frame": "f2",
+      "recorte": [
+        0,
+        1195,
+        941,
+        1672
+      ]
+    },
+    "s3_plenario": {
+      "frame": "f3",
+      "recorte": [
+        0,
+        0,
+        941,
+        205
+      ],
+      "rasgado": "b"
+    },
+    "s3_botoes": {
+      "frame": "f3",
+      "recorte": [
+        0,
+        1040,
+        941,
+        1672
+      ]
+    },
+    "s4_plenario": {
+      "frame": "f4",
+      "recorte": [
+        0,
+        575,
+        430,
+        1100
+      ],
+      "rasgado": "tr"
+    },
+    "s4_doc": {
+      "frame": "f4",
+      "recorte": [
+        640,
+        578,
+        941,
+        800
+      ],
+      "limpar": [
+        "laranja"
+      ],
+      "limpar_area": [
+        600,
+        700,
+        941,
+        1080
+      ],
+      "rasgado": "tl"
+    },
+    "s4_lula": {
+      "frame": "f4",
+      "recorte": [
+        0,
+        760,
+        941,
+        1672
+      ],
+      "limpar": [
+        "laranja"
+      ],
+      "limpar_area": [
+        600,
+        700,
+        941,
+        1080
+      ],
+      "rasgado": "t"
+    },
+    "s5_congresso": {
+      "frame": "f5",
+      "recorte": [
+        440,
+        0,
+        941,
+        400
+      ],
+      "rasgado": "bl"
+    },
+    "s5_assinatura": {
+      "frame": "f5",
+      "recorte": [
+        0,
+        660,
+        941,
+        1672
+      ],
+      "limpar": [
+        "azul_tinta"
+      ],
+      "limpar_area": [
+        160,
+        1110,
+        920,
+        1330
+      ]
+    },
+    "s6_congresso": {
+      "frame": "f6",
+      "recorte": [
+        0,
+        1360,
+        941,
+        1672
+      ],
+      "rasgado": "t"
+    },
+    "s7_esquerda": {
+      "frame": "f9",
+      "recorte": [
+        0,
+        0,
+        470,
+        1672
+      ]
+    },
+    "s7_direita": {
+      "frame": "f9",
+      "recorte": [
+        470,
+        0,
+        940,
+        1672
+      ]
+    },
+    "s8_multidao": {
+      "frame": "f8",
+      "recorte": [
+        0,
+        1455,
+        940,
+        1672
+      ],
+      "rasgado": "t"
+    }
+  }
+}

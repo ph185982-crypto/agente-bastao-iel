@@ -16,3 +16,6 @@ __pycache__/
 *.mp4
 referencia/
 dados/
+editorial/projetos/*/referencia/
+editorial/projetos/*/imagens/
+editorial/texturas/
