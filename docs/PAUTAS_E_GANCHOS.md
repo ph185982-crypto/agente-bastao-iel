@@ -21,6 +21,21 @@
 - "Usar como capa" acrescenta o gancho como capa candidata numa nova versão (as anteriores ficam guardadas), escolhe essa capa e refaz a arte.
 - Os "posts recentes" vêm dos posts lidos pela aba Resultados (o que o perfil realmente publicou) mais o que o navegador mandar.
 
+## Conta aberta (prova com número real) e porta de entrada
+
+Criar → "Prova com número real (Conta aberta)". Sem IA: você informa período, canal, faturamento e custos (comissão, frete, imposto,
+anúncios, outros) e, se quiser, quanto sobrou.
+
+- **O código faz as contas**: percentual de cada custo e margem, arredondados a 1 casa. Se os números **não fecham** (faturamento − custos ≠ sobra,
+  com tolerância de R$ 1 ou 0,5%), a prova **não é criada** e a mensagem mostra as contas para você corrigir.
+- **Anonimiza por padrão**: o nome do cliente só entra com "o cliente autorizou" marcado; sem isso o nome nem é guardado no conteúdo.
+- **Rótulo honesto**: os valores são "informados pelo cliente a partir dos registros dele", com a limitação "não verificado de forma independente"
+  nas evidências e na legenda ("sem auditoria independente", "não é promessa de resultado"). O estado das afirmações vem das mesmas regras do resto da ferramenta.
+- O conteúdo sai com arte e cai na Central para você aprovar; editar um número depois reabre a revisão (número sem origem). Nada é publicado sozinho.
+- **Iscas (lead magnets)**: nome, palavra para comentar e **link https**. Sem link, a chamada final não é gerada e a pendência aparece
+  (nada de promessa vazia). Com link: "Comenta PRECO que eu te mando: Calculadora de preço."
+- **DMs por palavra**: você digita por semana (total e, se souber, qualificadas). Não existe integração com as mensagens; vazio é "—", não zero.
+
 ## Temas usados
 
 - Registro em `config.temas_usados` (até 400): alimentado pelos posts lidos na aba **Resultados** (inclui os antigos, origem
@@ -47,6 +62,6 @@ são uma hipótese e ainda não foram comparados com resultados reais; a aba Res
 
 ## Ainda não existe
 
-- Camadas alcance/prova/oferta (50/30/20) e o gerador "A Conta Aberta" com dados de cliente.
-- CTA por palavra-chave com lead magnet (os links ainda não existem) e contagem de DMs.
+- Camadas alcance/prova/oferta (50/30/20) como regra de mix semanal (a prova já existe como gerador; falta o planejamento da semana).
+- Integração automática com as DMs do Instagram (hoje a contagem por palavra é digitada).
 - Ajuste dos pesos pelo resultado dos posts.

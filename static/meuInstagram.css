@@ -23,3 +23,10 @@
 .ig-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 .ig-topo .es-h1 { margin: 0; }
 .ig-topo .es-btn { width: auto; flex: none; padding: 0 16px; }
+
+/* Conta aberta */
+.ca-check { display: flex; align-items: center; gap: 8px; margin-top: 10px; min-height: 44px; }
+.ca-mudo { color: #686A73; font-size: 13px; margin-top: 6px; }
+.ca-isca { border-top: 1px solid #E3E5EA; padding-top: 10px; margin-top: 10px; }
+.ca-tab { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+.ca-tab th, .ca-tab td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #E3E5EA; }

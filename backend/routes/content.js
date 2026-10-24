@@ -172,6 +172,15 @@ const fonteDoCorpo = (f) => {
 const claimsDoCorpo = (c) => arr(c, 12).filter((x) => x && x.id && x.texto).map((x) => ({ ...x, texto: txt(x.texto, 500) }));
 const evidsDoCorpo = (e) => arr(e, 80).filter((x) => x && x.id);
 
+// "A Conta Aberta": prova com números reais informados pelo Pedro. Sem IA; as contas são feitas em código.
+etapa('conta-aberta', 20, async (b) => {
+  const Leads = require('../lib/leadMagnets');
+  return require('../lib/contaAberta').criar(b.entrada && typeof b.entrada === 'object' ? b.entrada : {}, { iscas: await Leads.ler() });
+});
+router.get('/iscas', async (req, res) => { try { res.json({ iscas: await require('../lib/leadMagnets').ler(), dms: await require('../lib/leadMagnets').lerDms(), guardada: !!armazem()?.duravel }); } catch (e) { erroJson(res, e); } });
+router.put('/iscas', porMinuto(20, 'iscas'), async (req, res) => { try { res.json(await require('../lib/leadMagnets').salvar(req.body?.iscas)); } catch (e) { erroJson(res, e, e.status); } });
+router.post('/dms', porMinuto(30, 'dms'), async (req, res) => { try { res.json(await require('../lib/leadMagnets').registrarDms(req.body || {})); } catch (e) { erroJson(res, e, e.status); } });
+
 // Mais ganchos para a capa: 10 candidatos filtrados pelo código (não copia, não inventa número).
 etapa('ganchos', 6, async (b) => {
   exigeIA();

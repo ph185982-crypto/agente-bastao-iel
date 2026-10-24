@@ -527,7 +527,7 @@
       ? { id: document.activeElement.id, valor: document.activeElement.value, ini: document.activeElement.selectionStart, fim: document.activeElement.selectionEnd } : null;
     const botaoFocado = root.contains(document.activeElement) && document.activeElement?.dataset?.action ? { ...document.activeElement.dataset } : null;
     let corpo = '';
-    if (state.tab === 'mesa') corpo = state.sub === 'descobrir' ? telaDescobrir() : state.sub === 'conteudo' ? telaConteudo() : telaMesa();
+    if (state.tab === 'mesa') corpo = state.sub === 'descobrir' ? telaDescobrir() : state.sub === 'conta-aberta' ? (window.ContaAberta ? window.ContaAberta.render(ctxEditor()) : '') : state.sub === 'conteudo' ? telaConteudo() : telaMesa();
     else if (state.tab === 'central') corpo = window.MesaCentral ? window.MesaCentral.render(ctxEditor()) : '';
     else if (state.tab === 'resultados') corpo = window.MeuInstagram ? window.MeuInstagram.render(ctxEditor()) : '';
     else if (state.tab === 'semana') corpo = telaSemana();
@@ -580,6 +580,7 @@
       if (window.MesaCentral?.acao && await window.MesaCentral.acao(a, el, ctxEditor())) return;
       if (window.MeuInstagram?.acao && await window.MeuInstagram.acao(a, el, ctxEditor())) return;
       if (window.MesaEstrategia?.acao && await window.MesaEstrategia.acao(a, el, ctxEditor())) return;
+      if (window.ContaAberta?.acao && await window.ContaAberta.acao(a, el, ctxEditor())) return;
       switch (a) {
         case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') { window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); window.MesaEstrategia?.carregar(ctxEditor()); } if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
         case 'criar': state.criarModulo = el.dataset.m; trocarAntigo(state.criarModulo); return render();
