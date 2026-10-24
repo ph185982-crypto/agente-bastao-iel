@@ -274,6 +274,7 @@ async function avancar(id) {
       const achado = await reconciliar(p);
       if (achado) {
         p = await a.publicacoes.atualizar(conta(), id, REDE, ['publicando_final'], 'publicada', { ig_media_id: achado.id, permalink: achado.permalink || null, publicada_em: achado.timestamp, reconciliada: true });
+        registrarTema(id);
         return resposta(p || await a.publicacoes.obter(conta(), id, REDE));
       }
       p = await a.publicacoes.atualizar(conta(), id, REDE, ['publicando_final'], 'aguardando_processamento', { aviso_temporario: 'A publicação não foi confirmada; vou tentar de novo.' }) || p;
@@ -306,6 +307,7 @@ async function avancar(id) {
     await conferirConta();
     const r = await meta.graph('POST', `${meta.config().igId}/media_publish`, { creation_id: p.dados.creation_id });
     const feita = await a.publicacoes.atualizar(conta(), id, REDE, ['publicando_final'], 'publicada', { ig_media_id: r.id, publicada_em: new Date().toISOString() });
+    registrarTema(id);
     let atual = feita || await a.publicacoes.obter(conta(), id, REDE);
     const link = await buscarPermalink(atual);
     if (link) atual = await a.publicacoes.atualizar(conta(), id, REDE, ['publicada'], 'publicada', { permalink: link }) || atual;
@@ -319,6 +321,15 @@ async function avancar(id) {
     }
     return resposta(await a.publicacoes.atualizar(conta(), id, REDE, ['publicando_final'], 'erro', { erro: m }) || p);
   }
+}
+
+// Depois de publicar, o assunto entra no registro de temas usados (não bloqueia nem atrasa a publicação).
+function registrarTema(id) {
+  (async () => {
+    const reg = await armazem()?.conteudos.obter(conta(), id);
+    const c = reg?.doc;
+    if (c) await require('./temas').registrar(c.briefing?.assunto || c.titulo, { origem: 'ferramenta', id });
+  })().catch((e) => console.error('[temas]', e.message));
 }
 
 async function listarPublicacoes() {

@@ -262,12 +262,17 @@
         ${p.ligacao ? `<span class="mz-chip ${p.ligacao === 'forte' ? 'ok' : 'neutro'}">Ligação com o perfil: ${p.ligacao === 'forte' ? 'forte' : 'média'}</span>` : ''}
         ${p.risco === 'alto' ? '<span class="mz-chip err">Assunto sensível</span>' : ''}
         ${p.repete_recente ? '<span class="mz-chip warn">Parecido com post recente</span>' : ''}
+        ${typeof p.prioridade === 'number' ? `<span class="mz-chip neutro" title="Estimativa só para ordenar a lista; não prevê alcance">Prioridade ${p.prioridade}</span>` : ''}
+        ${p.mecanismo ? `<span class="mz-chip neutro">${esc({ antes_depois: 'Antes e depois', numero_chocante: 'Número que choca', contraintuitivo: 'Contraintuitivo', pergunta_dor: 'Pergunta que dói' }[p.mecanismo] || p.mecanismo)}</span>` : ''}
+        ${(p.penalidades || []).map((x) => `<span class="mz-chip warn">${esc({ partidario: 'Partidário', direito_autoral: 'Direito de uso', sem_fonte: 'Sem fonte' }[x.tipo] || x.tipo)} −${x.pontos}</span>`).join('')}
       </div>
       <div class="es-title">${esc(p.titulo)}</div>
       <div class="es-text">${esc(p.resumo)}</div>
       <div class="es-text" style="margin-top:6px"><b>${esc(veic)}</b> · ${esc(fmtData(p.publicada_em))}</div>
       ${p.por_que_interessa ? `<div class="mz-bloco"><b>Por que interessa ao perfil</b><span>${esc(p.por_que_interessa)}</span></div>` : '<div class="es-warn">Sem justificativa da IA nesta pauta.</div>'}
+      ${p.por_que_enviaria ? `<div class="mz-bloco"><b>Por que alguém mandaria</b><span>${esc(p.por_que_enviaria)}</span></div>` : ''}
       ${p.angulo ? `<div class="mz-bloco"><b>Ângulo possível</b><span>${esc(p.angulo)}</span></div>` : ''}
+      ${p.angulo_lojista ? `<div class="mz-bloco"><b>Espelho para quem vende</b><span>${esc(p.angulo_lojista)}</span></div>` : ''}
       ${p.limitacoes ? `<div class="mz-bloco"><b>O que confirmar</b><span>${esc(p.limitacoes)}</span></div>` : ''}
       <div class="es-text" style="margin-top:8px">${(p.fontes || []).map((f) => `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.origem || 'fonte')}</a>`).join(' · ')}</div>
       <div class="es-actions">
@@ -290,7 +295,9 @@
       ${d.erro ? `<div class="es-errbox">${esc(d.erro)}</div>` : ''}
       ${dados ? `<div class="es-text" style="margin-top:10px">Consultado ${esc(fmtData(dados.gerado_em))} · ${ok} de ${total} veículos lidos${dados.ia?.usada ? ` · justificativas por IA (${esc(dados.ia.provider)}/${esc(dados.ia.model)}); links, datas e veículos vêm do feed` : dados.ia?.erro ? ` · sem justificativas: ${esc(dados.ia.erro)}` : ''}</div>
         <details class="mz-det"><summary>Veículos consultados</summary>${dados.feeds.map((f) => `<div class="es-text">${f.ok ? '✓' : '✗'} ${esc(f.nome)}${f.ok ? ` (${f.itens} itens)` : ` — ${esc(f.erro)}`}</div>`).join('')}</details>
-        <div class="es-stack" style="margin-top:14px">${dados.pautas.map(cardPauta).join('') || '<div class="es-empty-day">Nenhuma notícia dos pilares nos últimos dias.</div>'}</div>` : ''}
+        ${dados.aviso_prioridade ? `<div class="es-text" style="margin-top:8px">${esc(dados.aviso_prioridade)}</div>` : ''}
+        <div class="es-stack" style="margin-top:14px">${dados.pautas.map(cardPauta).join('') || '<div class="es-empty-day">Nenhuma notícia dos pilares nos últimos dias.</div>'}</div>
+        ${(dados.descartadas || []).length ? `<details class="mz-det"><summary>${dados.descartadas.length} descartada(s): ver por quê</summary>${dados.descartadas.map((d) => `<div class="es-text"><b>${esc(d.titulo)}</b><br>${esc(d.detalhe)}</div>`).join('')}</details>` : ''}` : ''}
     `;
   }
 
@@ -484,8 +491,8 @@
   }
 
   function telaAjustes() {
-    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1>${window.StudioMobile.perfil()}<details class="st-advanced"><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
-    return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
+    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1>${window.StudioMobile.perfil()}<details class="st-advanced"><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
+    return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -571,8 +578,9 @@
       if (window.MesaEditor?.acao && await window.MesaEditor.acao(a, el, ctxEditor())) return;
       if (window.MesaCentral?.acao && await window.MesaCentral.acao(a, el, ctxEditor())) return;
       if (window.MeuInstagram?.acao && await window.MeuInstagram.acao(a, el, ctxEditor())) return;
+      if (window.MesaEstrategia?.acao && await window.MesaEstrategia.acao(a, el, ctxEditor())) return;
       switch (a) {
-        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
+        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') { window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); window.MesaEstrategia?.carregar(ctxEditor()); } if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
         case 'criar': state.criarModulo = el.dataset.m; trocarAntigo(state.criarModulo); return render();
         case 'voltar': state.sub = null; state.atual = null; state.novo = null; return render();
         case 'abrir': return abrirConteudo(id);
