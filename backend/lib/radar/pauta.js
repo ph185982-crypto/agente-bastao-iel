@@ -77,7 +77,7 @@ E.identificar = async (p, ctx) => {
     resumo: U.limita(dados?.resumo, 220), problema: U.limita(dados?.problema, 260), solucao: U.limita(dados?.solucao, 260), como_ganha_dinheiro: U.limita(dados?.como_ganha_dinheiro, 260), modelo_receita: C.MODELOS_RECEITA[dados?.modelo_receita] ? dados.modelo_receita : null,
     url_oficial: doLink === 'oficial' ? p.leitura.url : null, url_sugerida: site,
     fontes_itens: p.leitura.url && doLink !== 'oficial' ? [{ id: `${p.id}_link`, titulo: p.leitura.titulo, url: p.leitura.url, fonte_id: 'pauta', fonte_nome: p.leitura.veiculo, fonte_classe: 'imprensa', publicada_em: p.leitura.publicada_em }] : [],
-    sinais_de_risco: [], ia: false,
+    sinais_de_risco: [], ia: false, max_imprensa: 3,
   };
   // fontes extras indicadas pelo Pedro entram como matérias (a classe real vem do endereço; o site oficial é reconhecido)
   for (const [k, u] of (p.entrada.fontes || []).entries()) {
