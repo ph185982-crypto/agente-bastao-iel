@@ -54,6 +54,7 @@ async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, or
   let rev = existente ? existente.rev : 0;
   const salvar = async () => { doc.atualizado_em = new Date().toISOString(); const r = await store.salvar('carrossel', id, doc, rev); rev = r.rev; };
   await salvar();
+  if (v > 1) { const antes = await store.obter('carrossel', idDe(opId, v - 1)); if (antes && antes.doc.estado === 'erro') await store.salvar('carrossel', antes.doc.id, { ...antes.doc, estado: 'substituido' }, antes.rev).catch(() => {}); }
   try {
     // 1) copy
     if (!doc.copia) {

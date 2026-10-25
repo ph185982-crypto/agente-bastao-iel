@@ -181,7 +181,8 @@ test('texto longo, frase proibida, emoji, exclamação e número inventado são 
   assert.ok(erros((j) => { j.slides[1].problema = 'o cachorro fica sujo e o dono gasta R$ 900 por mês no pet shop do bairro'; }).some((e) => /sem comprovação/.test(e)));
   assert.ok(erros((j) => { j.slides[0].texto = 'Essa empresa fatura milhões resolvendo um problema que todo mundo ignora'; }, semReceita).some((e) => /milhões sem afirmação verificada/.test(e)), 'dinheiro na capa exige faturamento verificado ≥ 1 milhão');
   assert.ok(!erros((j) => { j.slides[0].texto = 'Segundo a empresa, essa empresa fatura milhões resolvendo um problema que todo mundo ignora'; }).some((e) => /milhões/.test(e)), 'com faturamento verificado de US$ 5 milhões a capa pode falar em milhões');
-  assert.ok(erros((j) => { j.slides[0].texto = 'Esse serviço de banho em casa já tem 120 mil clientes no mundo todo'; }).some((e) => /atribuição/.test(e)), 'número da empresa precisa de "segundo a empresa"');
+  assert.ok(!erros((j) => { j.slides[0].texto = 'Esse serviço de banho em casa já tem 120 mil clientes no mundo todo'; }).some((e) => /atribuição/.test(e)), 'a capa sem "segundo a empresa" é consertada pelo código');
+  assert.ok(erros((j) => { j.slides[1].problema = 'o dono de 120 mil clientes não consegue organizar o banho do cachorro dele'; }).some((e) => /atribuição/.test(e)), 'nas demais telas a IA precisa escrever a atribuição');
   assert.ok(erros((j) => { j.slides[0].texto = 'Quase ninguém faz isso no Brasil e esse banho em casa já fatura alto'; }).some((e) => /não dá para provar/.test(e)));
   assert.ok(erros((j) => { j.slides[4].itens = [{ claim_id: 'c9', rotulo: 'clientes' }]; }).some((e) => /não está liberada/.test(e)), 'prova só com afirmação liberada');
   assert.ok(erros((j) => { j.slides[4].itens = [{ claim_id: 'c1', rotulo: 'de receita anual' }]; }).some((e) => /fala de receita/.test(e)), 'o rótulo não pode trocar o tipo do número');
@@ -353,4 +354,13 @@ test('copy: item solto de uma palavra na tela 6 é recusado', () => {
   const op = opLumen(); const j = (a) => ({ slides: [{ n: 1, texto: 'x' }, { n: 2, problema: 'dar banho no cachorro em casa vira bagunça e o pet shop vive lotado' }, { n: 3, produto: 'um serviço de banho', resultado: 'o cachorro ficar limpo sem sair' }, { n: 4, modelo: 'assinatura', explicacao: 'o cliente paga uma mensalidade fixa e recebe visitas toda semana' }, { n: 5, titulo: 't', itens: [] }, { n: 6, dor: a, facilidade: 'serviço na porta', recorrencia: 'cobrança mensal' }, { n: 7 }] });
   const e = (a) => Copy.validarTelas(Copy.montarTelas(j(a), op).slides, op);
   assert.ok(e('mensal').some((x) => /Tela 6/.test(x))); assert.ok(!e('dor de todo dono').some((x) => /Tela 6: cada/.test(x)));
+});
+
+test('copy: atribuição esquecida pela IA é acrescentada na frase do número (a fonte, nunca o dado)', () => {
+  const claims = opLumen().verificacao.claims;
+  assert.strictEqual(Copy.repararAtribuicao('Esse serviço tem 120 mil clientes e cresce.', claims), 'Esse serviço tem 120 mil clientes e cresce, segundo a empresa.');
+  assert.strictEqual(Copy.repararAtribuicao('Já são 120 mil clientes, segundo a empresa.', claims), 'Já são 120 mil clientes, segundo a empresa.');
+  assert.strictEqual(Copy.repararAtribuicao('Sem número nenhum aqui.', claims), 'Sem número nenhum aqui.');
+  const l = Copy.montarLegenda({ legenda: { primeira_linha: 'Mais de 120 mil clientes usam o serviço.', resumo: 'Banho em casa.', como_ganha: 'Assinatura mensal.', brasil: 'Dá para testar em condomínios.' }, hashtags: ['negocios', 'saas'] }, opLumen());
+  assert.deepStrictEqual(l.erros.filter((e) => /atribuição/.test(e)), []); assert.match(l.texto, /120 mil clientes usam o serviço, segundo a empresa\./);
 });
