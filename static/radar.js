@@ -129,7 +129,7 @@
   function filaAprovacao() {
     const lista = ST.carrosseis.filter((c) => ['aguardando_aprovacao', 'aprovado', 'gerando', 'erro'].includes(c.estado));
     if (!lista.length) return '';
-    return `<div class="rd-h2"><h2>Fila de aprovação</h2><span>${lista.length} carrossel${lista.length > 1 ? 's' : ''}</span></div>${lista.map(cartaoFila).join('')}`;
+    return `<div class="rd-h2"><h2>Fila de aprovação</h2><span>${lista.length} ${lista.length > 1 ? 'carrosséis' : 'carrossel'}</span></div>${lista.map(cartaoFila).join('')}`;
   }
   function publicados() {
     const lista = ST.carrosseis.filter((c) => ['publicado', 'reprovado'].includes(c.estado));
@@ -224,7 +224,7 @@
   function render(ctx) {
     if (!ST.carregou && !ST.carregando && !ST.erro) setTimeout(() => carregar(ctx), 0);
     const e = ST.estado;
-    const nova = e && e.nova_ideia ? `<button class="rd-nova" data-action="rd-ir-fila"><span style="font-size:26px">★</span><span>Uma nova ideia de negócio está pronta para você.<small>${e.fila_aprovacao} carrossel${e.fila_aprovacao > 1 ? 's' : ''} na fila de aprovação</small></span></button>` : '';
+    const nova = e && e.nova_ideia ? `<button class="rd-nova" data-action="rd-ir-fila"><span style="font-size:26px">★</span><span>Uma nova ideia de negócio está pronta para você.<small>${e.fila_aprovacao} ${e.fila_aprovacao > 1 ? 'carrosséis' : 'carrossel'} na fila de aprovação</small></span></button>` : '';
     const avisos = [];
     if (e?.sem_banco) avisos.push('<div class="rd-aviso erro">O Radar precisa do banco de dados no servidor (Cópia no servidor) para guardar pesquisas e carrosséis.</div>');
     if (e && !e.ia_configurada) avisos.push('<div class="rd-aviso erro">Nenhuma chave de IA está configurada no servidor: a pesquisa automática não consegue rodar.</div>');
