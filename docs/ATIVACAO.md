@@ -1,5 +1,8 @@
 # Ativação: o que ligar para o fluxo completo funcionar
 
+> **Atalho:** `bash scripts/configurar-vercel.sh` (no seu computador, com `npx vercel login` feito) cria de uma vez `APP_ACCESS_CODE`, `PUBLISH_SECRET`, `CRON_SECRET`, `PUBLIC_BASE_URL`, as chaves VAPID e a `OPENAI_API_KEY` (a chave é pedida sem aparecer na tela). Não sobrescreve o que já existe e não toca nas `META_*`. O banco (`DATABASE_URL`) você conecta no painel da Vercel. Depois rode `npx vercel --prod` ou faça um novo deploy.
+
+
 Ordem sugerida. Valores só na Vercel (Settings → Environment Variables); **nunca** em arquivo, commit ou chat.
 Depois de mudar variáveis, faça um novo deploy.
 

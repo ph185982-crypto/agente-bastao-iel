@@ -62,7 +62,7 @@
 
   const CLICHES = [
     'você não vai acreditar', 'descubra', 'incrível', 'confira', 'dicas para', 'dicas pra',
-    'neste post', 'nesse post', 'segredo do sucesso', 'mude sua vida', 'vem comigo',
+    'neste post', 'nesse post', 'pensar antes de reagir', 'segredo do sucesso', 'mude sua vida', 'vem comigo',
   ];
 
   const palavras = (s) => String(s || '').trim().split(/\s+/).filter(Boolean);

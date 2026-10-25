@@ -60,6 +60,7 @@ http.createServer((req, res) => {
   if (req.url.startsWith('/api/') || req.url.startsWith('/__teste')) return app(req, res);
   let f = path.join(STATIC, req.url.split('?')[0]);
   if (!f.startsWith(STATIC) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(STATIC, 'index.html');
-  res.writeHead(200, { 'Content-Type': f.endsWith('.js') ? 'application/javascript' : f.endsWith('.css') ? 'text/css' : 'text/html' });
+  const TIPOS = { '.js': 'application/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2', '.webmanifest': 'application/manifest+json' };
+  res.writeHead(200, { 'Content-Type': TIPOS[path.extname(f)] || 'text/html', 'Access-Control-Allow-Origin': '*' });
   fs.createReadStream(f).pipe(res);
 }).listen(Number(process.env.TESTE_PORT || 3995), '127.0.0.1', () => console.log('teste em', process.env.TESTE_PORT || 3995, process.env.DATABASE_URL ? 'COM banco' : 'SEM banco'));

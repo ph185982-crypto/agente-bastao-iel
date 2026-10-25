@@ -169,6 +169,13 @@ function montarVersao({ dados, claims, evidencias, formato, editorial = false, r
   const META = /parcialmente (sustentad|confirmad)|confirmad[oa] parcialmente|n[aã]o confirmad|fonte [uú]nica|verifica[cç][aã]o independente|n[aã]o verificad|sustentada por|estado da afirma|claim_ids?|\[a\d+\]|【/i;
   slides.forEach((s, i) => { if (META.test(s.texto)) problemas.push(`o slide ${i + 1} fala do sistema de checagem em vez de falar do assunto (reescreva sem "fonte única", "sustentada" etc.)`); });
   if (META.test(dados.legenda || '')) problemas.push('a legenda fala do sistema de checagem em vez de falar do assunto');
+  const proibidas = (E.FRASES_PROIBIDAS || []).filter((f) => f.re.test(normBase([...slides.map((s) => `${s.titulo || ''} ${s.texto}`), dados.legenda || '', cta].join(' '))));
+  proibidas.forEach((f) => problemas.push(`o texto usa “${f.rotulo}”: reescreva sem essa expressão`));
+  if (formato !== 'estatico' && slides.length >= 2) {
+    const pal = (t) => new Set(normBase(t).split(' ').filter((w) => w.length > 3));
+    const a = pal(slides[0].texto), b = pal(slides[1].texto);
+    if (a.size >= 3 && b.size >= 3 && [...a].filter((w) => b.has(w)).length / Math.min(a.size, b.size) >= 0.5) problemas.push('o segundo slide repete a capa: ele precisa acrescentar o que falta entender');
+  }
   if (formato !== 'estatico' && cta.split(/\s+/).filter(Boolean).length < 4) problemas.push('a chamada final (cta) precisa ser uma frase completa, não uma palavra');
 
   const hashtags = (dados.hashtags || []).map(String).filter((h) => /^#[\p{L}\p{N}_]+$/u.test(h)).slice(0, 3);
@@ -233,7 +240,9 @@ REGRAS DE FATOS (inegociáveis):
 4. Opinião é marcada opiniao:true, com claim_ids das premissas factuais, e deve soar como posição ("na minha leitura"). Nunca invente experiência pessoal. Fatos embutidos em opinião continuam exigindo fonte. Perguntas e convites sem fato novo não precisam de claim_ids.
 5. Um slide de prova mostra um dado ou declaração. Toda explicação acrescenta compreensão. Não escreva sobre a checagem interna: nada de "claim", "fonte única", "parcialmente sustentada" ou "sem verificação independente" no texto público. Uma limitação real é falada normalmente ("o governo diz que pretende", "ainda depende de aprovação").
 
-ESTRUTURA: escolha a que a pauta pede (a sugerida é ${briefing.estrutura}). Cada slide tem UMA função (capa, contexto, prova, explicacao, comparacao, consequencia, opiniao) e acrescenta informação ou compreensão. ${formato === 'estatico' ? 'Uma imagem.' : editorial ? 'Use 5 a 6 slides de conteúdo + CTA final; histórias curtas podem ter 4.' : 'Use entre 4 e 8 slides de conteúdo.'} CAPA de 4 a 10 palavras, com um número, uma contradição ou uma consequência concreta no bolso de quem lê (nada de capa que parece manchete de jornal nem "Como…?" genérico); demais telas até ${editorial?28:35} palavras, contando título e corpo, e UMA ideia por tela.
+${E.padraoParaPrompt({ formato, editorial })}
+
+ESTRUTURA: escolha a que a pauta pede (a sugerida é ${briefing.estrutura}). Cada slide tem UMA função (capa, contexto, prova, explicacao, comparacao, consequencia, opiniao) e acrescenta informação ou compreensão. ${formato === 'estatico' ? 'Uma imagem.' : editorial ? 'Use 5 a 6 slides de conteúdo + CTA final; histórias curtas podem ter 4.' : `Base de ${E.SLIDES_BASE.min} a ${E.SLIDES_BASE.max} slides contando o encerramento fixo (4 a 5 de conteúdo mais o fecho); até 8 de conteúdo só quando a pauta exigir.`} CAPA de 4 a 10 palavras, com um número, uma contradição ou uma consequência concreta no bolso de quem lê (nada de capa que parece manchete de jornal nem "Como…?" genérico); demais telas até ${editorial?28:35} palavras, contando título e corpo, e UMA ideia por tela.
 ${editorial ? DIRECAO_EDITORIAL : ''}
 Marque com **duas estrelas** UM único trecho por slide (a expressão principal); nunca mais de um.
 Para "comparacao" preencha dados: {"esquerda":{"rotulo":"","valor":"","detalhe":""},"direita":{...}} só com valores das afirmações.

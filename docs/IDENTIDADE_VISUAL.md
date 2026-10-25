@@ -40,3 +40,23 @@ Os módulos antigos (Editor de Vídeo, cortes de TV) ainda usam Poppins e PT Ser
   Enquanto não houver um retrato recortado (PNG com fundo transparente), esse slide mantém `#0A1B33` para não aparecer uma caixa escura sobre o azul.
 - **Não alterados**: Editor de Vídeo, cortes de TV, vídeos em movimento (`motionLocal.js`) e os estilos experimentais `impacto`/`foto_editorial`
   desenhados por `renderExperimental`: continuam com Poppins e a paleta anterior.
+
+## Interface do app (Estúdio)
+
+O app segue a mesma identidade da arte, definida em `static/marca.css` (última folha carregada; as demais só mantêm a estrutura).
+
+| Item | Valor |
+|---|---|
+| Fundo | branco quente `#F6F5F0`; cartões `#FCFBF8` com borda `#DFDCD0`, sem sombra |
+| Ação principal | azul `#2448FF` (aprovar, criar, publicar) |
+| Atenção | laranja `#FF7043`: só contadores, avisos e os colchetes |
+| Estrutura | grafite `#18191D` (trilho lateral no computador, abas e botões secundários) |
+| Títulos | Manrope ExtraBold; texto em Inter (fontes em `static/*.woff2`, subconjunto latino) |
+| Marca | colchetes `[ ]`: rótulos em caixa alta e uma palavra de destaque por título (`<span class="br">`) |
+| Logotipo do app | `[P]` em `static/logo-app.svg` e ícones PNG, gerados por `node scripts/gerar-icones.js` |
+
+- Celular: barra de navegação inferior com marcador azul na aba ativa. Computador: trilho grafite à esquerda.
+- A tela **Aprovar** mostra o trilho do fluxo (roteiros → em preparação → carrosséis para validar → publicados) e o estado do monitor.
+- As folhas antigas foram retematizadas por `python3 scripts/retema-css.py static/*.css` (troca cores azul-acinzentadas pelos tons da marca; pode rodar de novo sem efeito).
+- A aba **Ferramentas** (módulo antigo, estilos em linha) recebeu só o essencial; ainda não foi redesenhada por dentro.
+- Divergência registrada: o padrão de produção anterior cita Montserrat; o app e a arte usam Manrope e Inter (identidade Avanteza). Trocar é decisão do Pedro.
