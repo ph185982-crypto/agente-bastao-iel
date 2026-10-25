@@ -1,6 +1,8 @@
 // Série "Negócios que você não viu": renderer, validação (bloqueios × sugestões), história com fatos conferidos em código,
 // imagens com origem, edição tela a tela, exportação. Fontes, páginas e imagens SIMULADAS: nada acessa a rede.
 // node --test backend/lib/radarSerie.test.js
+// Série editorial (modelo antigo): os testes rodam com a REVERSÃO técnica ligada, provando que ela devolve o comportamento anterior.
+process.env.CARROSSEL_PADRAO = 'legado';
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');

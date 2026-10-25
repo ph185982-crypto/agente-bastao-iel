@@ -71,7 +71,7 @@ const fakeLerFonte = async (url) => {
 function fakePedirJson({ falharNa = null, semPontuacao = false } = {}) {
   const chamadas = [];
   const fn = async ({ sistema, usuario }) => {
-    const tipo = /pesquisadora do perfil/.test(sistema) ? 'extrair' : /Você confere fatos/.test(sistema) ? 'afirmacoes' : /Você avalia ideias/.test(sistema) ? 'avaliar' : /redator e diretor de arte/.test(sistema) ? 'serie' : /reescreve UMA tela/.test(sistema) ? 'tela' : /escreve carrosséis/.test(sistema) ? 'copy' : /roteiro de um Reels/.test(sistema) ? 'reels' : 'outro';
+    const tipo = /padrão "Pedro Destrava — Minimalista"/.test(sistema) ? 'v1' : /revisor editorial/.test(sistema) ? 'revisor' : /identifica o negócio principal/.test(sistema) ? 'pauta' : /reescreve UMA tela do carrossel/.test(sistema) ? 'tela_v1' : /pesquisadora do perfil/.test(sistema) ? 'extrair' : /Você confere fatos/.test(sistema) ? 'afirmacoes' : /Você avalia ideias/.test(sistema) ? 'avaliar' : /redator e diretor de arte/.test(sistema) ? 'serie' : /reescreve UMA tela/.test(sistema) ? 'tela' : /escreve carrosséis/.test(sistema) ? 'copy' : /roteiro de um Reels/.test(sistema) ? 'reels' : 'outro';
     chamadas.push(tipo);
     if (falharNa === tipo) throw Object.assign(new Error('IA indisponível (teste)'), { status: 500 });
     const llm = { provider: 'simulado', model: 'teste', tokens: { entrada: 100, saida: 50, total: 150 } };
@@ -139,6 +139,15 @@ function fakePedirJson({ falharNa = null, semPontuacao = false } = {}) {
         ],
         legenda: { primeira_linha: 'O banho do cachorro foi até a porta do cliente.', historia: 'A empresa resolveu um problema comum e transformou o tempo perdido do dono em serviço recorrente.', como_ganha: 'O cliente paga uma assinatura mensal.', brasil: 'Hipótese para testar: começar por um condomínio, antes de investir.' }, hashtags: ['negocios', 'empreendedorismo'] } };
     }
+    if (tipo === 'v1') { const dado = JSON.parse(usuario.split('\n')[1]); return { llm, dados: rascunhoV1(dado.negocio?.nome || 'Lumen Pets', dado.DADOS_VERIFICADOS || []) }; }
+    if (tipo === 'revisor') return { llm, dados: { telas: Array.from({ length: 7 }, () => ({ problema: 'nenhum' })) } };
+    if (tipo === 'tela_v1') return { llm, dados: { titulo: 'O banhista vai até a porta, porque o tempo do dono vale mais que o deslocamento.', corpo: 'O cliente marca pelo aplicativo e o banhista chega com tudo. Assim o dono não perde a manhã e a assinatura mensal se repete toda semana.', apoio: 'Segue @pedro_destrava para ver a estratégia por trás de negócios que funcionam.' } };
+    if (tipo === 'pauta') {
+      const m = /"titulo":"([^"]*)"/.exec(usuario); const nome = NEG.find((n) => usuario.includes(n.nome))?.nome || null;
+      if (!nome) return { llm, dados: { nome: null, motivo: 'o texto não fala de um negócio específico' } };
+      const n = NEG.find((x) => x.nome === nome);
+      return { llm, dados: { nome, site_oficial: `https://${n.dominio}`, pais: n.pais, categoria: n.cat, resumo: `${nome} oferece um serviço recorrente.`, problema: 'levar o cachorro ao pet shop toma tempo', solucao: 'o banhista vai até a casa do cliente', como_ganha_dinheiro: 'assinatura mensal', modelo_receita: 'assinatura', titulo_lido: m ? m[1] : '' } };
+    }
     if (tipo === 'tela') {
       const dado = JSON.parse(usuario.split('\n')[1]); const nome = dado.negocio.nome;
       return { llm, dados: { rotulo: 'Texto refeito', titulo: `${nome} mostra que **simples** também vende.`, apoio: 'Uma frase nova e curta, escrita para esta tela, sem repetir o que as outras já dizem aos leitores.' } };
@@ -150,4 +159,48 @@ function fakePedirJson({ falharNa = null, semPontuacao = false } = {}) {
   return fn;
 }
 
-module.exports = { imagemFake, NEG, PAGINAS, fakeFetcher, fakeLerFonte, fakePedirJson, rss, itensDoFeed };
+// Rascunho simulado do padrão v1 (Lumen Pets). Usa só os ids das afirmações verificadas recebidas.
+function rascunhoV1(nome, dv) {
+  const id = (...t) => (dv.find((d) => t.includes(d.tipo)) || {}).id || null;
+  const cCli = id('clientes', 'usuarios'); const cMod = id('modelo_receita'); const cRec = id('receita');
+  return {
+    sem_pauta: null,
+    briefing: {
+      publico: 'quem quer abrir um serviço local recorrente', interesse: 'entender como um serviço simples vira receita mensal', nivel_conhecimento: 'sabe o que é assinatura, não conhece a operação', aplicacao: 'testar banho em domicílio com cinco clientes de um condomínio', duvidas_abertas: ['Quantos clientes continuam ativos depois de três meses.'],
+      teste_de_valor: { o_que_aprende: 'que a assinatura funciona quando o serviço vai até o cliente', por_que_importa: 'mostra onde a recorrência nasce e onde ela quebra', aprovado: true },
+      negocio: { nome, produto: 'banho para cães em casa', problema: 'levar o cachorro ao pet shop toma a manhã do dono', para_quem: 'donos de cães', quem_paga: 'o dono do cachorro', pelo_que_paga: 'o banho sem sair de casa', forma_cobranca: 'assinatura mensal', operacao: 'banhista vai até a casa com o equipamento' },
+      fatos: [
+        { id: 'f1', texto: `O ${nome} tem mais de 120 mil clientes, segundo a empresa.`, claim_id: cCli, campo_do_negocio: null },
+        { id: 'f2', texto: 'A empresa cobra assinatura mensal.', claim_id: cMod, campo_do_negocio: null },
+        { id: 'f3', texto: 'O banhista vai até a casa do cliente.', claim_id: null, campo_do_negocio: 'operacao' },
+        ...(cRec ? [{ id: 'f4', texto: 'A empresa informa receita anual.', claim_id: cRec, campo_do_negocio: null }] : []),
+      ],
+      analises: [{ id: 'a1', texto: 'Uma leitura é que o cliente paga pelo tempo que deixa de perder, não só pelo banho.', base: ['f2', 'f3'], causalidade_demonstrada: false }],
+      hipoteses: [{ id: 'h1', texto: 'Poderia ser testado em um condomínio com cinco clientes.' }],
+      decisao_especifica: { texto: 'O banho vai até o cliente, e não o contrário, com cobrança mensal.', base: ['f2', 'f3'] },
+      mecanismos: [
+        { nome: 'Banhista na porta', como_funciona: 'O banhista vai até a casa com o equipamento, então o dono não se desloca.', exemplo: 'O cliente marca pelo aplicativo e recebe o banhista no sábado.', vantagem: 'A visita toda semana vira rotina, porque o dono não perde a manhã.', condicao_de_falha: 'Sem banhista confiável no bairro, o horário atrasa e o cliente cancela.', base: ['f3'] },
+        { nome: 'Assinatura mensal', como_funciona: 'O dono paga uma mensalidade fixa e recebe as visitas.', exemplo: 'Quatro banhos por mês pelo mesmo valor.', vantagem: 'A receita se repete, assim a empresa planeja a agenda dos banhistas.', condicao_de_falha: 'Se o cachorro não precisa de banho toda semana, a mensalidade parece cara.', base: ['f2', 'a1'] },
+      ],
+      limitacoes: ['Precisa de banhistas em cada bairro.', 'Deslocamento pesa no custo.'], aprendizado_leitor: 'A assinatura funciona quando o serviço vai até o cliente e vira rotina.', tese: 'A recorrência nasce da visita na porta.', pergunta_capa: 'Quem paga para o banho ir até a casa?',
+    },
+    ganchos: [
+      { angulo: 'oportunidade', titulo: 'Um serviço cobra todo mês para levar o banho do cachorro até a casa.', scores: { clareza: 4, relevancia: 4, especificidade: 4, sustentacao: 4, entregabilidade: 4 } },
+      { angulo: 'contradicao', titulo: 'O pet shop que mais atende não tem loja: o banhista vai até a porta.', scores: { clareza: 3, relevancia: 3, especificidade: 3, sustentacao: 3, entregabilidade: 3 } },
+      { angulo: 'erro', titulo: 'O dono perde a manhã no pet shop, e alguém transformou isso em assinatura.', scores: { clareza: 3, relevancia: 4, especificidade: 3, sustentacao: 3, entregabilidade: 3 } },
+    ],
+    telas: [
+      { funcao: 'gancho', tipo: 'FATO', base: ['f2', 'f3'], evidencias: [cMod].filter(Boolean), informacao_nova: 'o banho vai até o cliente e é cobrado por mês', relacao_anterior: '', titulo: 'Um serviço cobra por mês para dar banho no cachorro em casa.', corpo: `O ${nome} manda um banhista até a porta do cliente. O dono paga uma assinatura mensal e não precisa levar o cachorro a lugar nenhum.` },
+      { funcao: 'problema', tipo: 'FATO', base: ['f3'], informacao_nova: 'o custo invisível é a manhã do dono', relacao_anterior: 'explica por que alguém pagaria', titulo: 'O problema não é o banho. É a manhã perdida.', corpo: 'Levar o cachorro ao pet shop toma o sábado: ir, esperar e voltar. A loja lotada também perde horários, porque não atende todo mundo.' },
+      { funcao: 'mecanismo_1', tipo: 'ANALISE', base: ['f3'], informacao_nova: 'o deslocamento muda de lado', relacao_anterior: 'mostra a resposta ao problema', titulo: 'O banhista vai até a porta, então o dono não se desloca.', corpo: 'O cliente marca pelo aplicativo e o banhista chega com o equipamento. Assim a visita vira rotina, porque o dono não perde a manhã.' },
+      { funcao: 'mecanismo_2', tipo: 'ANALISE', base: ['f2', 'a1'], informacao_nova: 'a mensalidade organiza a agenda', relacao_anterior: 'aprofunda como a receita se repete', titulo: 'A assinatura mensal deixa a agenda previsível.', corpo: 'Com mensalidade fixa, a empresa sabe quantas visitas terá. Quando o cachorro não precisa de banho toda semana, porém, a assinatura parece cara.' },
+      { funcao: 'conta', tipo: 'FATO', base: ['f1'], evidencias: [cCli].filter(Boolean), informacao_nova: 'o tamanho declarado da base', relacao_anterior: 'mostra o alcance do mecanismo', titulo: 'A empresa diz que tem mais de 120 mil clientes.', corpo: 'Segundo a empresa, são mais de 120 mil clientes. O número mostra alcance, não quantos continuam pagando depois de alguns meses.' },
+      { funcao: 'aplicacao', tipo: 'HIPOTESE', base: [], informacao_nova: 'um teste pequeno e barato', relacao_anterior: 'leva o aprendizado para o leitor', titulo: 'Um teste poderia começar em um condomínio.', corpo: 'Ofereça banho em casa para cinco moradores, com preço mensal, e veja quantos renovam. No Brasil seria uma hipótese para testar, com custo de deslocamento e de equipamento.' },
+      { funcao: 'encerramento', tipo: 'MISTO', base: [], titulo: 'A recorrência nasce quando o serviço vai até o cliente.', apoio: 'Segue @pedro_destrava para ver a estratégia por trás de negócios que funcionam.' },
+    ],
+    legenda: { primeira_linha: 'O banho do cachorro foi até a casa do cliente, e virou assinatura.', historia: `O ${nome} manda o banhista até a porta e cobra por mês.`, como_ganha: 'Assinatura mensal, segundo a empresa.', brasil: 'Hipótese para testar: cinco clientes de um condomínio, antes de investir.' },
+    hashtags: ['negocios', 'empreendedorismo'],
+  };
+}
+
+module.exports = { rascunhoV1, imagemFake, NEG, PAGINAS, fakeFetcher, fakeLerFonte, fakePedirJson, rss, itensDoFeed };

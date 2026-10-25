@@ -167,12 +167,23 @@ async function reunir(op, { deps = {}, agora = Date.now(), ilustracao = null } =
 }
 
 // Guarda uma cópia reduzida (JPEG) e devolve o registro sem o buffer.
+// Guarda a cópia de TRABALHO (girada pelo EXIF, no máximo 1800×2000, sem metadados: EXIF/GPS saem) e, separado, o ORIGINAL
+// recebido (até 7 MB), com o registro de cada transformação e os hashes dos dois. Recorte de produto com fundo transparente fica em PNG.
+const TAM_ORIGINAL = 7 * 1024 * 1024;
 async function guardar(store, carrosselId, achado, id) {
-  const jpg = await sharp(achado.buf).rotate().resize({ width: 1800, height: 2000, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
-  const chave = `carrossel:${carrosselId}:img-${id}.jpg`;
-  await store.arquivoSalvar(chave, jpg, 'image/jpeg');
+  const m = await sharp(achado.buf, { limitInputPixels: 60e6 }).metadata();
+  const alfa = !!m.hasAlpha && m.format === 'png';
+  let pipe = sharp(achado.buf, { limitInputPixels: 60e6 }).rotate().resize({ width: 1800, height: 2000, fit: 'inside', withoutEnlargement: true });
+  pipe = alfa ? pipe.png() : pipe.jpeg({ quality: 90 });
+  const { data: trabalho, info } = await pipe.toBuffer({ resolveWithObject: true });
+  const ext = alfa ? 'png' : 'jpg';
+  const chave = `carrossel:${carrosselId}:img-${id}.${ext}`;
+  await store.arquivoSalvar(chave, trabalho, alfa ? 'image/png' : 'image/jpeg');
+  let original = null;
+  if (achado.buf.length <= TAM_ORIGINAL) { original = `carrossel:${carrosselId}:img-${id}.original`; await store.arquivoSalvar(original, achado.buf, `image/${m.format === 'jpg' ? 'jpeg' : m.format}`); }
+  const transformacoes = [m.orientation && m.orientation !== 1 ? 'girada conforme a orientação EXIF' : null, (m.width > 1800 || m.height > 2000) ? `reduzida de ${m.width}×${m.height} para ${info.width}×${info.height}` : null, alfa ? 'mantida em PNG (fundo transparente)' : `convertida de ${m.format} para JPEG (qualidade 90)`, 'metadados removidos (EXIF/GPS/perfil)'].filter(Boolean);
   const { buf, ...resto } = achado;
-  return { id, ...resto, arquivo: chave, bytes: jpg.length, adicionada_em: new Date().toISOString() };
+  return { id, ...resto, arquivo: chave, arquivo_original: original, bytes: trabalho.length, largura: info.width, altura: info.height, recorte_transparente: alfa, sha256_original: sha256(achado.buf), sha256_trabalho: sha256(trabalho), transformacoes, adicionada_em: new Date().toISOString() };
 }
 
 // Imagem enviada pelo Pedro (arquivo) ou buscada por link. A origem e a permissão são dele; ficam registradas.

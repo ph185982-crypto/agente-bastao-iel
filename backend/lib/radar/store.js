@@ -11,7 +11,7 @@ const { ACCOUNT } = require('../account');
 const { erro } = require('./util');
 
 const conta = () => ACCOUNT.ig_id;
-const TIPOS = ['oportunidade', 'execucao', 'coleta', 'carrossel', 'reels', 'config'];
+const TIPOS = ['oportunidade', 'execucao', 'coleta', 'carrossel', 'reels', 'config', 'pauta', 'lote'];
 
 function db() {
   const a = armazem();

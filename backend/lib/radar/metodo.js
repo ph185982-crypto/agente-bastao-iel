@@ -12,17 +12,18 @@ const C = require('./config');
 const N = require('./numeros');
 const U = require('./util');
 const { ACCOUNT } = require('../account');
+const Padrao = require('../padraoCarrossel');
 
 const TEMPLATE = 'minimalista';
 const ORDEM = ['gancho', 'problema', 'mecanismo_1', 'mecanismo_2', 'conta', 'aplicacao', 'encerramento'];
 // Função de cada tela → composição. Fotos: gancho, mecanismo 1, conta e aplicação (como no modelo de referência); Pedro só no encerramento.
 const FUNCOES_MIN = Object.freeze({
-  gancho: { rotulo: 'Gancho', layout: 'min_foto', permitidos: ['min_foto', 'min_texto'], imagem: 'o negócio em operação, real', tipo: 'FATO', foto: true },
-  problema: { rotulo: 'Problema e contexto', layout: 'min_texto', permitidos: ['min_texto', 'min_foto'], imagem: 'opcional', tipo: 'FATO', foto: false },
-  mecanismo_1: { rotulo: 'Primeiro mecanismo', layout: 'min_foto', permitidos: ['min_foto', 'min_texto'], imagem: 'a operação ou o produto que mostra o mecanismo', tipo: 'ANALISE', foto: true },
-  mecanismo_2: { rotulo: 'Segundo mecanismo', layout: 'min_texto', permitidos: ['min_texto', 'min_foto'], imagem: 'opcional', tipo: 'ANALISE', foto: false },
-  conta: { rotulo: 'Conta, evidência ou limite', layout: 'min_foto', permitidos: ['min_foto', 'min_texto'], imagem: 'print verdadeiro ou o uso real que sustenta o número', tipo: 'FATO', foto: true },
-  aplicacao: { rotulo: 'Aplicação e teste', layout: 'min_foto', permitidos: ['min_foto', 'min_texto'], imagem: 'uma cena real de teste ou de uso (ilustrativa se não for da empresa)', tipo: 'HIPOTESE', foto: true },
+  gancho: { rotulo: 'Gancho', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto'], imagem: 'o negócio em operação, real', tipo: 'FATO', foto: true },
+  problema: { rotulo: 'Problema e contexto', layout: 'min_texto', permitidos: ['min_texto', 'min_foto', 'min_produto'], imagem: 'opcional', tipo: 'FATO', foto: false, opcional: true },
+  mecanismo_1: { rotulo: 'Primeiro mecanismo', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto'], imagem: 'a operação ou o produto que mostra o mecanismo', tipo: 'ANALISE', foto: true },
+  mecanismo_2: { rotulo: 'Segundo mecanismo', layout: 'min_texto', permitidos: ['min_texto', 'min_foto', 'min_produto'], imagem: 'opcional', tipo: 'ANALISE', foto: false, opcional: true },
+  conta: { rotulo: 'Conta, evidência ou limite', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto'], imagem: 'print verdadeiro ou o uso real que sustenta o número', tipo: 'FATO', foto: true },
+  aplicacao: { rotulo: 'Aplicação e teste', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto'], imagem: 'uma cena real de teste ou de uso (ilustrativa se não for da empresa)', tipo: 'HIPOTESE', foto: true },
   encerramento: { rotulo: 'Síntese e convite', layout: 'min_encerramento', permitidos: ['min_encerramento'], imagem: 'foto aprovada do Pedro', tipo: 'MISTO', foto: false },
 });
 const ANGULOS_MIN = Object.freeze({ oportunidade: 'Oportunidade ou benefício', contradicao: 'Contradição', erro: 'Erro, perda ou detalhe ignorado' });
@@ -42,7 +43,7 @@ const CONECTIVO = /\b(porque|assim|quando|para que|por isso|com isso|então|enta
 // ── Briefing: a ficha auditável que fica antes da redação ───────────────────────
 // Estrutura: fatos (cada um com fonte ou campo do negócio), análises (cada uma com base em fatos e flag de causalidade),
 // hipóteses (nunca atribuídas à empresa), decisão específica, mecanismos (com base), limitações e aprendizado do leitor.
-function validarBriefing(b, op) {
+function validarBriefing(b, op, { v1 = false } = {}) {
   const erros = []; const usaveis = Copy.claimsUsaveis(op); const idsClaim = new Set(usaveis.map((c) => c.id));
   if (!b || typeof b !== 'object') return ['Briefing ausente.'];
   const fatos = Array.isArray(b.fatos) ? b.fatos : []; const ids = new Set(fatos.map((f) => String(f?.id)));
@@ -68,10 +69,52 @@ function validarBriefing(b, op) {
   }
   if (!Array.isArray(b.limitacoes) || !b.limitacoes.length) erros.push('Briefing: registre ao menos uma limitação, custo ou risco.');
   if (!b.aprendizado_leitor) erros.push('Briefing: falta o principal aprendizado que o leitor pode usar.');
+  if (v1) erros.push(...validarBriefingV1(b, mec));
   // número de qualquer campo do briefing precisa estar nas afirmações verificadas
   const textoBriefing = [...fatos.map((f) => f.texto), ...(b.analises || []).map((a) => a.texto), ...mec.map((m) => `${m.como_funciona} ${m.vantagem} ${m.exemplo || ''}`), dec.texto].join(' ');
   const sp = Copy.numerosNaoComprovados(textoBriefing, usaveis, { permitirContagem: true }); if (sp.length) erros.push(`Briefing: número sem comprovação (${sp.join(', ')}).`);
   return erros;
+}
+
+// Padrão v1: briefing completo (público, conhecimento, oferta, quem paga, receita, operação, evidência, custos,
+// aplicação, fontes e dúvidas em aberto), teste de valor antes de escrever e estrutura de cada argumento.
+const CAMPOS_V1 = { publico: 'público', interesse: 'interesse do público', nivel_conhecimento: 'nível de conhecimento do leitor' };
+const NEGOCIO_V1 = { produto: 'oferta/produto', problema: 'problema', quem_paga: 'quem paga', forma_cobranca: 'como a receita entra', operacao: 'operação' };
+function validarBriefingV1(b, mec) {
+  const e = [];
+  for (const [k, nome] of Object.entries(CAMPOS_V1)) if (!String(b[k] || '').trim()) e.push(`Briefing: falta o ${nome}.`);
+  for (const [k, nome] of Object.entries(NEGOCIO_V1)) if (!String(b.negocio?.[k] || '').trim()) e.push(`Briefing: falta ${nome} no negócio.`);
+  if (!Array.isArray(b.duvidas_abertas)) e.push('Briefing: registre as dúvidas em aberto (lista, pode ser vazia), para não virarem afirmação.');
+  if (!String(b.aplicacao || '').trim()) e.push('Briefing: falta a aplicação (o teste que o leitor pode fazer).');
+  const tv = b.teste_de_valor || {};
+  if (!tv.o_que_aprende || !tv.por_que_importa) e.push('Teste de valor: diga o que o leitor aprende e por que isso importa para ele, antes de escrever.');
+  else if (tv.aprovado === false) e.push(`Teste de valor reprovado: ${U.limita(tv.motivo || 'o conteúdo não entrega algo específico', 160)}. Aprofunde a pesquisa ou proponha menos telas.`);
+  for (const m of mec) if (!String(m.exemplo || '').trim()) e.push(`Mecanismo “${m.nome || '?'}”: falta o exemplo concreto (afirmação → como funciona → exemplo → evidência → limitação → implicação).`);
+  return e;
+}
+
+// Briefing visual de cada tela, ANTES de procurar imagem: o que mostrar, o que a imagem acrescenta, entidade exata, fonte preferida,
+// buscas, enquadramento, orientação e resolução, o que precisa aparecer, o que é proibido e o que fazer se não houver imagem.
+const VISUAL = {
+  gancho: { mostrar: 'o produto ou o serviço em uso real', acrescenta: 'mostra do que a história fala antes da explicação', tipo: 'foto', enquadramento: 'plano aberto ou médio, o produto inteiro visível', deve: ['o produto/serviço real da empresa'] },
+  problema: { mostrar: 'a situação do problema, se houver imagem real', acrescenta: 'torna concreto o problema', tipo: 'foto', enquadramento: 'plano médio', deve: ['a situação descrita no texto'] },
+  mecanismo_1: { mostrar: 'a operação ou a parte do produto que explica o mecanismo', acrescenta: 'mostra COMO funciona', tipo: 'foto ou print do app', enquadramento: 'detalhe do mecanismo, sem cortar o essencial', deve: ['o passo do mecanismo citado'] },
+  mecanismo_2: { mostrar: 'o segundo mecanismo em ação', acrescenta: 'mostra o detalhe da operação', tipo: 'foto ou print do app', enquadramento: 'detalhe', deve: ['o passo citado'] },
+  conta: { mostrar: 'print verdadeiro, página oficial ou uso real que sustenta o número', acrescenta: 'prova visual do dado', tipo: 'print ou documento', enquadramento: 'inteiro, legível, sem corte', deve: ['o dado ou o preço citado, se for print'] },
+  aplicacao: { mostrar: 'uma cena de teste pequeno; ilustrativa se não for da empresa', acrescenta: 'ajuda o leitor a imaginar o teste', tipo: 'foto ilustrativa (rotulada) ou da empresa', enquadramento: 'plano médio', deve: ['a ação do teste'] },
+  encerramento: { mostrar: 'a foto aprovada do Pedro', acrescenta: 'assinatura do perfil', tipo: 'foto aprovada', enquadramento: 'retrato, sem alterar o rosto', deve: ['Pedro'] },
+};
+function briefingVisual(t, op, b) {
+  const v = VISUAL[t.funcao] || VISUAL.gancho; const nome = op?.nome || b?.negocio?.nome || '';
+  const site = op?.verificacao?.fonte_oficial?.url || null;
+  return {
+    mostrar: v.mostrar, acrescenta: v.acrescenta, tipo: v.tipo, entidade: t.funcao === 'encerramento' ? 'Pedro Destrava' : nome,
+    fonte_preferida: t.funcao === 'encerramento' ? 'foto aprovada' : ['envio do Pedro', 'kit de imprensa', site ? `página oficial (${site})` : 'página oficial', 'canais oficiais', 'print real', 'editorial com licença'].join(' → '),
+    buscas: t.funcao === 'encerramento' ? [] : [`${nome} ${b?.negocio?.produto || ''}`.trim(), `${nome} press kit`, `${nome} app screenshot`].filter(Boolean),
+    enquadramento: v.enquadramento, orientacao: 'horizontal ou quadrada (a foto ocupa a largura da tela)', resolucao_minima: '900 px de largura', deve_aparecer: v.deve,
+    proibido: ['foto de outra empresa', 'marca d’água', 'retrato documental inventado', 'print falso', 'texto pequeno ilegível', 'imagem gerada por IA fora da tela de teste'],
+    sem_imagem: 'a tela fica só com texto e aparece um aviso pedindo a imagem; nenhuma imagem genérica entra no lugar',
+  };
 }
 
 // Termos específicos do caso (nome + fatos + mecanismos + decisão). Usados no teste de especificidade.
@@ -81,23 +124,35 @@ function termosDoCaso(op, b) {
 }
 
 // ── Telas ────────────────────────────────────────────────────────────────────
-function montarTelas(dados, op, { agora = Date.now() } = {}) {
+// v1: telas opcionais (problema, segundo mecanismo) podem ser omitidas quando falta conteúdo — menos telas em vez de enchimento.
+// Cada tela guarda: função narrativa, título, corpo, informação nova, relação com a anterior, fatos usados, evidências e briefing visual.
+// Só título e corpo são desenhados.
+function montarTelas(dados, op, { agora = Date.now(), v1 = false, briefing = null } = {}) {
   const lista = Array.isArray(dados?.telas) ? dados.telas : [];
-  const erros = []; const telas = [];
+  const erros = []; const telas = []; const omitidas = [];
   ORDEM.forEach((funcao, i) => {
-    const t = lista.find((x) => x?.funcao === funcao) || lista[i];
-    if (!t) { erros.push(`Faltou a tela ${i + 1} (${FUNCOES_MIN[funcao].rotulo}).`); return; }
+    const t = lista.find((x) => x?.funcao === funcao) || (v1 ? null : lista[i]);
     const f = FUNCOES_MIN[funcao];
+    if (!t || (v1 && t.omitir)) {
+      if (v1 && f.opcional) { omitidas.push({ funcao, motivo: U.limita(t?.omitir || 'sem conteúdo específico para esta tela', 200) }); return; }
+      erros.push(`Faltou a tela ${i + 1} (${f.rotulo}).`); return;
+    }
     const textos = funcao === 'encerramento'
       ? { titulo: U.limita(t.titulo, 160), apoio: U.limita(t.apoio || t.corpo, 220) }
       : { titulo: U.limita(t.titulo, 140), corpo: U.limita(String(t.corpo || '').trim(), 600) };
-    telas.push({ id: `t_${funcao}`, funcao, layout: f.layout, textos, foto: { imagem_id: null, enq: 'auto', forma: null }, tipo: t.tipo || f.tipo, base: Array.isArray(t.base) ? t.base.map(String) : [], notas_imagem: f.imagem, bloqueada: false, template: TEMPLATE });
+    const base = Array.isArray(t.base) ? t.base.map(String) : Array.isArray(t.fatos_usados) ? t.fatos_usados.map(String) : [];
+    const tela = { id: `t_${funcao}`, funcao, layout: f.layout, textos, foto: { imagem_id: null, enq: 'auto', forma: null }, tipo: t.tipo || f.tipo, base, notas_imagem: f.imagem, bloqueada: false, template: v1 ? Padrao.ID : TEMPLATE };
+    if (v1) {
+      Object.assign(tela, { informacao_nova: U.limita(t.informacao_nova, 240), relacao_anterior: U.limita(t.relacao_anterior, 240), fatos_usados: base, evidencias: (Array.isArray(t.evidencias) ? t.evidencias : []).map(String).slice(0, 8), travas: { texto: false, imagem: false } });
+      tela.briefing_visual = { ...briefingVisual(tela, op, briefing), ...(t.briefing_visual && typeof t.briefing_visual === 'object' ? Object.fromEntries(Object.entries(t.briefing_visual).filter(([k]) => ['mostrar', 'acrescenta', 'buscas', 'enquadramento', 'deve_aparecer', 'proibido'].includes(k))) : {}) };
+    }
+    telas.push(tela);
   });
-  return { telas, erros };
+  return { telas, erros, omitidas };
 }
 
 // Validação de conteúdo de cada tela. Retorna bloqueios (falhas objetivas) e sugestões (julgamento editorial com correção).
-function validarTelas(telas, op, b) {
+function validarTelas(telas, op, b, { v1 = false } = {}) {
   const bl = []; const sg = []; const usaveis = Copy.claimsUsaveis(op); const termosC = termosDoCaso(op, b);
   const ids = new Set([...(b?.fatos || []), ...(b?.analises || [])].map((f) => String(f.id)));
   const tudoFala = telas.map((t) => `${t.textos.titulo || ''} ${t.textos.corpo || t.textos.apoio || ''}`).join(' ');
@@ -141,7 +196,19 @@ function validarTelas(telas, op, b) {
   // ordem e foto do Pedro
   telas.forEach((t, i) => { if (t.layout === 'min_encerramento' && i !== telas.length - 1) bl.push(`Tela ${i + 1}: a foto do Pedro só pode estar no encerramento.`); });
   if (telas[telas.length - 1]?.layout !== 'min_encerramento') bl.push('A última tela precisa ser o encerramento do Pedro.');
-  if (telas.length !== ORDEM.length) bl.push(`São ${ORDEM.length} telas no modelo minimalista.`);
+  if (!v1 && telas.length !== ORDEM.length) bl.push(`São ${ORDEM.length} telas no modelo minimalista.`);
+  if (v1) {
+    if (telas.length < 5 || telas.length > 7) bl.push(`O padrão tem de 5 a 7 telas (tem ${telas.length}).`);
+    for (const f of ['gancho', 'mecanismo_1', 'conta', 'aplicacao', 'encerramento']) if (!telas.some((t) => t.funcao === f)) bl.push(`Falta a tela de ${FUNCOES_MIN[f].rotulo.toLowerCase()}.`);
+    telas.forEach((t, i) => {
+      if (t.funcao === 'encerramento') return;
+      if (!String(t.informacao_nova || '').trim()) bl.push(`Tela ${i + 1}: diga qual informação nova ela acrescenta (campo “informação nova”).`);
+      if (i > 0 && !String(t.relacao_anterior || '').trim()) sg.push(`Tela ${i + 1}: registre a relação com a tela anterior.`);
+      for (const ev of t.evidencias || []) if (!usaveis.some((c) => c.id === ev)) bl.push(`Tela ${i + 1}: a evidência ${ev} não está entre as afirmações verificadas.`);
+    });
+    const novas = telas.map((t) => sem(t.informacao_nova || '')).filter(Boolean);
+    if (new Set(novas).size < novas.length) sg.push('Duas telas declaram a mesma informação nova: uma delas repete a outra.');
+  }
   // continuidade e repetição: nenhuma tela repete a anterior com outras palavras
   for (let i = 1; i < telas.length; i++) {
     const a = new Set(termos(`${telas[i - 1].textos.titulo || ''}`)); const bT = termos(`${telas[i].textos.titulo || ''}`);
@@ -157,7 +224,7 @@ function escolherGancho(ganchos) {
   const angulos = new Set(lista.map((g) => g.angulo));
   const erros = []; if (lista.length !== 3) erros.push('São necessários três ganchos.'); if (angulos.size !== 3 || !['oportunidade', 'contradicao', 'erro'].every((a) => angulos.has(a))) erros.push('Os três ganchos precisam ter os ângulos oportunidade, contradição e erro/perda.');
   const pontuados = lista.map((g, i) => {
-    const sc = g.scores || {}; const soma = ['clareza', 'relevancia', 'especificidade', 'sustentacao'].reduce((m, k) => m + (Number(sc[k]) || 0), 0);
+    const sc = g.scores || {}; const soma = ['clareza', 'relevancia', 'especificidade', 'sustentacao', 'entregabilidade'].reduce((m, k) => m + (Number(sc[k]) || 0), 0);
     const pen = EXAGERO.test(sem(g.titulo)) ? 2 : 0;
     return { i, id: `capa_${i + 1}`, angulo: g.angulo, titulo: U.limita(g.titulo, 140), apoio: '', rotulo: '', total: soma - pen, scores: sc };
   });
@@ -197,6 +264,18 @@ Legenda: primeira_linha, historia, como_ganha, brasil (hipótese). Até 3 hashta
 Responda APENAS JSON:
 {"sem_pauta":null,"briefing":{"negocio":{"nome":"","produto":"","problema":"","para_quem":"","quem_paga":"","pelo_que_paga":"","forma_cobranca":"","operacao":""},"fatos":[{"id":"f1","texto":"","claim_id":"c1 ou null","campo_do_negocio":"nome do campo ou null"}],"analises":[{"id":"a1","texto":"","base":["f1"],"causalidade_demonstrada":false}],"hipoteses":[{"id":"h1","texto":""}],"decisao_especifica":{"texto":"","base":["f1"]},"mecanismos":[{"nome":"","como_funciona":"","exemplo":"","vantagem":"","condicao_de_falha":"","base":["f1"]},{"nome":"","como_funciona":"","exemplo":"","vantagem":"","condicao_de_falha":"","base":["a1"]}],"limitacoes":[""],"aprendizado_leitor":"","tese":"","pergunta_capa":""},"ganchos":[{"angulo":"oportunidade","titulo":"","scores":{"clareza":3,"relevancia":3,"especificidade":3,"sustentacao":3}},{"angulo":"contradicao","titulo":"","scores":{}},{"angulo":"erro","titulo":"","scores":{}}],"telas":[{"funcao":"gancho","tipo":"FATO","base":["f1"],"titulo":"","corpo":""},{"funcao":"problema","tipo":"FATO","base":["f1"],"titulo":"","corpo":""},{"funcao":"mecanismo_1","tipo":"ANALISE","base":["a1"],"titulo":"","corpo":""},{"funcao":"mecanismo_2","tipo":"ANALISE","base":["a1"],"titulo":"","corpo":""},{"funcao":"conta","tipo":"FATO","base":["f1"],"titulo":"","corpo":""},{"funcao":"aplicacao","tipo":"HIPOTESE","base":[],"titulo":"","corpo":""},{"funcao":"encerramento","tipo":"MISTO","base":[],"titulo":"","apoio":""}],"legenda":{"primeira_linha":"","historia":"","como_ganha":"","brasil":""},"hashtags":[""]}`;
 
+// Padrão v1: mesmo método, com o briefing completo, o teste de valor e os campos de cada tela.
+const SISTEMA_V1 = `${SISTEMA.split('Responda APENAS JSON:')[0].replace('Você escreve o carrossel "Estratégia por trás"', 'Você escreve o carrossel do padrão "Pedro Destrava — Minimalista"')}
+COMPLEMENTOS OBRIGATÓRIOS DO PADRÃO:
+- Briefing: publico (para quem é), interesse (o que esse público quer), nivel_conhecimento (o que ele já sabe), aplicacao (o teste que pode fazer), duvidas_abertas (o que a pesquisa NÃO confirmou; nunca vira afirmação).
+- teste_de_valor ANTES de escrever: o_que_aprende, por_que_importa, aprovado (false se não houver algo específico; então use sem_pauta).
+- Cada mecanismo segue: afirmação → como funciona → exemplo → evidência (base) → limitação (condicao_de_falha) → implicação (vantagem).
+- Ganchos: scores também em "entregabilidade" (as telas cumprem a promessa?).
+- Telas: de 5 a 7. "problema" e "mecanismo_2" podem ter "omitir": "motivo" se não houver conteúdo específico (menos telas é melhor que enchimento).
+- Cada tela: informacao_nova (o que ela acrescenta), relacao_anterior, base (fatos/análises usados), evidencias (ids de DADOS_VERIFICADOS), briefing_visual {mostrar, acrescenta, buscas, enquadramento, deve_aparecer, proibido}.
+- Só título e corpo vão para a imagem. Sem nome, @ ou foto do Pedro antes do encerramento. Encerramento: aprendizado específico desta pauta, um único convite, ${ACCOUNT.handle}, motivo para seguir.
+Responda APENAS JSON no formato: {"sem_pauta":null,"briefing":{"publico":"","interesse":"","nivel_conhecimento":"","negocio":{"nome":"","produto":"","problema":"","para_quem":"","quem_paga":"","pelo_que_paga":"","forma_cobranca":"","operacao":""},"fatos":[],"analises":[],"hipoteses":[],"decisao_especifica":{"texto":"","base":[]},"mecanismos":[{"nome":"","como_funciona":"","exemplo":"","vantagem":"","condicao_de_falha":"","base":[]}],"limitacoes":[],"aprendizado_leitor":"","aplicacao":"","duvidas_abertas":[],"teste_de_valor":{"o_que_aprende":"","por_que_importa":"","aprovado":true}},"ganchos":[{"angulo":"oportunidade","titulo":"","scores":{"clareza":3,"relevancia":3,"especificidade":3,"sustentacao":3,"entregabilidade":3}},{"angulo":"contradicao","titulo":"","scores":{}},{"angulo":"erro","titulo":"","scores":{}}],"telas":[{"funcao":"gancho","tipo":"FATO","base":[],"evidencias":[],"informacao_nova":"","relacao_anterior":"","titulo":"","corpo":"","briefing_visual":{}}],"legenda":{"primeira_linha":"","historia":"","como_ganha":"","brasil":""},"hashtags":[]}`;
+
 const REVISOR = `Você é o revisor editorial. Você NÃO escreve o texto: aponta, para cada uma das 7 telas, o problema específico e a correção.
 Verifique: qual informação nova a tela acrescenta; se a promessa da capa foi cumprida; se há explicação ou só opinião; se há repetição; se a técnica está demonstrada; se fato, análise e hipótese estão diferenciados; se a imagem se relaciona ao argumento (use "imagem_relaciona": false se não).
 Responda APENAS JSON: {"telas":[{"problema":"","correcao":"","informacao_nova":true,"explica":true,"promessa_cumprida":true,"repete":false,"tecnica_demonstrada":true,"imagem_relaciona":true}]}
@@ -207,16 +286,16 @@ function dadosParaIa(op) {
 }
 
 // Do JSON da IA (ou de um rascunho escrito à mão, com o mesmo formato) para as telas e o documento.
-function montarDoc(j, op, { agora = Date.now() } = {}) {
+function montarDoc(j, op, { agora = Date.now(), v1 = false } = {}) {
   const b = j?.briefing || null; const erros = [];
   if (j?.sem_pauta) return { sem_pauta: j.sem_pauta, telas: [], capas: [], erros: [j.sem_pauta], briefing: b };
-  const t = montarTelas(j, op, { agora }); erros.push(...t.erros);
+  const t = montarTelas(j, op, { agora, v1, briefing: b }); erros.push(...t.erros);
   const g = escolherGancho(j?.ganchos); erros.push(...g.erros);
-  const capas = g.ganchos.map((x) => ({ id: x.id, angulo: x.angulo, titulo: x.titulo, apoio: '', rotulo: '' }));
+  const capas = g.ganchos.map((x) => ({ id: x.id, angulo: x.angulo, titulo: x.titulo, apoio: '', rotulo: '', ...(v1 ? { pontuacao: x.pontuacao, scores: x.scores } : {}) }));
   const escolhida = g.ganchos[g.escolhido] || g.ganchos[0];
   if (t.telas[0] && escolhida) t.telas[0].textos.titulo = escolhida.titulo;
   const leg = Serie.montarLegenda({ partes: j?.legenda || {}, hashtags: j?.hashtags || [] }, op); erros.push(...leg.erros);
-  return { telas: t.telas, capas, capa_escolhida: escolhida?.id || null, ganchos: g.ganchos, briefing: b, legenda: leg.texto, partes_legenda: leg.partes, hashtags: leg.tags, erros, ficha: fichaDoBriefing(op, b) };
+  return { telas: t.telas, omitidas: t.omitidas, template: v1 ? Padrao.ID : TEMPLATE, capas, capa_escolhida: escolhida?.id || null, ganchos: g.ganchos, briefing: b, legenda: leg.texto, partes_legenda: leg.partes, hashtags: leg.tags, erros, ficha: fichaDoBriefing(op, b) };
 }
 
 // Ficha da pesquisa (formato da ficha editorial) derivada do briefing, para o pacote e a revisão do Pedro.
@@ -237,9 +316,10 @@ function fichaDoBriefing(op, b) {
 
 // Validação completa do documento minimalista: briefing + telas + legenda + revisão técnica (bloqueios e sugestões).
 function validarDocMin(doc, op) {
-  const b = doc.briefing || null;
-  const bl = [...validarBriefing(b, op)]; const sg = [];
-  const v = validarTelas(doc.telas || [], op, b); bl.push(...v.bloqueios); sg.push(...v.sugestoes);
+  const b = doc.briefing || null; const v1 = Padrao.ehV1(doc.template);
+  const bl = [...validarBriefing(b, op, { v1 })]; const sg = [];
+  const v = validarTelas(doc.telas || [], op, b, { v1 }); bl.push(...v.bloqueios); sg.push(...v.sugestoes);
+  if (v1) { const r = validarVisualV1(doc); bl.push(...r.bloqueios); sg.push(...r.sugestoes); }
   if (doc.legenda?.texto) {
     const usaveis = Copy.claimsUsaveis(op); const leg = doc.legenda.texto;
     const sp = Copy.numerosNaoComprovados(leg, usaveis); if (sp.length) bl.push(`Legenda: número sem comprovação (${sp.join(', ')}).`);
@@ -255,20 +335,48 @@ function validarDocMin(doc, op) {
     const im = imgs.find((x) => x.id === t.foto?.imagem_id);
     if (im && im.tipo === 'ia_ilustracao' && !['aplicacao'].includes(t.funcao)) bl.push(`Tela ${i + 1}: imagem gerada por IA não pode ilustrar ${FUNCOES_MIN[t.funcao]?.rotulo.toLowerCase() || 'esta tela'}. Ela só cabe na tela de teste, marcada como ilustração.`);
   });
-  (doc.telas || []).forEach((t, i) => { if (t.layout === 'min_foto' && !t.foto?.imagem_id) sg.push(`Tela ${i + 1}: sem foto adequada (${FUNCOES_MIN[t.funcao]?.imagem || 'imagem real'}). Envie uma foto ou um print verdadeiro; o modelo não usa imagem genérica para disfarçar a falta.`); });
+  (doc.telas || []).forEach((t, i) => { if (['min_foto', 'min_produto'].includes(t.layout) && !t.foto?.imagem_id) sg.push(`Tela ${i + 1}: sem foto adequada (${FUNCOES_MIN[t.funcao]?.imagem || 'imagem real'}). Envie uma foto ou um print verdadeiro; o modelo não usa imagem genérica para disfarçar a falta.`); });
   if (doc.revisao?.sugestoes?.length) sg.push(...doc.revisao.sugestoes);
   if (doc.revisao && !doc.revisao.executada) sg.push(`Revisão por IA não executada: ${doc.revisao.motivo}.`);
   return { ok: [...new Set(bl)].length === 0, bloqueios: [...new Set(bl)].map((mensagem) => ({ codigo: 'METODO', mensagem, tela: null })), sugestoes: [...new Set(sg)].map((mensagem) => ({ codigo: 'EDITORIAL', mensagem, tela: null })), resumo: { bloqueios: [...new Set(bl)].length, sugestoes: [...new Set(sg)].length, telas: (doc.telas || []).length, composicoes: [...new Set((doc.telas || []).map((t) => t.layout))].length } };
 }
 
-async function gerarMinimalista(op, { deps = {}, tentativas = 3, feedback: fb0 = '', agora = Date.now() } = {}) {
+// Bloqueios visuais do padrão v1, a partir do render MEDIDO e das imagens escolhidas (separados das preferências).
+function validarVisualV1(doc) {
+  const bl = []; const sg = []; const imgs = doc.imagens || []; const telas = doc.telas || [];
+  (doc.render || []).forEach((r, i) => {
+    const m = r.metricas || {}; const n = `Tela ${i + 1}`;
+    if (m.largura && (m.largura !== 1080 || m.altura !== 1350)) bl.push(`${n}: dimensões erradas (${m.largura}×${m.altura}).`);
+    for (const p of m.problemas || []) bl.push(`${n}: ${p}.`);
+    for (const a of m.avisos || []) sg.push(`${n}: ${a}.`);
+  });
+  // a mesma foto em duas telas só se o Pedro escolheu assim; a escolha automática não repete foto por conveniência
+  const uso = {}; telas.forEach((t, i) => { const id = t.foto?.imagem_id; if (id) (uso[id] ||= []).push({ i, manual: !!t.foto.manual }); });
+  for (const [id, l] of Object.entries(uso)) if (l.length > 1) (l.every((x) => x.manual) ? sg : bl).push(`A mesma imagem (${id}) aparece nas telas ${l.map((x) => x.i + 1).join(' e ')}. Use uma imagem pertinente por tela ou deixe a tela só com texto.`);
+  telas.forEach((t, i) => {
+    const im = imgs.find((x) => x.id === t.foto?.imagem_id); if (!im) return;
+    if (im.papel === 'pedro' || im.tipo === 'pedro') bl.push(`Tela ${i + 1}: foto do Pedro antes do encerramento.`);
+    if (im.relacao === 'nao_relacionada' || im.descartada) bl.push(`Tela ${i + 1}: a imagem não tem relação com a história.`);
+    if (im.permissao !== 'confirmada' && ['editorial', 'stock_duvidoso', 'desconhecida'].includes(im.licenca_classe)) bl.push(`Tela ${i + 1}: uso de imagem com direito duvidoso ainda não revisado.`);
+  });
+  // não deixar as últimas telas só com texto: ao menos uma das duas telas antes do encerramento tem imagem
+  const antes = telas.slice(-3, -1); if (antes.length && antes.every((t) => !t.foto?.imagem_id)) sg.push('As telas finais estão todas só com texto: envie uma imagem pertinente para a conta ou para a aplicação.');
+  const comFoto = telas.filter((t) => t.foto?.imagem_id && t.funcao !== 'encerramento').length;
+  if (comFoto < 3) sg.push(`Só ${comFoto} tela(s) com imagem do assunto (o padrão costuma ter 3 ou 4). Faltam imagens pertinentes; nenhuma genérica foi colocada no lugar.`);
+  if ((doc.legenda?.hashtags || []).length > 3) bl.push('A legenda tem mais de 3 hashtags.');
+  // créditos de imagem com licença que exige atribuição entram sozinhos na ficha e na legenda exportada (pacote)
+  return { bloqueios: bl, sugestoes: sg };
+}
+
+async function gerarMinimalista(op, { deps = {}, tentativas = 3, feedback: fb0 = '', agora = Date.now(), template = TEMPLATE } = {}) {
+  const v1 = Padrao.ehV1(template);
   const pedir = deps.pedirJson || llmJson.pedirJson;
   if (!Copy.claimsUsaveis(op).some((c) => c.numero !== null && c.valor_exibicao)) throw U.erro('Sem número verificado não há tela de evidência: o carrossel não é gerado.', 'SEM_PROVA', 422);
   let feedback = fb0; const historico = []; let ultimo = null;
   for (let i = 1; i <= tentativas; i++) {
     const d = llmJson.dado('NEGOCIO', JSON.stringify(dadosParaIa(op)), 16000);
-    const { dados, llm } = await pedir({ sistema: `${SISTEMA}\n\n${llmJson.REGRAS_DADOS}`, usuario: `${d.bloco}\n${feedback ? `\nA VERSÃO ANTERIOR TEVE ESTES PROBLEMAS. Corrija todos sem perder o que estava bom:\n- ${feedback}\n` : ''}`, maxTokens: 6500, temperatura: i === 1 ? 0.6 : 0.35, budget: deps.budget });
-    const r = montarDoc(dados, op, { agora }); const v = validarDocMin(r, op);
+    const { dados, llm } = await pedir({ sistema: `${v1 ? SISTEMA_V1 : SISTEMA}\n\n${llmJson.REGRAS_DADOS}`, usuario: `${d.bloco}\n${feedback ? `\nA VERSÃO ANTERIOR TEVE ESTES PROBLEMAS. Corrija todos sem perder o que estava bom:\n- ${feedback}\n` : ''}`, maxTokens: 6500, temperatura: i === 1 ? 0.6 : 0.35, budget: deps.budget });
+    const r = montarDoc(dados, op, { agora, v1 }); const v = validarDocMin(r, op);
     historico.push({ tentativa: i, bloqueios: v.bloqueios.length, llm });
     ultimo = { ...r, llm, validacao: v };
     if (r.sem_pauta) return { ...ultimo, sem_pauta: r.sem_pauta, tentativas: i, historico };
@@ -276,7 +384,20 @@ async function gerarMinimalista(op, { deps = {}, tentativas = 3, feedback: fb0 =
     feedback = v.bloqueios.map((b) => b.mensagem).slice(0, 12).join('\n- ');
     if (deps.aoFalhar) await deps.aoFalhar({ tentativa: i, feedback });
   }
-  const revisao = await revisarIA(op, ultimo.telas || [], ultimo.briefing, { deps });
+  let revisao = await revisarIA(op, ultimo.telas || [], ultimo.briefing, { deps });
+  // v1: quando a revisão recusa uma tela, uma rodada de correção específica (a correção apontada vira instrução);
+  // o que não se resolver fica PENDENTE e visível no editor.
+  if (v1 && revisao.executada && ultimo.telas?.length) {
+    const corrigidas = []; const pendentes = [];
+    for (const x of (revisao.telas || []).filter((y) => y.problema && y.problema !== 'nenhum').slice(0, 4)) {
+      const i = x.tela - 1; if (!ultimo.telas[i] || ultimo.telas[i].funcao === 'encerramento') continue;
+      try {
+        const rr = await regenerarTelaMin(op, ultimo, i, { instrucao: `Correção pedida pela revisão: ${x.problema}. ${x.correcao || ''}`, deps, tentativas: 1 });
+        if (!rr.com_problemas) { ultimo.telas[i] = { ...ultimo.telas[i], textos: rr.textos }; corrigidas.push(x.tela); } else pendentes.push(x.tela);
+      } catch { pendentes.push(x.tela); }
+    }
+    revisao = { ...revisao, corrigidas, pendentes, sugestoes: (revisao.sugestoes || []).filter((t) => !corrigidas.some((n) => t.startsWith(`Tela ${n}:`))).map((t) => (pendentes.some((n) => t.startsWith(`Tela ${n}:`)) ? `PENDENTE — ${t}` : t)) };
+  }
   ultimo.revisao = revisao; ultimo.validacao = validarDocMin({ ...ultimo, revisao }, op);
   return { ...ultimo, tentativas: historico.length, historico, com_problemas: !ultimo.validacao.ok };
 }
@@ -284,6 +405,7 @@ async function gerarMinimalista(op, { deps = {}, tentativas = 3, feedback: fb0 =
 const SISTEMA_TELA = `Você reescreve UMA tela do carrossel "Estratégia por trás" (@pedro_destrava). Mantenha o papel da tela, use só DADOS_VERIFICADOS e o briefing, explique (não só opine), sem "!", sem emoji, Brasil só como hipótese, 14 a 70 palavras no corpo.
 Responda APENAS JSON: {"titulo":"","corpo":""} (para o encerramento: {"titulo":"","apoio":""}).`;
 async function regenerarTelaMin(op, doc, indice, { instrucao = '', campo = null, deps = {}, tentativas = 3 } = {}) {
+  const v1 = Padrao.ehV1(doc.template);
   const pedir = deps.pedirJson || llmJson.pedirJson; const tela = doc.telas[indice];
   let feedback = ''; let ultimo = null;
   for (let k = 1; k <= tentativas; k++) {
@@ -291,11 +413,11 @@ async function regenerarTelaMin(op, doc, indice, { instrucao = '', campo = null,
     const { dados } = await pedir({ sistema: `${SISTEMA_TELA}\n\n${llmJson.REGRAS_DADOS}`, usuario: `${d.bloco}\nTexto atual: ${JSON.stringify(tela.textos)}${campo ? `\nReescreva SOMENTE “${campo}”.` : ''}${feedback ? `\nA VERSÃO ANTERIOR FOI RECUSADA: ${feedback}` : ''}`, maxTokens: 900, temperatura: k === 1 ? 0.6 : 0.3, budget: deps.budget });
     const novos = { ...tela.textos }; for (const c of campo ? [campo] : Object.keys(tela.textos)) if (dados?.[c] != null && String(dados[c]).trim()) novos[c] = U.limita(dados[c], c === 'titulo' ? 140 : 600);
     const candidata = doc.telas.map((t, j) => (j === indice ? { ...t, textos: novos } : t));
-    const v = validarTelas(candidata, op, doc.briefing); const erros = v.bloqueios.filter((m) => m.startsWith(`Tela ${indice + 1}:`)).concat(v.sugestoes.filter((m) => m.startsWith(`Tela ${indice + 1}:`)));
+    const v = validarTelas(candidata, op, doc.briefing, { v1 }); const erros = v.bloqueios.filter((m) => m.startsWith(`Tela ${indice + 1}:`)).concat(v.sugestoes.filter((m) => m.startsWith(`Tela ${indice + 1}:`)));
     ultimo = { textos: novos, erros }; if (!erros.length) return { textos: novos, tentativas: k };
     feedback = erros.join('; ');
   }
   return { ...ultimo, com_problemas: true, tentativas };
 }
 
-module.exports = { TEMPLATE, ORDEM, FUNCOES_MIN, ANGULOS_MIN, validarBriefing, validarTelas, validarDocMin, montarDoc, montarTelas, escolherGancho, fichaDoBriefing, gerarMinimalista, regenerarTelaMin, revisarIA, termos, termosDoCaso, SISTEMA };
+module.exports = { briefingVisual, validarBriefingV1, validarVisualV1, SISTEMA_V1, TEMPLATE, ORDEM, FUNCOES_MIN, ANGULOS_MIN, validarBriefing, validarTelas, validarDocMin, montarDoc, montarTelas, escolherGancho, fichaDoBriefing, gerarMinimalista, regenerarTelaMin, revisarIA, termos, termosDoCaso, SISTEMA };
