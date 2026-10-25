@@ -10,6 +10,8 @@ const Serie = require('./serie');
 const Historia = require('./historia');
 const Fotos = require('./fotos');
 const Arte = require('./arte2');
+const ArteMin = require('./arteMinimalista');
+const Metodo = require('./metodo');
 const Pacote = require('./pacote');
 const Copy = require('./copy');
 const C = require('./config');
@@ -37,17 +39,21 @@ function exigirVerificada(op, { permitirBaixa = false } = {}) {
 const TAGS = { pessoa: /\b(founder|ceo|portrait|retrato|speaker|interview|fundador|fundadora|team|equipe)\b/i, produto: /(bag|sacola|surprise|food|bread|p[aã]o|croissant|packag|product|produto|pastry|meal|pizza|fruit|vegetable)/i, local: /(store|shop|loja|restaurant|bakery|padaria|collection point|window|caf[eé]|market|mercado|station|camp|farm|fazenda|tent)/i, app: /(\bapp\b|screenshot|screen|\btela\b|phone|smartphone|iphone|android)/i };
 const classificar = (im) => { const t = `${String(im.descricao || '').slice(0, 140)} ${im.origem?.arquivo || ''}`; return Object.keys(TAGS).filter((k) => TAGS[k].test(t)); };
 const PREFERE = { descoberta: ['produto', 'local', 'app'], revelacao: ['local', 'produto', 'app'], dinheiro: ['app', 'local', 'produto'], evidencia: ['produto', 'local', 'app'], estrategia: ['pessoa', 'local', 'produto'], tensao: ['produto', 'local'], licao: ['local', 'produto'] };
-function atribuirImagens(telas, imagens) {
+function atribuirImagens(telas, imagens, { minimalista: min = false } = {}) {
   const uso = {};
   telas.forEach((t) => {
-    if (t.layout === 'encerramento_pedro' || t.foto?.imagem_id || t.foto?.manual) return;
+    if (['encerramento_pedro', 'min_encerramento', 'min_texto'].includes(t.layout) || t.foto?.imagem_id || t.foto?.manual) return;
     const pref = PREFERE[t.funcao] || ['produto', 'local'];
     const ilustra = ['tensao', 'licao'].includes(t.funcao);
-    let cand = imagens.filter((i) => (uso[i.id] || 0) < 2 && (['evidencia', 'dinheiro'].includes(t.funcao) ? ['foto', 'print', 'documento'].includes(i.papel) : i.papel === 'foto' || (i.papel === 'ilustracao')));
+    let cand = imagens.filter((i) => (uso[i.id] || 0) < 2 && (['evidencia', 'dinheiro', 'conta', 'aplicacao'].includes(t.funcao) ? ['foto', 'print', 'documento'].includes(i.papel) : i.papel === 'foto' || (i.papel === 'ilustracao')));
     cand = cand.filter((i) => ilustra || i.relacao === 'negocio');
+    // no minimalista, banner de divulgação do site (texto sobreposto) não entra sozinho: a tela fica sem foto e avisa
+    if (min) cand = cand.filter((i) => i.tipo !== 'oficial_pagina');
     const nota = (i) => {
       const tags = classificar(i); let r = tags.length ? Math.min(...tags.map((k) => (pref.includes(k) ? pref.indexOf(k) : (k === 'pessoa' ? 99 : 5)))) : 6;
-      if (['evidencia', 'dinheiro'].includes(t.funcao) && ['print', 'documento'].includes(i.papel)) r = t.funcao === 'evidencia' ? -2 : -1;
+      if (['evidencia', 'dinheiro', 'conta'].includes(t.funcao) && ['print', 'documento'].includes(i.papel)) r = t.funcao === 'evidencia' || t.funcao === 'conta' ? -2 : -1;
+      // no minimalista, banner de divulgação com texto sobreposto perde para foto de operação ou produto
+      if (min && i.tipo === 'oficial_pagina') r += 4;
       if (ilustra && i.relacao === 'ilustrativa') r -= 1;
       return r + 10 * (uso[i.id] || 0);
     };
@@ -61,6 +67,10 @@ async function bufferesDaTela(doc, tela) {
   const a = await store.arquivoObter(im.arquivo); return a ? { buf: a.dados, credito: im.credito || null, tipo: im.tipo, papel: im.papel, id } : null;
 }
 const claimsDoc = (op) => Serie.claimsPorId(op);
+// Template: 'editorial' (série azul e laranja, 8 telas) ou 'minimalista' (estratégia por trás, 7 telas). O método de copy é o mesmo.
+const minimalista = (doc) => doc?.template === 'minimalista';
+const funcoesDe = (doc) => (minimalista(doc) ? Metodo.FUNCOES_MIN : Serie.FUNCOES);
+const validarDoc = (doc, op) => (minimalista(doc) ? Metodo.validarDocMin(doc, op) : Serie.validar(doc, op));
 
 // ── Render incremental ─────────────────────────────────────────────────────────
 // Renderiza só as telas cuja entrada mudou. Devolve a lista `render` completa (a mesma ordem das telas).
@@ -74,7 +84,7 @@ async function renderizar(doc, op) {
     const arquivo = chaveSlide(doc.id, i + 1);
     if (antes && antes.n === i + 1) { novo.push(antes); continue; }
     if (antes) { const a = await store.arquivoObter(antes.arquivo); if (a) { await store.arquivoSalvar(arquivo, a.dados, 'image/png'); novo.push({ ...antes, n: i + 1, arquivo }); continue; } }
-    const r = await Arte.renderizarTela(t, { n: i + 1, total: n, imagens, claims });
+    const r = minimalista(doc) ? await ArteMin.renderizarTela(t, { n: i + 1, total: n, imagens }) : await Arte.renderizarTela(t, { n: i + 1, total: n, imagens, claims });
     const meta = await sharp(r.png).metadata();
     if (meta.width !== 1080 || meta.height !== 1350) throw U.erro(`A tela ${i + 1} saiu com ${meta.width}×${meta.height} (esperado 1080×1350).`, 'DIMENSAO', 500);
     await store.arquivoSalvar(arquivo, r.png, 'image/png');
@@ -127,7 +137,7 @@ function sincronizarCompat(doc) {
 }
 async function fechar(doc, op, { agora = Date.now(), motivoVersao = null } = {}) {
   doc.__claims = claimsDoc(op);
-  doc.validacao = Serie.validar(doc, op);
+  doc.validacao = validarDoc(doc, op);
   sincronizarCompat(doc); delete doc.__claims;
   const h = hashDaVersao(doc);
   (doc.versoes ||= []); const ult = doc.versoes[doc.versoes.length - 1];
@@ -141,14 +151,14 @@ async function fechar(doc, op, { agora = Date.now(), motivoVersao = null } = {})
 
 // ── Geração ────────────────────────────────────────────────────────────────────
 // opId → carrossel. `rascunho`: texto escrito por uma pessoa (mesmo formato da IA, mesmas conferências).
-async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, origem = 'manual', agora = Date.now(), reiniciar = false, rascunho = null, orcamentoMs = 45000 } = {}) {
+async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, origem = 'manual', agora = Date.now(), reiniciar = false, rascunho = null, orcamentoMs = 45000, template = 'editorial' } = {}) {
   const t0 = Date.now(); const op = await carregarOp(opId); exigirVerificada(op, { permitirBaixa });
   let v = versao || ((op.carrosseis || []).length + 1);
   let existente = await store.obter('carrossel', idDe(opId, v));
   while (reiniciar && existente && ['erro', 'rascunho'].includes(existente.doc.estado) && existente.doc.serie === 'negocios') { v += 1; existente = await store.obter('carrossel', idDe(opId, v)); }
   const id = idDe(opId, v);
   if (existente && ['aguardando_aprovacao', 'aprovado', 'publicado', 'rascunho'].includes(existente.doc.estado) && existente.doc.etapa === 'pronto') return existente.doc;
-  let doc = existente?.doc || { id, op_id: opId, versao: v, serie: 'negocios', origem, criado_em: new Date(agora).toISOString(), estado: 'gerando', etapa: 'copy', historico: [], excecao_limiar: permitirBaixa && (op.pontuacao ?? 0) < C.LIMIAR_CARROSSEL };
+  let doc = existente?.doc || { id, op_id: opId, versao: v, serie: 'negocios', template: template === 'minimalista' ? 'minimalista' : 'editorial', origem, criado_em: new Date(agora).toISOString(), estado: 'gerando', etapa: 'copy', historico: [], excecao_limiar: permitirBaixa && (op.pontuacao ?? 0) < C.LIMIAR_CARROSSEL };
   if (doc.estado === 'erro') { doc.estado = 'gerando'; delete doc.erro; }
   let rev = existente ? existente.rev : 0;
   const salvar = async () => { doc.atualizado_em = new Date().toISOString(); const r = await store.salvar('carrossel', id, doc, rev); rev = r.rev; };
@@ -159,20 +169,31 @@ async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, or
     if (!doc.telas) {
       const aoFalhar = async (info) => { doc.copia_tentativas = (doc.copia_tentativas || 0) + 1; doc.feedback_copia = info.feedback; await salvar(); };
       let r;
-      if (rascunho) r = { ...Historia.montarDoRascunho(rascunho, op, { origem: 'manual', agora }), tentativas: 0, llm: null, manual: true };
-      else r = await Historia.gerarRascunho(op, { deps: { ...deps, aoFalhar }, feedback: doc.feedback_copia || '', agora });
-      if (!rascunho && (!r.telas || r.telas.length < 7 || (r.capas || []).length < 3)) throw U.erro(`A copy não passou nas regras: ${(r.erros || []).slice(0, 3).join('; ') || 'resposta incompleta da IA'}`, 'COPY_INVALIDA', 422, { erros: r.erros || [] });
-      if (r.erros?.length && rascunho) throw U.erro(`O rascunho tem problemas de estrutura: ${r.erros.slice(0, 4).join('; ')}`, 'RASCUNHO', 422, { erros: r.erros });
-      doc.telas = r.telas; doc.capas = r.capas; doc.capa_escolhida = r.capa_escolhida; doc.ficha = r.ficha;
-      doc.legenda = { texto: r.legenda, partes: r.partes_legenda, hashtags: r.hashtags }; doc.ilustracao = r.ilustracao || null; doc.llm = r.llm || null; doc.tentativas_copia = r.tentativas;
-      doc.copia_com_problemas = !!r.com_problemas; doc.etapa = 'imagens'; await salvar();
+      if (minimalista(doc)) {
+        // Modelo minimalista: briefing → ganchos → sete telas. Validação por código e revisão por IA (quando há chave).
+        const m = rascunho ? { ...Metodo.montarDoc(rascunho, op, { agora }), tentativas: 0, llm: null, manual: true } : await Metodo.gerarMinimalista(op, { deps: { ...deps, aoFalhar }, feedback: doc.feedback_copia || '', agora });
+        if (m.sem_pauta) throw U.erro(`Esta história não rendeu uma pauta específica: ${m.sem_pauta}. Aprofunde a pesquisa ou descarte a pauta.`, 'SEM_PAUTA', 422);
+        doc.telas = m.telas; doc.capas = m.capas; doc.capa_escolhida = m.capa_escolhida; doc.ficha = m.ficha || Metodo.fichaDoBriefing(op, m.briefing);
+        doc.briefing = m.briefing; doc.revisao = m.revisao || { executada: false, motivo: 'sem chave de IA neste ambiente: só a revisão técnica por código rodou' };
+        doc.legenda = { texto: m.legenda, partes: m.partes_legenda, hashtags: m.hashtags }; doc.ilustracao = null; doc.llm = m.llm || null; doc.tentativas_copia = m.tentativas;
+        doc.copia_com_problemas = !!m.com_problemas; doc.etapa = 'imagens'; await salvar();
+        r = null;
+      } else if (rascunho) r = { ...Historia.montarDoRascunho(rascunho, op, { origem: 'manual', agora }), tentativas: 0, llm: null, manual: true };
+      else if (!minimalista(doc)) r = await Historia.gerarRascunho(op, { deps: { ...deps, aoFalhar }, feedback: doc.feedback_copia || '', agora });
+      if (r && !rascunho && (!r.telas || r.telas.length < 7 || (r.capas || []).length < 3)) throw U.erro(`A copy não passou nas regras: ${(r.erros || []).slice(0, 3).join('; ') || 'resposta incompleta da IA'}`, 'COPY_INVALIDA', 422, { erros: r.erros || [] });
+      if (r?.erros?.length && rascunho && !minimalista(doc)) throw U.erro(`O rascunho tem problemas de estrutura: ${r.erros.slice(0, 4).join('; ')}`, 'RASCUNHO', 422, { erros: r.erros });
+      if (r) {
+        doc.telas = r.telas; doc.capas = r.capas; doc.capa_escolhida = r.capa_escolhida; doc.ficha = r.ficha;
+        doc.legenda = { texto: r.legenda, partes: r.partes_legenda, hashtags: r.hashtags }; doc.ilustracao = r.ilustracao || null; doc.llm = r.llm || null; doc.tentativas_copia = r.tentativas;
+        doc.copia_com_problemas = !!r.com_problemas; doc.etapa = 'imagens'; await salvar();
+      }
     }
     // 2) imagens (origem registrada; o que não for achado vira aviso, não imagem genérica)
     if (!doc.imagens_prontas) {
       if (restante() < 6000) { doc.etapa = 'imagens'; await salvar(); return doc; }
       const r = await Fotos.reunir(op, { deps, agora, ilustracao: doc.ilustracao });
       doc.imagens = []; let k = 0; for (const a of r.imagens.slice(0, 8)) doc.imagens.push(await Fotos.guardar(store, id, a, `im${++k}`));
-      doc.avisos = [...new Set(r.avisos)]; doc.imagens_prontas = true; atribuirImagens(doc.telas, doc.imagens); doc.etapa = 'render'; await salvar();
+      doc.avisos = [...new Set(r.avisos)]; doc.imagens_prontas = true; atribuirImagens(doc.telas, doc.imagens, { minimalista: minimalista(doc) }); doc.etapa = 'render'; await salvar();
     }
     // 3) render + validação + pacote
     if (restante() < 12000 && doc.render?.length !== doc.telas.length) { await salvar(); return doc; }
@@ -211,7 +232,7 @@ const naoBloqueada = (t) => { if (t.bloqueada) throw U.erro('Esta tela está blo
 // patch: { textos: {campo: valor}, layout, variante, estilo, foto: {imagem_id, enq, forma}, bloqueada }
 async function editarTela(id, n, patch = {}) {
   return mutar(id, (doc, op) => {
-    const i = indiceDaTela(doc, n); const t = doc.telas[i]; const f = Serie.FUNCOES[t.funcao];
+    const i = indiceDaTela(doc, n); const t = doc.telas[i]; const f = funcoesDe(doc)[t.funcao];
     if ('bloqueada' in patch) t.bloqueada = patch.bloqueada === true;
     if (Object.keys(patch).some((k) => k !== 'bloqueada')) naoBloqueada(t);
     if (patch.textos && typeof patch.textos === 'object') for (const k of [...Serie.CAMPOS, 'claim_id']) if (k in patch.textos) {
@@ -271,7 +292,7 @@ async function editarLegenda(id, texto) {
 async function regenerarTela(id, n, { instrucao = '', campo = null, deps = {} } = {}) {
   const reg = await store.obter('carrossel', id); if (!reg) throw U.erro('Carrossel não encontrado.', 'NAO_ENCONTRADO', 404);
   const op = await carregarOp(reg.doc.op_id); const i = indiceDaTela(reg.doc, n); naoBloqueada(reg.doc.telas[i]);
-  const r = await Historia.regenerarTela(op, reg.doc, i, { instrucao, campo, deps });
+  const r = minimalista(reg.doc) ? await Metodo.regenerarTelaMin(op, reg.doc, i, { instrucao, campo, deps }) : await Historia.regenerarTela(op, reg.doc, i, { instrucao, campo, deps });
   const out = await editarTela(id, n, { textos: r.textos });
   return { ...out, regeneracao: { tentativas: r.tentativas, com_problemas: !!r.com_problemas, erros: r.erros || [] } };
 }

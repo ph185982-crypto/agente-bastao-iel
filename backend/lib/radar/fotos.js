@@ -130,6 +130,8 @@ async function commons(consulta, { exigirNome = null, deps = {}, agora = Date.no
     const m = info.extmetadata || {}; const lic = semHtml(m.LicenseShortName?.value || m.License?.value);
     if (!LICENCAS_ABERTAS.test(lic)) continue;
     const titulo = semHtml(p.title).replace(/^File:/, ''); const desc = semHtml(m.ImageDescription?.value);
+    // logotipo, ícone e bandeira não mostram operação nem produto: ficam fora da busca de fotos
+    if (/logo|wordmark|icon|flag|bandeira|\.svg$/i.test(`${titulo} ${desc.slice(0, 120)}`)) continue;
     // a empresa precisa estar no nome do arquivo, no início da descrição ou nas categorias do arquivo: citada de passagem num texto longo não vale
     const cats = semHtml(String(m.Categories?.value || '').replace(/\|/g, ' '));
     if (nomeN && !U.norm(`${titulo} ${desc.slice(0, 160)} ${cats}`).replace(/\s+/g, '').includes(nomeN)) continue;

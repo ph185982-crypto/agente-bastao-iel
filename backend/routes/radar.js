@@ -8,6 +8,7 @@ const Carrossel = require('../lib/radar/carrossel');
 const Carrossel2 = require('../lib/radar/carrossel2');
 const Serie = require('../lib/radar/serie');
 const HistoriaManual = require('../lib/radar/historiaManual');
+const Metodo = require('../lib/radar/metodo');
 const Aprend = require('../lib/radar/aprendizado');
 const Copy = require('../lib/radar/copy');
 const Fila = require('../lib/radar/fila');
@@ -48,15 +49,16 @@ function visao(o, { detalhe = false } = {}) {
 // Parte do carrossel da série "Negócios que você não viu": camadas editáveis, capas, ficha, validação e imagens (com origem).
 function visaoSerie(c, op) {
   const claims = Serie.claimsPorId(op || {}); const imgUrl = (id) => `/api/radar/carrosseis/${c.id}/imagem/${id}`;
+  const min = c.template === 'minimalista'; const F = min ? Metodo.FUNCOES_MIN : Serie.FUNCOES;
   return {
-    serie: 'negocios', serie_nome: C.SERIE_NOVA, pronto: !!c.pronto, hash: c.hash_atual || null, aprovacao: c.aprovacao || null,
+    serie: 'negocios', serie_nome: min ? 'Estratégia por trás' : C.SERIE_NOVA, template: c.template || 'editorial', briefing: c.briefing || null, revisao: c.revisao || null, pronto: !!c.pronto, hash: c.hash_atual || null, aprovacao: c.aprovacao || null,
     telas: (c.telas || []).map((t, i) => ({
-      n: i + 1, id: t.id, funcao: t.funcao, funcao_rotulo: Serie.FUNCOES[t.funcao]?.rotulo, layout: t.layout, variante: t.variante || null, estilo: t.estilo || null, textos: t.textos, bloqueada: !!t.bloqueada,
-      composicoes: Serie.FUNCOES[t.funcao]?.permitidos || [t.layout], imagem_precisa: Serie.FUNCOES[t.funcao]?.imagem || null, foto: { ...(t.foto || {}), url: t.foto?.imagem_id ? imgUrl(t.foto.imagem_id) : null },
-      palavras: Serie.palavrasDaTela(t, { claims }), cabe: c.render?.[i]?.metricas?.cabe !== false, problemas: c.render?.[i]?.metricas?.problemas || [], sem_imagem: !!c.render?.[i]?.metricas?.sem_imagem, remover_permitido: Serie.OMITIVEIS.includes(t.funcao) && (c.telas || []).length > 7,
+      n: i + 1, id: t.id, funcao: t.funcao, funcao_rotulo: F[t.funcao]?.rotulo, layout: t.layout, variante: t.variante || null, estilo: t.estilo || null, textos: t.textos, bloqueada: !!t.bloqueada,
+      composicoes: F[t.funcao]?.permitidos || [t.layout], imagem_precisa: F[t.funcao]?.imagem || null, foto: { ...(t.foto || {}), url: t.foto?.imagem_id ? imgUrl(t.foto.imagem_id) : null },
+      palavras: Serie.palavrasDaTela(t, { claims }), cabe: c.render?.[i]?.metricas?.cabe !== false, problemas: c.render?.[i]?.metricas?.problemas || [], sem_imagem: !!c.render?.[i]?.metricas?.sem_imagem, remover_permitido: !min && Serie.OMITIVEIS.includes(t.funcao) && (c.telas || []).length > 7,
       url: `/api/radar/carrosseis/${c.id}/slide/${i + 1}`, sha: c.render?.[i]?.sha256?.slice(0, 12) || null,
     })),
-    capas: c.capas || [], capa_escolhida: c.capa_escolhida || null, angulos: Serie.ANGULOS, ficha: c.ficha || null, validacao: c.validacao || { ok: false, bloqueios: [], sugestoes: [] },
+    capas: c.capas || [], capa_escolhida: c.capa_escolhida || null, angulos: min ? Metodo.ANGULOS_MIN : Serie.ANGULOS, ficha: c.ficha || null, validacao: c.validacao || { ok: false, bloqueios: [], sugestoes: [] },
     dados_verificados: Object.values(claims).filter((x) => x.numero !== null).map((x) => ({ id: x.id, valor: x.valor_exibicao, texto: x.texto, atribuicao: x.atribuicao || null })),
     imagens_editor: (c.imagens || []).map((im) => ({ id: im.id, url: imgUrl(im.id), tipo: im.tipo, papel: im.papel, relacao: im.relacao, descricao: im.descricao, credito: im.credito, licenca: im.licenca, permissao: im.permissao, origem: im.origem ? { url_imagem: im.origem.url_imagem, url_pagina: im.origem.url_pagina, dominio: im.origem.dominio, consultado_em: im.origem.consultado_em } : null })),
     versoes: (c.versoes || []).map((v) => ({ v: v.v, em: v.em, hash: v.hash, motivo: v.motivo })), legenda_texto: c.legenda?.texto || '', copia_com_problemas: !!c.copia_com_problemas,
@@ -199,7 +201,8 @@ router.post('/oportunidades/:id/acao', limita({ max: 20, janelaMs: 60000, nome: 
     const maior = existentes.reduce((m, cid) => Math.max(m, Number((/_v(\d+)$/.exec(cid) || [])[1]) || 0), 0);
     const versao = ultimo ? (retomar ? ultimo.versao : maior + 1) : 1;
     const gerador = antiga ? Carrossel : Carrossel2;
-    const doc = await gerador.gerar(id, { deps: U.depsDeTeste(), versao, reiniciar: req.body.nova_versao === true, permitirBaixa: req.body.permitir_baixa === true, origem: 'manual', ...(rascunho ? { rascunho } : {}) });
+    const template = req.body.template === 'minimalista' ? 'minimalista' : 'editorial';
+    const doc = await gerador.gerar(id, { deps: U.depsDeTeste(), versao, reiniciar: req.body.nova_versao === true, permitirBaixa: req.body.permitir_baixa === true, origem: 'manual', template: antiga ? undefined : template, ...(rascunho ? { rascunho } : {}) });
     const op2 = (await store.obter('oportunidade', id))?.doc || reg.doc;
     return res.json({ carrossel: visaoCarrossel(doc, op2), parcial: doc.etapa !== 'pronto' });
   }

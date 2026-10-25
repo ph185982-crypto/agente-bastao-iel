@@ -1,0 +1,306 @@
+{
+ "historia": {
+  "nome": "Too Good To Go",
+  "pais": "Dinamarca",
+  "categoria": "startup",
+  "site_oficial": "https://www.toogoodtogo.com",
+  "resumo": "Aplicativo em que padarias, restaurantes e mercados vendem com desconto a comida que sobrou no dia, em sacolas-surpresa.",
+  "problema": "Comida boa que sobra no fim do dia vira prejuízo para o comércio.",
+  "solucao": "Um aplicativo que conecta quem tem sobra a quem quer comprar mais barato, em sacolas-surpresa retiradas no local.",
+  "como_ganha_dinheiro": "Comissão por sacola vendida e taxa anual cobrada do comércio.",
+  "modelo_receita": "comissao",
+  "adaptacao_brasil": "Testar com uma padaria e um bairro antes de pensar em aplicativo próprio.",
+  "fontes": [
+   "https://www.toogoodtogo.com/en-us/business",
+   "https://www.modernretail.co/operations/too-good-to-go-teams-up-with-whole-foods/",
+   "https://www.nbcmiami.com/news/business/money-report/this-startup-brings-in-162-million-a-year-helping-people-find-food-at-huge-discounts-its-the-most-genius-app/3473838/",
+   "https://www.aol.com/news/did-food-waste-apps-too-050000205.html",
+   "https://www.foodbusinessnews.net/articles/19145-too-good-to-go-reducing-food-waste-one-click-at-a-time"
+  ],
+  "afirmacoes": [
+   {
+    "fonte": 1,
+    "tipo": "usuarios",
+    "texto": "O aplicativo tem 100 milhões de usuários cadastrados no mundo.",
+    "numero": 100000000,
+    "unidade": "usuarios",
+    "periodo": "2024",
+    "trecho": "According to Too Good To Go, the app currently has 100 million registered users globally and 160,000 active partners."
+   },
+   {
+    "fonte": 3,
+    "tipo": "usuarios",
+    "texto": "O aplicativo tem 100 milhões de usuários cadastrados no mundo.",
+    "numero": 100000000,
+    "unidade": "usuarios",
+    "periodo": "2025",
+    "trecho": "Over a decade, the company has amassed 100 million registered users and saved more than 400 million meals"
+   },
+   {
+    "fonte": 2,
+    "tipo": "usuarios",
+    "texto": "O aplicativo tem 100 milhões de usuários cadastrados no mundo.",
+    "numero": 100000000,
+    "unidade": "usuarios",
+    "periodo": "2024",
+    "trecho": "Since then, Lykke has re-expanded the company to include a grocery service, a software system for food retailers and 100 million users across in 19 countries"
+   },
+   {
+    "fonte": 1,
+    "tipo": "modelo_receita",
+    "texto": "A empresa cobra do comércio uma comissão por sacola vendida.",
+    "trecho": "Too Good To Go takes a $1.79 in commission from each meal sold on the app, with the business getting the remaining sum."
+   },
+   {
+    "fonte": 2,
+    "tipo": "modelo_receita",
+    "texto": "A empresa cobra do comércio uma comissão por sacola vendida.",
+    "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says."
+   },
+   {
+    "fonte": 4,
+    "tipo": "modelo_receita",
+    "texto": "A empresa cobra do comércio uma comissão por sacola vendida.",
+    "trecho": "The app takes a commission of $1.79 on every transaction, with the rest paid to the seller."
+   },
+   {
+    "fonte": 1,
+    "tipo": "modelo_receita",
+    "texto": "O comércio também paga uma taxa anual de administração.",
+    "trecho": "The company also charges partners an annual $89 administrative fee that’s taken out of their total profits."
+   },
+   {
+    "fonte": 2,
+    "tipo": "modelo_receita",
+    "texto": "O comércio também paga uma taxa anual de administração.",
+    "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says."
+   },
+   {
+    "fonte": 1,
+    "tipo": "produto",
+    "texto": "O comércio lista sacolas-surpresa com o que sobrou e o cliente reserva e retira no fim do dia.",
+    "trecho": "The Too Good To Go app works by allowing businesses to list “surprise bags” of unsold items that users can reserve to pick up at the end of the day."
+   },
+   {
+    "fonte": 4,
+    "tipo": "produto",
+    "texto": "O comércio lista sacolas-surpresa com o que sobrou e o cliente reserva e retira no fim do dia.",
+    "trecho": "The app connects consumers to surplus food from restaurants, bakeries, cafes and grocery stores at the end of each business day."
+   },
+   {
+    "fonte": 2,
+    "tipo": "outro",
+    "texto": "A CEO diz que a empresa expandiu rápido demais, sem entender bem o próprio modelo de negócio.",
+    "trecho": "The business had expanded \"way too fast, way too soon\" without fully figuring out its business model, she says."
+   }
+  ]
+ },
+ "rascunho": {
+  "sem_pauta": null,
+  "briefing": {
+   "negocio": {
+    "nome": "Too Good To Go",
+    "produto": "sacola-surpresa com a sobra do comércio, retirada no local",
+    "problema": "comida boa que sobra no fim do dia vira prejuízo para o comércio",
+    "para_quem": "clientes que querem comida boa mais barata",
+    "quem_paga": "o cliente paga pela sacola; o comércio recebe a maior parte do valor",
+    "pelo_que_paga": "uma sacola com a sobra do dia, sem escolher o conteúdo",
+    "forma_cobranca": "comissão por sacola vendida e taxa anual cobrada do comércio",
+    "operacao": "o comércio monta a sacola, o cliente reserva pelo app e retira no local"
+   },
+   "fatos": [
+    {
+     "id": "f1",
+     "texto": "O aplicativo tem 100 milhões de usuários cadastrados no mundo, segundo a empresa.",
+     "claim_id": "@usuarios",
+     "campo_do_negocio": null
+    },
+    {
+     "id": "f2",
+     "texto": "O app cobra uma comissão por sacola vendida, segundo a empresa.",
+     "claim_id": "@modelo_receita",
+     "campo_do_negocio": null
+    },
+    {
+     "id": "f3",
+     "texto": "A sacola-surpresa é montada com produtos que o comércio não venderia no dia.",
+     "claim_id": "@produto",
+     "campo_do_negocio": null
+    },
+    {
+     "id": "f4",
+     "texto": "Comida boa que sobra no fim do dia vira prejuízo para o comércio.",
+     "claim_id": null,
+     "campo_do_negocio": "problema"
+    }
+   ],
+   "analises": [
+    {
+     "id": "a1",
+     "texto": "Uma leitura é que o cliente aceita não escolher o conteúdo em troca de preço menor, e isso reduz o desperdício sem o comércio criar produto novo.",
+     "base": [
+      "f2",
+      "f3"
+     ],
+     "causalidade_demonstrada": false
+    },
+    {
+     "id": "a2",
+     "texto": "A retirada no local pode ser o que mantém a operação barata, porque dispensa entrega para cada compra.",
+     "base": [
+      "f3"
+     ],
+     "causalidade_demonstrada": false
+    }
+   ],
+   "hipoteses": [
+    {
+     "id": "h1",
+     "texto": "Poderia ser testado com três padarias de um bairro, vendendo a sobra em sacola e medindo recompra."
+    }
+   ],
+   "decisao_especifica": {
+    "texto": "O cliente aceita não escolher o que leva. Em troca, paga menos e retira perto de casa.",
+    "base": [
+     "f3",
+     "f2"
+    ]
+   },
+   "mecanismos": [
+    {
+     "nome": "Sacola com a sobra do dia",
+     "como_funciona": "O comércio monta uma sacola com o que sobrou e define um preço fixo, sem escolha de produto.",
+     "exemplo": "Uma padaria vende a sacola do fim do dia pelo preço de um pão e meio.",
+     "vantagem": "A sobra vira venda antes de estragar, e o cliente volta porque cada sacola traz uma surpresa.",
+     "condicao_de_falha": "Se a sobra não for previsível, a sacola não fecha, porque o comércio não sabe o que colocar.",
+     "base": [
+      "f3",
+      "f4"
+     ]
+    },
+    {
+     "nome": "Retirada no local",
+     "como_funciona": "O cliente reserva pelo aplicativo e busca a sacola na loja, em horário combinado.",
+     "exemplo": "A sacola fica pronta ao lado do caixa, no fim do expediente.",
+     "vantagem": "Sem entrega, a operação custa menos por venda, porque não há motoboy nem rota para cada pedido.",
+     "condicao_de_falha": "Se a loja não tiver equipe no horário de retirada, o cliente não busca e a venda se perde.",
+     "base": [
+      "a2"
+     ]
+    }
+   ],
+   "limitacoes": [
+    "A comissão incide sobre cada venda: uma sobra vendida com desconto pode não cobrir o custo.",
+    "A taxa anual do comércio, relatada pela imprensa, pesa mais para lojas pequenas."
+   ],
+   "aprendizado_leitor": "Quando a oferta troca a escolha por preço, o modelo depende de uma sobra previsível e de retirada simples.",
+   "tese": "O valor não está só no aplicativo: está em transformar sobra previsível em venda com retirada simples.",
+   "pergunta_capa": "Como uma sobra de padaria vira receita?"
+  },
+  "ganchos": [
+   {
+    "angulo": "oportunidade",
+    "titulo": "Uma sobra de padaria pode virar venda antes de estragar.",
+    "scores": {
+     "clareza": 4,
+     "relevancia": 4,
+     "especificidade": 4,
+     "sustentacao": 4
+    }
+   },
+   {
+    "angulo": "contradicao",
+    "titulo": "O cliente compra uma sacola sem saber o que tem dentro.",
+    "scores": {
+     "clareza": 4,
+     "relevancia": 4,
+     "especificidade": 4,
+     "sustentacao": 3
+    }
+   },
+   {
+    "angulo": "erro",
+    "titulo": "O erro de quem vende sobra é tentar vender a sobra como produto de vitrine.",
+    "scores": {
+     "clareza": 3,
+     "relevancia": 3,
+     "especificidade": 3,
+     "sustentacao": 3
+    }
+   }
+  ],
+  "telas": [
+   {
+    "funcao": "gancho",
+    "tipo": "FATO",
+    "base": [
+     "f2"
+    ],
+    "titulo": "Uma sobra de padaria pode virar venda antes de estragar.",
+    "corpo": "O comércio monta uma sacola com o que sobrou no dia. O cliente reserva pelo aplicativo e retira no local, pagando uma comissão por sacola vendida ao app."
+   },
+   {
+    "funcao": "problema",
+    "tipo": "FATO",
+    "base": [
+     "f4"
+    ],
+    "titulo": "Comida boa que sobra vira prejuízo.",
+    "corpo": "Pão e doce que não saem no fim do dia perdem valor a cada hora. A loja já pagou pela produção, e o custo fica no balanço. Sem uma saída, o resto vai para o lixo."
+   },
+   {
+    "funcao": "mecanismo_1",
+    "tipo": "ANALISE",
+    "base": [
+     "f3",
+     "f4"
+    ],
+    "titulo": "O cliente aceita não escolher, porque paga menos.",
+    "corpo": "A sacola com a sobra do dia tem preço fixo e nenhum produto escolhido. Assim a loja vende o que sobrou sem criar produto novo, e o cliente leva uma surpresa a cada compra."
+   },
+   {
+    "funcao": "mecanismo_2",
+    "tipo": "ANALISE",
+    "base": [
+     "a2"
+    ],
+    "titulo": "A retirada no local mantém a conta barata.",
+    "corpo": "Sem entrega, cada venda dispensa motoboy e rota. A sacola fica pronta ao lado do caixa, em horário combinado, porque a loja só precisa de uma equipe no horário de retirada. Se não houver equipe, a venda se perde."
+   },
+   {
+    "funcao": "conta",
+    "tipo": "FATO",
+    "base": [
+     "f1"
+    ],
+    "titulo": "Cem milhões de cadastros não são cem milhões de compras.",
+    "corpo": "Segundo a empresa, o app tem 100 milhões de usuários cadastrados. Cadastro não é cliente que compra toda semana, e a empresa não divulga quantas sacolas são vendidas por dia."
+   },
+   {
+    "funcao": "aplicacao",
+    "tipo": "HIPOTESE",
+    "base": [],
+    "titulo": "Um teste pequeno poderia começar com três padarias.",
+    "corpo": "Escolha três padarias de um bairro, venda a sobra em sacola com preço fixo e meça a sobra por sacola e a recompra. No Brasil, isso seria uma hipótese para testar, não uma promessa."
+   },
+   {
+    "funcao": "encerramento",
+    "tipo": "MISTO",
+    "base": [],
+    "titulo": "Tem negócio bom escondido em problema que todo mundo ignora.",
+    "apoio": "Segue @pedro_destrava para descobrir negócios que já funcionam no mundo."
+   }
+  ],
+  "legenda": {
+   "primeira_linha": "A sobra da padaria pode virar venda, se a retirada for simples.",
+   "historia": "Uma sacola com o que sobrou, preço fixo e retirada no local. O cliente aceita não escolher o que leva.",
+   "como_ganha": "Comissão por sacola vendida, segundo a empresa. Taxa anual do comércio, relatada pela imprensa.",
+   "brasil": "Hipótese para testar: três padarias de um bairro, antes de qualquer aplicativo."
+  },
+  "hashtags": [
+   "negocios",
+   "empreendedorismo"
+  ]
+ },
+ "template": "minimalista"
+}

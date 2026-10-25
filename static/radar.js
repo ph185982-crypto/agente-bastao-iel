@@ -154,7 +154,7 @@
       ${o.descartada_motivo ? `<div class="rd-aviso">Descartada: ${esc(o.descartada_motivo)}</div>` : ''}
       ${!o.elegivel_carrossel && o.motivo_sem_carrossel && !o.descartada_motivo ? `<p class="rd-meta">${esc(o.motivo_sem_carrossel)}</p>` : ''}
       <div class="rd-acoes">
-        ${o.carrossel_id ? '<button class="rd-btn azul" data-action="rd-ver-carrossel" data-id="' + esc(o.carrossel_id) + '">Ver carrossel</button>' : `<button class="rd-btn azul" data-action="rd-gerar" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''}>${ocupado === 'gerar' ? 'Gerando… (até 1 min)' : 'Gerar carrossel'}</button><button class="rd-btn fantasma peq" data-action="rd-gerar-antiga" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''} title="Modelo anterior da série “Ideias que dão dinheiro”">Série antiga</button>`}
+        ${o.carrossel_id ? '<button class="rd-btn azul" data-action="rd-ver-carrossel" data-id="' + esc(o.carrossel_id) + '">Ver carrossel</button>' : `<button class="rd-btn azul" data-action="rd-gerar" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''}>${ocupado === 'gerar' ? 'Gerando… (até 1 min)' : 'Gerar carrossel'}</button><button class="rd-btn fantasma peq" data-action="rd-gerar-min" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''} title="Modelo minimalista: estratégia por trás, 7 telas">Modelo minimalista</button><button class="rd-btn fantasma peq" data-action="rd-gerar-antiga" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''} title="Modelo anterior da série “Ideias que dão dinheiro”">Série antiga</button>`}
         <button class="rd-btn" data-action="rd-reels" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''}>${ocupado === 'reels' ? 'Gerando…' : o.reels ? 'Ver Reels' : 'Gerar Reels'}</button>
         ${o.status !== 'salva' && o.status !== 'descartada' && o.status !== 'descartada_usuario' ? `<button class="rd-btn fantasma" data-action="rd-op" data-acao="salvar_pauta" data-id="${esc(o.id)}">Salvar pauta</button>` : ''}
         ${['descartada', 'descartada_usuario'].includes(o.status) ? `<button class="rd-btn fantasma" data-action="rd-op" data-acao="restaurar" data-id="${esc(o.id)}">Restaurar</button>` : `<button class="rd-btn risco" data-action="rd-descartar" data-id="${esc(o.id)}">Descartar</button>`}
@@ -279,8 +279,8 @@
         case 'rd-editar': ST.editando = ST.editando === id ? null : id; ctx.render(); break;
         case 'rd-op': await op(el.dataset.acao); ctx.toast({ salvar_pauta: 'Pauta salva.', marcar_usada: 'Marcada como já utilizada.', restaurar: 'Restaurada.' }[el.dataset.acao] || 'Pronto.'); await recarregarLista(ctx); break;
         case 'rd-descartar': ST.modal = { tipo: 'descartar', id }; ctx.render(); break;
-        case 'rd-gerar': case 'rd-gerar-antiga': {
-          ST.ocupado[id] = 'gerar'; ctx.render(); const corpo = a === 'rd-gerar-antiga' ? { serie: 'ideias' } : {};
+        case 'rd-gerar': case 'rd-gerar-antiga': case 'rd-gerar-min': {
+          ST.ocupado[id] = 'gerar'; ctx.render(); const corpo = a === 'rd-gerar-antiga' ? { serie: 'ideias' } : a === 'rd-gerar-min' ? { template: 'minimalista' } : {};
           try {
             let r = await op('gerar_carrossel', corpo);
             for (let i = 0; i < 6 && r.parcial; i++) { ctx.toast('Gerando as imagens…'); r = await op('gerar_carrossel', corpo); }

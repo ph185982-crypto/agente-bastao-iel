@@ -24,7 +24,7 @@ const FUNCOES = Object.freeze({
 });
 const ORDEM = ['descoberta', 'tensao', 'revelacao', 'dinheiro', 'evidencia', 'estrategia', 'licao', 'pedro'];
 const OMITIVEIS = ['tensao', 'estrategia'];                   // o que dá para tirar quando a história fica melhor com 7 telas
-const LIMITES = Object.freeze({ rotulo: 56, titulo: 130, linha2: 70, apoio: 170, nota: 110, palavra: 14, legenda: 70 });
+const LIMITES = Object.freeze({ rotulo: 56, titulo: 130, linha2: 70, apoio: 170, nota: 110, palavra: 14, legenda: 70, corpo: 600 });
 const CAMPOS = Object.freeze(Object.keys(LIMITES));
 const ANGULOS = Object.freeze({
   contradicao: 'Contradição: algo que parece não fazer sentido, mas é o negócio',
