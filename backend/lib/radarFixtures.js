@@ -100,7 +100,7 @@ function fakePedirJson({ falharNa = null, semPontuacao = false } = {}) {
       } else if (nome === 'PiramideX') {
         afs.push({ documento: 0, tipo: 'usuarios', texto: 'Tem 50 mil membros.', numero: 50000, unidade: 'usuarios', trecho: 'PiramideX tem 50.000 membros' });
       }
-      return { llm, dados: { afirmacoes: afs } };
+      return { llm, dados: { site_oficial: nome === 'Lumen Pets' && !docs.some((d) => d.classe === 'oficial') ? 'https://lumenpets.com' : null, afirmacoes: afs } };
     }
     if (tipo === 'avaliar') {
       const ops = JSON.parse(usuario.split('\n')[1]);

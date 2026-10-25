@@ -166,8 +166,9 @@ REGRAS:
 - "data_do_fato": ano (ou ano-mês) a que o dado se refere, se o documento disser; senão null.
 - Liste no máximo 12 afirmações, as mais úteis para explicar o negócio: o que faz, como cobra, e números de demanda (usuários, clientes, receita, crescimento, países).
 - Se o documento não traz número nenhum, liste só as afirmações sem número (produto, modelo_receita, preco).
+- "site_oficial": o endereço do site da PRÓPRIA empresa, somente se estiver escrito nos documentos; senão null.
 
-Responda APENAS JSON: {"afirmacoes":[{"documento":0,"tipo":"","texto":"","numero":null,"unidade":null,"periodo":null,"data_do_fato":null,"trecho":""}]}`;
+Responda APENAS JSON: {"site_oficial":null,"afirmacoes":[{"documento":0,"tipo":"","texto":"","numero":null,"unidade":null,"periodo":null,"data_do_fato":null,"trecho":""}]}`;
 
 async function pedirAfirmacoes(cand, docs, { deps = {} } = {}) {
   const pedir = deps.pedirJson || llmJson.pedirJson;
@@ -176,7 +177,7 @@ async function pedirAfirmacoes(cand, docs, { deps = {} } = {}) {
     sistema: `${PROMPT_AFIRMACOES}\n\n${llmJson.REGRAS_DADOS}`,
     usuario: `Empresa/produto: ${cand.nome}\n\n${corpo}`, maxTokens: 3200, temperatura: 0.1, budget: deps.budget,
   });
-  return { afirmacoes: Array.isArray(dados?.afirmacoes) ? dados.afirmacoes : [], llm };
+  return { afirmacoes: Array.isArray(dados?.afirmacoes) ? dados.afirmacoes : [], llm, site_oficial: typeof dados?.site_oficial === 'string' ? dados.site_oficial : null };
 }
 
 // ── Conferência em código ──────────────────────────────────────────────────
@@ -284,20 +285,48 @@ function concluir({ cand, docs, claims, rejeitadas, limitacoes, agora }) {
   };
 }
 
+// O site oficial só vale se o endereço está escrito nos documentos lidos (ou o domínio leva o nome da empresa) e a página, ao abrir, cita a empresa.
+async function descobrirSiteOficial(cand, site, docs, { deps = {}, agora }) {
+  if (!site) return { doc: null };
+  let u; try { u = new URL(/^https?:\/\//i.test(site.trim()) ? site.trim() : `https://${site.trim()}`); } catch { return { doc: null }; }
+  const host = u.hostname.replace(/^www\./, '').toLowerCase(); const dom = Ev.dominioRegistravel(u.toString());
+  if (C.DOMINIOS_AGREGADORES.test(dom) || C.DOMINIOS_IMPRENSA.test(dom)) return { doc: null };
+  const escrito = docs.some((d) => String(d.texto).toLowerCase().includes(host));
+  const nomeNoDominio = U.norm(cand.nome).replace(/\s+/g, '') && dom.replace(/\..*$/, '').includes(U.norm(cand.nome).replace(/\s+/g, ''));
+  if (!escrito && !nomeNoDominio) return { doc: null, limitacao: `O endereço ${host} não está escrito nas matérias lidas: não foi tratado como site oficial.` };
+  const ler = deps.lerFonte || ((x) => require('../research').lerFonte({ url: x }));
+  try {
+    const f = await U.comTimeout(ler(u.toString()), 16000, 'a leitura do site');
+    if (!f.legivel) return { doc: null, limitacao: `O site ${host} não pôde ser lido.` };
+    if (!nomeNoTexto(cand.nome, `${f.titulo} ${f.texto.slice(0, 8000)}`)) return { doc: null, limitacao: `O site ${host} não menciona “${cand.nome}”.` };
+    return { doc: { url: f.url_final || u.toString(), url_pedida: u.toString(), titulo: f.titulo || '', veiculo: f.veiculo || host, publicada_em: f.publicada_em || null, acessada_em: f.acessada_em || new Date(agora).toISOString(), texto: f.texto, papel: 'oficial', classe: 'oficial', dominio: Ev.dominioRegistravel(f.url_final || u.toString()) } };
+  } catch (e) { return { doc: null, limitacao: `O site ${host} não respondeu (${U.limita(e.message, 60)}).` }; }
+}
+
 // Entrada principal: um candidato → candidato com `verificacao`.
 async function verificar(cand, { deps = {}, agora = Date.now() } = {}) {
   const { docs, limitacoes } = await reunirDocumentos(cand, { deps, agora });
   let claims = []; let rejeitadas = []; let llm = null;
+  const rodar = async () => {
+    const r = await pedirAfirmacoes(cand, docs, { deps });
+    llm = r.llm;
+    const conf = conferirAfirmacoes(r.afirmacoes, docs, { agora });
+    rejeitadas = conf.rejeitadas;
+    claims = decidirUso(comMetricasDeLoja(conf.aceitas, docs, agora), docs);
+    return r;
+  };
   if (docs.length) {
     try {
-      const r = await pedirAfirmacoes(cand, docs, { deps });
-      llm = r.llm;
-      const conf = conferirAfirmacoes(r.afirmacoes, docs, { agora });
-      rejeitadas = conf.rejeitadas;
-      claims = decidirUso(comMetricasDeLoja(conf.aceitas, docs, agora), docs);
+      const r = await rodar();
+      // Só matéria: tenta achar o site da empresa pelo que as matérias escrevem e confere de novo com ele.
+      if (!docs.some((d) => d.classe === 'oficial' && d.papel === 'oficial') && r.site_oficial) {
+        const o = await descobrirSiteOficial(cand, r.site_oficial, docs, { deps, agora });
+        if (o.limitacao) limitacoes.push(o.limitacao);
+        if (o.doc) { o.doc.indice = docs.length; docs.push(o.doc); await rodar(); }
+      }
     } catch (e) {
       limitacoes.push(`A IA não conseguiu ler as fontes (${U.limita(e.message, 100)}).`);
-      const err = Object.assign(new Error(e.message), { code: e.code || 'IA' });
+      const err = Object.assign(new Error(e.message), { code: e.code || 'IA', status: e.status });
       if (['SEM_IA', 'LIMITE'].includes(e.code) || U.erroTemporario(e)) throw err;
     }
   }
