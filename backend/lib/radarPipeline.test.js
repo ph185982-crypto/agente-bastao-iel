@@ -43,14 +43,14 @@ test('ZIP completo e carrossel: 8 imagens 1080×1350, legenda, ficha de fontes e
   novoBanco(); const { r } = await rodar();
   const c = (await store.obter('carrossel', r.run.resultado.carrossel_id)).doc;
   assert.strictEqual(c.estado, 'aguardando_aprovacao'); assert.strictEqual(c.render.length, 8);
-  const zip = await store.arquivoObter(c.pacote.arquivo); const itens = Pacote.lerZip(zip.dados); const nomes = itens.map((i) => i.nome);
+  const zip = await require('./radar/carrossel2').exportar(c.id); const itens = Pacote.lerZip(zip.zip); const nomes = itens.map((i) => i.nome);
   for (let i = 1; i <= 8; i++) assert.ok(nomes.includes(`slide-0${i}.png`), `slide-0${i}.png`);
   for (const n of ['legenda.txt', 'ficha-de-fontes.md', 'ficha-de-fontes.json', 'imagens-origem.json', 'LEIA-ME.txt']) assert.ok(nomes.includes(n), n);
   for (const it of itens.filter((x) => x.nome.endsWith('.png'))) { const m = await sharp(it.dados).metadata(); assert.deepStrictEqual([m.width, m.height], [1080, 1350]); }
   assert.ok(itens.find((x) => x.nome === 'legenda.txt').dados.toString().length <= 700);
   const origem = JSON.parse(itens.find((x) => x.nome === 'imagens-origem.json').dados.toString());
-  assert.strictEqual(origem[0].tipo, 'oficial_pagina'); assert.ok(origem[0].origem.url_imagem && origem[0].origem.url_pagina);
-  assert.ok(c.versoes.length === 1 && c.copia.slides.length === 8);
+  origem.forEach((i) => assert.ok(i.origem && (i.origem.url_imagem || i.origem.declaracao) && i.licenca && i.permissao, 'toda imagem registra origem, licença e permissão'));
+  assert.ok(c.versoes.length >= 1 && c.copia.slides.length === 8 && c.serie === 'negocios');
   assert.ok(itens.find((x) => x.nome === 'ficha-de-fontes.md').dados.toString().includes('segundo a empresa'));
 });
 
@@ -127,7 +127,7 @@ test('erro da IA: sem chave a execução para com mensagem clara; IA instável n
   const sem = await rodar('manual', { pedirJson: async () => { throw Object.assign(new Error('Nenhuma IA'), { code: 'SEM_IA' }); } });
   assert.strictEqual(sem.r.run.estado, 'erro'); assert.match(sem.r.run.erro_final.mensagem, /chave de IA/);
   novoBanco();
-  const copiaRuim = await rodar('manual', { pedirJson: Object.assign(async (o) => (/escreve carrosséis/.test(o.sistema) ? { llm: {}, dados: { slides: [] } } : F.fakePedirJson()(o)), {}) });
+  const copiaRuim = await rodar('manual', { pedirJson: Object.assign(async (o) => (/redator e diretor de arte/.test(o.sistema) ? { llm: {}, dados: { slides: [] } } : F.fakePedirJson()(o)), {}) });
   assert.ok(['concluida', 'concluida_com_avisos'].includes(copiaRuim.r.run.estado));
   assert.strictEqual(copiaRuim.r.run.resultado.carrossel_id, undefined); assert.ok(copiaRuim.r.run.resultado.carrossel_erro);
   assert.strictEqual(copiaRuim.r.run.resultado.top5.length, 5, 'as pautas continuam salvas');

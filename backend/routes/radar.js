@@ -276,13 +276,13 @@ router.post('/carrosseis/:id/decisao', limita({ max: 20, janelaMs: 60000, nome: 
   const id = exigeId(req.params.id); const { acao } = req.body || {}; const agora = new Date().toISOString();
   if (acao === 'publicado') { const doc = await Aprend.marcarPublicado(id, { publicado_em: req.body.publicado_em, link: req.body.link || null, metricas: req.body.metricas || {} }); return res.json({ ok: true, estado: doc.estado, publicacao: doc.publicacao, metricas: doc.metricas }); }
   const { doc } = await store.atualizar('carrossel', id, (c) => {
-    if (!['aguardando_aprovacao', 'aprovado', 'reprovado'].includes(c.estado)) throw U.erro('Este carrossel não está na fila de aprovação.', 'ESTADO', 409);
+    if (!['rascunho', 'aguardando_aprovacao', 'aprovado', 'reprovado'].includes(c.estado)) throw U.erro('Este carrossel não está na fila de aprovação.', 'ESTADO', 409);
     if (acao === 'aprovar') {
       if (c.serie === 'negocios' && (c.validacao?.bloqueios || []).length) throw U.erro(`Há ${c.validacao.bloqueios.length} bloqueio(s) a corrigir antes de aprovar: ${c.validacao.bloqueios[0].mensagem}`, 'BLOQUEADO', 409, { erros: c.validacao.bloqueios.map((b) => b.mensagem) });
       c.estado = 'aprovado'; c.decisao = { acao, em: agora, nota: U.limita(req.body.nota, 200) || null }; if (c.serie === 'negocios') c.aprovacao = { hash: c.hash_atual, em: agora };
     }
     else if (acao === 'reprovar') { c.estado = 'reprovado'; c.decisao = { acao, em: agora, motivo: U.limita(req.body.motivo, 300) || 'Reprovado por você.' }; }
-    else if (acao === 'reabrir') { c.estado = 'aguardando_aprovacao'; c.decisao = null; }
+    else if (acao === 'reabrir') { c.estado = c.serie === 'negocios' && (c.validacao?.bloqueios || []).length ? 'rascunho' : 'aguardando_aprovacao'; c.decisao = null; c.aprovacao = null; }
     else throw U.erro('Ação desconhecida.', 'ENTRADA');
     (c.historico ||= []).push({ em: agora, evento: acao, detalhe: c.decisao });
     return c;

@@ -149,6 +149,7 @@ async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, or
   const id = idDe(opId, v);
   if (existente && ['aguardando_aprovacao', 'aprovado', 'publicado', 'rascunho'].includes(existente.doc.estado) && existente.doc.etapa === 'pronto') return existente.doc;
   let doc = existente?.doc || { id, op_id: opId, versao: v, serie: 'negocios', origem, criado_em: new Date(agora).toISOString(), estado: 'gerando', etapa: 'copy', historico: [], excecao_limiar: permitirBaixa && (op.pontuacao ?? 0) < C.LIMIAR_CARROSSEL };
+  if (doc.estado === 'erro') { doc.estado = 'gerando'; delete doc.erro; }
   let rev = existente ? existente.rev : 0;
   const salvar = async () => { doc.atualizado_em = new Date().toISOString(); const r = await store.salvar('carrossel', id, doc, rev); rev = r.rev; };
   await salvar();
@@ -160,6 +161,7 @@ async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, or
       let r;
       if (rascunho) r = { ...Historia.montarDoRascunho(rascunho, op, { origem: 'manual', agora }), tentativas: 0, llm: null, manual: true };
       else r = await Historia.gerarRascunho(op, { deps: { ...deps, aoFalhar }, feedback: doc.feedback_copia || '', agora });
+      if (!rascunho && (!r.telas || r.telas.length < 7 || (r.capas || []).length < 3)) throw U.erro(`A copy não passou nas regras: ${(r.erros || []).slice(0, 3).join('; ') || 'resposta incompleta da IA'}`, 'COPY_INVALIDA', 422, { erros: r.erros || [] });
       if (r.erros?.length && rascunho) throw U.erro(`O rascunho tem problemas de estrutura: ${r.erros.slice(0, 4).join('; ')}`, 'RASCUNHO', 422, { erros: r.erros });
       doc.telas = r.telas; doc.capas = r.capas; doc.capa_escolhida = r.capa_escolhida; doc.ficha = r.ficha;
       doc.legenda = { texto: r.legenda, partes: r.partes_legenda, hashtags: r.hashtags }; doc.ilustracao = r.ilustracao || null; doc.llm = r.llm || null; doc.tentativas_copia = r.tentativas;

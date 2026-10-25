@@ -71,7 +71,7 @@ const fakeLerFonte = async (url) => {
 function fakePedirJson({ falharNa = null, semPontuacao = false } = {}) {
   const chamadas = [];
   const fn = async ({ sistema, usuario }) => {
-    const tipo = /pesquisadora do perfil/.test(sistema) ? 'extrair' : /Você confere fatos/.test(sistema) ? 'afirmacoes' : /Você avalia ideias/.test(sistema) ? 'avaliar' : /escreve carrosséis/.test(sistema) ? 'copy' : /roteiro de um Reels/.test(sistema) ? 'reels' : 'outro';
+    const tipo = /pesquisadora do perfil/.test(sistema) ? 'extrair' : /Você confere fatos/.test(sistema) ? 'afirmacoes' : /Você avalia ideias/.test(sistema) ? 'avaliar' : /redator e diretor de arte/.test(sistema) ? 'serie' : /reescreve UMA tela/.test(sistema) ? 'tela' : /escreve carrosséis/.test(sistema) ? 'copy' : /roteiro de um Reels/.test(sistema) ? 'reels' : 'outro';
     chamadas.push(tipo);
     if (falharNa === tipo) throw Object.assign(new Error('IA indisponível (teste)'), { status: 500 });
     const llm = { provider: 'simulado', model: 'teste', tokens: { entrada: 100, saida: 50, total: 150 } };
@@ -119,6 +119,29 @@ function fakePedirJson({ falharNa = null, semPontuacao = false } = {}) {
         { n: 6, dor: 'dor de todo dono', facilidade: 'serviço na porta', recorrencia: 'cobrança mensal' },
         { n: 7, publico_inicial: 'donos de cães', produto_minimo: 'banho em domicílio', canal_de_vendas: 'grupos de condomínio', forma_de_cobranca: 'pacote mensal', teste_baixo_custo: 'cinco clientes' },
       ], legenda: { primeira_linha: 'Esse serviço leva o banho do cachorro até a sua porta.', resumo: 'O Lumen Pets, dos EUA, manda um banhista à casa do cliente.', como_ganha: 'Cobra uma assinatura mensal, segundo a empresa.', brasil: 'No Brasil, a ideia poderia ser testada em condomínios.' }, hashtags: ['negocios', 'empreendedorismo', 'ideiasquedaodinheiro'] } };
+    }
+    if (tipo === 'serie') {
+      const dado = JSON.parse(usuario.split('\n')[1]); const dv = dado.DADOS_VERIFICADOS || []; const nome = dado.negocio.nome;
+      const pessoas = (dv.find((d) => ['clientes', 'usuarios'].includes(d.tipo) && d.numero !== null) || dv.find((d) => d.numero !== null) || {}).id;
+      return { llm, dados: {
+        ficha: { problema: 'Dar banho no cachorro dá trabalho e o pet shop vive lotado.', quem_compra: 'Donos de cães que não têm tempo.', por_que_compra: 'O serviço chega até a porta de casa.', como_cobra: 'Assinatura mensal, segundo a empresa.', evidencia: [{ claim_id: pessoas, nota: 'Número de clientes informado pela empresa.' }], surpresa: 'O banho vai até o cliente, e não o contrário.', dificuldades: ['Precisa de banhistas confiáveis em cada bairro.'], inspiracao_brasil: 'Hipótese: testar com condomínios.', imagens_necessarias: [{ funcao: 'descoberta', mostrar: 'o banhista em ação' }], ilustracao: { consulta: 'dog bath', descricao: 'cachorro no banho' } },
+        capas: [{ angulo: 'contradicao', titulo: `Este serviço ganha dinheiro **lavando cachorro** na porta da sua casa.`, apoio: 'E o cliente nem sai do sofá.' }, { angulo: 'situacao', titulo: 'Sábado de manhã, o dono sai com o cachorro sujo e **volta sem ele**.', apoio: 'Alguém criou um jeito de resolver isso.' }, { angulo: 'descoberta', titulo: `${nome} levou o **banho do cachorro** para a porta do cliente.`, apoio: 'Sem pet shop no meio.' }],
+        capa_escolhida: 1, omitir: null,
+        telas: [
+          { funcao: 'descoberta' },
+          { funcao: 'tensao', rotulo: 'A conta que ninguém vê', titulo: 'O dono perde a manhã.', linha2: 'O pet shop perde o horário.', apoio: 'Levar o cachorro para o banho toma tempo, e a loja lotada não consegue atender todo mundo.', palavra: 'Tempo' },
+          { funcao: 'revelacao', rotulo: `Aí entra a **${nome}**`, titulo: 'Ela leva o **banhista** até a porta.', apoio: 'O cliente marca o horário pelo aplicativo e o profissional chega com tudo o que precisa.' },
+          { funcao: 'dinheiro', rotulo: 'Onde está o dinheiro?', titulo: 'O cliente economiza tempo. O banhista trabalha. E **a empresa cobra.**', apoio: 'A receita vem de uma assinatura mensal paga pelo cliente.' },
+          { funcao: 'evidencia', rotulo: 'A ideia pegou', claim_id: pessoas, legenda: 'clientes, segundo a empresa.', apoio: 'Número informado pela própria empresa. Clientes cadastrados não são clientes ativos.' },
+          { funcao: 'estrategia', rotulo: 'O detalhe que importa', titulo: 'A ideia parece **simples**. A operação é o desafio.', apoio: 'Encontrar banhistas confiáveis em cada bairro, no horário certo, é o que decide se o cliente volta.' },
+          { funcao: 'licao', rotulo: 'A lição para quem quer começar', titulo: 'Antes de criar um app, **converse com quem tem o problema.**', apoio: 'No Brasil, a ideia poderia ser testada em um condomínio: veja se os moradores querem o serviço.', nota: 'Não é promessa de lucro. É uma hipótese para testar.', palavra: 'Antes' },
+          { funcao: 'pedro', titulo: 'Tem negócio bom escondido em **problema que todo mundo ignora.**', apoio: 'para descobrir negócios que já funcionam no mundo.' },
+        ],
+        legenda: { primeira_linha: 'O banho do cachorro foi até a porta do cliente.', historia: 'A empresa resolveu um problema comum e transformou o tempo perdido do dono em serviço recorrente.', como_ganha: 'O cliente paga uma assinatura mensal.', brasil: 'Hipótese para testar: começar por um condomínio, antes de investir.' }, hashtags: ['negocios', 'empreendedorismo'] } };
+    }
+    if (tipo === 'tela') {
+      const dado = JSON.parse(usuario.split('\n')[1]); const nome = dado.negocio.nome;
+      return { llm, dados: { rotulo: 'Texto refeito', titulo: `${nome} mostra que **simples** também vende.`, apoio: 'Uma frase nova e curta, escrita para esta tela, sem repetir o que as outras já dizem aos leitores.' } };
     }
     if (tipo === 'reels') return { llm, dados: { gancho: 'Esse serviço leva o banho do cachorro até você', blocos: [{ tempo: '3-10s', fala: 'O problema é simples: levar o cachorro ao pet shop dá trabalho.', tela: 'O problema' }, { tempo: '10-18s', fala: 'A empresa cobra uma assinatura mensal.', tela: 'Como ganha' }, { tempo: '18-26s', fala: 'Segundo a empresa, são mais de 120 mil clientes.', tela: 'A prova' }, { tempo: '26-34s', fala: 'No Brasil, a ideia poderia ser testada em condomínios.', tela: 'Hipótese' }], fechamento: 'Segue @pedro_destrava para não perder a próxima ideia.' } };
     return { llm, dados: {} };
