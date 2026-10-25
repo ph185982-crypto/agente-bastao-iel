@@ -51,7 +51,7 @@ function prepararRevisao(c) {
 async function recentes() {
   return (await armazem().conteudos.listar(conta())).slice(0,10).map(x=>x.resumo.titulo).filter(Boolean);
 }
-async function criar({url,texto,formato='carrossel',estilo='auto',indice=0,request_id,voz='',objetivo='seguidores'}) {
+async function criar({url,texto,formato='carrossel',estilo='auto',indice=0,request_id,voz='',objetivo='seguidores',roteiro_primeiro=false,monitor=null,titulo=''}) {
   const a=armazem(); if(!a?.duravel)throw falha('A produção precisa do armazenamento no servidor.',503);
   if(!url && (!texto || String(texto).trim().length<200))throw falha('Envie um link ou um texto com pelo menos 200 caracteres.');
   const request=String(request_id || crypto.randomUUID()).slice(0,80);
@@ -63,8 +63,8 @@ async function criar({url,texto,formato='carrossel',estilo='auto',indice=0,reque
   if(lista.filter(x=>x.resumo.status==='produzindo').length>=5)throw falha('Já há cinco conteúdos em preparação. Espere um deles terminar.',429);
   const escolhido=prefs.ESTILOS[estilo]?estilo:await prefs.escolherEstilo({indice});
   const c=M.novoConteudo({titulo:url?String(url).slice(0,140):String(texto).split('\n')[0].slice(0,140),formato:['reels','estatico'].includes(formato)?formato:'carrossel',origem:url?{tipo:'link',url:String(url).slice(0,2000)}:{tipo:'texto',texto_bruto:String(texto).slice(0,60000)}});
-  c.id=id;c.status='produzindo';c.crescimento=require('../../static/growthModel').plano(c.formato,objetivo);c.experimento={estilo:escolhido,letra:prefs.ESTILOS[escolhido].letra,criado_em:now()};
-  c.studio={job:crypto.randomUUID(),estado:'gerando',etapa:'leitura',indice:0,tentativas:0,passos:0,iniciado_em:now(),voz:String(voz).slice(0,1500)};
+  c.id=id;c.status='produzindo';if(titulo)c.titulo=String(titulo).slice(0,140);if(monitor)c.monitor={...monitor,criado_em:now()};c.crescimento=require('../../static/growthModel').plano(c.formato,objetivo);c.experimento={estilo:escolhido,letra:prefs.ESTILOS[escolhido].letra,criado_em:now()};
+  c.studio={job:crypto.randomUUID(),estado:'gerando',etapa:'leitura',indice:0,tentativas:0,passos:0,iniciado_em:now(),voz:String(voz).slice(0,1500),...(roteiro_primeiro?{roteiro_primeiro:true}:{})};
   try{await gravar(c,0);}catch(e){if(e.code==='CONFLITO')return(await ler(id)).doc;throw e;}
   return c;
 }
@@ -84,7 +84,8 @@ async function reagendar(id,{motivos=[],detalhe='',hash,acao='refazer'}={}) {
     if(motivos.includes('visual')) {const ids=Object.keys(prefs.ESTILOS);c.experimento={...c.experimento,estilo:ids[(ids.indexOf(c.experimento?.estilo)+1)%ids.length]};}
   }
   const voz=c.studio?.voz;
-  c.status='produzindo';c.studio={job:crypto.randomUUID(),estado:'gerando',etapa:c.briefing?'copy':'leitura',indice:0,tentativas:0,passos:0,iniciado_em:now(),voz:voz||''};
+  const roteiroPrimeiro=!!c.studio?.roteiro_primeiro;
+  c.status='produzindo';c.studio={job:crypto.randomUUID(),estado:'gerando',etapa:c.briefing?'copy':'leitura',indice:0,tentativas:0,passos:0,iniciado_em:now(),voz:voz||'',...(roteiroPrimeiro?{roteiro_primeiro:true}:{})};
   c.motion=null;await gravar(c,reg.rev);return c;
 }
 async function processar(id,job,{deps={}}={}) {
@@ -95,6 +96,12 @@ async function processar(id,job,{deps={}}={}) {
   st.lease=now();st.passos=(st.passos||0)+1;
   const lease=await gravar(c,reg.rev).catch(e=>{if(e.code==='CONFLITO')return null;throw e;});if(!lease)return c;
   const proxima=(e,i=0)=>{st.etapa=e;st.indice=i;};
+  // Fluxo "roteiro primeiro" (monitor de notícias): o texto pronto e conferido PARA e espera o Pedro aprovar o roteiro;
+  // só depois a ferramenta escolhe as fotos e desenha o carrossel. Não publica nada.
+  const aposAuditoria=()=>{
+    if(st.roteiro_primeiro&&!st.roteiro_aprovado){st.estado='aguardando_roteiro';st.roteiro_em=now();c.status='em_revisao';M.registrar(c,'sistema','roteiro','Roteiro pronto para você aprovar. O carrossel só é gerado depois.');}
+    else proxima('foto');
+  };
   try {
     if(st.passos>100)throw new Error('A produção levou mais etapas do que o esperado. Retome para tentar novamente.');
     const d={research,redacao,arte,...deps};
@@ -142,14 +149,14 @@ async function processar(id,job,{deps={}}={}) {
           let r;try{r=await d.redacao.conferirVinculos({auditoria:ids.map(id=>c.auditoria_textos[id]),claims:c.claims,fonte:c.fonte_principal,textos:unidades.filter(t=>ids.includes(t.id))});}
           catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&ids.length>1){st.auditoria_lote=1;st.auditoria_verificar_ids=ids.slice(0,1);break;}throw e;}
           r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});delete st.auditoria_verificar_ids;
-          if(st.indice+ids.length<unidades.length)proxima('auditoria',st.indice+ids.length);else proxima('foto');break;
+          if(st.indice+ids.length<unidades.length)proxima('auditoria',st.indice+ids.length);else aposAuditoria();break;
         }
         const grupo=unidades.slice(st.indice,st.indice+(st.auditoria_lote||(editorial?2:3)));
         let r;try{r=await d.redacao.auditarOpinioes({slides:grupo,claims:c.claims,revisaoIntegral:editorial&&typeof d.redacao.conferirVinculos==='function'});}
         catch(e){if(e.code==='AUDITORIA_INCOMPLETA'&&grupo.length>1){st.auditoria_lote=1;break;}throw e;}
         r.auditoria.forEach(a=>{c.auditoria_textos[a.slide_id]=a;});
         if(typeof d.redacao.conferirVinculos==='function'){st.auditoria_verificar_ids=grupo.map(s=>s.id);break;}
-        if(st.indice+grupo.length<unidades.length)proxima('auditoria',st.indice+grupo.length);else proxima('foto');break;
+        if(st.indice+grupo.length<unidades.length)proxima('auditoria',st.indice+grupo.length);else aposAuditoria();break;
       }
       case 'foto': {
         const v=M.versaoAtiva(c);
@@ -190,6 +197,7 @@ async function processar(id,job,{deps={}}={}) {
     }});
     delete st.lease;delete st.adiar_ate;delete st.aviso;st.retentativas=0;await gravar(c,lease.rev);
     if(st.estado==='pronto' && !st.notificado){await push.notificarLote(1).catch(()=>{});}
+    if(st.estado==='aguardando_roteiro'){await push.notificar({corpo:`Roteiro pronto: ${String(c.titulo||'novo conteúdo').slice(0,90)}. Toque para aprovar.`,tag:`roteiro-${c.id}`}).catch(()=>{});}
     return c;
   }catch(e){
     if(e.code==='CONFLITO')return(await ler(id)).doc;
@@ -206,6 +214,7 @@ async function processar(id,job,{deps={}}={}) {
 async function decidir(id,{acao,motivos,detalhe,hash}) {
   const reg=await ler(id);const c=reg.doc;
   if(c.studio?.estado==='gerando')throw falha('Espere a preparação terminar antes de aprovar.',409);
+  if(c.studio?.estado==='aguardando_roteiro'&&acao==='aprovar')throw falha('Aprove o roteiro primeiro: o carrossel ainda não foi gerado.',409);
   if(acao==='refazer')return reagendar(id,{acao,motivos,detalhe,hash});
   const v=M.versaoAtiva(c);if(!v || v.hash!==hash)throw falha('A versão mudou. Atualize para ver o conteúdo atual.',409);
   if(acao==='descartar'){await prefs.registrar(c,{acao,motivos,detalhe,versao:hash});c.status='arquivado';await gravar(c,reg.rev);return c;}
@@ -216,9 +225,24 @@ async function decidir(id,{acao,motivos,detalhe,hash}) {
   M.aprovar(c,g);M.registrar(c,'pedro','revisao_unica','Aprovou o conteúdo completo e autorizou publicar esta versão.');await gravar(c,reg.rev);
   await prefs.registrar(c,{acao:'aprovar',versao:hash});return c;
 }
+// Aprovação do ROTEIRO (texto): libera a geração do carrossel. Exige a versão exata que o Pedro viu.
+async function aprovarRoteiro(id,{hash}={}){
+  const reg=await ler(id);const c=reg.doc;const st=c.studio;
+  if(st?.estado!=='aguardando_roteiro')throw falha('Este conteúdo não está esperando aprovação de roteiro.',409);
+  const v=M.versaoAtiva(c);if(!v||v.hash!==hash)throw falha('O roteiro mudou. Atualize para ver o texto atual.',409);
+  st.roteiro_aprovado=true;st.roteiro_aprovado_em=now();st.estado='gerando';st.etapa='foto';st.indice=0;st.tentativas=0;st.passos=0;st.retentativas=0;st.job=crypto.randomUUID();delete st.lease;delete st.adiar_ate;delete st.aviso;delete st.erro;
+  c.status='produzindo';M.registrar(c,'pedro','roteiro_aprovado','Aprovou o roteiro. Gerando o carrossel.');
+  await gravar(c,reg.rev);return c;
+}
+async function descartarRoteiro(id,{hash}={}){
+  const reg=await ler(id);const c=reg.doc;
+  if(c.studio?.estado!=='aguardando_roteiro')throw falha('Este conteúdo não está esperando aprovação de roteiro.',409);
+  await prefs.registrar(c,{acao:'descartar',versao:hash||M.versaoAtiva(c)?.hash,motivos:['tema']});c.status='arquivado';c.studio.estado='descartado';
+  M.registrar(c,'pedro','roteiro_descartado','Descartou o roteiro.');await gravar(c,reg.rev);return c;
+}
 async function panorama(){
   const feedback=await prefs.listar();const docs=await armazem().conteudos.listar(conta());
   const itens=[];for(const r of docs.filter(r=>r.resumo.status==='publicado').slice(0,100)){const c=(await ler(r.id)).doc;itens.push(c);}
   return {estilos:Object.entries(prefs.ESTILOS).map(([id,cfg])=>{const publicados=itens.filter(c=>c.experimento?.estilo===id);return {id,...cfg,aprovacoes:feedback.filter(f=>f.estilo===id&&f.acao==='aprovar').length,ajustes:feedback.filter(f=>f.estilo===id&&f.acao==='refazer').length,publicados:publicados.length,medidos:publicados.filter(c=>c.desempenho?.alcance>0).length,alcance:publicados.reduce((n,c)=>n+(c.desempenho?.alcance||0),0),...require('../../static/growthModel').consolidar(publicados),interacoes:publicados.reduce((n,c)=>n+(c.desempenho?.interacoes||0),0),seguidores:publicados.some(c=>c.desempenho?.seguidores!=null)?publicados.reduce((n,c)=>n+(c.desempenho?.seguidores||0),0):null};}),orientacoes:await prefs.orientacoes(),aviso:'Preferências vêm das suas decisões. Desempenho usa somente métricas devolvidas pelo Instagram; ainda não há vencedor sem amostra suficiente.'};
 }
-module.exports={criar,reagendar,processar,decidir,ler,prepararRevisao,assinatura,confere,panorama,etapas,base,limparMarcadores,esperaTemporaria};
+module.exports={criar,reagendar,processar,decidir,aprovarRoteiro,descartarRoteiro,ler,prepararRevisao,assinatura,confere,panorama,etapas,base,limparMarcadores,esperaTemporaria};

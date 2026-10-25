@@ -2,8 +2,8 @@ const { spawn } = require('child_process');
 const path = require('path');
 const raiz = path.join(__dirname, '../..');
 const nomes = process.argv.slice(2);
-const suite = nomes.length ? nomes : ['mesaATest', 'mesaBTest', 'centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest'];
-const permitidos = new Set(['mesaATest', 'mesaBTest', 'centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest']);
+const suite = nomes.length ? nomes : ['mesaATest', 'mesaBTest', 'centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest'];
+const permitidos = new Set(['mesaATest', 'mesaBTest', 'centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest']);
 const filhos = new Set();
 function iniciar(arquivo, env = {}, args = []) {
   const ambiente = { ...process.env };
@@ -28,9 +28,9 @@ process.on('SIGINT', () => { for (const p of filhos) p.kill('SIGTERM'); process.
   for (const nome of suite) {
     if (!permitidos.has(nome)) throw new Error(`Teste desconhecido: ${nome}`);
     console.log(`\n=== ${nome}: servidor real, armazenamento em memória, IA e Meta simuladas ===`);
-    const banco = ['centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest'].includes(nome);
+    const banco = ['centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest'].includes(nome);
     const atraso = nome === 'persistenciaTest' ? '2500' : '50';
-    const a = iniciar('tests/e2e/servidorTeste.js', { PORT: '3996', TESTE_PORT: '3995', GRAPH_FALSA: '1', GRAPH_PORT: '3999', TESTE_MEMORIA: banco ? '1' : '', ATRASO_MS: atraso });
+    const a = iniciar('tests/e2e/servidorTeste.js', { PORT: '3996', TESTE_PORT: '3995', GRAPH_FALSA: '1', GRAPH_PORT: '3999', TESTE_MEMORIA: banco ? '1' : '', TESTE_DURAVEL: nome === 'roteiroTest' ? '1' : '', ATRASO_MS: atraso });
     let b;
     try {
       await pronto(3995);

@@ -76,7 +76,7 @@ function registraFalha(ip) {
 // com um token assinado (HMAC) que amarra o conteúdo, o hash aprovado e o slide, e expira.
 const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/];
 // Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
-const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/];
+const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/, /^\/api\/monitor\/tick$/];
 
 const estadoAcesso = () => (acessoPublico() ? 'aberto_publico' : codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
 const aberto = (estado) => estado === 'aberto_local' || estado === 'aberto_publico';

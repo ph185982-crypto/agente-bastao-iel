@@ -10,7 +10,9 @@
   const estilos={foto_editorial:'Foto + história',impacto:'Dados + contraste',revista:'Editorial + opinião'};
   const versao=c=>M.versaoAtiva(c);
   const emProducao=c=>['gerando','publicando'].includes(c.studio?.estado);
-  function prontos(){return x().state.contents.filter(c=>!c.legado&&!['publicado','arquivado'].includes(c.status)&&!emProducao(c)&&versao(c));}
+  const emRoteiro=c=>c.studio?.estado==='aguardando_roteiro'&&c.status!=='arquivado';
+  function prontos(){return x().state.contents.filter(c=>!c.legado&&!['publicado','arquivado'].includes(c.status)&&!emProducao(c)&&!emRoteiro(c)&&versao(c));}
+  function roteiros(){return x().state.contents.filter(c=>!c.legado&&emRoteiro(c)&&versao(c));}
   function revisar(c){const clone=M.clone(c);clone.claims.forEach(k=>k.revisao={...(k.revisao||{}),confirmada_por_pedro:true});return window.QualityGates.avaliar(clone,{conta:M.ACCOUNT_PIN});}
   async function adotar(reg){await window.Sync.adotar(reg);const i=x().state.contents.findIndex(c=>c.id===reg.doc.id);if(i<0)x().state.contents.unshift(reg.doc);else x().state.contents[i]=reg.doc;x().state.syncMeta[reg.doc.id]=await window.Sync.meta(reg.doc.id);}
   async function atualizar({silencioso=false}={}){
@@ -43,25 +45,52 @@
       <div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Refazer</button><button class="st-approve" data-action="${pronto?'st-aprovar':'st-preparar'}" data-id="${esc(c.id)}" ${ui.ocupado||pausado?'disabled':''}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':pausado?'Publicações pausadas':pronto?'✓ Aprovar e publicar':'Preparar automaticamente'}</button></div>
       <details class="st-caption"><summary>Ver legenda e detalhes</summary><p>${esc([v.legenda,v.cta,(v.hashtags||[]).join(' ')].filter(Boolean).join('\n\n'))}</p><button class="st-text-button" data-action="cn-revisar" data-id="${esc(c.id)}">Ajustar manualmente</button></details></div></article>`;
   }
+  function cartaoRoteiro(c){
+    const v=versao(c),m=c.monitor||{};
+    const limpa=t=>esc(String(t||'').replace(/\*\*/g,''));
+    const fontes=(m.fontes&&m.fontes.length?m.fontes:[{url:c.fonte_principal?.url,origem:c.fonte_principal?.veiculo}]).filter(f=>f&&/^https?:\/\//.test(f.url||''));
+    const ocupado=ui.ocupado===c.id;
+    return `<article class="st-review-card st-roteiro" data-st-roteiro="${esc(c.id)}"><div class="st-card-heading"><span class="st-format">ROTEIRO${m.veiculos?' · EM ALTA':''}</span><h2>${esc(c.titulo)}</h2></div>
+      ${m.veiculos?`<p class="st-alta">Coberto por <b>${esc(m.veiculos)} veículos</b>${m.horas!=null?` · a mais nova há ${esc(m.horas)} h`:''}${(m.veiculos_nomes||[]).length?` (${esc(m.veiculos_nomes.join(', '))})`:''}. É um sinal de cobertura, não de audiência.</p>`:''}
+      ${m.por_que_enviaria?`<p class="st-alta"><b>Por que alguém mandaria:</b> ${esc(m.por_que_enviaria)}</p>`:''}
+      <ol class="st-roteiro-slides">${v.slides.map((sl,i)=>`<li><span>${i+1}</span><div>${sl.titulo?`<b>${limpa(sl.titulo)}</b> `:''}${limpa(sl.texto)}</div></li>`).join('')}</ol>
+      <details class="st-caption" open><summary>Legenda e chamada final</summary><p>${esc([v.legenda,v.cta].filter(Boolean).join('\n\n'))}</p></details>
+      ${fontes.length?`<p class="st-alta">Fonte: ${fontes.map(f=>`<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.origem||'matéria')}</a>`).join(' · ')}</p>`:''}
+      <p class="st-preparing-note">O carrossel só é gerado depois que você aprovar este roteiro. Nada vai ao Instagram sem o seu toque em “Aprovar e publicar”.</p>
+      <div class="st-decisionbar"><button class="st-reject" data-action="st-roteiro-refazer" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Outro roteiro</button><button class="st-approve" data-action="st-roteiro-aprovar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>${ocupado?'<span class="es-spin"></span> Enviando…':'✓ Aprovar roteiro e gerar carrossel'}</button></div>
+      <button class="st-text-button" data-action="st-roteiro-descartar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>Descartar este assunto</button></article>`;
+  }
+  async function monitorar(){
+    if(ui.monitorEmCurso||document.hidden)return;
+    const agora=Date.now();if(ui.monitorChecado&&agora-ui.monitorChecado<60000)return;ui.monitorChecado=agora;
+    try{
+      const e=await x().api('/api/monitor/estado');ui.monitor=e;
+      if(!e.config?.ativo||!e.guardado)return;
+      const ult=e.ultimo_tick?Date.parse(e.ultimo_tick):0;if(agora-ult<e.config.intervalo_min*60000)return;
+      ui.monitorEmCurso=true;const r=await x().api('/api/monitor/tick',{method:'POST',body:{}});
+      if(r.alertas?.length){x().toast(`Em alta: ${r.alertas[0].titulo}`);await atualizar({silencioso:true});}
+    }catch(e){/* sem rede ou sem acesso: tenta de novo na próxima volta */}
+    finally{ui.monitorEmCurso=false;}
+  }
   function filaProduzindo(){
     const lista=x().state.contents.filter(c=>emProducao(c)||(!c.legado&&!versao(c)&&!['publicado','arquivado'].includes(c.status)));
     if(!lista.length)return '';
-    return `<section class="st-production"><h2>Em preparação <span>${lista.length}</span></h2>${lista.map(c=>{const st=c.studio||{},ativo=emProducao(c);return `<div class="st-job">${ativo?'<span class="es-spin"></span>':'<span>↻</span>'}<div><b>${esc(c.titulo)}</b><small>${esc(st.estado==='erro'?st.erro:ativo?st.aviso||ETAPAS[st.etapa]||'Preparando':'Rascunho da sua biblioteca')} ${st.etapa==='arte'?`· slide ${(st.indice||0)+1}`:''}</small>${!ativo?`<button class="st-text-button" data-action="st-preparar" data-id="${esc(c.id)}">${st.estado==='erro'?'Tentar novamente':'Preparar automaticamente'}</button>`:''}</div></div>`;}).join('')}<p>Pode fechar o app. A preparação continua e, com notificações ativas, você recebe o aviso.</p></section>`;
+    return `<section class="st-production"><h2>Em preparação <span>${lista.length}</span></h2>${lista.map(c=>{const st=c.studio||{},ativo=emProducao(c);return `<div class="st-job">${ativo?'<span class="es-spin"></span>':'<span>↻</span>'}<div><b>${esc(c.titulo)}</b>${c.monitor?.veiculos?`<small>Em alta · ${esc(c.monitor.veiculos)} veículos${st.roteiro_primeiro&&!st.roteiro_aprovado?' · montando o roteiro':''}</small>`:''}<small>${esc(st.estado==='erro'?st.erro:ativo?st.aviso||ETAPAS[st.etapa]||'Preparando':'Rascunho da sua biblioteca')} ${st.etapa==='arte'?`· slide ${(st.indice||0)+1}`:''}</small>${!ativo?`<button class="st-text-button" data-action="st-preparar" data-id="${esc(c.id)}">${st.estado==='erro'?'Tentar novamente':'Preparar automaticamente'}</button>`:''}</div></div>`;}).join('')}<p>Pode fechar o app. A preparação continua e, com notificações ativas, você recebe o aviso.</p></section>`;
   }
   function modal(){
     if(!ui.reprovar)return '';
     return `<div class="st-modal-backdrop"><section class="st-feedback-sheet" role="dialog" aria-modal="true" aria-labelledby="st-feedback-title"><div class="st-sheet-handle"></div><button class="st-modal-close" data-action="st-fechar" aria-label="Fechar motivos de ajuste">×</button><span class="st-eyebrow">DO SEU JEITO</span><h2 id="st-feedback-title">O que vamos melhorar?</h2><p>Seu retorno orienta esta versão e as próximas criações.</p><div class="st-reasons">${Object.entries(motivos).map(([k,v])=>`<button data-action="st-motivo" data-m="${k}" aria-pressed="${ui.motivos.includes(k)}">${esc(v)}</button>`).join('')}</div><label for="st-feedback-text">Quer explicar melhor? <small>Opcional</small></label><textarea id="st-feedback-text" rows="3" maxlength="500" placeholder="Ex.: menos texto, foto na capa e um CTA mais direto…">${esc(ui.detalhe)}</textarea><p class="st-feedback-error" role="status">${esc(ui.erroFeedback||'')}</p><button class="st-approve" data-action="st-confirmar-refazer" ${ui.ocupado?'disabled':''}>${ui.ocupado?'Salvando seu ajuste…':'Refazer com esse ajuste'}</button><button class="st-text-button" data-action="st-descartar">Só descartar este conteúdo</button></section></div>`;
   }
   function render(){
-    const lista=prontos();if(!lista.some(c=>c.id===ui.selecionado))ui.selecionado=lista[0]?.id||null;
+    const lista=prontos();const listaRoteiros=roteiros();if(!lista.some(c=>c.id===ui.selecionado))ui.selecionado=lista[0]?.id||null;
     const c=lista.find(c=>c.id===ui.selecionado);const i=lista.findIndex(c=>c.id===ui.selecionado);
     const publicados=x().state.contents.filter(c=>c.status==='publicado'&&!c.legado);
     const pushAtivo=original._st.push?.ativo;
     return `<div class="st-app"><div class="st-page-heading"><div><span class="st-eyebrow">SEU CONTEÚDO, SUA VOZ</span><h1>Pronto para ir ao ar?</h1><p>Deslize. Confira. Aprove ou peça um ajuste.</p></div><button class="st-new" data-action="st-criar">+ Criar</button></div>
       ${!pushAtivo?`<button class="st-push-banner" data-action="${original._st.push?.permissao==='denied'?'st-perfil':'st-notificacoes'}"><span>♧</span><span><b>Receba um aviso no iPhone</b><small>${original._st.push?.permissao==='denied'?'Veja como liberar as notificações.':'Ative para saber quando o conteúdo ficar pronto.'}</small></span><i>›</i></button>`:''}
       ${ui.erro?`<div class="es-warn" role="status">${esc(ui.erro)}</div>`:''}
-      <div class="st-feed-tabs" role="group" aria-label="Conteúdos"><button data-action="st-aba" data-aba="prontos" aria-pressed="${ui.aba==='prontos'}">Para aprovar <span>${lista.length}</span></button><button data-action="st-aba" data-aba="publicados" aria-pressed="${ui.aba==='publicados'}">Publicados <span>${publicados.length}</span></button></div>
-      ${ui.aba==='prontos'?`${lista.length>1?`<div class="st-card-pagination"><span>Conteúdo ${i+1} de ${lista.length}</span><div><button data-action="st-anterior" aria-label="Conteúdo anterior" ${i<=0?'disabled':''}>‹</button><button data-action="st-proximo" aria-label="Próximo conteúdo" ${i>=lista.length-1?'disabled':''}>›</button></div></div>`:''}${c?cartao(c):`<div class="st-empty-feed"><img src="/logo-app.svg" alt="Pedro Destrava" width="58" height="58"><h2>${x().state.contents.some(emProducao)?'Seu próximo conteúdo está a caminho':'Vamos preparar seu próximo post?'}</h2><p>${x().state.contents.some(emProducao)?'Você verá a prévia completa aqui assim que estiver pronta.':'Comece com uma matéria ou texto. Eu cuido do formato, da capa e da preparação.'}</p><button class="st-approve" data-action="st-criar">Criar conteúdo</button></div>`}${filaProduzindo()}`:`<div class="st-published">${publicados.map(c=>`<article><span>✓ Publicado · ${esc(c.formato==='reels'?'Reel':'Carrossel')}</span><h2>${esc(c.titulo)}</h2>${c.publicacao?.url?`<a href="${esc(c.publicacao.url)}" target="_blank" rel="noopener noreferrer">Ver no Instagram ↗</a>`:'<p>O link ainda não está disponível.</p>'}</article>`).join('')||'<div class="st-empty-feed"><h2>Os próximos resultados começam aqui</h2><p>Quando você aprovar e o Instagram confirmar, o post aparece nesta lista.</p></div>'}</div>`}
+      <div class="st-feed-tabs" role="group" aria-label="Conteúdos"><button data-action="st-aba" data-aba="prontos" aria-pressed="${ui.aba==='prontos'}">Para aprovar <span>${lista.length+listaRoteiros.length}</span></button><button data-action="st-aba" data-aba="publicados" aria-pressed="${ui.aba==='publicados'}">Publicados <span>${publicados.length}</span></button></div>
+      ${ui.aba==='prontos'&&listaRoteiros.length?`<section class="st-roteiros"><h2>Roteiros para aprovar <span>${listaRoteiros.length}</span></h2>${listaRoteiros.map(cartaoRoteiro).join('')}</section>`:''}${ui.aba==='prontos'?`${lista.length>1?`<div class="st-card-pagination"><span>Conteúdo ${i+1} de ${lista.length}</span><div><button data-action="st-anterior" aria-label="Conteúdo anterior" ${i<=0?'disabled':''}>‹</button><button data-action="st-proximo" aria-label="Próximo conteúdo" ${i>=lista.length-1?'disabled':''}>›</button></div></div>`:''}${c?cartao(c):`<div class="st-empty-feed"><img src="/logo-app.svg" alt="Pedro Destrava" width="58" height="58"><h2>${x().state.contents.some(emProducao)?'Seu próximo conteúdo está a caminho':'Vamos preparar seu próximo post?'}</h2><p>${x().state.contents.some(emProducao)?'Você verá a prévia completa aqui assim que estiver pronta.':'Comece com uma matéria ou texto. Eu cuido do formato, da capa e da preparação.'}</p><button class="st-approve" data-action="st-criar">Criar conteúdo</button></div>`}${filaProduzindo()}`:`<div class="st-published">${publicados.map(c=>`<article><span>✓ Publicado · ${esc(c.formato==='reels'?'Reel':'Carrossel')}</span><h2>${esc(c.titulo)}</h2>${c.publicacao?.url?`<a href="${esc(c.publicacao.url)}" target="_blank" rel="noopener noreferrer">Ver no Instagram ↗</a>`:'<p>O link ainda não está disponível.</p>'}</article>`).join('')||'<div class="st-empty-feed"><h2>Os próximos resultados começam aqui</h2><p>Quando você aprovar e o Instagram confirmar, o post aparece nesta lista.</p></div>'}</div>`}
       </div>${modal()}`;
   }
   function modeloCriacao(){
@@ -109,6 +138,15 @@
           const r=await window.Sync.enviar(c);if(!['igual','enviado'].includes(r.estado))throw new Error('Este conteúdo mudou em outro aparelho. Atualize a lista antes de continuar.');
           const reg=await ctx.api(`/api/studio/${encodeURIComponent(id)}/${a==='st-aprovar'?'decidir':'retomar'}`,{method:'POST',body:{acao:'aprovar',hash:versao(c)?.hash}});await adotar(reg);ui.selecionado=null;ctx.toast(a==='st-aprovar'?'Aprovado! Enviando ao Instagram.':'Vou preparar a versão completa para você conferir.');break;
         }
+        case 'st-roteiro-aprovar':case 'st-roteiro-refazer':case 'st-roteiro-descartar':{
+          if(ui.ocupado)return true;
+          if(a==='st-roteiro-descartar'&&!confirm('Descartar este assunto?'))return true;
+          ui.ocupado=id;ctx.render();
+          const r=await window.Sync.enviar(c);if(!['igual','enviado'].includes(r.estado))throw new Error('Este conteúdo mudou em outro aparelho. Atualize a lista antes de continuar.');
+          const acaoApi=a==='st-roteiro-aprovar'?'aprovar':a==='st-roteiro-refazer'?'refazer':'descartar';
+          const reg=await ctx.api(`/api/studio/${encodeURIComponent(id)}/roteiro`,{method:'POST',body:{acao:acaoApi,hash:versao(c)?.hash,...(acaoApi==='refazer'?{motivos:['voz'],detalhe:'Outro roteiro para o mesmo assunto.'}:{})}});await adotar(reg);
+          ctx.toast(acaoApi==='aprovar'?'Roteiro aprovado. Gerando o carrossel; aviso quando ficar pronto.':acaoApi==='refazer'?'Escrevendo outro roteiro.':'Assunto descartado.');break;
+        }
         case 'st-rejeitar':ui.reprovar=id;ui.motivos=[];ui.detalhe='';ui.erroFeedback=null;ctx.render();return true;
         case 'st-fechar':ui.reprovar=null;ctx.render();return true;
         case 'st-motivo':ui.motivos=ui.motivos.includes(el.dataset.m)?ui.motivos.filter(k=>k!==el.dataset.m):[...ui.motivos,el.dataset.m];ctx.render();return true;
@@ -140,10 +178,11 @@
   root.addEventListener('scroll',e=>{const el=e.target;if(!el.dataset?.stCarousel)return;const id=el.dataset.stCarousel;const i=Math.round(el.scrollLeft/el.clientWidth);ui.slides[id]=i;const counter=root.querySelector(`[data-st-counter="${CSS.escape(id)}"]`);if(counter)counter.textContent=`${i+1}/${el.children.length}`;el.parentElement.querySelectorAll('.st-dots button').forEach((b,n)=>b.setAttribute('aria-current',String(n===i)));},true);
   root.addEventListener('keydown',e=>{const d=root.querySelector('[role="dialog"]');if(!d)return;if(e.key==='Escape'){ui.reprovar=null;x().render();}if(e.key==='Tab'){const els=[...d.querySelectorAll('button:not(:disabled),textarea')];const first=els[0],last=els.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
   const oldApos=window.MesaEditor.aposRender;window.MesaEditor.aposRender=(root,...args)=>{oldApos(root,...args);aposRender(root);};
-  window.MesaCentral={...original,render,acao,carregar:async(...args)=>{await original.carregar(...args);await atualizar({silencioso:true});},badge:()=>prontos().length};
-  window.StudioMobile={telaCriar,perfil,atualizar,ui};
+  window.MesaCentral={...original,render,acao,carregar:async(...args)=>{await original.carregar(...args);await atualizar({silencioso:true});},badge:()=>prontos().length+roteiros().length};
+  window.StudioMobile={telaCriar,perfil,atualizar,ui,monitorar,roteiros};
   window.Mesa.state.tab='central';
   setTimeout(()=>{original.carregar(x()).catch(()=>{});atualizar({silencioso:true});x().api('/api/studio/experimentos').then(d=>{ui.experimentos=d;}).catch(()=>{});},1200);
-  setInterval(()=>{if(!document.hidden&&!ui.reprovar&&!ui.ocupado)atualizar({silencioso:true});},10000);
+  setTimeout(()=>monitorar(),4000);
+  setInterval(()=>{if(!document.hidden&&!ui.reprovar&&!ui.ocupado){atualizar({silencioso:true});monitorar();}},10000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)atualizar({silencioso:true});});
 })();

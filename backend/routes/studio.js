@@ -59,6 +59,17 @@ router.post('/criar',limita({max:8,janelaMs:60000,nome:'studio-criar'}),async(re
 router.post('/:id/retomar',limita({max:8,janelaMs:60000,nome:'studio-retomar'}),async(req,res)=>{
   try{let c=(await studio.ler(req.params.id)).doc;if(!['gerando','publicando'].includes(c.studio?.estado))c=await studio.reagendar(c.id,{acao:'retomar'});await kick(c);res.status(202).json(await studio.ler(c.id));}catch(e){erro(res,e);}
 });
+// Aprovação do ROTEIRO (fluxo do monitor de notícias): aprovar libera a geração do carrossel; refazer escreve outro roteiro;
+// descartar arquiva. Nada aqui publica: publicar continua exigindo "Aprovar e publicar" no carrossel pronto.
+router.post('/:id/roteiro',limita({max:12,janelaMs:60000,nome:'studio-roteiro'}),async(req,res)=>{
+  try{
+    const {acao,hash,motivos,detalhe}=req.body||{};
+    if(acao==='aprovar'){const c=await studio.aprovarRoteiro(req.params.id,{hash});await kick(c);return res.status(202).json(await studio.ler(c.id));}
+    if(acao==='refazer'){const c=await studio.reagendar(req.params.id,{acao:'refazer',motivos:Array.isArray(motivos)?motivos:[],detalhe:String(detalhe||'').slice(0,500),hash});await kick(c);return res.status(202).json(await studio.ler(c.id));}
+    if(acao==='descartar'){const c=await studio.descartarRoteiro(req.params.id,{hash});return res.json(await studio.ler(c.id));}
+    return res.status(400).json({error:'Ação inválida para o roteiro.',code:'ENTRADA'});
+  }catch(e){erro(res,e);}
+});
 router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'}),async(req,res)=>{
   try{
     if(req.body?.acao==='aprovar' && (await require('../lib/publicador').config()).publish_paused) return res.status(409).json({error:'As publicações estão pausadas. Libere em Perfil para publicar.',code:'PAUSADO'});

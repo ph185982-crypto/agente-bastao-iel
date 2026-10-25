@@ -140,3 +140,60 @@ test('produção completa chega à revisão sem aprovações intermediárias e s
   assert.equal(atual.studio.estado,'pronto',JSON.stringify({studio:atual.studio,bloqueios:studio.prepararRevisao(atual).bloqueios}));assert.equal(atual.status,'em_revisao');assert.equal(studio.prepararRevisao(atual).bloqueios.length,0);assert(atual.auditoria_textos.s3,'encerramento conferido');assert(atual.auditoria_textos.cta,'CTA conferido');assert.equal(atual.revisao.aprovada_versao,null);assert.equal(atual.arte.renders.length,3);assert.equal((await arm.publicacoes.listar(conta)).length,0);
   assert.match(M.versaoAtiva(atual).slides[0].texto,/Segundo Empresa/);assert.match(M.versaoAtiva(atual).legenda,/Segundo Empresa/);
 });
+
+// ── Fluxo "roteiro primeiro" (monitor de notícias) ──
+async function producaoRoteiro(request,{pausa=true}={}){
+  const c=await studio.criar({texto:'FIXTURE roteiro primeiro. '.repeat(15),request_id:request,estilo:'foto_editorial',roteiro_primeiro:pausa,monitor:{chave:'k1',veiculos:4}});
+  const imagem=await sharp({create:{width:1080,height:1350,channels:3,background:'#7e94ae'}}).jpeg().toBuffer();
+  const claim={id:'a1',texto:'A empresa anunciou uma mudança.',tipo:'fato',natureza:'fato',estado:'parcialmente_sustentada',central:true,risco:'alto',evidencias:['e1'],revisao:{}};
+  const ev={id:'e1',origem:'Empresa',trecho:claim.texto,relacao:'sustenta',correspondencia:'integral',fonte_principal:true};
+  let fotos=0;
+  const deps={
+    research:{lerFonte:async()=>({legivel:true,titulo:'FIXTURE de produção',veiculo:'Empresa',tipo:'artigo',texto:claim.texto}),levantarAfirmacoes:async()=>({claims:[claim],evidencias:[ev]}),verificarAfirmacao:async()=>({claim,evidencias:[ev]})},
+    redacao:{gerarBriefing:async()=>({briefing:{assunto:'Mudança da empresa',formato:'carrossel'}}),gerarCopia:async()=>({opinioes:[],versao:{capas:[{id:'k1',foco:'tensao',texto:claim.texto,claim_ids:['a1']}],slides:[{id:'s1',funcao:'capa',layout:'capa_tipografica',texto:claim.texto,claim_ids:['a1']},{id:'s2',funcao:'explicacao',layout:'explicacao',texto:'Entenda a mudança anunciada.',claim_ids:['a1']},{id:'s3',funcao:'encerramento',layout:'encerramento',texto:'Siga para entender a próxima mudança.',claim_ids:[]}],legenda:claim.texto,legenda_claim_ids:['a1'],cta:'Siga para entender a próxima mudança.',hashtags:[]}}),auditarOpinioes:async({slides})=>({auditoria:slides.map(s=>({slide_id:s.id,hash_texto:M.hash(s.texto),premissas:[{texto:claim.texto,claim_id:'a1'}]}))})},
+    buscarFoto:async()=>{fotos++;return {dados:imagem,meta:{id:'foto-fixture',tipo:'ilustrativa',origem:'https://exemplo.test/foto',licenca:'FIXTURE'}};},
+  };
+  const rodar=async(atual)=>{for(let i=0;i<30&&atual.studio.estado==='gerando';i++)atual=await studio.processar(atual.id,atual.studio.job,{deps});return atual;};
+  return {c,deps,rodar,fotos:()=>fotos};
+}
+test('roteiro primeiro: para depois do texto conferido, sem foto nem arte, avisa uma vez e não deixa aprovar/publicar',async()=>{
+  const enviados=[];process.env.VAPID_PUBLIC_KEY='x';process.env.VAPID_PRIVATE_KEY='y';
+  const push=require('./push');const original=push.notificar;push.notificar=async(o)=>{enviados.push(o);return {enviadas:0};};
+  try{
+    const {c,rodar,fotos}=await producaoRoteiro('fixture-roteiro-1');
+    const atual=await rodar(c);
+    assert.equal(atual.studio.estado,'aguardando_roteiro');assert.equal(atual.status,'em_revisao');
+    assert.equal(atual.arte.renders.length,0,'nenhum slide desenhado antes de aprovar o roteiro');assert.equal(fotos(),0,'nenhuma foto buscada');
+    assert.equal(atual.monitor.veiculos,4);
+    assert.equal(enviados.filter(e=>/^roteiro-/.test(e.tag)).length,1);assert.match(enviados[0].corpo,/Roteiro pronto/);
+    await assert.rejects(studio.decidir(atual.id,{acao:'aprovar',hash:M.versaoAtiva(atual).hash}),{status:409,message:/Aprove o roteiro primeiro/});
+    assert.equal((await arm.publicacoes.listar(conta)).length,0);
+  }finally{push.notificar=original;delete process.env.VAPID_PUBLIC_KEY;delete process.env.VAPID_PRIVATE_KEY;}
+});
+test('roteiro aprovado libera foto e arte até o carrossel pronto; versão errada é recusada; só então dá para aprovar e publicar',async()=>{
+  const {c,deps,rodar}=await producaoRoteiro('fixture-roteiro-2');
+  let atual=await rodar(c);const hash=M.versaoAtiva(atual).hash;
+  await assert.rejects(studio.aprovarRoteiro(atual.id,{hash:'velho'}),{status:409});
+  const lib=await studio.aprovarRoteiro(atual.id,{hash});
+  assert.equal(lib.studio.estado,'gerando');assert.equal(lib.studio.etapa,'foto');assert.equal(lib.studio.roteiro_aprovado,true);assert.notEqual(lib.studio.job,c.studio.job,'novo job: o anterior não executa mais');
+  atual=lib;for(let i=0;i<30&&atual.studio.estado==='gerando';i++)atual=await studio.processar(lib.id,(await studio.ler(lib.id)).doc.studio.job,{deps});
+  assert.equal(atual.studio.estado,'pronto');assert.equal(atual.arte.renders.length,3);assert.equal(studio.prepararRevisao(atual).bloqueios.length,0);
+  const ap=await studio.decidir(atual.id,{acao:'aprovar',hash:M.versaoAtiva(atual).hash});assert.equal(ap.status,'aprovado');
+  assert.equal((await arm.publicacoes.listar(conta)).length,0,'aprovar não inicia a publicação neste teste');
+  await assert.rejects(studio.aprovarRoteiro(atual.id,{hash}),{status:409},'roteiro já aprovado não aprova de novo');
+});
+test('roteiro: pedir outro volta para a etapa de texto e para de novo no roteiro; descartar arquiva e registra',async()=>{
+  const {c,deps,rodar}=await producaoRoteiro('fixture-roteiro-3');
+  let atual=await rodar(c);
+  const novo=await studio.reagendar(atual.id,{acao:'refazer',motivos:['voz'],detalhe:'Mais direto',hash:M.versaoAtiva(atual).hash});
+  assert.equal(novo.studio.etapa,'copy');assert.equal(novo.studio.roteiro_primeiro,true);assert.equal(novo.copia.versoes.length,1);
+  atual=novo;for(let i=0;i<30&&atual.studio.estado==='gerando';i++)atual=await studio.processar(novo.id,(await studio.ler(novo.id)).doc.studio.job,{deps});
+  assert.equal(atual.studio.estado,'aguardando_roteiro','depois do novo texto, para de novo para você aprovar');
+  assert.equal(atual.arte.renders.length,0);
+  const d=await studio.descartarRoteiro(atual.id,{hash:M.versaoAtiva(atual).hash});assert.equal(d.status,'arquivado');assert.equal(d.studio.estado,'descartado');
+});
+test('sem roteiro_primeiro o fluxo continua direto até o carrossel (comportamento anterior preservado)',async()=>{
+  const {c,rodar}=await producaoRoteiro('fixture-roteiro-4',{pausa:false});
+  const atual=await rodar(c);
+  assert.equal(atual.studio.estado,'pronto');assert.equal(atual.arte.renders.length,3);
+});

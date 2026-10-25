@@ -492,7 +492,7 @@
   }
 
   function telaAjustes() {
-    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1>${window.StudioMobile.perfil()}<details class="st-advanced"><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
+    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1>${window.StudioMobile.perfil()}<details class="st-advanced" ${state.ajustesAvancado ? 'open' : ''}><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
     return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
   }
 
@@ -572,6 +572,8 @@
   }
 
   // ── Eventos ─────────────────────────────────────────────────────────────────
+  // O painel "Configurações" é recriado a cada ação; lembrar se estava aberto evita que ele feche sozinho.
+  root.addEventListener('toggle', (ev) => { if (ev.target.classList && ev.target.classList.contains('st-advanced')) state.ajustesAvancado = ev.target.open; }, true);
   root.addEventListener('click', async (ev) => {
     const el = ev.target.closest('[data-action]'); if (!el) return;
     const a = el.dataset.action; const id = el.dataset.id;

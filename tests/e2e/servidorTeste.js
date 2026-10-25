@@ -8,7 +8,7 @@ const RAIZ = require('path').join(__dirname, '..', '..');
 const llmJson = require(path.join(RAIZ, 'backend/lib/llmJson'));
 if (process.env.TESTE_MEMORIA === '1') {
   const arm = require(path.join(RAIZ, 'backend/lib/armazem'));
-  arm._definir(arm.memoria());
+  arm._definir(process.env.TESTE_DURAVEL === '1' ? Object.assign(arm.memoria(), { duravel: true }) : arm.memoria());
 }
 const chamadas = {};
 const atraso = Number(process.env.ATRASO_MS || 2500);
