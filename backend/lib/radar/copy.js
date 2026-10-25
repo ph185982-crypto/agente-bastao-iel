@@ -92,21 +92,24 @@ function montarTelas(j, op, { fixo = C.CTA_FIXO } = {}) {
   const get = (n) => s.find((x) => Number(x?.n) === n) || {};
   const limpa = (x) => String(x ?? '').replace(/\s+/g, ' ').trim();
   const semPonto = (x) => limpa(x).replace(/[.:;]+$/, '');
+  // A IA às vezes repete a frase de abertura que o sistema já escreve ("Tudo começou com um problema comum: ..."): tira a repetição.
+  const semEco = (x, intro) => { let t = semPonto(x); const re = new RegExp(`^${intro.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[:]/g, '[:,]?')}\\s*`, 'i'); while (re.test(t)) t = t.replace(re, ''); return t; };
+  const semPrefixo = (x, re) => semPonto(x).replace(re, '');
   const slides = [];
 
   // 1 capa
   const capa = limpa(get(1).texto).replace(/\*\*/g, (m) => m);
   slides.push({ n: 1, funcao: 'capa', layout: 'capa', texto: capa, imagem: 'negocio' });
   // 2 problema
-  const prob = semPonto(get(2).problema);
+  const prob = semEco(get(2).problema, INTRO.problema);
   slides.push({ n: 2, funcao: 'problema', layout: 'problema', rotulo: 'O problema', intro: INTRO.problema, corpo: prob ? `${prob}.` : '', texto: `${INTRO.problema} ${prob}.` });
   // 3 solução
-  const prod = semPonto(get(3).produto); const res = semPonto(get(3).resultado);
+  const prod = semPrefixo(semEco(get(3).produto, 'A solução foi criar'), /^criar\s+/i); const res = semPrefixo(get(3).resultado, /^(que\s+)?faz\s+/i);
   slides.push({ n: 3, funcao: 'solucao', layout: 'solucao', rotulo: 'A solução', texto: `A solução foi criar ${prod} que faz ${res}.`, imagem: 'negocio' });
   // 4 dinheiro
   const modelo = Object.keys(C.MODELOS_RECEITA).includes(get(4).modelo) ? get(4).modelo : null;
   if (!modelo) erros.push('Tela 4: informe o modelo de receita (assinatura, comissao, venda, licenca, mensalidade, publicidade, marketplace ou servico_recorrente)');
-  const expl = semPonto(get(4).explicacao);
+  const expl = semEco(get(4).explicacao, INTRO.dinheiro);
   slides.push({ n: 4, funcao: 'dinheiro', layout: 'dinheiro', rotulo: 'Como ganha dinheiro', modelo, intro: INTRO.dinheiro, corpo: `${expl}.`, texto: `${INTRO.dinheiro} ${expl}.` });
   // 5 prova (valores vêm das afirmações verificadas, nunca da IA)
   const itens5 = (Array.isArray(get(5).itens) ? get(5).itens : []).slice(0, 3).map((it) => ({ claim: porId.get(String(it?.claim_id)), rotulo: semPonto(it?.rotulo) }));
@@ -125,7 +128,7 @@ function montarTelas(j, op, { fixo = C.CTA_FIXO } = {}) {
   const fonteLinha = prova.length ? `${atrib.length ? `${atrib.map((a) => a.charAt(0).toUpperCase() + a.slice(1)).join(' · ')}. ` : ''}Fonte: ${[...new Set(prova.map((p) => p.veiculo))].join(', ')}${prova[0].data_publicacao ? `, ${String(prova[0].data_publicacao).slice(0, 10).split('-').reverse().join('/')}` : ''}.` : '';
   slides.push({ n: 5, funcao: 'prova', layout: 'prova', rotulo: 'A prova', titulo: tit5, prova, fonte_linha: fonteLinha, texto: [tit5, ...prova.flatMap((p) => [p.valor, p.rotulo, p.atribuicao || ''])].join(' ') });
   // 6 por que funciona
-  const itens6 = ['dor', 'facilidade', 'recorrencia'].map((k) => semPonto(get(6)[k]));
+  const itens6 = ['dor', 'facilidade', 'recorrencia'].map((k) => semEco(get(6)[k], INTRO.funciona));
   slides.push({ n: 6, funcao: 'funciona', layout: 'funciona', rotulo: 'Por que funciona', intro: INTRO.funciona, itens: itens6, texto: `${INTRO.funciona} ${itens6.join(' ')}` });
   // 7 Brasil (hipótese)
   const b = get(7);
