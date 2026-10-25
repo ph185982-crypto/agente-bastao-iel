@@ -87,7 +87,9 @@ function fakePedirJson({ falharNa = null, semPontuacao = false } = {}) {
       const afs = [];
       const trecho = (re) => { const m = re.exec(usuario); return m ? m[0] : null; };
       if (nome === 'Lumen Pets') {
-        docs.forEach((d) => { const t = d.classe === 'imprensa' ? trecho(/more than 120,000 customers|atende mais de 120\.000 clientes/) : trecho(/mais de 120\.000 clientes usam o Lumen Pets/); if (t) afs.push({ documento: d.i, tipo: 'clientes', texto: 'O Lumen Pets tem mais de 120 mil clientes.', numero: 120000, unidade: 'clientes', trecho: t }); });
+        const seg = (i) => (usuario.split(/\[DOCUMENTO /).find((x) => x.startsWith(`${i}]`)) || '');
+        const noDoc = (i, re) => { const m = re.exec(seg(i)); return m ? m[0] : null; };
+        docs.forEach((d) => { const t = d.classe === 'imprensa' ? noDoc(d.i, /more than 120,000 customers|atende mais de 120\.000 clientes/) : noDoc(d.i, /mais de 120\.000 clientes usam o Lumen Pets/); if (t) afs.push({ documento: d.i, tipo: 'clientes', texto: 'O Lumen Pets tem mais de 120 mil clientes.', numero: 120000, unidade: 'clientes', trecho: t }); });
         const rec = trecho(/a receita anual chegou a US\$ 5 milhões em 2025/); const oficial = docs.find((d) => d.classe === 'oficial'); if (rec && oficial) afs.push({ documento: oficial.i, tipo: 'receita', texto: 'A receita anual chegou a US$ 5 milhões.', numero: 5000000, unidade: 'USD', periodo: '2025', trecho: rec });
         const preco = trecho(/Assinatura mensal a partir de US\$ 39/); if (preco && oficial) afs.push({ documento: oficial.i, tipo: 'modelo_receita', texto: 'A empresa cobra assinatura mensal.', numero: null, trecho: preco });
         const fund = trecho(/Lançamos o serviço em 2024/); if (fund && oficial) afs.push({ documento: oficial.i, tipo: 'lancamento', texto: 'O serviço foi lançado em 2024.', numero: 2024, trecho: fund });

@@ -6,7 +6,7 @@
   const ST = {
     carregando: false, carregou: false, erro: null, estado: null, filtro: 'todos', grupo: 'ativas', ops: [], total: 0, carrosseis: [], aprendizado: null,
     abertos: {}, editando: null, ocupado: {}, runId: null, progresso: null, polling: false, modal: null, slide: {}, detalhes: {}, publicando: null,
-    padrao: null, pautas: [], pauta: { modo: 'link', url: '', texto: '', nome: '', lote: '' }, conduzindo: {},
+    padrao: null, pautas: [], pauta: { modo: 'link', url: '', url2: '', texto: '', nome: '', lote: '' }, conduzindo: {},
   };
   const v1 = () => ST.padrao?.ativo !== false;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -100,12 +100,12 @@
     await carregar(ctx, { forcar: true });
   }
   async function novaPauta(ctx) {
-    const s = ST.pauta; const corpo = s.modo === 'link' ? { url: s.url.trim() } : s.modo === 'nome' ? { nome: s.nome.trim(), texto: s.texto.trim() || undefined } : { texto: s.texto.trim() };
+    const s = ST.pauta; const extra = s.url2.trim() ? [s.url2.trim()] : []; const corpo = s.modo === 'link' ? { url: s.url.trim(), fontes: extra } : s.modo === 'nome' ? { nome: s.nome.trim(), texto: s.texto.trim() || undefined } : { texto: s.texto.trim() };
     if (s.modo === 'link' && !/^https?:\/\/\S+$/i.test(corpo.url || '')) { ctx.toast('Cole um link que comece com http:// ou https://'); return; }
     if (s.modo === 'texto' && (corpo.texto || '').length < 200) { ctx.toast('Cole um texto com pelo menos 200 caracteres.'); return; }
     if (s.modo === 'nome' && (corpo.nome || '').length < 2) { ctx.toast('Escreva o nome do negócio.'); return; }
     ST.ocupado.pauta = true; ctx.render();
-    try { const r = await ctx.api('/api/radar/pautas', { method: 'POST', body: { ...corpo, origem: 'radar' } }); ST.pautas.unshift(r.pauta); ST.pauta = { ...ST.pauta, url: '', texto: '', nome: '' }; ctx.toast('Pauta recebida. Pesquisando e conferindo as fontes.'); conduzirPauta(ctx, r.pauta.id); }
+    try { const r = await ctx.api('/api/radar/pautas', { method: 'POST', body: { ...corpo, origem: 'radar' } }); ST.pautas.unshift(r.pauta); ST.pauta = { ...ST.pauta, url: '', url2: '', texto: '', nome: '' }; ctx.toast('Pauta recebida. Pesquisando e conferindo as fontes.'); conduzirPauta(ctx, r.pauta.id); }
     catch (e) { ctx.toast(e.message); } finally { delete ST.ocupado.pauta; ctx.render(); }
   }
   async function novoLote(ctx) {
@@ -122,7 +122,7 @@
     return `<section class="rd-novapauta" aria-labelledby="rd-np-t"><div class="rd-h2"><h2 id="rd-np-t">Nova pauta</h2><span>${esc(p?.nome || 'Pedro Destrava — Minimalista')}</span></div>
       <p class="rd-meta">Todo carrossel novo sai no padrão ${esc(p?.nome || 'Pedro Destrava — Minimalista')}: pesquisa, briefing, ganchos, texto, imagens e revisão. Nada é publicado sozinho.</p>
       <div class="rd-abas" role="group" aria-label="Tipo de pauta">${[['link', 'Link'], ['nome', 'Nome do negócio'], ['texto', 'Colar texto'], ['lote', 'Lote']].map(([k, r]) => `<button data-action="rd-pauta-modo" data-m="${k}" aria-pressed="${s.modo === k}">${r}</button>`).join('')}</div>
-      ${s.modo === 'link' ? `<label class="rd-campo">Link da matéria ou do site<input id="rd-np-url" type="url" inputmode="url" placeholder="https://…" value="${esc(s.url)}"></label>` : ''}
+      ${s.modo === 'link' ? `<label class="rd-campo">Link da matéria ou do site<input id="rd-np-url" type="url" inputmode="url" placeholder="https://…" value="${esc(s.url)}"></label><label class="rd-campo">Outra matéria sobre o mesmo negócio (opcional)<input id="rd-np-url2" type="url" inputmode="url" placeholder="https://…" value="${esc(s.url2)}"></label><p class="rd-meta">Números só entram com o site oficial ou com duas fontes independentes. Muitos sites oficiais recusam leitura automática: uma segunda matéria resolve.</p>` : ''}
       ${s.modo === 'nome' ? `<label class="rd-campo">Nome do negócio<input id="rd-np-nome" type="text" placeholder="Ex.: Too Good To Go" value="${esc(s.nome)}"></label>` : ''}
       ${s.modo === 'texto' ? `<label class="rd-campo">Texto da pauta (mín. 200 caracteres)<textarea id="rd-np-texto" rows="6">${esc(s.texto)}</textarea></label>` : ''}
       ${s.modo === 'lote' ? `<label class="rd-campo">Um link ou nome por linha (até ${esc(p?.lote_max || 10)})<textarea id="rd-np-lote" rows="6" placeholder="https://…&#10;Hipcamp">${esc(s.lote)}</textarea></label><button class="rd-btn laranja cheio" data-action="rd-lote" ${ST.ocupado.lote ? 'disabled' : ''}>${ST.ocupado.lote ? 'Criando o lote…' : 'Criar carrosséis em lote'}</button>` : `<button class="rd-btn laranja cheio" data-action="rd-pauta" ${ST.ocupado.pauta ? 'disabled' : ''}>${ST.ocupado.pauta ? 'Enviando…' : 'Criar carrossel'}</button>`}
@@ -384,7 +384,7 @@
   root.addEventListener('click', (ev) => { const sm = ev.target.closest('summary[data-rd-nova]'); if (sm) { ST.nova = { ...(ST.nova || {}), aberta: !sm.parentElement.open }; } });
   root.addEventListener('input', (ev) => {
     const t = ev.target; if (t.matches?.('[data-rd-form="historia"] textarea')) ST.nova = { ...(ST.nova || {}), json: t.value };
-    const campo = { 'rd-np-url': 'url', 'rd-np-nome': 'nome', 'rd-np-texto': 'texto', 'rd-np-lote': 'lote' }[t.id]; if (campo) ST.pauta[campo] = t.value;
+    const campo = { 'rd-np-url': 'url', 'rd-np-url2': 'url2', 'rd-np-nome': 'nome', 'rd-np-texto': 'texto', 'rd-np-lote': 'lote' }[t.id]; if (campo) ST.pauta[campo] = t.value;
   });
   root.addEventListener('change', async (ev) => {
     const t = ev.target; if (t.id !== 'rd-foto-pedro' || !t.files?.[0]) return; const ctx = ctxAtual();
