@@ -393,4 +393,4 @@ async function renderizarTela(tela, ctx = {}) {
   return { png, metrics: { layout: tela.layout, variante: tela.variante || null, cabe: r.problemas.length === 0, problemas: [...new Set(r.problemas)], blocos: r.blocos, fonte_px: r.blocos.length ? Math.min(...r.blocos.map((b) => b.tam)) : null, caixas: r.caixas, sem_imagem: r.sem_imagem, elementos: r.elementos, largura: W, altura: H } };
 }
 
-module.exports = { renderizarTela, ajustar, partirValor, quebrarLinhas, COR, MIN, MARGEM, PAD, LAYOUTS: Object.keys(LAYOUTS), W, H };
+module.exports = { renderizarTela, ajustar, ajustarPar, desenhar, foto, partirValor, quebrarLinhas, linha, COR, MIN, MARGEM, PAD, LAYOUTS: Object.keys(LAYOUTS), W, H };

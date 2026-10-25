@@ -24,7 +24,7 @@ const CUE = {
   investimento: /(rais(?:ed|es|ing)\b|funding|funded|seed\b|series [a-e]\b|round\b|investment|invested|backed by|captou|capta[cç][aã]o|rodada|aporte|investimento|investiu)/i,
   valuation: /(valuation|valued at|valuing|avalia(?:da|do|[cç][aã]o)|vale(?:ndo)? \$|unic[oó]rnio|unicorn)/i,
   lucro: /(profitable|profit\b|profits\b|net income|lucrativ|lucro|rentabilidade|in the black|cash[- ]flow positive)/i,
-  pessoas: /(users|customers|subscribers|downloads|clients|merchants|sellers|members|businesses|companies|creators|drivers|patients|students|stores|partners|retailers|restaurants|shops|vendors|suppliers|people|pessoas|visitors|visitantes|hosts|anfitri[oõ]es|usu[aá]rios|clientes|assinantes|lojistas|membros|empresas|criadores|motoristas|alunos|lojas)/i,
+  pessoas: /(users|customers|subscribers|downloads|clients|merchants|sellers|members|businesses|companies|creators|drivers|patients|students|stores|partners|retailers|restaurants|shops|vendors|suppliers|people|pessoas|campers|campistas|user base|userbase|community|comunidade|visitors|visitantes|hosts|anfitri[oõ]es|usu[aá]rios|clientes|assinantes|lojistas|membros|empresas|criadores|motoristas|alunos|lojas)/i,
   crescimento: /(growth|grew|growing|yoy|year[- ]over[- ]year|month[- ]over[- ]month|tripled|doubled|quadrupled|cresc|dobrou|triplicou|aument)/i,
   paises: /(countries|markets|pa[ií]ses|mercados)/i,
 };

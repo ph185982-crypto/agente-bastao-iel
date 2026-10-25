@@ -1,0 +1,76 @@
+{
+  "historia": {
+    "nome": "Hipcamp",
+    "pais": "EUA",
+    "categoria": "startup",
+    "site_oficial": "https://www.hipcamp.com/",
+    "resumo": "Aplicativo em que donos de terra, fazendas e campings anunciam lugares para acampar, e campistas reservam pelo celular.",
+    "problema": "Falta vaga para acampar, e quem tem terra tem pouca forma simples de transformá-la em renda.",
+    "solucao": "Um aplicativo que conecta quem tem terra a quem quer acampar, com anúncio grátis e comissão sobre as reservas.",
+    "como_ganha_dinheiro": "Anúncio grátis; o app cobra uma comissão sobre as reservas.",
+    "modelo_receita": "comissao",
+    "adaptacao_brasil": "Testar com um sítio e uma lista de espera de campistas, antes de pensar em aplicativo.",
+    "fontes": [
+      "https://www.hipcamp.com/en-US/host",
+      "https://support.hipcamp.com/hc/en-gb/articles/360024823412-How-much-does-it-cost-to-list-and-is-there-a-commission-fee",
+      "https://rv-pro.com/news/hipcamp-launches-expansion-to-grow-campground-bookings/",
+      "https://shorttermrentalz.com/news/hipcamp-doubles-listings-to-simplify-camping-bookings/",
+      "https://moderncampground.com/?p=63253",
+      "https://rv-pro.com/news/hipcamp-doubles-us-campsite-inventory/"
+    ],
+    "afirmacoes": [
+      { "fonte": 2, "tipo": "usuarios", "texto": "A comunidade do Hipcamp tem mais de 7 milhões de campistas frequentes.", "numero": 7000000, "unidade": "usuarios", "periodo": "2025", "trecho": "Hipcamp is now giving every operator access to its fast-growing community of over 7 million frequent campers" },
+      { "fonte": 3, "tipo": "usuarios", "texto": "A comunidade do Hipcamp tem mais de 7 milhões de campistas frequentes.", "numero": 7000000, "unidade": "usuarios", "periodo": "2025", "trecho": "The expansion also opens access to Hipcamp’s 7 million-strong user base" },
+      { "fonte": 5, "tipo": "outro", "texto": "O app passou a listar mais de 500 mil lugares para acampar nos Estados Unidos.", "numero": 500000, "unidade": "unidades", "periodo": "2025", "trecho": "Hipcamp announced it has doubled its U.S. inventory to more than 500,000 campsites." },
+      { "fonte": 3, "tipo": "outro", "texto": "O app passou a listar mais de 500 mil lugares para acampar nos Estados Unidos.", "numero": 500000, "unidade": "unidades", "periodo": "2025", "trecho": "now hosts over 500,000 listings" },
+      { "fonte": 4, "tipo": "outro", "texto": "O app passou a listar mais de 500 mil lugares para acampar nos Estados Unidos.", "numero": 500000, "unidade": "unidades", "periodo": "2025", "trecho": "The company says the expansion brings its total inventory to over 500,000 sites" },
+      { "fonte": 2, "tipo": "outro", "texto": "56% dos campistas tiveram dificuldade de reservar porque os campings estavam lotados.", "numero": 56, "unidade": "%", "periodo": "2024", "trecho": "56% percent of campers report difficulty booking a site because campgrounds are full" },
+      { "fonte": 4, "tipo": "outro", "texto": "56% dos campistas tiveram dificuldade de reservar porque os campings estavam lotados.", "numero": 56, "unidade": "%", "periodo": "2024", "trecho": "According to Hipcamp, 56% of campers say they have difficulty finding open sites due to capacity issues." },
+      { "fonte": 0, "tipo": "modelo_receita", "texto": "Criar o anúncio é grátis para quem tem a terra.", "trecho": "Build your free listing in a few simple steps and make changes anytime." },
+      { "fonte": 1, "tipo": "modelo_receita", "texto": "O Hipcamp cobra uma comissão sobre as reservas do anfitrião.", "trecho": "Once you start hosting Hipcampers, Hipcamp takes a 12.5% plus VAT commission on your earnings" },
+      { "fonte": 0, "tipo": "produto", "texto": "O dono da terra define quando recebe, quem recebe e quanto cobra.", "trecho": "Control when you host, who you host, and how much to charge." },
+      { "fonte": 0, "tipo": "outro", "texto": "Uma fazenda de porcos na Carolina do Norte recebe campistas para manter a fazenda funcionando.", "trecho": "On a 95-acre working pig farm near the Great Smoky Mountains, Rick and Catherine host campers to help keep the farm thriving." }
+    ]
+  },
+  "rascunho": {
+    "ficha": {
+      "problema": "Falta vaga para acampar, e quem tem terra tem pouca forma simples de transformá-la em renda.",
+      "quem_compra": "Campistas que querem reservar um lugar. Donos de terra, que querem renda extra.",
+      "por_que_compra": "O campista acha um lugar diferente; o dono ganha com um pedaço da propriedade.",
+      "como_cobra": "Anúncio grátis; o Hipcamp cobra uma comissão sobre as reservas.",
+      "evidencia": [{ "claim_id": "c1", "nota": "7 milhões de campistas frequentes, número da própria empresa repetido por duas fontes da imprensa especializada." }],
+      "surpresa": "Uma fazenda de porcos pagou ração com o dinheiro de quem foi acampar lá.",
+      "dificuldades": [{ "texto": "O app só funciona com gente dos dois lados: campistas para reservar e donos de terra para anunciar.", "claim_id": "c6" }, "A empresa ampliou o catálogo com parques e campings tradicionais, e o desafio é manter a graça das fazendas no meio de tanta opção."],
+      "inspiracao_brasil": "Hipótese: começar com um sítio e uma lista de espera de campistas, antes de pensar em aplicativo.",
+      "imagens_necessarias": [
+        { "funcao": "descoberta", "mostrar": "campista numa fazenda" },
+        { "funcao": "revelacao", "mostrar": "dono da terra recebendo campistas" },
+        { "funcao": "evidencia", "mostrar": "tela real do aplicativo" }
+      ],
+      "ilustracao": { "consulta": "farm camping tent", "descricao": "barraca numa fazenda" }
+    },
+    "capas": [
+      { "angulo": "contradicao", "titulo": "Fazendeiros ganham dinheiro **hospedando gente de barraca** na própria terra.", "apoio": "E um app fica com uma parte de cada reserva." },
+      { "angulo": "situacao", "titulo": "A primeira renda dessa fazenda virou **ração para os porcos**.", "apoio": "Veio de gente que pagou para acampar lá." },
+      { "angulo": "descoberta", "titulo": "Um app listou **mais de 500 mil lugares** para acampar, e parte deles é fazenda.", "apoio": "" }
+    ],
+    "capa_escolhida": 1,
+    "telas": [
+      { "funcao": "descoberta" },
+      { "funcao": "tensao", "rotulo": "O problema dos dois lados", "titulo": "Falta vaga para acampar.", "linha2": "Mas há fazenda com espaço.", "apoio": "Segundo a empresa, 56% dos campistas tiveram dificuldade de reservar porque os campings estavam lotados.", "palavra": "Lotado" },
+      { "funcao": "revelacao", "rotulo": "Aí entra o **Hipcamp**", "titulo": "Ele deixa o dono da terra **abrir um camping** num cantinho da propriedade.", "apoio": "O dono separa uma parte da terra, cria o anúncio e define regras e preço. O campista reserva pelo app." },
+      { "funcao": "dinheiro", "rotulo": "Onde está o dinheiro?", "titulo": "O campista paga. O dono recebe. E **o app fica com uma parte.**", "apoio": "Criar o anúncio é grátis. O Hipcamp cobra uma comissão sobre as reservas." },
+      { "funcao": "evidencia", "rotulo": "A comunidade já é grande", "claim_id": "c1", "legenda": "de campistas frequentes, segundo o app.", "apoio": "Número informado pela própria empresa e repetido pela imprensa especializada." },
+      { "funcao": "estrategia", "rotulo": "O detalhe que importa", "titulo": "O app só vale se tiver **gente dos dois lados**.", "apoio": "Sem campista, a fazenda não ganha. Sem fazenda, o campista vai para outro lugar. Por isso o app também passou a listar campings tradicionais." },
+      { "funcao": "licao", "rotulo": "A lição para quem quer começar", "titulo": "Antes de montar um app, **veja quem tem terra e quer renda.**", "apoio": "No Brasil, o teste poderia começar com um sítio e uma lista de espera de campistas.", "nota": "Não é promessa de lucro. É uma hipótese para testar.", "palavra": "Antes" },
+      { "funcao": "pedro", "titulo": "Tem negócio bom escondido em **problema que todo mundo ignora.**", "apoio": "para descobrir negócios que já funcionam no mundo." }
+    ],
+    "legenda": {
+      "primeira_linha": "Tem fazendeiro vivendo de gente que paga para acampar.",
+      "historia": "O Hipcamp junta quem tem terra com quem quer acampar. O dono define regras e preço; o campista reserva pelo app.",
+      "como_ganha": "O anúncio é grátis e o app fica com uma comissão sobre cada reserva.",
+      "brasil": "Hipótese para testar: um sítio e uma lista de espera de campistas, sem app."
+    },
+    "hashtags": ["negocios", "empreendedorismo", "ideiasdenegocio"]
+  }
+}

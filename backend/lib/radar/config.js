@@ -119,7 +119,7 @@ const FONTES_API = Object.freeze([
   { id: 'hn_busca', nome: 'Hacker News: busca por termos', classe: 'comunidade', pais: 'EUA' },
 ]);
 
-const DOMINIOS_IMPRENSA = /(techcrunch|crunchbase|fastcompany|forbes|inc\.com|entrepreneur|eu-startups|sifted|thenextweb|inc42|restofworld|exame|startups\.com\.br|neofeed|businessinsider|bloomberg|reuters|wsj|ft\.com|theverge|wired|cnbc|bbc|nytimes|washingtonpost|theguardian|medium\.com\/@?[a-z-]*(?:\/|$)|startse|pegn|modernretail|foodbusinessnews|aol\.com|nbc[a-z]*\.com|necn\.com|usatoday|apnews|npr\.org|time\.com|fortune\.com|bostonglobe|ilsole24ore|lemonde|elpais|thehill|businessinsider|infomoney|valor\.globo|folha|estadao|g1\.globo|vcnewsletter|axios|semafor|theinformation|businessinsider)/i;
+const DOMINIOS_IMPRENSA = /(techcrunch|crunchbase|fastcompany|forbes|inc\.com|entrepreneur|eu-startups|sifted|thenextweb|inc42|restofworld|exame|startups\.com\.br|neofeed|businessinsider|bloomberg|reuters|wsj|ft\.com|theverge|wired|cnbc|bbc|nytimes|washingtonpost|theguardian|medium\.com\/@?[a-z-]*(?:\/|$)|startse|pegn|modernretail|foodbusinessnews|rv-pro|shorttermrentalz|moderncampground|skift|aol\.com|nbc[a-z]*\.com|necn\.com|usatoday|apnews|npr\.org|time\.com|fortune\.com|bostonglobe|ilsole24ore|lemonde|elpais|thehill|businessinsider|infomoney|valor\.globo|folha|estadao|g1\.globo|vcnewsletter|axios|semafor|theinformation|businessinsider)/i;
 const DOMINIOS_AGREGADORES = /(^|\.)(producthunt\.com|news\.ycombinator\.com|ycombinator\.com|kickstarter\.com|reddit\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|linkedin\.com|youtube\.com|youtu\.be|tiktok\.com|t\.me|github\.com|medium\.com|substack\.com|google\.com|news\.google\.com|apple\.com|play\.google\.com|wikipedia\.org|archive\.org)$/i;
 
 module.exports = {
