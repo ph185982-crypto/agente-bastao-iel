@@ -130,3 +130,4 @@
 .rdn-ok{font-size:13px;color:#2F6B2F;background:#EDF7ED;border-radius:9px;padding:9px 11px}
 .rdn-rodape{display:flex;gap:10px;align-items:center;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid #D9D3C4;background:#fff}.rdn-rodape .rd-btn{flex:1}
 @media (min-width:700px){.rdn-img{grid-template-columns:180px 1fr}}
+.rdn .rd-btn.peq{min-height:44px}.rdn summary{min-height:44px;display:flex;align-items:center;cursor:pointer}

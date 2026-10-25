@@ -172,7 +172,7 @@ async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, or
       if (restante() < 6000) { doc.etapa = 'imagens'; await salvar(); return doc; }
       const r = await Fotos.reunir(op, { deps, agora, ilustracao: doc.ilustracao });
       doc.imagens = []; let k = 0; for (const a of r.imagens.slice(0, 8)) doc.imagens.push(await Fotos.guardar(store, id, a, `im${++k}`));
-      doc.avisos = r.avisos; doc.imagens_prontas = true; atribuirImagens(doc.telas, doc.imagens); doc.etapa = 'render'; await salvar();
+      doc.avisos = [...new Set(r.avisos)]; doc.imagens_prontas = true; atribuirImagens(doc.telas, doc.imagens); doc.etapa = 'render'; await salvar();
     }
     // 3) render + validação + pacote
     if (restante() < 12000 && doc.render?.length !== doc.telas.length) { await salvar(); return doc; }
