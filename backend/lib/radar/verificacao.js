@@ -127,7 +127,8 @@ async function reunirDocumentos(cand, { deps = {}, agora = Date.now() } = {}) {
     return { ...d, classe: 'oficial', dominio: dom };
   })());
   // 2) Matérias de imprensa citadas nos itens (até 2).
-  const imprensa = [...new Map(cand.fontes_itens.filter((f) => f.fonte_classe === 'imprensa' && !C.DOMINIOS_AGREGADORES.test(U.host(f.url))).map((f) => [f.url, f])).values()].slice(0, 2);
+  // pesquisa diária: até 2 matérias por negócio (tempo); pauta indicada pelo Pedro: até 3 (link + duas matérias extras)
+  const imprensa = [...new Map(cand.fontes_itens.filter((f) => f.fonte_classe === 'imprensa' && !C.DOMINIOS_AGREGADORES.test(U.host(f.url))).map((f) => [f.url, f])).values()].slice(0, cand.max_imprensa || 2);
   imprensa.forEach((f) => tarefas.push((async () => {
     const d = await lerUm(f.url, 'imprensa');
     if (!d) return null;
