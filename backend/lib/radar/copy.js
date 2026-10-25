@@ -164,7 +164,7 @@ function validarTelas(slides, op) {
       if (s.itens.some((i) => !i.valor)) erros.push('Tela 7: faltam itens da hipótese');
       s.itens.forEach((i) => { if (U.contaPalavras(i.valor) > 3) erros.push(`Tela 7: “${i.valor}” tem mais de 3 palavras`); });
     }
-    if (s.n === 6 && s.itens.some((i) => !i || U.contaPalavras(i) > 4)) erros.push('Tela 6: cada item deve ter de 1 a 4 palavras');
+    if (s.n === 6 && s.itens.some((i) => !i || U.contaPalavras(i) > 4 || U.contaPalavras(i) < 2)) erros.push('Tela 6: cada item deve ser uma expressão com sentido completo, de 2 a 4 palavras (não uma palavra solta)');
     if (s.n === 3 && VERBO_CONJUGADO.test(String(s.texto).split(/\bque faz\s+/i).pop() || '')) erros.push('Tela 3: depois de “que faz” escreva o que muda para o cliente (“o cachorro ficar limpo sem sair de casa”), não outro verbo conjugado');
     if (s.n === 2 && !s.corpo.replace(/[.]/g, '').trim()) erros.push('Tela 2: faltou descrever o problema');
   });
@@ -207,7 +207,7 @@ ESTRUTURA (o sistema monta as frases de abertura; você escreve só o que falta)
 3. solucao: “produto” (com artigo, SEM verbo: “um aplicativo de gestão de afiliados”, 3 a 8 palavras) e “resultado” (3 a 10 palavras, completa “que faz …”: “o cachorro ficar limpo sem você sair”, “pagamentos de comissão acontecerem sozinhos”; nunca comece com verbo conjugado como “rastreia” ou “paga”) para a frase “A solução foi criar [produto] que faz [resultado].”
 4. dinheiro: “modelo” (assinatura, comissao, venda, licenca, mensalidade, publicidade, marketplace ou servico_recorrente) e “explicacao” que completa “O dinheiro entra assim:” (de 6 a 18 palavras). Só descreva como cobra o que estiver nos DADOS_VERIFICADOS ou em negocio.como_ganha_dinheiro.
 5. prova (a tela soma título + valor + rótulo + a atribuição “segundo a empresa”, de 8 a 25 palavras; use 2 ou 3 itens se houver, e título de 4 a 6 palavras): “titulo” e “itens”: de 1 a 3 itens {claim_id, rotulo}, onde claim_id vem de DADOS_VERIFICADOS (somente afirmações com número) e rotulo (1 a 3 palavras, sem números) diz o que o número mede, ex.: “usuários ativos”. O valor aparece sozinho, vindo da fonte.
-6. funciona: “dor”, “facilidade”, “recorrencia”: três itens de 1 a 4 palavras que completam “Funciona porque junta três coisas:”.
+6. funciona: “dor”, “facilidade”, “recorrencia”: três itens de 2 a 4 palavras, cada um com sentido completo, que completam “Funciona porque junta três coisas:” (ex.: “empresas sem tempo para parcerias”, “cadastro e pagamento automáticos”, “cobrança mensal que se repete”). Nada de adjetivo solto.
 7. brasil (hipótese prática, nunca promessa): publico_inicial, produto_minimo, canal_de_vendas, forma_de_cobranca, teste_baixo_custo: cada um com 2 a 3 palavras (ex.: “pet shops de bairro”). Sem valores em dinheiro nem porcentagens.
 (A tela 8 é fixa; não escreva.)
 Telas 2 a 7 somam entre 8 e 25 palavras CADA UMA (contando a frase de abertura e os rótulos Público/Produto/Canal/Cobrança/Teste na tela 7). A tela 7 já tem 6 + 5 = 11 palavras fixas: os cinco valores somam no máximo 14.

@@ -348,3 +348,9 @@ test('copy: "que faz" seguido de outro verbo conjugado é recusado', () => {
   assert.ok(erros('rastreia referências e paga comissões').some((e) => /Tela 3: depois de/.test(e)));
   assert.ok(!erros('os pagamentos de comissão acontecerem sozinhos').some((e) => /Tela 3: depois de/.test(e)));
 });
+
+test('copy: item solto de uma palavra na tela 6 é recusado', () => {
+  const op = opLumen(); const j = (a) => ({ slides: [{ n: 1, texto: 'x' }, { n: 2, problema: 'dar banho no cachorro em casa vira bagunça e o pet shop vive lotado' }, { n: 3, produto: 'um serviço de banho', resultado: 'o cachorro ficar limpo sem sair' }, { n: 4, modelo: 'assinatura', explicacao: 'o cliente paga uma mensalidade fixa e recebe visitas toda semana' }, { n: 5, titulo: 't', itens: [] }, { n: 6, dor: a, facilidade: 'serviço na porta', recorrencia: 'cobrança mensal' }, { n: 7 }] });
+  const e = (a) => Copy.validarTelas(Copy.montarTelas(j(a), op).slides, op);
+  assert.ok(e('mensal').some((x) => /Tela 6/.test(x))); assert.ok(!e('dor de todo dono').some((x) => /Tela 6: cada/.test(x)));
+});
