@@ -8,7 +8,8 @@
   else root.Editorial = api;
 })(typeof self !== 'undefined' ? self : this, function () {
   const VOZ = `PERFIL: @pedro_destrava combina política, economia, empreendedorismo e as consequências práticas disso na vida cotidiana.
-PERSPECTIVA DECLARADA: direita, a favor da liberdade econômica, da redução da burocracia e da responsabilidade no uso do dinheiro público. Essa perspectiva orienta a interpretação e o enquadramento. Ela NUNCA autoriza inventar fato, atribuir fala que não existe, esconder informação relevante que contraria a tese ou forçar a pesquisa a confirmar uma opinião.
+POSICIONAMENTO: "o cara que mostra a estratégia escondida por trás". Explica como decisões políticas, econômicas e empresariais afetam quem trabalha e empreende. Curiosidade primeiro, mecanismo e explicação depois, aplicação ao negócio só quando houver ligação concreta com a pauta.
+PERSPECTIVA DECLARADA: voz autoral de direita, a favor da liberdade econômica, da redução da burocracia, da responsabilidade fiscal e no uso do dinheiro público, da família e da iniciativa privada. Opinião clara, sempre sustentada por contexto, fatos e argumentos. Essa perspectiva orienta a interpretação e o enquadramento. Ela NUNCA autoriza inventar fato, atribuir fala que não existe, esconder informação relevante que contraria a tese ou forçar a pesquisa a confirmar uma opinião.
 VOZ: direta, natural, concreta e compreensível; firme quando há posição; sem linguagem de relatório; sem frase montada só para parecer impactante. Escreva como alguém explicando a um conhecido inteligente. Linguagem acessível ao público geral.
 NÃO presuma classe social, religião ou orientação política de quem segue. Não personalize persuasão por esses traços.
 OPINIÃO: deve aparecer como opinião (“eu acho”, “na minha leitura”), com suas premissas factuais claras e checáveis.
@@ -62,5 +63,40 @@ NÃO obrigue todo post a ter uma contradição, um vilão ou um número. Se os f
   // Valor inicial do perfil de voz; o Pedro edita em Ajustes.
   const VOICE_PROFILE_PADRAO = 'Português brasileiro, direto e informal, frases curtas, sem enrolação, como quem fala com um amigo empreendedor. Foco em negócios, vendas online e marketing digital. Sem jargão desnecessário. Máximo de 2 emojis na legenda. Fechamento com chamada para seguir ou comentar.';
 
-  return { VOICE_PROFILE_PADRAO, VOZ, PILARES_PADRAO, OBJETIVOS, ESTRUTURAS, FORMATOS, FUNCOES_SLIDE, COMPOSICAO_CAPAS };
+
+  // ── Padrão de produção do @pedro_destrava ─────────────────────────────────
+  // FACE → GAP → PROVA → CONTRADIÇÃO/CONSEQUÊNCIA → LEITURA → CTA, mapeado nas funções de slide que
+  // a arte e os gates já entendem. O código confere o que dá para conferir (qualityGates); o resto é
+  // lista de checagem humana (docs/PADRAO_PRODUCAO.md). Nada aqui promete resultado.
+  const ESTRUTURA_PADRAO = [
+    { etapa: 'FACE', funcoes: ['capa'], regra: 'Mostra o protagonista ou a situação real, nomeia o assunto e apresenta uma tensão concreta. Capa curta, específica, compreensível para quem ainda não segue o perfil; nunca esconda o tema atrás de frase vaga.' },
+    { etapa: 'GAP', funcoes: ['contexto'], regra: 'Mostra o que falta entender e cria UMA pergunta que o próximo slide responde de verdade. Acrescenta informação nova: não repete a capa.' },
+    { etapa: 'PROVA', funcoes: ['prova'], regra: 'Dado, documento, declaração ou exemplo verificável, com data, período, unidade e contexto preservados, e a fonte identificada. Exemplo fictício aparece como exemplo.' },
+    { etapa: 'CONTRADIÇÃO OU CONSEQUÊNCIA', funcoes: ['comparacao', 'consequencia'], regra: 'Mostra a distância entre discurso e prática, ou entre expectativa e resultado, ou explica a consequência do fato. Não force contradição que a evidência não sustenta.' },
+    { etapa: 'LEITURA DO PEDRO', funcoes: ['opiniao', 'explicacao'], regra: 'Explica o mecanismo por trás do assunto e apresenta a posição do Pedro com uma consequência concreta, marcada como opinião e apoiada nas provas. Ponte com negócios só quando fizer sentido. O penúltimo slide fecha o raciocínio e dá motivo para acompanhar o perfil.' },
+    { etapa: 'CTA', funcoes: ['encerramento'], regra: 'Encerramento fixo (arte aprovada “Eu comecei o Pedro Destrava por isso”). Uma chamada principal: seguir @pedro_destrava, com motivo específico ligado à pauta.' },
+  ];
+  // Expressões que o Pedro não quer ver em nenhum texto público (bloqueio no gate).
+  const FRASES_PROIBIDAS = [
+    { id: 'pensar_antes_de_reagir', rotulo: 'pensar antes de reagir', re: /pens(?:ar|e|em|ando|amos)\s+antes\s+de\s+reagi(?:r|ndo)|pense\s+antes\s+de\s+reagi(?:r|ndo)/ },
+  ];
+  const SLIDES_BASE = { min: 6, max: 7 };
+  const PALAVRAS_MIOLO = { min: 25, max: 45 };
+  // Critério de aprovação, na ordem em que o Pedro faz as perguntas. `codigo` = o gate confere sozinho.
+  const CRITERIO_APROVACAO = [
+    { id: 'capa_faz_parar', pergunta: 'A capa faz parar?', codigo: false },
+    { id: 'segundo_sustenta', pergunta: 'O segundo slide sustenta a curiosidade?', codigo: true },
+    { id: 'cada_tela_acrescenta', pergunta: 'Cada tela acrescenta algo?', codigo: true },
+    { id: 'provas_sustentam', pergunta: 'As provas sustentam a conclusão?', codigo: true },
+    { id: 'posicao_clara', pergunta: 'A posição do Pedro está clara?', codigo: true },
+    { id: 'motivo_seguir', pergunta: 'Existe motivo para seguir o perfil?', codigo: true },
+    { id: 'humana_legivel', pergunta: 'A arte parece humana e é legível no celular?', codigo: false },
+  ];
+  const padraoParaPrompt = ({ formato = 'carrossel', editorial = false } = {}) => `PADRÃO DE PRODUÇÃO DO PERFIL (siga a ordem; cada slide tem UMA função e avança a história):
+${ESTRUTURA_PADRAO.map((e, i) => `${i + 1}. ${e.etapa} (${e.funcoes.join(' ou ')}): ${e.regra}`).join('\n')}
+${formato === 'estatico' ? '' : `QUANTIDADE: base de ${SLIDES_BASE.min} a ${SLIDES_BASE.max} slides contando o encerramento fixo. Expanda só quando a pauta exigir, sem criar tela para preencher espaço.\n`}TEXTO: capa curta e forte; uma ideia principal por tela; miolo de ${PALAVRAS_MIOLO.min} a ${PALAVRAS_MIOLO.max} palavras como referência flexível (menos quando a mensagem já está completa); frases naturais, com ritmo de fala; sem introdução longa, sem moral genérica, sem conclusão desconectada da prova. NUNCA use a expressão "pensar antes de reagir".
+FATO E OPINIÃO: distinga fato, alegação, hipótese e opinião. Opinião clara, de direita (liberdade econômica, responsabilidade fiscal, família, iniciativa privada), sempre sustentada pelas afirmações listadas. Nunca invente manchete, depoimento, número ou documento. Aplicação ao negócio só com ligação concreta com a pauta.
+CTA E LEGENDA: uma chamada principal por publicação (seguir @pedro_destrava) com motivo específico ligado à pauta e à visão do Pedro. Legenda curta e complementar, sem repetir todas as telas. Três hashtags relevantes quando aplicável.${editorial ? '' : ''}`;
+
+  return { ESTRUTURA_PADRAO, FRASES_PROIBIDAS, SLIDES_BASE, PALAVRAS_MIOLO, CRITERIO_APROVACAO, padraoParaPrompt, VOICE_PROFILE_PADRAO, VOZ, PILARES_PADRAO, OBJETIVOS, ESTRUTURAS, FORMATOS, FUNCOES_SLIDE, COMPOSICAO_CAPAS };
 });

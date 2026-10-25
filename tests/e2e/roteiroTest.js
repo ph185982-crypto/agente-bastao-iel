@@ -46,6 +46,10 @@ const falhas = []; const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m);
   ok(await p.locator('[data-action="st-aprovar"]').count() === 0, 'não existe botão de publicar para um roteiro');
   const n = await p.innerText('.st-feed-tabs');
   ok(/Para aprovar\s*1/.test(n), 'a aba Para aprovar conta o roteiro');
+  const trilho = await p.innerText('.st-trilho');
+  ok(/1\s*Roteiros para aprovar/.test(trilho) && await p.locator('.st-trilho button.vez').count() === 1, 'o trilho do fluxo mostra o roteiro e marca a etapa da vez');
+  ok(await p.evaluate(async () => { await document.fonts.ready; return document.fonts.check('800 20px "Manrope PD"') && document.fonts.check('400 16px "Inter PD"'); }), 'as fontes da marca (Manrope e Inter) carregaram');
+  ok(await p.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(246, 245, 240)', 'o fundo do app é o branco quente da marca');
   await p.screenshot({ path: `${SP}/rt_1_roteiro.png` });
 
   await p.click('[data-action="st-roteiro-aprovar"]');

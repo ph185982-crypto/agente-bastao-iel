@@ -5,10 +5,10 @@
 // Um post pode estar bem escrito e factualmente pendente: o resumo mostra os dois.
 // Puro e sem rede. Não existe "nota": cada item diz o que está errado e onde.
 (function (root, factory) {
-  const api = factory(typeof module === 'object' && module.exports ? require('./contentModel') : root.ContentModel, typeof module === 'object' && module.exports ? require('./hookGuard') : root.HookGuard);
+  const api = factory(typeof module === 'object' && module.exports ? require('./contentModel') : root.ContentModel, typeof module === 'object' && module.exports ? require('./hookGuard') : root.HookGuard, typeof module === 'object' && module.exports ? require('./editorial') : root.Editorial);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.QualityGates = api;
-})(typeof self !== 'undefined' ? self : this, function (M, HG) {
+})(typeof self !== 'undefined' ? self : this, function (M, HG, E) {
   const LIMITE_PALAVRAS = { capa_foto: 12, capa_tipografica: 12, explicacao: 45, prova: 40, comparacao: 40, encerramento: 25 };
 
   const ABERTURAS_GENERICAS = [/^voc[eê] sabia/i, /^prepare-se/i, /^aten[cç][aã]o[:!]/i, /^isso muda tudo/i, /^uma reflex[aã]o/i, /^vamos falar sobre/i, /^hoje eu (quero|vou) falar/i, /^nesse (post|v[ií]deo)/i];
@@ -69,6 +69,15 @@
     const todoTexto = textos.map((t) => t.texto).join(' ') + ' ' + (v.hashtags || []).join(' ');
     M.HANDLES_ERRADOS.forEach((h) => {
       if (new RegExp(`@${h}(?![a-z0-9_])`, 'i').test(todoTexto)) out.push(bloqueio('handle_errado', 'conta', `Aparece @${h}`, `O @ correto é ${pin.handle}. Corrija o texto.`, null, 'Corrigir o @'));
+    });
+
+    // Expressões que o Pedro não quer em nenhum texto público (padrão de produção).
+    const tudoNorm = norm(todoTexto);
+    ((E && E.FRASES_PROIBIDAS) || []).forEach((f) => {
+      if (f.re.test(tudoNorm)) {
+        const t = textos.find((x) => f.re.test(norm(x.texto)));
+        out.push(bloqueio('frase_proibida', 'redacao', 'Expressão que o perfil não usa', `O texto traz “${f.rotulo}”. Reescreva dizendo o que a pessoa deve fazer ou entender, sem essa frase.`, t ? t.onde : null, 'Reescrever o trecho'));
+      }
     });
 
     // Legado
@@ -277,6 +286,32 @@
     // "Segue o perfil" sem dizer o que a pessoa ganha seguindo não dá motivo para seguir.
     if (cta && palavras(v.cta).length <= 6 && /\b(segue|siga|seguir)\b/.test(cta) && !/\b(para|pra|que|toda|todo|cada|ver|receber)\b/.test(cta)) out.push(sugestao('cta_generico', 'redacao', 'Chamada final genérica', 'Só “segue o perfil” não dá motivo. Diga o que a pessoa recebe seguindo (ex.: “todo dia, o que a notícia muda no seu bolso”) ou peça para enviar a alguém.'));
     if (!cta) out.push(sugestao('cta_ausente', 'redacao', 'Sem chamada final', 'Nenhum pedido ao leitor. Pode ser proposital; confirme.'));
+
+    // Padrão de produção: estrutura, repetição da capa, posição do Pedro, prova, legenda.
+    const carrossel = v.formato !== 'estatico' && slides.length >= 3; // 1–2 telas não é carrossel: o padrão de estrutura não se aplica
+    if (carrossel && E && E.SLIDES_BASE) {
+      const n = slides.length;
+      if (n < E.SLIDES_BASE.min) out.push(sugestao('poucos_slides', 'redacao', 'Menos slides que a base', `São ${n} slides e a base é de ${E.SLIDES_BASE.min} a ${E.SLIDES_BASE.max}. Se a pauta pede mais, acrescente só telas que avancem a história.`));
+      else if (n > E.SLIDES_BASE.max + 1) out.push(sugestao('muitos_slides', 'redacao', 'Mais slides que a base', `São ${n} slides e a base é de ${E.SLIDES_BASE.min} a ${E.SLIDES_BASE.max}. Só mantenha as telas que avançam a história.`));
+    }
+    if (carrossel && slides.length >= 2) {
+      const a = new Set(norm(slides[0].texto).split(' ').filter((w) => w.length > 3));
+      const b = new Set(norm(slides[1].texto).split(' ').filter((w) => w.length > 3));
+      if (a.size >= 3 && b.size >= 3) {
+        const inter = [...a].filter((w) => b.has(w)).length;
+        if (inter / Math.min(a.size, b.size) >= 0.5) out.push(sugestao('segundo_repete_capa', 'redacao', 'O segundo slide repete a capa', 'O segundo slide precisa acrescentar o que falta entender, não retomar a capa com outras palavras.', slides[1].onde));
+      }
+    }
+    if (carrossel) {
+      const funcoes = (v.slides || []).map((s) => s.funcao);
+      const temOpiniao = funcoes.includes('opiniao') || claimsUsadas(c, textos).some((k) => k.tipo === 'opiniao' || k.natureza === 'opiniao');
+      if (!temOpiniao) out.push(sugestao('sem_leitura_do_pedro', 'redacao', 'Falta a leitura do Pedro', 'Nenhum slide traz a posição do Pedro como opinião. Diga qual é o mecanismo por trás e o que isso significa na prática, apoiado nas provas.'));
+      if (!funcoes.some((f) => ['prova', 'comparacao'].includes(f))) out.push(sugestao('sem_prova', 'fatos', 'Falta um slide de prova', 'Nenhum slide mostra o dado, a declaração ou o documento. Traga a prova com fonte, data e unidade.'));
+      const conteudo = (v.slides || []).filter((s) => s.layout !== 'encerramento');
+      const pen = conteudo[conteudo.length - 1];
+      if (pen && conteudo.length >= 3 && !['opiniao', 'consequencia', 'explicacao'].includes(pen.funcao)) out.push(sugestao('penultimo_nao_fecha', 'redacao', 'O penúltimo slide não fecha o raciocínio', 'O último slide antes do encerramento deve fechar o raciocínio e dar motivo para acompanhar o perfil.', { slide: pen.id, indice: (v.slides || []).indexOf(pen) + 1 }));
+    }
+    if (palavras(v.legenda).join(' ').length > 700) out.push(sugestao('legenda_longa', 'redacao', 'Legenda longa', 'A legenda deve ser curta e complementar ao carrossel, sem repetir todas as telas.', { campo: 'legenda' }));
 
     // Imagens
     (v.slides || []).forEach((s, i) => {

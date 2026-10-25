@@ -4,13 +4,13 @@
 .mz-chip.ok { background: #E3F6EA; color: #0A7A3B; }
 .mz-chip.warn { background: #FFF3D0; color: #8A6200; }
 .mz-chip.err { background: #FFE5E3; color: #B3261E; }
-.mz-chip.neutro { background: #E8EFFF; color: #0A3FB0; }
+.mz-chip.neutro { background: #F6F5F0; color: #2448FF; }
 .mz-status { font-size: 12px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase; }
-.mz-status.rascunho { color: #8A97AB; }
+.mz-status.rascunho { color: #686A73; }
 .mz-status.em_revisao { color: #C98A00; }
 .mz-status.aprovado, .mz-status.exportado { color: #0A7A3B; }
-.mz-status.publicado { color: #0A1B33; }
-.mz-status.arquivado { color: #B3B9C4; }
+.mz-status.publicado { color: #18191D; }
+.mz-status.arquivado { color: #B5B3A8; }
 .mz-item { width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; display: block; }
 .mz-item:active { opacity: .85; }
 .mz-alertas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -19,17 +19,17 @@
   background: var(--es-dark); color: #fff; display: flex; flex-direction: column; gap: 6px; min-height: 88px;
 }
 .mz-entry b { font-size: 18px; font-weight: 800; letter-spacing: -.2px; }
-.mz-entry span { font-size: 13px; color: #B9C6DB; line-height: 1.4; }
+.mz-entry span { font-size: 13px; color: #B5B3A8; line-height: 1.4; }
 .mz-entry:active { opacity: .9; }
-.mz-entry.off { background: #E4E9F1; cursor: default; }
-.mz-entry.off b { color: #5B6B82; }
-.mz-entry.off span { color: #7A889D; }
+.mz-entry.off { background: #ECEAE1; cursor: default; }
+.mz-entry.off b { color: #686A73; }
+.mz-entry.off span { color: #686A73; }
 .mz-filtros { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
 .mz-bloco { margin-top: 10px; background: var(--es-bg); border-radius: 10px; padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 1.4; }
 .mz-bloco b { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--es-muted); }
 .mz-det { margin-top: 10px; font-size: 13px; }
 .mz-det summary { cursor: pointer; font-weight: 700; min-height: 32px; display: flex; align-items: center; }
-.mz-pre { margin: 8px 0 0; max-height: 220px; overflow: auto; background: #0A1B33; color: #D6E2F5; border-radius: 10px; padding: 10px; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+.mz-pre { margin: 8px 0 0; max-height: 220px; overflow: auto; background: #18191D; color: #ECEAE1; border-radius: 10px; padding: 10px; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
 .mz-pilar { display: grid; gap: 6px; margin: 10px 0; }
 
 /* Editor da Mesa */
@@ -45,7 +45,7 @@
 .ed-thumb img { width: 100%; max-width: 320px; aspect-ratio: 1080 / 1350; border-radius: 8px; background: #ddd; border: 1px solid var(--es-line); }
 .ed-thumb.vazio { min-height: 40px; font-size: 12px; color: var(--es-muted); }
 .ed-capa { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1.5px solid var(--es-line); border-radius: 12px; margin-top: 8px; font-size: 13px; line-height: 1.4; cursor: pointer; }
-.ed-capa.sel { border-color: var(--es-primary); background: #F0F5FF; }
+.ed-capa.sel { border-color: var(--es-primary); background: #F6F5F0; }
 .ed-capa input { margin-top: 4px; min-width: 20px; min-height: 20px; }
 .ed-capa small { color: var(--es-muted); }
 .ed-bloq { margin-top: 8px; padding: 9px 11px; border-radius: 10px; background: #FFE5E3; color: #7A1912; font-size: 13px; line-height: 1.4; }
@@ -76,4 +76,4 @@ select.es-input { min-height: 40px; }
 .es-nav .es-badge { position: absolute; top: 6px; left: 54%; min-width: 18px; height: 18px; line-height: 18px; padding: 0 5px; border-radius: 9px; background: #FF3B30; color: #fff; font-size: 11px; font-style: normal; font-weight: 800; text-align: center; }
 .cn-capas { margin-top: 10px; display: grid; gap: 8px; }
 .cn-capa { text-align: left; font: inherit; font-size: 14px; line-height: 1.35; padding: 12px; min-height: 52px; border-radius: 12px; border: 1.5px solid var(--es-line); background: #fff; color: var(--es-dark); cursor: pointer; }
-.cn-capa:active { background: #F0F5FF; border-color: var(--es-primary); }
+.cn-capa:active { background: #F6F5F0; border-color: var(--es-primary); }
