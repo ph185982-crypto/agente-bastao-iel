@@ -80,3 +80,20 @@ Curtida não entra em ranking de seguidores; campo em branco não vira zero; men
 - Fontes bloqueadas (não contornamos): Indie Hackers (403), AppSumo (sem feed), Business Insider (403), PEGN (403), StartSe (sem feed). Ver aba Radar → “Fontes configuradas”.
 - Provedores gratuitos primeiro, OpenAI por último (cascata existente). O consumo de cada execução (chamadas, tokens, custo estimado) fica registrado na própria execução e aparece na aba.
 - Desligar: `POST /api/radar/config {"ativo": false}`.
+
+## Primeiras execuções reais (25/10/2026, produção)
+
+| | 1ª pesquisa | 2ª pesquisa |
+|---|---|---|
+| Fontes consultadas | 32 de 32 ativas (21 feeds + Show HN + 10 buscas no Hacker News); 5 pedidas ficam bloqueadas, com o motivo | idem |
+| Itens lidos / analisados | 505 / 220 | 506 / 195 |
+| Negócios identificados | 84 | 49 (22 já usados/sugeridos antes foram barrados) |
+| Verificados | 12 | 14 |
+| Resultado | 5 pautas, **nenhuma com 75 pontos e número comprovado** (a melhor, 47): nenhum carrossel foi gerado, como manda a regra | **Dub: 77 pontos**, verificada na página oficial (“mais de 100 mil clientes, segundo a empresa”); pautas: MRRaudit 72, Culture House 67, Creative Society 53, Intuitivo 50 |
+| Consumo de IA | 12 chamadas, 62 mil tokens, provedor Groq (gratuito) = US$ 0 | 15 chamadas, 66 mil tokens, Groq = US$ 0 |
+| Duração | ~3 min | ~3 min |
+
+Custo por execução: **US$ 0 com os provedores gratuitos**; se a cascata cair na OpenAI paga (`gpt-4o-mini`, US$ 0,15/US$ 0,60 por milhão de tokens), ≈ **US$ 0,02 por pesquisa + US$ 0,01 por carrossel** (a execução registra os tokens reais e o custo estimado). Limites gratuitos do Groq (tokens por minuto) às vezes
+devolvem 429: a etapa espera e tenta de novo (a copy do carrossel também grava as tentativas e continua na chamada seguinte).
+
+Observação honesta: a maioria do que aparece em Product Hunt/Show HN é ferramenta de programador sem número público; por isso a verificação reprova ou deixa “não verificada” a maior parte, e há dias sem nenhum carrossel (o aviso diz isso).
