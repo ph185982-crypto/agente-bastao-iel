@@ -188,7 +188,8 @@ async function guardar(store, carrosselId, achado, id) {
 
 // Imagem enviada pelo Pedro (arquivo) ou buscada por link. A origem e a permissão são dele; ficam registradas.
 async function deUsuario({ buf, url = null, descricao = '', credito = '', licenca = '', pagina = '', permissao = false, papel = 'foto', tipo = 'enviada', declaracao = null, agora = Date.now() }) {
-  const v = await validar(buf, { permitirRetrato: papel === 'print', ladoMin: papel === 'print' ? 400 : 500 });   // recorte de print é pequeno por natureza; o render recusa ampliação exagerada if (!v.ok) throw U.erro(`Imagem recusada: ${v.motivo}.`, 'IMAGEM', 422);
+  const v = await validar(buf, { permitirRetrato: papel === 'print', ladoMin: papel === 'print' ? 400 : 500 }); // recorte de print é pequeno por natureza; o render recusa ampliação exagerada
+  if (!v.ok) throw U.erro(`Imagem recusada: ${v.motivo}.`, 'IMAGEM', 422);
   const dominio = url ? U.host(url) : (pagina ? U.host(pagina) : 'enviada por você');
   const papelOk = ['foto', 'print', 'documento', 'ilustracao'].includes(papel) ? papel : 'foto';
   return { buf, tipo, papel: papelOk, relacao: papelOk === 'ilustracao' ? 'ilustrativa' : 'negocio', descricao: U.limita(descricao || 'Imagem enviada pelo Pedro', 140),

@@ -23,9 +23,9 @@ function urlValida(x) {
   try { const u = new URL(String(x).trim()); if (!/^https?:$/.test(u.protocol)) return null; if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.0\.0\.0|\[::1\])/i.test(u.hostname) || /\.local$|\.internal$/i.test(u.hostname)) return null; return u.toString(); } catch { return null; }
 }
 
-function novaPauta({ url = null, texto = null, titulo = '', nome = '', origem = 'radar', lote_id = null, agora = Date.now() }) {
+function novaPauta({ url = null, texto = null, titulo = '', nome = '', fontes = [], origem = 'radar', lote_id = null, agora = Date.now() }) {
   const chave = U.sha(`${url || ''}|${String(texto || '').slice(0, 2000)}|${nome}|${agora}`, 12);
-  return { id: `pt_${chave}`, tipo: 'pauta', entrada: { url, texto: texto ? String(texto).slice(0, 60000) : null, titulo: U.limita(titulo, 200), nome: U.limita(nome, 80) }, origem, lote_id, padrao: Padrao.atual() || 'editorial', estado: 'em_andamento', etapa: 'ler', tentativas: {}, erros: [], avisos: [], consumo: { chamadas: 0, tokens_entrada: 0, tokens_saida: 0, custo_usd_estimado: 0, provedores: [] }, criada_em: new Date(agora).toISOString(), atualizada_em: new Date(agora).toISOString() };
+  return { id: `pt_${chave}`, tipo: 'pauta', entrada: { url, texto: texto ? String(texto).slice(0, 60000) : null, titulo: U.limita(titulo, 200), nome: U.limita(nome, 80), fontes }, origem, lote_id, padrao: Padrao.atual() || 'editorial', estado: 'em_andamento', etapa: 'ler', tentativas: {}, erros: [], avisos: [], consumo: { chamadas: 0, tokens_entrada: 0, tokens_saida: 0, custo_usd_estimado: 0, provedores: [] }, criada_em: new Date(agora).toISOString(), atualizada_em: new Date(agora).toISOString() };
 }
 
 // Validação da entrada (link inválido e texto curto são recusados antes de gravar qualquer coisa).
@@ -34,7 +34,10 @@ function validarEntrada(e = {}) {
   if (e.url && !url) throw U.erro('Link inválido: use um endereço público que comece com http:// ou https://.', 'LINK_INVALIDO', 400);
   const texto = e.texto ? String(e.texto).trim() : '';
   if (!url && texto.length < 200 && !e.nome) throw U.erro('Envie um link, o nome do negócio ou um texto com pelo menos 200 caracteres.', 'ENTRADA', 400);
-  return { url, texto: texto || null, titulo: e.titulo || '', nome: e.nome || '' };
+  // outras matérias sobre o MESMO negócio (até 2): viram fontes independentes na verificação
+  const extras = (Array.isArray(e.fontes) ? e.fontes : []).map((x) => String(x || '').trim()).filter(Boolean);
+  const fontes = []; for (const x of extras.slice(0, 2)) { const u = urlValida(x); if (!u) throw U.erro(`Link de fonte inválido: ${U.limita(x, 80)}`, 'LINK_INVALIDO', 400); if (u !== url) fontes.push(u); }
+  return { url, texto: texto || null, titulo: e.titulo || '', nome: e.nome || '', fontes };
 }
 
 async function criar(entrada, { origem = 'radar', lote_id = null, deps = {}, agora = agoraDe(deps) } = {}) {
@@ -76,6 +79,12 @@ E.identificar = async (p, ctx) => {
     fontes_itens: p.leitura.url && doLink !== 'oficial' ? [{ id: `${p.id}_link`, titulo: p.leitura.titulo, url: p.leitura.url, fonte_id: 'pauta', fonte_nome: p.leitura.veiculo, fonte_classe: 'imprensa', publicada_em: p.leitura.publicada_em }] : [],
     sinais_de_risco: [], ia: false,
   };
+  // fontes extras indicadas pelo Pedro entram como matérias (a classe real vem do endereço; o site oficial é reconhecido)
+  for (const [k, u] of (p.entrada.fontes || []).entries()) {
+    const cl = Verif.classeDoc(u, { chave });
+    if (cl === 'oficial') { p.negocio.url_oficial ||= u; continue; }
+    p.negocio.fontes_itens.push({ id: `${p.id}_extra${k}`, titulo: '', url: u, fonte_id: 'pauta', fonte_nome: U.host(u), fonte_classe: 'imprensa', publicada_em: null });
+  }
   return { concluida: true };
 };
 

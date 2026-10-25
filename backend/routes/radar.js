@@ -284,7 +284,7 @@ router.post('/pautas', limita({ max: 10, janelaMs: 60000, nome: 'radar-pauta' })
   if (!store.disponivel()) throw U.erro('O Radar precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
   exigeIa();
   const b = req.body || {}; const origem = ['estudio', 'mesa', 'esteira', 'radar'].includes(b.origem) ? b.origem : 'radar';
-  const p = await Pauta.criar({ url: b.url, texto: b.texto, titulo: b.titulo, nome: b.nome }, { origem, deps: U.depsDeTeste() });
+  const p = await Pauta.criar({ url: b.url, texto: b.texto, titulo: b.titulo, nome: b.nome, fontes: b.fontes }, { origem, deps: U.depsDeTeste() });
   await Fila.continuar(p.id).catch(() => {});
   res.status(201).json({ pauta: Pauta.resumo(p), padrao: Padrao.info() });
 }));

@@ -329,3 +329,16 @@ test('padrão único: criação pelos modelos antigos é recusada; a reversão C
   try { passou = false; mw({}, {}, () => { passou = true; }); assert.strictEqual(passou, true); assert.strictEqual(Padrao.atual(), null); }
   finally { delete process.env.CARROSSEL_PADRAO; }
 });
+
+test('pauta com segunda matéria: com o site oficial bloqueado, duas fontes independentes bastam; link extra inválido é recusado', async () => {
+  novoBanco();
+  const lerFonte = async (u) => (/lumenpets\.com/.test(u) && !/techcrunch|exame/.test(u) ? { legivel: false, acesso: 'negado' } : F.fakeLerFonte(u));
+  const deps = depsPauta({ lerFonte });
+  await assert.rejects(() => Pauta.criar({ url: 'https://exame.com/2026/10/lumenpets', fontes: ['nao-e-link'] }, { deps }), (e) => e.code === 'LINK_INVALIDO');
+  const so = await Pauta.criar({ url: 'https://exame.com/2026/10/lumenpets' }, { deps }); const r1 = await Pauta.executarTudo(so.id, { deps, orcamentoMs: 120000 });
+  assert.strictEqual(r1.pauta.estado, 'insuficiente', 'uma matéria só, sem site oficial, não basta');
+  novoBanco();
+  const p = await Pauta.criar({ url: 'https://exame.com/2026/10/lumenpets', fontes: ['https://techcrunch.com/2026/10/lumenpets'] }, { deps });
+  const r = await Pauta.executarTudo(p.id, { deps, orcamentoMs: 120000 });
+  assert.strictEqual(r.pauta.estado, 'concluida', JSON.stringify(r.pauta.verificacao)); assert.ok(r.pauta.carrossel_id);
+});
