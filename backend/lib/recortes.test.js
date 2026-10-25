@@ -87,3 +87,19 @@ test('variação percentual que não é a calculada bloqueia', () => {
   const ruim = { ...dadosOk, faixa: { valor: '+150%', texto: 'no período' } };
   assert.ok(ids(conteudoComDados(ruim)).includes('numero_sem_origem'));
 });
+
+// ── Trava de publicação com acesso aberto em produção ───────────────────────────────────
+test('publicar é bloqueado em produção com APP_ACCESS_MODE=public, e liberado com código de acesso', () => {
+  const P = require('./publicador');
+  const antes = { v: process.env.VERCEL, m: process.env.APP_ACCESS_MODE, c: process.env.APP_ACCESS_CODE };
+  try {
+    process.env.VERCEL = '1'; process.env.APP_ACCESS_MODE = 'public'; delete process.env.APP_ACCESS_CODE;
+    assert.throws(() => P.exigirAcessoProtegido(), (e) => e.code === 'ACESSO_ABERTO' && e.status === 403);
+    process.env.APP_ACCESS_CODE = 'codigo-de-teste-com-mais-de-10'; delete process.env.APP_ACCESS_MODE;
+    assert.doesNotThrow(() => P.exigirAcessoProtegido());
+    delete process.env.VERCEL; process.env.APP_ACCESS_MODE = 'public';
+    assert.doesNotThrow(() => P.exigirAcessoProtegido(), 'no computador do desenvolvedor o modo aberto segue permitido');
+  } finally {
+    for (const [k, v] of [['VERCEL', antes.v], ['APP_ACCESS_MODE', antes.m], ['APP_ACCESS_CODE', antes.c]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});

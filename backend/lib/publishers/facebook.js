@@ -15,6 +15,7 @@ const REDE = 'facebook';
 async function publicar(id, { hash, base } = {}) {
   const a = armazem();
   const cfg = await P.config();
+  P.exigirAcessoProtegido();
   if (!cfg.publishers?.facebook) throw new P.ErroPub('FACEBOOK_DESLIGADO', 'A publicação no Facebook está desligada em Ajustes.', 409);
   if (!process.env.META_PAGE_ID || !process.env.META_PAGE_ACCESS_TOKEN || !process.env.PUBLISH_SECRET) throw new P.ErroPub('SEM_CONFIG', 'Falta META_PAGE_ID, META_PAGE_ACCESS_TOKEN ou PUBLISH_SECRET no servidor.', 503);
   if (cfg.publish_paused) throw new P.ErroPub('PAUSADO', 'As publicações estão pausadas.', 409);

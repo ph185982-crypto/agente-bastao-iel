@@ -183,7 +183,17 @@ async function criarContainers({ id, hash, slides, legenda, base, c }) {
   return { tipo: 'CAROUSEL', creation_id: pai.id, filhos: ids };
 }
 
+// Em produção SEM código de acesso (APP_ACCESS_MODE=public), qualquer pessoa com o endereço poderia aprovar e publicar no
+// Instagram do Pedro. Publicar exige código; ler, criar e revisar continuam como o dono escolheu.
+function exigirAcessoProtegido() {
+  const A = require('./access');
+  if ((process.env.VERCEL || process.env.NODE_ENV === 'production') && A.estadoAcesso() === 'aberto_publico') {
+    throw new ErroPub('ACESSO_ABERTO', 'Publicar exige código de acesso: o app está aberto ao público. Defina APP_ACCESS_CODE (10+ caracteres) e remova APP_ACCESS_MODE=public na Vercel. Veja docs/ATIVACAO.md.', 403);
+  }
+}
+
 async function iniciar(id, { hash, base } = {}) {
+  exigirAcessoProtegido();
   if (meta.faltando().length) throw new ErroPub('SEM_CONFIG', `Configuração da Meta incompleta no servidor: falta ${meta.faltando().join(', ')}.`, 503);
   const a = armazem();
   const cfg = await config();
@@ -370,4 +380,5 @@ async function renderizarMidia(token) {
   return sharp(r.png).flatten({ background: '#FAF7F0' }).jpeg({ quality: 92, chromaSubsampling: '4:4:4' }).toBuffer();
 }
 
-module.exports = { urlMidia, conferirMidias, conta, iniciar, avancar, saude, config, listarPublicacoes, avancarPendentes, renderizarMidia, montarLegenda, conferirLegenda, carregarAprovado, ErroPub, resposta, LIMITE_CARROSSEL, LIMITE_LEGENDA, REDE };
+module.exports = {
+  exigirAcessoProtegido, urlMidia, conferirMidias, conta, iniciar, avancar, saude, config, listarPublicacoes, avancarPendentes, renderizarMidia, montarLegenda, conferirLegenda, carregarAprovado, ErroPub, resposta, LIMITE_CARROSSEL, LIMITE_LEGENDA, REDE };

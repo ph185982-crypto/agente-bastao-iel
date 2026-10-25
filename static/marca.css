@@ -260,3 +260,5 @@ h2 { letter-spacing: -.025em; font-weight: 800; }
 .rc-novo { margin-top: 10px; }
 .rc-novo summary { min-height: 44px; display: flex; align-items: center; }
 .st-creditos { font-size: 13px; color: var(--pd-cinza); line-height: 1.45; margin-top: 8px; }
+.st-alerta-acesso { border: 2px solid var(--pd-laranja) !important; background: var(--pd-laranja-fundo) !important; }
+.st-alerta-acesso code { background: var(--pd-papel); padding: 1px 6px; border-radius: 4px; }

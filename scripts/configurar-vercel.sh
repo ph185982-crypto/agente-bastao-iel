@@ -36,6 +36,13 @@ gera() { openssl rand -base64 48 | tr -d '\n=+/' | cut -c1-"$1"; }
 
 echo "Projeto: $PROJETO  ·  Endereço do app: $URL_APP"
 echo
+echo "0/4 Acesso aberto?"
+if existe APP_ACCESS_MODE; then
+  echo "  ! APP_ACCESS_MODE existe na Vercel. Se for 'public', o app fica ABERTO a qualquer pessoa com o endereço (o código de acesso é ignorado)."
+  read -r -p "  Remover APP_ACCESS_MODE para o código de acesso passar a valer? [s/N] " R0
+  if [ "${R0:-n}" = "s" ] || [ "${R0:-n}" = "S" ]; then $V env rm APP_ACCESS_MODE production --yes >/dev/null 2>&1 && echo "  - APP_ACCESS_MODE removido." || echo "  ! não consegui remover: apague no painel da Vercel."; fi
+fi
+echo
 echo "1/4 Acesso e publicação"
 NOVO_CODIGO=""
 if ! existe APP_ACCESS_CODE; then NOVO_CODIGO="$(gera 20)"; grava APP_ACCESS_CODE "$NOVO_CODIGO" sens; else echo "  = APP_ACCESS_CODE já existe: mantido."; fi

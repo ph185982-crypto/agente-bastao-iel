@@ -72,6 +72,7 @@ router.post('/:id/roteiro',limita({max:12,janelaMs:60000,nome:'studio-roteiro'})
 });
 router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'}),async(req,res)=>{
   try{
+    if(req.body?.acao==='aprovar')try{require('../lib/publicador').exigirAcessoProtegido();}catch(e){return res.status(e.status||403).json({error:e.message,code:e.code||'ACESSO_ABERTO'});}
     if(req.body?.acao==='aprovar' && (await require('../lib/publicador').config()).publish_paused) return res.status(409).json({error:'As publicações estão pausadas. Libere em Perfil para publicar.',code:'PAUSADO'});
     const c=await studio.decidir(req.params.id,req.body||{});
     if(req.body.acao==='aprovar'){
