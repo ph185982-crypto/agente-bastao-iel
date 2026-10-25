@@ -118,7 +118,7 @@
   const ROT_PAUTA = { em_andamento: 'Em andamento', concluida: 'Carrossel criado', erro: 'Erro', insuficiente: 'Fontes insuficientes', sem_negocio: 'Sem negócio específico' };
   function pautasHtml() {
     const p = ST.padrao; const s = ST.pauta;
-    const lista = ST.pautas.slice(0, 8).map((x) => `<li class="rd-pauta ${esc(x.estado)}"><b>${esc(x.entrada.nome || x.entrada.titulo || x.entrada.url || 'Pauta')}</b><span class="rd-tag ${x.estado === 'concluida' ? 'azul' : x.estado === 'em_andamento' ? 'laranja' : 'alerta'}">${esc(ROT_PAUTA[x.estado] || x.estado)}</span>${x.estado === 'em_andamento' ? `<div class="rd-barra"><i style="width:${Math.max(6, x.percentual || 0)}%"></i></div><small>${esc(x.rotulo)}${x.lote_id ? ' · lote' : ''}</small>` : ''}${x.motivo ? `<small>${esc(x.motivo)}</small>` : ''}${x.erro ? `<small>${esc(x.erro.mensagem)}</small>` : ''}${x.carrossel_id ? `<button class="rd-btn peq fantasma" data-action="rd-ed-abrir" data-id="${esc(x.carrossel_id)}">Abrir no editor</button>` : ''}</li>`).join('');
+    const lista = ST.pautas.slice(0, 8).map((x) => `<li class="rd-pauta ${esc(x.estado)}"><b>${esc(x.entrada.nome || x.entrada.titulo || x.entrada.url || 'Pauta')}</b><span class="rd-tag ${x.estado === 'concluida' ? 'azul' : x.estado === 'em_andamento' ? 'laranja' : 'alerta'}">${esc(ROT_PAUTA[x.estado] || x.estado)}</span>${x.estado === 'em_andamento' ? `<div class="rd-barra"><i style="width:${Math.max(6, x.percentual || 0)}%"></i></div><small>${esc(x.rotulo)}${x.lote_id ? ' · lote' : ''}</small>` : ''}${x.motivo ? `<small>${esc(x.motivo)}</small>` : ''}${x.erro ? `<small>${esc(x.erro.mensagem)}</small>` : ''}${x.carrossel_id ? `<button class="rd-btn peq fantasma" data-action="rd-ed-abrir" data-id="${esc(x.carrossel_id)}">Abrir no editor</button>` : ''}${['erro', 'insuficiente', 'sem_negocio'].includes(x.estado) ? `<button class="rd-btn peq fantasma" data-action="rd-pauta-arquivar" data-id="${esc(x.id)}">Tirar da lista</button>` : ''}</li>`).join('');
     return `<section class="rd-novapauta" aria-labelledby="rd-np-t"><div class="rd-h2"><h2 id="rd-np-t">Nova pauta</h2><span>${esc(p?.nome || 'Pedro Destrava — Minimalista')}</span></div>
       <p class="rd-meta">Todo carrossel novo sai no padrão ${esc(p?.nome || 'Pedro Destrava — Minimalista')}: pesquisa, briefing, ganchos, texto, imagens e revisão. Nada é publicado sozinho.</p>
       <div class="rd-abas" role="group" aria-label="Tipo de pauta">${[['link', 'Link'], ['nome', 'Nome do negócio'], ['texto', 'Colar texto'], ['lote', 'Lote']].map(([k, r]) => `<button data-action="rd-pauta-modo" data-m="${k}" aria-pressed="${s.modo === k}">${r}</button>`).join('')}</div>
@@ -349,6 +349,7 @@
         }
         case 'rd-pauta-modo': ST.pauta.modo = el.dataset.m; ctx.render(); break;
         case 'rd-pauta': await novaPauta(ctx); break;
+        case 'rd-pauta-arquivar': await ctx.api(`/api/radar/pautas/${encodeURIComponent(id)}/arquivar`, { method: 'POST', body: {} }); ST.pautas = ST.pautas.filter((p) => p.id !== id); ctx.render(); break;
         case 'rd-lote': await novoLote(ctx); break;
         case 'rd-converter': {
           if (!confirm('Criar uma NOVA versão deste carrossel no padrão Pedro Destrava — Minimalista? O antigo continua guardado como está.')) break;

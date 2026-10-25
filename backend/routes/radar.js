@@ -288,7 +288,13 @@ router.post('/pautas', limita({ max: 10, janelaMs: 60000, nome: 'radar-pauta' })
   await Fila.continuar(p.id).catch(() => {});
   res.status(201).json({ pauta: Pauta.resumo(p), padrao: Padrao.info() });
 }));
-router.get('/pautas', rota(async (req, res) => { res.json({ pautas: (await store.listar('pauta', 40)).sort((a, b) => String(b.criada_em).localeCompare(String(a.criada_em))).map(Pauta.resumo) }); }));
+router.post('/pautas/:id/arquivar', limita({ max: 30, janelaMs: 60000, nome: 'radar-pauta-arquivar' }), rota(async (req, res) => {
+  const id = exigeId(req.params.id); const r = await store.obter('pauta', id); if (!r) return res.status(404).json({ error: 'Pauta não encontrada.' });
+  if (!Pauta.TERMINAIS.includes(r.doc.estado)) throw U.erro('Só dá para tirar da lista uma pauta que já terminou.', 'ESTADO', 409);
+  await store.atualizar('pauta', id, (d) => { d.arquivada = true; d.arquivada_em = new Date().toISOString(); return d; });   // não apaga: o registro fica no banco
+  res.json({ ok: true });
+}));
+router.get('/pautas', rota(async (req, res) => { res.json({ pautas: (await store.listar('pauta', 80)).filter((p) => !p.arquivada).sort((a, b) => String(b.criada_em).localeCompare(String(a.criada_em))).slice(0, 40).map(Pauta.resumo) }); }));
 router.get('/pautas/:id', rota(async (req, res) => { const r = await store.obter('pauta', exigeId(req.params.id)); if (!r) return res.status(404).json({ error: 'Pauta não encontrada.' }); res.json({ pauta: Pauta.resumo(r.doc), erros: (r.doc.erros || []).slice(-3) }); }));
 router.post('/pautas/:id/passo', limita({ max: 30, janelaMs: 60000, nome: 'radar-pauta-passo' }), rota(async (req, res) => {
   const r = await Pauta.avancar(exigeId(req.params.id), { orcamentoMs: process.env.VERCEL ? 42000 : 30000, deps: U.depsDeTeste() });

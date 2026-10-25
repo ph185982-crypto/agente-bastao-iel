@@ -220,6 +220,26 @@ function comMetricasDeLoja(aceitas, docs, agora) {
   return [...aceitas, ...extras].map((c, i) => ({ ...c, id: `c${i + 1}` }));
 }
 
+// A IA costuma citar cada número em UMA fonte, mesmo quando outra fonte independente traz o mesmo número.
+// O código procura, nas outras fontes lidas, uma frase com o mesmo número que passe nas MESMAS conferências
+// (trecho literal no texto lido, número no trecho, tipo compatível). Não inventa: só aproveita o que está escrito.
+function corroborar(aceitas, docs, { agora = Date.now() } = {}) {
+  const extras = [];
+  for (const c of aceitas.filter((x) => x.numero !== null && Number.isFinite(x.numero))) {
+    const origem = docs[c.documento]; if (!origem) continue;
+    for (const d of docs) {
+      if (d.indice === c.documento || !d.texto || !independentes(origem, d)) continue;
+      if ([...aceitas, ...extras].some((o) => o.documento === d.indice && o.tipo === c.tipo && o.numero !== null && N.igual(o.numero, c.numero))) continue;
+      const frases = String(d.texto).split(/(?<=[.!?])\s+/).filter((f) => /\d/.test(f) && f.length >= 12 && f.length <= 400).slice(0, 400);
+      for (const f of frases) {
+        const r = conferirAfirmacoes([{ tipo: c.tipo, texto: c.texto, numero: c.numero, unidade: c.unidade, periodo: c.periodo, documento: d.indice, trecho: f }], docs, { agora });
+        if (r.aceitas.length) { extras.push({ ...r.aceitas[0], observacoes: [...r.aceitas[0].observacoes, 'Encontrada pelo código nesta fonte (mesmo número, trecho literal).'] }); break; }
+      }
+    }
+  }
+  return [...aceitas, ...extras].map((x, i) => ({ ...x, id: `c${i + 1}` }));
+}
+
 // Independência: domínios diferentes e textos que não são cópia um do outro (nem a mesma agência).
 function independentes(a, b) {
   if (a.dominio === b.dominio) return false;
@@ -318,7 +338,7 @@ async function verificar(cand, { deps = {}, agora = Date.now() } = {}) {
     llm = r.llm;
     const conf = conferirAfirmacoes(r.afirmacoes, docs, { agora });
     rejeitadas = conf.rejeitadas;
-    claims = decidirUso(comMetricasDeLoja(conf.aceitas, docs, agora), docs, cand.nome);
+    claims = decidirUso(comMetricasDeLoja(corroborar(conf.aceitas, docs, { agora }), docs, agora), docs, cand.nome);
     return r;
   };
   if (docs.length) {
@@ -340,4 +360,4 @@ async function verificar(cand, { deps = {}, agora = Date.now() } = {}) {
   return { verificacao, llm, docs_lidos: docs.length };
 }
 
-module.exports = { classeDoc, nomeNoTexto, verificar, reunirDocumentos, conferirAfirmacoes, conferirTipo, decidirUso, concluir, avaliarIdade, anoDeFundacao, sinaisNoTexto, independentes, pedirAfirmacoes, TIPOS, NUMERICOS, DEMANDA, CUE };
+module.exports = { corroborar, classeDoc, nomeNoTexto, verificar, reunirDocumentos, conferirAfirmacoes, conferirTipo, decidirUso, concluir, avaliarIdade, anoDeFundacao, sinaisNoTexto, independentes, pedirAfirmacoes, TIPOS, NUMERICOS, DEMANDA, CUE };
