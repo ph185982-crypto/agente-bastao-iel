@@ -340,3 +340,11 @@ test('copy: a frase de abertura repetida pela IA é removida e "que faz" não du
   assert.strictEqual(m.slides[2].texto, 'A solução foi criar um serviço de banho em casa que faz o cachorro ficar limpo sem sair.');
   assert.strictEqual(m.slides[3].texto, 'O dinheiro entra assim: o cliente paga uma mensalidade fixa por semana.');
 });
+
+test('copy: "que faz" seguido de outro verbo conjugado é recusado', () => {
+  const op = opLumen();
+  const j = (res) => ({ slides: [{ n: 1, texto: 'x' }, { n: 2, problema: 'dar banho no cachorro em casa vira bagunça e o pet shop vive lotado' }, { n: 3, produto: 'um aplicativo de gestão que faz', resultado: res }, { n: 4, modelo: 'assinatura', explicacao: 'o cliente paga uma mensalidade fixa e recebe visitas toda semana' }, { n: 5, titulo: 't', itens: [] }, { n: 6, dor: 'dor', facilidade: 'f', recorrencia: 'r' }, { n: 7 }] });
+  const erros = (res) => { const m = Copy.montarTelas(j(res), op); return Copy.validarTelas(m.slides, op); };
+  assert.ok(erros('rastreia referências e paga comissões').some((e) => /Tela 3: depois de/.test(e)));
+  assert.ok(!erros('os pagamentos de comissão acontecerem sozinhos').some((e) => /Tela 3: depois de/.test(e)));
+});

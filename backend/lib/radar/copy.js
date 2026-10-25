@@ -15,6 +15,8 @@ const INTRO = {
 };
 const ROTULOS_BRASIL = ['Público', 'Produto', 'Canal', 'Cobrança', 'Teste'];
 const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{FE0F}]/u;
+// A frase fixa já traz "que faz": o resultado precisa completar "que faz [algo] [fazer algo]", não começar com outro verbo conjugado.
+const VERBO_CONJUGADO = /^(rastreia|gerencia|permite|ajuda|cria|paga|conecta|automatiza|organiza|mostra|entrega|calcula|envia|gera|ensina|vende|compra|encontra|re[uú]ne|transforma|resolve|simplifica|oferece|facilita|monitora|controla|conduz|liga|cobra|recebe|usa|faz)\b/i;
 const HEDGES_FORA_DA_7 = /\b(provavelmente|talvez|possivelmente|deve estar|pode ser que|aparentemente|supostamente)\b/i;
 
 const sem = (s) => U.semAcento(s).toLowerCase().replace(/[“”"']/g, ' ').replace(/\s+/g, ' ');
@@ -104,7 +106,7 @@ function montarTelas(j, op, { fixo = C.CTA_FIXO } = {}) {
   const prob = semEco(get(2).problema, INTRO.problema);
   slides.push({ n: 2, funcao: 'problema', layout: 'problema', rotulo: 'O problema', intro: INTRO.problema, corpo: prob ? `${prob}.` : '', texto: `${INTRO.problema} ${prob}.` });
   // 3 solução
-  const prod = semPrefixo(semEco(get(3).produto, 'A solução foi criar'), /^criar\s+/i); const res = semPrefixo(get(3).resultado, /^(que\s+)?faz\s+/i);
+  const prod = semPrefixo(semEco(get(3).produto, 'A solução foi criar'), /^criar\s+/i).replace(/\s+que\s+faz$/i, ''); const res = semPrefixo(get(3).resultado, /^(que\s+)?faz\s+/i);
   slides.push({ n: 3, funcao: 'solucao', layout: 'solucao', rotulo: 'A solução', texto: `A solução foi criar ${prod} que faz ${res}.`, imagem: 'negocio' });
   // 4 dinheiro
   const modelo = Object.keys(C.MODELOS_RECEITA).includes(get(4).modelo) ? get(4).modelo : null;
@@ -163,6 +165,7 @@ function validarTelas(slides, op) {
       s.itens.forEach((i) => { if (U.contaPalavras(i.valor) > 3) erros.push(`Tela 7: “${i.valor}” tem mais de 3 palavras`); });
     }
     if (s.n === 6 && s.itens.some((i) => !i || U.contaPalavras(i) > 4)) erros.push('Tela 6: cada item deve ter de 1 a 4 palavras');
+    if (s.n === 3 && VERBO_CONJUGADO.test(String(s.texto).split(/\bque faz\s+/i).pop() || '')) erros.push('Tela 3: depois de “que faz” escreva o que muda para o cliente (“o cachorro ficar limpo sem sair de casa”), não outro verbo conjugado');
     if (s.n === 2 && !s.corpo.replace(/[.]/g, '').trim()) erros.push('Tela 2: faltou descrever o problema');
   });
   const tudo = slides.map((s) => s.texto).join(' ');
@@ -201,7 +204,7 @@ NÃO afirme que o negócio “não existe no Brasil” nem que “vai funcionar�
 ESTRUTURA (o sistema monta as frases de abertura; você escreve só o que falta):
 1. capa (8 a 18 palavras): UMA afirmação concreta + curiosidade + consequência financeira (só se houver dado verificado). Modelos: “Essa empresa fatura milhões resolvendo um problema que todo mundo ignora.” / “Essa ideia simples virou um negócio de US$ X, segundo a empresa.” / “Alguém transformou [problema comum] em uma empresa de milhões.” Sem ? e sem !. Use **assim** em UMA expressão curta para destacar.
 2. problema: texto que completa “Tudo começou com um problema comum:” (de 6 a 18 palavras).
-3. solucao: “produto” (com artigo: “um aplicativo de…”, 3 a 8 palavras) e “resultado” (o que ele resolve, 3 a 10 palavras) para a frase “A solução foi criar [produto] que faz [resultado].”
+3. solucao: “produto” (com artigo, SEM verbo: “um aplicativo de gestão de afiliados”, 3 a 8 palavras) e “resultado” (3 a 10 palavras, completa “que faz …”: “o cachorro ficar limpo sem você sair”, “pagamentos de comissão acontecerem sozinhos”; nunca comece com verbo conjugado como “rastreia” ou “paga”) para a frase “A solução foi criar [produto] que faz [resultado].”
 4. dinheiro: “modelo” (assinatura, comissao, venda, licenca, mensalidade, publicidade, marketplace ou servico_recorrente) e “explicacao” que completa “O dinheiro entra assim:” (de 6 a 18 palavras). Só descreva como cobra o que estiver nos DADOS_VERIFICADOS ou em negocio.como_ganha_dinheiro.
 5. prova (a tela soma título + valor + rótulo + a atribuição “segundo a empresa”, de 8 a 25 palavras; use 2 ou 3 itens se houver, e título de 4 a 6 palavras): “titulo” e “itens”: de 1 a 3 itens {claim_id, rotulo}, onde claim_id vem de DADOS_VERIFICADOS (somente afirmações com número) e rotulo (1 a 3 palavras, sem números) diz o que o número mede, ex.: “usuários ativos”. O valor aparece sozinho, vindo da fonte.
 6. funciona: “dor”, “facilidade”, “recorrencia”: três itens de 1 a 4 palavras que completam “Funciona porque junta três coisas:”.
