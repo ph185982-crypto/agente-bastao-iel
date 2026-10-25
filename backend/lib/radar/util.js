@@ -42,7 +42,10 @@ async function emParalelo(itens, n, fn) {
   return out;
 }
 
+// Erro que passa sozinho (limite de uso da IA, tempo esgotado, rede): quem chama espera e tenta de novo, em vez de marcar o item como reprovado.
+const erroTemporario = (e) => /429|rate.?limit|timed? ?out|timeout|aborted|ECONNRESET|ETIMEDOUT|ECONNABORTED|ENOTFOUND|fetch failed/i.test(`${e?.status || ''} ${e?.code || ''} ${e?.name || ''} ${e?.message || ''}`) || [502, 503, 504, 429].includes(Number(e?.status));
+
 // Só nos testes de navegador (TESTE_RADAR=1, nunca em produção): fontes, páginas e IA simuladas.
 const depsDeTeste = () => (process.env.TESTE_RADAR === '1' && !process.env.VERCEL && global.__RADAR_DEPS__ ? global.__RADAR_DEPS__ : {});
 
-module.exports = { depsDeTeste, sha, semAcento, norm, palavras, contaPalavras, agoraISO, diaBRT, proximaExecucao, dominio, host, limita, erro, comTimeout, emParalelo };
+module.exports = { erroTemporario, depsDeTeste, sha, semAcento, norm, palavras, contaPalavras, agoraISO, diaBRT, proximaExecucao, dominio, host, limita, erro, comTimeout, emParalelo };

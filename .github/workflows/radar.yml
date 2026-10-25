@@ -1,0 +1,27 @@
+# Radar de Negócios: reforço opcional do cron da Vercel, com horário exato (07:00 de Brasília = 10:00 UTC).
+# O plano Hobby da Vercel dispara crons "dentro da hora marcada" (pode atrasar até ~59 min). Este arquivo chama a MESMA rota no minuto certo.
+# A rota é idempotente: existe UMA execução por dia; quem chegar segundo só recebe a execução do dia (nada é gerado duas vezes).
+# Só roda se este arquivo estiver na branch principal e se as configurações abaixo existirem:
+#   Settings → Secrets and variables → Actions
+#     • Variável  MONITOR_URL  = endereço de PRODUÇÃO do app, sem barra no fim (a mesma do monitor)
+#     • Secret    CRON_SECRET  = o mesmo CRON_SECRET definido na Vercel
+# Nunca publica nada: só pesquisa, gera o carrossel e o coloca na fila de aprovação.
+name: Radar de Negócios (07:00 Brasília)
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: ${{ vars.MONITOR_URL != '' }}
+    steps:
+      - name: Chamar o cron do Radar
+        env:
+          URL: ${{ vars.MONITOR_URL }}
+          SEGREDO: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$SEGREDO" || { echo "Falta o secret CRON_SECRET."; exit 1; }
+          curl --fail --silent --show-error --max-time 100 -H "Authorization: Bearer $SEGREDO" "$URL/api/radar/cron"

@@ -42,6 +42,8 @@ Resultado e pendências desta entrega: [VALIDACAO.md](docs/VALIDACAO.md).
 Configuração real: [acesso](docs/ACESSO.md), [banco](docs/ARMAZENAMENTO.md)
 e [Instagram](docs/META_SETUP.md).
 
+**Radar de Negócios** (pesquisa diária às 7h, carrossel “Ideias que dão dinheiro”, fila de aprovação): [docs/RADAR.md](docs/RADAR.md).
+
 **Não promover para `main`, publicar em produção nem enviar posts sem a
 autorização explícita do Pedro.**
 

@@ -90,7 +90,7 @@ E.coletar = async (run, ctx) => {
 E.candidatos = async (run, ctx) => {
   const reg = await store.obter('coleta', run.id);
   if (!reg) throw U.erro('A coleta desta execução não foi encontrada. Inicie uma nova pesquisa.', 'SEM_COLETA', 409);
-  const coleta = reg.doc; const lotes = Cand.lotes(coleta.itens).slice(0, 3);
+  const coleta = reg.doc; const lotes = Cand.lotes(coleta.itens).slice(0, 4);
   let rev = reg.rev;
   while ((run.cursor.lote || 0) < lotes.length) {
     if (ctx.restante() < 22000) return { concluida: false };
@@ -142,7 +142,7 @@ E.verificar = async (run, ctx) => {
       const reg = await lerCand(id); if (!reg) return;
       let resultado;
       try { resultado = await ctx.comIA(() => Verif.verificar(reg.doc, { deps: ctx.deps, agora: ctx.agora })); }
-      catch (e) { if (['SEM_IA', 'LIMITE'].includes(e.code)) throw e; resultado = { verificacao: { estado: 'insuficiente', claims: [], fontes: [], numeros_usaveis: [], motivos: [`Falha ao verificar: ${U.limita(e.message, 120)}`], limitacoes: [], existencia_confirmada: false, demanda_verificada: 0, claims_rejeitadas: [] } }; run.avisos.push(`Falha ao verificar ${reg.doc.nome}: ${U.limita(e.message, 100)}`); }
+      catch (e) { if (['SEM_IA', 'LIMITE'].includes(e.code) || U.erroTemporario(e)) throw e; resultado = { verificacao: { estado: 'insuficiente', claims: [], fontes: [], numeros_usaveis: [], motivos: [`Falha ao verificar: ${U.limita(e.message, 120)}`], limitacoes: [], existencia_confirmada: false, demanda_verificada: 0, claims_rejeitadas: [] } }; run.avisos.push(`Falha ao verificar ${reg.doc.nome}: ${U.limita(e.message, 100)}`); }
       const v = resultado.verificacao;
       await store.atualizar('oportunidade', id, (o) => {
         o.verificacao = v; o.verificada_em = new Date(ctx.agora).toISOString();
@@ -234,7 +234,7 @@ E.notificar = async (run, ctx) => {
 };
 
 // ── Motor ───────────────────────────────────────────────────────────────────
-const erroTemporario = (e) => /429|rate.?limit|timed? ?out|timeout|aborted|ECONNRESET|ETIMEDOUT|ECONNABORTED|ENOTFOUND|fetch failed/i.test(`${e.status || ''} ${e.code || ''} ${e.message || ''}`) || [502, 503, 504, 429].includes(Number(e.status));
+const erroTemporario = U.erroTemporario;
 
 // `avancar` trabalha até o orçamento acabar. Devolve { run, concluida, ocupado, esperar_s }.
 async function avancar(runId, { deps: depsEntrada = {}, orcamentoMs = 44000 } = {}) {

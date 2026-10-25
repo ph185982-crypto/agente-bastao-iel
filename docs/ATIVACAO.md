@@ -46,6 +46,12 @@ Depois de mudar variáveis, faça um novo deploy.
 - Com o app aberto ele confere sozinho a cada 30 min. Com o app fechado precisa de agendador: `docs/MONITOR.md`
   (GitHub Actions só depois que o arquivo estiver na branch principal; ou cron-job.org).
 
+## 5b. Radar de Negócios
+
+- Cron diário da Vercel `0 10 * * *` (= 07:00 de Brasília) em `/api/radar/cron`; precisa de banco, chave de IA e `CRON_SECRET`. Detalhes, fontes e custos em `docs/RADAR.md`.
+- Reforço opcional com horário exato: `.github/workflows/radar.yml` (mesmas configurações do monitor).
+- O Radar nunca publica: o carrossel fica na fila do próprio Radar até você baixar o ZIP e postar.
+
 ## 6. Levar para produção
 
 As novidades estão na branch `claude/create-nexos-paginas-5Yvxh`. A produção só as terá depois de **você** autorizar a mesclagem

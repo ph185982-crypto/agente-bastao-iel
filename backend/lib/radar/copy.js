@@ -67,6 +67,21 @@ function checarTexto(texto, rotulo, { capa = false } = {}) {
   return e;
 }
 
+// O rótulo escrito pela IA precisa dizer o que o número É (receita não pode virar "usuários", nem investimento virar "faturamento").
+const FAMILIA_ROTULO = [
+  ['receita', /\b(receita|faturamento|fatura|faturou|vendas|vendeu|arrecad)/i, ['receita', 'vendas']],
+  ['investimento', /\b(investiment|captou|capta[cç]|rodada|aporte|levantou)/i, ['investimento']],
+  ['valuation', /\b(valuation|avalia|vale\b|valor de mercado)/i, ['valuation']],
+  ['lucro', /\b(lucr|lucrativ)/i, ['lucro']],
+  ['pessoas', /\b(clientes|usu[aá]rios|assinantes|membros|lojistas|motoristas|alunos|criadores|downloads|avalia[cç][oõ]es)/i, ['clientes', 'usuarios', 'avaliacoes_app']],
+  ['paises', /\b(pa[ií]ses|mercados)/i, ['paises']],
+  ['crescimento', /\b(cresciment|crescer|cresceu)/i, ['crescimento']],
+];
+function rotuloIncoerente(rotulo, claim) {
+  for (const [nome, re, tipos] of FAMILIA_ROTULO) if (re.test(rotulo) && !tipos.includes(claim.tipo)) return `o rótulo “${rotulo}” fala de ${nome}, mas o número ${claim.id} é do tipo ${claim.tipo}`;
+  return null;
+}
+
 // Monta as 8 telas a partir do JSON da IA. Devolve { slides, erros }.
 function montarTelas(j, op, { fixo = C.CTA_FIXO } = {}) {
   const erros = []; const usaveis = claimsUsaveis(op);
@@ -98,6 +113,8 @@ function montarTelas(j, op, { fixo = C.CTA_FIXO } = {}) {
     if (!it.claim) { erros.push(`Tela 5: o item ${i + 1} usa uma afirmação que não está liberada (${itens5[i].rotulo || 'sem rótulo'})`); return; }
     if (it.claim.numero === null || !it.claim.valor_exibicao) { erros.push(`Tela 5: a afirmação ${it.claim.id} não tem número`); return; }
     if (/\d/.test(it.rotulo)) erros.push(`Tela 5: o rótulo “${it.rotulo}” não pode ter número (o valor vem da fonte)`);
+    const inc = rotuloIncoerente(it.rotulo, it.claim); if (inc) erros.push(`Tela 5: ${inc}`);
+    if (itens5.slice(0, i).some((o) => o.claim && o.claim.id === it.claim.id)) erros.push(`Tela 5: o número ${it.claim.id} aparece duas vezes`);
     prova.push({ claim_id: it.claim.id, valor: it.claim.valor_exibicao, rotulo: it.rotulo, tipo: it.claim.tipo, atribuicao: it.claim.atribuicao, url: it.claim.url, veiculo: it.claim.veiculo, data_publicacao: it.claim.data_publicacao, periodo: it.claim.periodo });
   });
   if (!prova.length) erros.push('Tela 5: nenhuma prova numérica liberada foi usada');
@@ -245,4 +262,4 @@ async function gerarReels(op, { deps = {}, tentativas = 2 } = {}) {
   throw Object.assign(new Error(`O roteiro de Reels não passou nas regras: ${erros.slice(0, 3).join('; ')}`), { code: 'COPY_INVALIDA', status: 422, erros });
 }
 
-module.exports = { gerarCopia, gerarReels, montarTelas, validarTelas, montarLegenda, checarTexto, numerosNaoComprovados, atribuicaoFaltando, dinheiroNaCapa, claimsUsaveis, INTRO, ROTULOS_BRASIL, SISTEMA };
+module.exports = { rotuloIncoerente, gerarCopia, gerarReels, montarTelas, validarTelas, montarLegenda, checarTexto, numerosNaoComprovados, atribuicaoFaltando, dinheiroNaCapa, claimsUsaveis, INTRO, ROTULOS_BRASIL, SISTEMA };

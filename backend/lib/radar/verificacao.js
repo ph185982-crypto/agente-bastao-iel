@@ -171,7 +171,7 @@ Responda APENAS JSON: {"afirmacoes":[{"documento":0,"tipo":"","texto":"","numero
 
 async function pedirAfirmacoes(cand, docs, { deps = {} } = {}) {
   const pedir = deps.pedirJson || llmJson.pedirJson;
-  const corpo = docs.map((d) => `[DOCUMENTO ${d.indice}] veículo=${d.veiculo} · classe=${d.classe} · data=${d.publicada_em || 'sem data'} · url=${d.url}\n${llmJson.dado(`DOCUMENTO_${d.indice}`, d.texto, 9000).bloco}`).join('\n\n');
+  const corpo = docs.map((d) => `[DOCUMENTO ${d.indice}] veículo=${d.veiculo} · classe=${d.classe} · data=${d.publicada_em || 'sem data'} · url=${d.url}\n${llmJson.dado(`DOCUMENTO_${d.indice}`, d.texto, 6500).bloco}`).join('\n\n');
   const { dados, llm } = await pedir({
     sistema: `${PROMPT_AFIRMACOES}\n\n${llmJson.REGRAS_DADOS}`,
     usuario: `Empresa/produto: ${cand.nome}\n\n${corpo}`, maxTokens: 3200, temperatura: 0.1, budget: deps.budget,
@@ -298,7 +298,7 @@ async function verificar(cand, { deps = {}, agora = Date.now() } = {}) {
     } catch (e) {
       limitacoes.push(`A IA não conseguiu ler as fontes (${U.limita(e.message, 100)}).`);
       const err = Object.assign(new Error(e.message), { code: e.code || 'IA' });
-      if (['SEM_IA', 'LIMITE'].includes(e.code)) throw err;
+      if (['SEM_IA', 'LIMITE'].includes(e.code) || U.erroTemporario(e)) throw err;
     }
   }
   const verificacao = concluir({ cand, docs, claims, rejeitadas, limitacoes, agora });

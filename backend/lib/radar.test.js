@@ -184,6 +184,9 @@ test('texto longo, frase proibida, emoji, exclamação e número inventado são 
   assert.ok(erros((j) => { j.slides[0].texto = 'Esse serviço de banho em casa já tem 120 mil clientes no mundo todo'; }).some((e) => /atribuição/.test(e)), 'número da empresa precisa de "segundo a empresa"');
   assert.ok(erros((j) => { j.slides[0].texto = 'Quase ninguém faz isso no Brasil e esse banho em casa já fatura alto'; }).some((e) => /não dá para provar/.test(e)));
   assert.ok(erros((j) => { j.slides[4].itens = [{ claim_id: 'c9', rotulo: 'clientes' }]; }).some((e) => /não está liberada/.test(e)), 'prova só com afirmação liberada');
+  assert.ok(erros((j) => { j.slides[4].itens = [{ claim_id: 'c1', rotulo: 'de receita anual' }]; }).some((e) => /fala de receita/.test(e)), 'o rótulo não pode trocar o tipo do número');
+  assert.ok(erros((j) => { j.slides[4].itens = [{ claim_id: 'c2', rotulo: 'clientes' }]; }).some((e) => /fala de pessoas/.test(e)), 'faturamento não vira clientes');
+  assert.ok(erros((j) => { j.slides[4].itens = [{ claim_id: 'c1', rotulo: 'clientes' }, { claim_id: 'c1', rotulo: 'usuários' }]; }).some((e) => /duas vezes/.test(e)));
   assert.ok(erros((j) => { j.slides[1].problema = 'o cachorro fica sujo, e provavelmente o dono perde tempo demais no pet shop'; }).some((e) => /hipótese ou dúvida só pode aparecer na tela 7/.test(e)));
 });
 test('erro da IA: copy que nunca passa nas regras falha com os motivos (nada é inventado como plano B)', async () => {

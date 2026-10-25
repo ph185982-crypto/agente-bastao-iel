@@ -6,7 +6,7 @@ const C = require('./config');
 const U = require('./util');
 const { dominioRegistravel } = require('../evidence');
 
-const TAMANHO_LOTE = 70;
+const TAMANHO_LOTE = 50;
 
 const SUFIXOS = /\b(inc|llc|ltd|gmbh|sa|s\.a|ag|co|corp|labs?|ai|app|hq|io|technologies|tecnologia|brasil|the)\b/g;
 function chaveEmpresa(nome, urlOficial) {

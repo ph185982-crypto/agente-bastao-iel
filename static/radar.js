@@ -102,7 +102,7 @@
   function slidesHtml(c) {
     const n = ST.slide[c.id] || 0;
     if (!c.slides?.length) return `<div class="rd-vazio">${c.estado === 'erro' ? `Não foi possível gerar: ${esc(c.erro?.mensagem || 'erro')}` : 'Gerando as imagens…'}</div>`;
-    return `<div class="rd-visor"><div class="rd-slides" data-rd-slides="${esc(c.id)}" role="group" aria-label="Carrossel de ${c.slides.length} telas">${c.slides.map((s, i) => `<img data-rd-src="${esc(s.url)}?w=1080" alt="Tela ${s.n}: ${esc((c.textos.find((t) => t.n === s.n) || {}).texto || '')}" width="1080" height="1350" ${i ? 'loading="lazy"' : ''}>`).join('')}</div><span class="rd-pos" data-rd-pos="${esc(c.id)}">${n + 1}/${c.slides.length}</span></div>
+    return `<div class="rd-visor"><div class="rd-slides" data-rd-slides="${esc(c.id)}" role="group" aria-label="Carrossel de ${c.slides.length} telas">${c.slides.map((s, i) => `<img data-rd-src="${esc(s.url)}?w=1080" alt="Tela ${s.n}: ${esc((c.textos.find((t) => t.n === s.n) || {}).texto || '')}" width="1080" height="1350">`).join('')}</div><span class="rd-pos" data-rd-pos="${esc(c.id)}">${n + 1}/${c.slides.length}</span></div>
       <div class="rd-pontos" aria-hidden="true">${c.slides.map((_, i) => `<i class="${i === n ? 'on' : ''}"></i>`).join('')}</div>`;
   }
   function cartaoFila(c) {

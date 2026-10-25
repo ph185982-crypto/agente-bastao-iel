@@ -107,12 +107,15 @@ function fakePedirJson({ falharNa = null, semPontuacao = false } = {}) {
       return { llm, dados: { avaliacoes: semPontuacao ? [] : ops.map((o) => ({ id: o.id, niveis: o.nome === 'Lumen Pets' ? { novidade: 3, demanda: 3, receita: 3, compreensao: 3, brasil: 3, investimento: 3, visual: 3, compartilhamento: 3 } : { novidade: 2, demanda: 2, receita: 2, compreensao: 2, brasil: 2, investimento: 2, visual: 2, compartilhamento: 2 }, justificativas: { demanda: 'Dados confirmados.' }, sinais_de_risco: [], motivo_geral: 'Ideia simples.' })) } };
     }
     if (tipo === 'copy') {
+      const dv = JSON.parse(usuario.split('\n')[1]).DADOS_VERIFICADOS || [];
+      const idDe = (...tipos) => (dv.find((d) => tipos.includes(d.tipo)) || {}).id;
+      const itens5 = [{ claim_id: idDe('clientes', 'usuarios'), rotulo: 'clientes' }, { claim_id: idDe('receita'), rotulo: 'de receita anual' }].filter((i) => i.claim_id);
       return { llm, dados: { slides: [
         { n: 1, texto: 'Segundo a empresa, esse serviço de **banho para cães** em casa já tem 120 mil clientes' },
         { n: 2, problema: 'dar banho no cachorro em casa vira bagunça e o pet shop vive lotado' },
         { n: 3, produto: 'um serviço que leva o banhista até a porta', resultado: 'o cachorro ficar limpo sem você sair' },
         { n: 4, modelo: 'assinatura', explicacao: 'o cliente paga uma mensalidade fixa e recebe visitas toda semana' },
-        { n: 5, titulo: 'O que a empresa mostra', itens: [{ claim_id: 'c1', rotulo: 'clientes' }, { claim_id: 'c2', rotulo: 'de receita anual' }] },
+        { n: 5, titulo: 'O que a empresa mostra', itens: itens5 },
         { n: 6, dor: 'dor de todo dono', facilidade: 'serviço na porta', recorrencia: 'cobrança mensal' },
         { n: 7, publico_inicial: 'donos de cães', produto_minimo: 'banho em domicílio', canal_de_vendas: 'grupos de condomínio', forma_de_cobranca: 'pacote mensal', teste_baixo_custo: 'cinco clientes' },
       ], legenda: { primeira_linha: 'Esse serviço leva o banho do cachorro até a sua porta.', resumo: 'O Lumen Pets, dos EUA, manda um banhista à casa do cliente.', como_ganha: 'Cobra uma assinatura mensal, segundo a empresa.', brasil: 'No Brasil, a ideia poderia ser testada em condomínios.' }, hashtags: ['negocios', 'empreendedorismo', 'ideiasquedaodinheiro'] } };
