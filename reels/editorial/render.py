@@ -125,6 +125,9 @@ def compactar(cfg, narr):
 
 
 # ---------------------------------------------------------------- tempos
+ANTECIPAR = 0.0   # s: o texto entra um pouco antes da palavra (ritmo.antecipar no reel.json)
+
+
 class Relogio:
     """Acha o tempo absoluto de uma palavra falada dentro da cena (busca em ordem)."""
 
@@ -140,7 +143,7 @@ class Relogio:
                 if norm(pal[i][0]).startswith(norm(alvo)) and norm(alvo):
                     if seq:
                         self.pos = i + 1
-                    return round(self.t0 + pal[i][1][0], 3)
+                    return round(self.t0 + pal[i][1][0] - ANTECIPAR, 3)
         self.faltas.append(alvo)
         return round(padrao if padrao is not None else self.cena["inicio"] + 0.5, 3)
 
@@ -177,7 +180,7 @@ def resolver(cfg, narr):
             if l.get("carimbo"):
                 sons.append({"tipo": "carimbo", "t": l["t"] + .12})
         if "numero" in c:
-            c["numero"]["t"] = r.palavra(c["numero"]["ancora"], seq=False, padrao=ini + 1)
+            c["numero"]["t"] = r.palavra(c["numero"]["ancora"], seq=False, padrao=ini + 1) - c["numero"].get("antes", 0)
             ancoras_qa.append((c["id"], c["numero"]["ancora"], c["numero"]["t"], c["numero"]["valor"]))
             sons += [{"tipo": "tique", "t": c["numero"]["t"] + q * .13} for q in range(len(c["numero"]["valor"]))]
         if "retrato" in c:
@@ -195,6 +198,18 @@ def resolver(cfg, narr):
             c["cta"]["t"] = r.palavra(c["cta"]["ancora"], seq=False, padrao=c["fim"] - 3)
             ancoras_qa.append((c["id"], c["cta"]["ancora"], c["cta"]["t"], "CTA"))
             sons += [{"tipo": "pop", "t": c["cta"]["t"] + .05}, {"tipo": "pop", "t": c["cta"]["t"] + .75}]
+        for chave in ("barras", "marcos"):   # modelos "dado": itens que entram na palavra falada
+            for j, it in enumerate(c.get(chave, [])):
+                it["t"] = r.palavra(it["ancora"], seq=False, padrao=ini + .8 + j * .8)
+                ancoras_qa.append((c["id"], it["ancora"], it["t"], chave))
+                sons.append({"tipo": "papel" if chave == "barras" else "carimbo", "t": it["t"], "dur": .35})
+        if "grade" in c:
+            g = c["grade"]
+            g["t"] = r.palavra(g["ancora"], seq=False, padrao=ini + 1)
+            ancoras_qa.append((c["id"], g["ancora"], g["t"], "grade"))
+            sons += [{"tipo": "pop", "t": g["t"] + i * g.get("passo", .09) * q} for i in range(g["preenchidos"])]
+        if c["modelo"].startswith("dado_"):
+            sons.append({"tipo": "whoosh", "t": ini + .02})
         # efeitos proprios de cada modelo
         m = c["modelo"]
         if m == "impacto_documento":
@@ -210,7 +225,7 @@ def resolver(cfg, narr):
                      {"tipo": "marcador", "t": ini + 2.55 * q}]
         if m == "tela_dividida":
             sons.append({"tipo": "whoosh", "t": ini + .05})
-        if m == "chamada_final":
+        if m in ("chamada_final", "cta_simples"):
             sons.append({"tipo": "whoosh", "t": ini + .3 * q})
         tr = c.get("transicao_saida")
         if tr and k + 1 < len(cfg["cenas"]):
@@ -237,6 +252,9 @@ def montar_legendas(cfg, cenas, narr):
         tela = {norm(w) for l in c.get("texto", []) for w in l["linha"].split()}
         if "numero" in c:
             tela.add(norm(c["numero"]["valor"]))
+        for chave, campos in (("barras", ("rotulo", "texto")), ("marcos", ("ano", "rotulo"))):
+            for it in c.get(chave, []):
+                tela |= {norm(w) for f in campos for w in str(it[f]).split()}
         if "cta" in c:
             tela |= {norm(w) for w in (c["cta"]["texto"] + " " + c["cta"]["perfil"]).replace("@", " ").replace("_", " ").split()}
         pal = [(w, c["_voz_inicio"] + s, c["_voz_inicio"] + e) for w, (s, e) in n["palavras"]]
@@ -251,6 +269,8 @@ def montar_legendas(cfg, cenas, narr):
             if grupos and len(atual) < lg["palavras_min"] and len(grupos[-1]) + len(atual) <= lg["palavras_max"]:
                 grupos[-1] += atual
             else:
+                while grupos and len(atual) < lg["palavras_min"] and len(grupos[-1]) > lg["palavras_min"]:
+                    atual.insert(0, grupos[-1].pop())   # empresta palavra do bloco anterior
                 grupos.append(atual)
         destaque = norm(c.get("destaque_legenda", ""))
         for g in grupos:
@@ -341,6 +361,8 @@ def main(cfg_path):
     nome = cfg["nome"]
     trabalho = RAIZ / "saida" / ".trabalho" / f"{nome}-editorial"
     trabalho.mkdir(parents=True, exist_ok=True)
+    global ANTECIPAR
+    ANTECIPAR = cfg.get("ritmo", {}).get("antecipar", 0.0)
     narr = carregar_narracao(cfg, cfg["cenas"])
     narr = acelerar_narracao(cfg, narr, trabalho)
     cfg = compactar(cfg, narr)
@@ -369,7 +391,7 @@ def main(cfg_path):
         if c["modelo"] == "tela_dividida" and n:
             fim = c["_voz_inicio"] + n["dur"]
             pausa7.append((fim + .05, min(fim + .45, c["fim"])))
-    cen_aud = [{"inicio": c["inicio"], "fim": c["fim"], "riser": c["modelo"] in ("retrato_carimbo", "chamada_final")} for c in cenas]
+    cen_aud = [{"inicio": c["inicio"], "fim": c["fim"], "riser": c["modelo"] in ("retrato_carimbo", "chamada_final", "cta_simples")} for c in cenas]
     if tr.get("arquivo"):
         import soundfile as sf
         y, _ = sf.read(str(proj / tr["arquivo"]))

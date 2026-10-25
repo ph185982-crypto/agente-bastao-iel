@@ -1,0 +1,224 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "Quando um real valia 2.750 cruzeiros",
+ "nome": "08-um-real-valia-2750",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/08-um-real-valia-2750.md",
+  "pasta": "saida/.trabalho/08-um-real-valia-2750"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "EM 1994, 1 REAL VALIA",
+     "cor": "ivory",
+     "ancora": "Em",
+     "cima": true
+    },
+    {
+     "linha": "CRUZEIROS REAIS",
+     "cor": "ivory",
+     "ancora": "cruzeiros"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "numero": {
+    "valor": "2.750",
+    "ancora": "dois",
+    "cor": "orange",
+    "px": 380,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 2750,
+     "casas": 0,
+     "prefixo": "",
+     "sufixo": ""
+    }
+   },
+   "transicao_saida": "flash"
+  },
+  {
+   "id": "troca",
+   "modelo": "dado_texto",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "1º DE JULHO",
+     "cor": "blue",
+     "ancora": "primeiro"
+    },
+    {
+     "linha": "O DINHEIRO DE TODO MUNDO",
+     "cor": "charcoal",
+     "ancora": "dinheiro"
+    },
+    {
+     "linha": "FOI TROCADO.",
+     "cor": "orange",
+     "ancora": "trocado"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "fundo_legenda": true,
+   "transicao_saida": "folha",
+   "destaque_legenda": "trocado"
+  },
+  {
+   "id": "antes",
+   "modelo": "dado_texto",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "OS PREÇOS SUBIAM",
+     "cor": "ivory",
+     "ancora": "preços"
+    },
+    {
+     "linha": "SEM PARAR.",
+     "cor": "orange",
+     "ancora": "parar"
+    },
+    {
+     "linha": "A TROCA FOI",
+     "cor": "ivory",
+     "ancora": "troca"
+    },
+    {
+     "linha": "A VIRADA DO PLANO.",
+     "cor": "orange",
+     "ancora": "virada"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "transicao_saida": "rasgo",
+   "destaque_legenda": "parar"
+  },
+  {
+   "id": "urv",
+   "modelo": "dado_texto",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "UMA MOEDA VIRTUAL:",
+     "cor": "ivory",
+     "ancora": "moeda"
+    },
+    {
+     "linha": "A URV.",
+     "cor": "orange",
+     "ancora": "URV"
+    },
+    {
+     "linha": "PREPAROU A TROCA.",
+     "cor": "ivory",
+     "ancora": "preparar"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "transicao_saida": "whip",
+   "destaque_legenda": "URV"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "QUEM VIVEU",
+     "cor": "ivory",
+     "ancora": "viveu"
+    },
+    {
+     "linha": "COMENTA A",
+     "cor": "ivory",
+     "ancora": "Comenta"
+    },
+    {
+     "linha": "SUA HISTÓRIA.",
+     "cor": "charcoal",
+     "ancora": "história",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}

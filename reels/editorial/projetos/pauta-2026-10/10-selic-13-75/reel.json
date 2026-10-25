@@ -1,0 +1,223 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "O que 13,75% de juros fazem com R$ 10 mil",
+ "nome": "10-selic-13-75",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/10-selic-13-75.md",
+  "pasta": "saida/.trabalho/10-selic-13-75"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "A 13,75% AO ANO",
+     "cor": "ivory",
+     "ancora": "taxa"
+    },
+    {
+     "linha": "QUANTO VIRA?",
+     "cor": "orange",
+     "ancora": "Quanto"
+    }
+   ],
+   "selo": "A CONTA",
+   "numero": {
+    "valor": "R$ 10.000",
+    "ancora": "Dez",
+    "cor": "ivory",
+    "px": 250,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 10000,
+     "casas": 0,
+     "prefixo": "R$ ",
+     "sufixo": ""
+    }
+   },
+   "transicao_saida": "flash",
+   "destaque_legenda": "Quanto"
+  },
+  {
+   "id": "vira",
+   "modelo": "dado_numero",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "ANTES DO IMPOSTO",
+     "cor": "charcoal",
+     "ancora": "imposto"
+    }
+   ],
+   "selo": "A CONTA",
+   "fundo_legenda": true,
+   "numero": {
+    "valor": "R$ 11.375",
+    "ancora": "Onze",
+    "cor": "blue",
+    "px": 250,
+    "y": 830,
+    "contar": {
+     "de": 10000,
+     "ate": 11375,
+     "casas": 0,
+     "prefixo": "R$ ",
+     "sufixo": ""
+    }
+   },
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "jogo",
+   "modelo": "dado_texto",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "VIRA O JOGO.",
+     "cor": "orange",
+     "ancora": "jogo"
+    },
+    {
+     "linha": "O MESMO JURO",
+     "cor": "ivory",
+     "ancora": "mesmo"
+    },
+    {
+     "linha": "PAGA O INVESTIMENTO",
+     "cor": "ivory",
+     "ancora": "investimento"
+    },
+    {
+     "linha": "ENCARECE O FINANCIAMENTO.",
+     "cor": "orange",
+     "ancora": "encarece"
+    }
+   ],
+   "selo": "A CONTA",
+   "transicao_saida": "rasgo",
+   "destaque_legenda": "jogo"
+  },
+  {
+   "id": "copom",
+   "modelo": "dado_texto",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "O COPOM DECIDE",
+     "cor": "charcoal",
+     "ancora": "Copom"
+    },
+    {
+     "linha": "A TAXA",
+     "cor": "blue",
+     "ancora": "taxa"
+    },
+    {
+     "linha": "NO COMEÇO DE NOVEMBRO.",
+     "cor": "orange",
+     "ancora": "novembro"
+    }
+   ],
+   "selo": "A CONTA",
+   "fundo_legenda": true,
+   "transicao_saida": "whip",
+   "destaque_legenda": "novembro"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "O QUE VOCÊ FARIA",
+     "cor": "ivory",
+     "ancora": "faria"
+    },
+    {
+     "linha": "COM R$ 10 MIL?",
+     "cor": "charcoal",
+     "ancora": "mil",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "A CONTA",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}

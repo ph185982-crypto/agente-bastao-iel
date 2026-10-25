@@ -1,0 +1,7 @@
+A luz puxou a inflação de setembro
+==================================
+fontes:
+- IPCA setembro/2026 = 0,82%; energia elétrica residencial +7,98%, contribuição ~0,32 p.p. (IBGE, divulgado em 09/10/2026; lido via Rankia: https://rankia.com.br/ipca-setembro-2026-0-82-12-meses-4-58-acima-teto-meta/). FONTE SECUNDÁRIA: conferir na tabela do IBGE (SIDRA 7060) antes de gravar.
+- Conta: 0,32 / 0,82 = 39%. Arredondar para "quase 4 de cada 10".
+- Bandeira tarifária de novembro: anúncio previsto para 30/10/2026 (calendário Aneel; https://cenarioenergia.com.br/2026/01/07/aneel-divulga-calendario-das-bandeiras-tarifarias-para-2026-e-reforca-previsibilidade-para-consumidores-e-agentes-do-setor-eletrico/). Se já saiu, atualizar a última cena com a cor real.
+- Viralização: gancho com número (7,98%) em 1,5 s; "culpado" único; pergunta final para comentário; postar até 30/10 (antes do anúncio da bandeira).

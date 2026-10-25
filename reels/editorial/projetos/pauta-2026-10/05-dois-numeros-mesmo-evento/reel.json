@@ -1,0 +1,288 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "Dois números para a mesma Black Friday",
+ "nome": "05-dois-numeros-mesmo-evento",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/05-dois-numeros-mesmo-evento.md",
+  "pasta": "saida/.trabalho/05-dois-numeros-mesmo-evento"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85,
+    0.95,
+    0.8
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_texto",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "DOIS NÚMEROS",
+     "cor": "ivory",
+     "ancora": "Dois"
+    },
+    {
+     "linha": "O MESMO EVENTO.",
+     "cor": "orange",
+     "ancora": "mesmo"
+    },
+    {
+     "linha": "NENHUM MENTE.",
+     "cor": "ivory",
+     "ancora": "nenhum"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "deco": "riscos",
+   "transicao_saida": "flash",
+   "destaque_legenda": "mesmo"
+  },
+  {
+   "id": "treze",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "UMA PROJEÇÃO DIZ",
+     "cor": "ivory",
+     "ancora": "projeção",
+     "cima": true
+    },
+    {
+     "linha": "NA BLACK FRIDAY",
+     "cor": "ivory",
+     "ancora": "Black"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "numero": {
+    "valor": "R$ 13,3 BI",
+    "ancora": "treze",
+    "cor": "orange",
+    "px": 260,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 13.3,
+     "casas": 1,
+     "prefixo": "R$ ",
+     "sufixo": " BI"
+    }
+   },
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "onze",
+   "modelo": "dado_numero",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "OUTRA DIZ",
+     "cor": "ivory",
+     "ancora": "Outra",
+     "cima": true
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "numero": {
+    "valor": "R$ 11,32 BI",
+    "ancora": "onze",
+    "cor": "orange",
+    "px": 250,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 11.32,
+     "casas": 2,
+     "prefixo": "R$ ",
+     "sufixo": " BI"
+    }
+   },
+   "transicao_saida": "rasgo"
+  },
+  {
+   "id": "dif",
+   "modelo": "dado_numero",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "QUASE",
+     "cor": "charcoal",
+     "ancora": "dois",
+     "cima": true
+    },
+    {
+     "linha": "DE DIFERENÇA",
+     "cor": "charcoal",
+     "ancora": "diferença"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "fundo_legenda": true,
+   "numero": {
+    "valor": "R$ 2 BI",
+    "ancora": "dois",
+    "cor": "blue",
+    "px": 280,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 1.98,
+     "casas": 2,
+     "prefixo": "R$ ",
+     "sufixo": " BI"
+    }
+   },
+   "transicao_saida": "whip"
+  },
+  {
+   "id": "metodo",
+   "modelo": "dado_linha",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "A DIFERENÇA ESTÁ NO MÉTODO",
+     "cor": "ivory",
+     "ancora": "método"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "marcos": [
+    {
+     "ano": "4 DIAS",
+     "rotulo": "26 A 29 DE NOVEMBRO",
+     "ancora": "quatro",
+     "cor": "orange"
+    },
+    {
+     "ano": "A SEMANA",
+     "rotulo": "TODA A SEMANA DO EVENTO",
+     "ancora": "semana",
+     "cor": "blue"
+    }
+   ],
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "pergunte",
+   "modelo": "dado_texto",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "TE DERAM UM NÚMERO?",
+     "cor": "charcoal",
+     "ancora": "derem"
+    },
+    {
+     "linha": "PERGUNTE",
+     "cor": "orange",
+     "ancora": "pergunte"
+    },
+    {
+     "linha": "COMO FOI CALCULADO.",
+     "cor": "charcoal",
+     "ancora": "como"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "fundo_legenda": true,
+   "transicao_saida": "rasgo",
+   "destaque_legenda": "pergunte"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "SEGUE O",
+     "cor": "ivory",
+     "ancora": "Segue"
+    },
+    {
+     "linha": "PEDRO DESTRAVA.",
+     "cor": "charcoal",
+     "ancora": "Pedro",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}

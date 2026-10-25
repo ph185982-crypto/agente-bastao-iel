@@ -1,7 +1,6 @@
 ---
 titulo: A inflação estourou o teto da meta
-template: fluxo
-entradas: valor=1000; inflacao=4,58%
+template: editorial
 status: rascunho (aguarda aprovação)
 ---
 

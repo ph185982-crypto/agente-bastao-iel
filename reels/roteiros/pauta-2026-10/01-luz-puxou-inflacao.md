@@ -1,6 +1,6 @@
 ---
 titulo: A luz puxou a inflação de setembro
-template: fluxo
+template: editorial
 status: rascunho (aguarda aprovação; fatos a conferir no IBGE)
 ---
 

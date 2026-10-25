@@ -1,0 +1,258 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "Black Friday: o ticket médio caiu",
+ "nome": "04-black-friday-ticket-caiu",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/04-black-friday-ticket-caiu.md",
+  "pasta": "saida/.trabalho/04-black-friday-ticket-caiu"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85,
+    0.95
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_texto",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "AS VENDAS",
+     "cor": "ivory",
+     "ancora": "vendas"
+    },
+    {
+     "linha": "DEVEM CRESCER.",
+     "cor": "orange",
+     "ancora": "crescer"
+    },
+    {
+     "linha": "MAS CADA COMPRA",
+     "cor": "ivory",
+     "ancora": "compra"
+    },
+    {
+     "linha": "DEVE CAIR.",
+     "cor": "orange",
+     "ancora": "cair",
+     "desgaste": true
+    }
+   ],
+   "selo": "A CONTA",
+   "deco": "riscos",
+   "transicao_saida": "flash",
+   "destaque_legenda": "crescer"
+  },
+  {
+   "id": "projecao",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "PROJEÇÃO PARA O E-COMMERCE",
+     "cor": "ivory",
+     "ancora": "projeção",
+     "cima": true
+    },
+    {
+     "linha": "DE FATURAMENTO",
+     "cor": "ivory",
+     "ancora": "faturamento"
+    }
+   ],
+   "selo": "A CONTA",
+   "numero": {
+    "valor": "+20,7%",
+    "ancora": "vinte",
+    "cor": "orange",
+    "px": 330,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 20.7,
+     "casas": 1,
+     "prefixo": "+",
+     "sufixo": "%"
+    }
+   },
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "ticket",
+   "modelo": "dado_barras",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "TÍQUETE MÉDIO",
+     "cor": "ivory",
+     "ancora": "tíquete"
+    }
+   ],
+   "selo": "A CONTA",
+   "barras": [
+    {
+     "rotulo": "2025",
+     "valor": 309.7,
+     "texto": "R$ 309,70",
+     "cor": "blue",
+     "ancora": "trezentos"
+    },
+    {
+     "rotulo": "2026 (PROJEÇÃO)",
+     "valor": 268.2,
+     "texto": "R$ 268,20",
+     "cor": "orange",
+     "ancora": "para"
+    }
+   ],
+   "nota": "barras a partir do zero · fonte: Neotrust/Confi",
+   "transicao_saida": "rasgo"
+  },
+  {
+   "id": "menos",
+   "modelo": "dado_numero",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "EM CADA PEDIDO",
+     "cor": "charcoal",
+     "ancora": "pedido"
+    }
+   ],
+   "selo": "A CONTA",
+   "fundo_legenda": true,
+   "numero": {
+    "valor": "−R$ 41,50",
+    "ancora": "Quarenta",
+    "cor": "orange",
+    "px": 250,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 41.5,
+     "casas": 2,
+     "prefixo": "−R$ ",
+     "sufixo": ""
+    }
+   },
+   "transicao_saida": "whip"
+  },
+  {
+   "id": "ouseja",
+   "modelo": "dado_texto",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "COMPRA MAIS VEZES,",
+     "cor": "ivory",
+     "ancora": "compra"
+    },
+    {
+     "linha": "MAS COISAS",
+     "cor": "ivory",
+     "ancora": "coisas"
+    },
+    {
+     "linha": "MAIS BARATAS.",
+     "cor": "orange",
+     "ancora": "mais"
+    }
+   ],
+   "selo": "A CONTA",
+   "transicao_saida": "folha",
+   "destaque_legenda": "mais"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "VAI COMPRAR",
+     "cor": "ivory",
+     "ancora": "comprar"
+    },
+    {
+     "linha": "O QUÊ DIA 27?",
+     "cor": "charcoal",
+     "ancora": "dia",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "A CONTA",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}

@@ -1,0 +1,248 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "A inflação estourou o teto da meta",
+ "nome": "02-inflacao-estourou-teto",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/02-inflacao-estourou-teto.md",
+  "pasta": "saida/.trabalho/02-inflacao-estourou-teto"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "ESTOUROU O TETO",
+     "cor": "orange",
+     "ancora": "estourou",
+     "cima": true
+    },
+    {
+     "linha": "EM 12 MESES",
+     "cor": "ivory",
+     "ancora": "doze"
+    }
+   ],
+   "selo": "A CONTA",
+   "numero": {
+    "valor": "4,58%",
+    "ancora": "Quatro",
+    "cor": "ivory",
+    "px": 330,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 4.58,
+     "casas": 2,
+     "prefixo": "",
+     "sufixo": "%"
+    }
+   },
+   "transicao_saida": "flash",
+   "destaque_legenda": "estourou"
+  },
+  {
+   "id": "teto",
+   "modelo": "dado_barras",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "A META TEM UM TETO",
+     "cor": "ivory",
+     "ancora": "teto"
+    },
+    {
+     "linha": "PASSOU POR 0,08",
+     "cor": "orange",
+     "ancora": "oito"
+    }
+   ],
+   "selo": "A CONTA",
+   "barras": [
+    {
+     "rotulo": "TETO DA META",
+     "valor": 4.5,
+     "texto": "4,5%",
+     "cor": "blue",
+     "ancora": "teto"
+    },
+    {
+     "rotulo": "INFLAÇÃO EM 12 MESES",
+     "valor": 4.58,
+     "texto": "4,58%",
+     "cor": "orange",
+     "ancora": "Passou"
+    }
+   ],
+   "nota": "barras a partir do zero · fonte: IBGE",
+   "transicao_saida": "folha",
+   "destaque_legenda": "oito"
+  },
+  {
+   "id": "mil",
+   "modelo": "dado_numero",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "O QUE CUSTAVA R$ 1.000",
+     "cor": "charcoal",
+     "ancora": "custava",
+     "cima": true
+    },
+    {
+     "linha": "+ R$ 45,80",
+     "cor": "orange",
+     "ancora": "oitenta"
+    }
+   ],
+   "selo": "A CONTA",
+   "fundo_legenda": true,
+   "numero": {
+    "valor": "R$ 1.045,80",
+    "ancora": "hoje",
+    "cor": "blue",
+    "px": 230,
+    "y": 830,
+    "contar": {
+     "de": 1000,
+     "ate": 1045.8,
+     "casas": 2,
+     "prefixo": "R$ ",
+     "sufixo": ""
+    }
+   },
+   "transicao_saida": "rasgo",
+   "destaque_legenda": "oitenta"
+  },
+  {
+   "id": "salario",
+   "modelo": "dado_texto",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "SEU SALÁRIO SUBIU",
+     "cor": "ivory",
+     "ancora": "salário"
+    },
+    {
+     "linha": "MAIS QUE ISSO?",
+     "cor": "orange",
+     "ancora": "mais"
+    },
+    {
+     "linha": "SE NÃO, VOCÊ",
+     "cor": "ivory",
+     "ancora": "não"
+    },
+    {
+     "linha": "FICOU MAIS POBRE.",
+     "cor": "orange",
+     "ancora": "pobre",
+     "desgaste": true
+    }
+   ],
+   "selo": "A CONTA",
+   "transicao_saida": "whip",
+   "destaque_legenda": "mais"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "COMENTA",
+     "cor": "ivory",
+     "ancora": "Comenta"
+    },
+    {
+     "linha": "O SEU REAJUSTE",
+     "cor": "ivory",
+     "ancora": "reajuste"
+    },
+    {
+     "linha": "QUE EU FAÇO A CONTA.",
+     "cor": "charcoal",
+     "ancora": "conta",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "A CONTA",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}

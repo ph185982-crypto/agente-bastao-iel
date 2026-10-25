@@ -1,0 +1,6 @@
+O que 13,75% de juros fazem com R$ 10 mil
+=========================================
+fontes:
+- Selic meta (BCB, API SGS 432, consultada em 24/10/2026): 14,25% ate 05/08/2026; 14,00% a partir de 06/08; 13,75% a partir de 17/09/2026. Valor vigente: 13,75% ao ano. (A reportagem em ingles que citava 14% estava desatualizada.)
+- Conta em codigo: 10.000 x 1,1375 = 11.375,00 (12 meses a taxa constante, bruto, antes do imposto; so ilustracao, rendimento real depende do titulo).
+- Proxima reuniao do Copom: inicio de novembro/2026 (calendario do BC, conferir data exata).

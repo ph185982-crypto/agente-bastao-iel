@@ -1,0 +1,259 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "A luz puxou a inflação de setembro",
+ "nome": "01-luz-puxou-inflacao",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/01-luz-puxou-inflacao.md",
+  "pasta": "saida/.trabalho/01-luz-puxou-inflacao"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85,
+    0.95
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_texto",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "UM ÚNICO ITEM",
+     "cor": "ivory",
+     "ancora": "único"
+    },
+    {
+     "linha": "PUXOU A INFLAÇÃO",
+     "cor": "orange",
+     "ancora": "puxou"
+    },
+    {
+     "linha": "DE SETEMBRO.",
+     "cor": "ivory",
+     "ancora": "setembro",
+     "desgaste": true
+    }
+   ],
+   "selo": "A CONTA",
+   "deco": "riscos",
+   "transicao_saida": "flash",
+   "destaque_legenda": "puxou"
+  },
+  {
+   "id": "indice",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "IPCA DE SETEMBRO",
+     "cor": "ivory",
+     "ancora": "índice",
+     "cima": true
+    }
+   ],
+   "selo": "A CONTA",
+   "numero": {
+    "valor": "0,82%",
+    "ancora": "zero",
+    "cor": "orange",
+    "px": 330,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 0.82,
+     "casas": 2,
+     "prefixo": "",
+     "sufixo": "%"
+    }
+   },
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "luz",
+   "modelo": "dado_grade",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "SÓ A ENERGIA ELÉTRICA",
+     "cor": "ivory",
+     "ancora": "energia",
+     "cima": true
+    },
+    {
+     "linha": "0,32 DOS 0,82",
+     "cor": "orange",
+     "ancora": "trinta"
+    },
+    {
+     "linha": "QUASE 4 EM CADA 10",
+     "cor": "ivory",
+     "ancora": "quase"
+    }
+   ],
+   "selo": "A CONTA",
+   "grade": {
+    "total": 10,
+    "preenchidos": 4,
+    "cor": "orange",
+    "ancora": "quatro"
+   },
+   "transicao_saida": "rasgo",
+   "destaque_legenda": "trinta"
+  },
+  {
+   "id": "casa",
+   "modelo": "dado_texto",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "NÃO É NÚMERO",
+     "cor": "charcoal",
+     "ancora": "não"
+    },
+    {
+     "linha": "DE PLANILHA.",
+     "cor": "charcoal",
+     "ancora": "planilha"
+    },
+    {
+     "linha": "É A CONTA",
+     "cor": "blue",
+     "ancora": "conta"
+    },
+    {
+     "linha": "NA SUA CASA.",
+     "cor": "orange",
+     "ancora": "casa"
+    }
+   ],
+   "selo": "A CONTA",
+   "fundo_legenda": true,
+   "transicao_saida": "whip",
+   "destaque_legenda": "casa"
+  },
+  {
+   "id": "bandeira",
+   "modelo": "dado_numero",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "BANDEIRA DE NOVEMBRO",
+     "cor": "ivory",
+     "ancora": "bandeira",
+     "cima": true
+    },
+    {
+     "linha": "VOCÊ SABE A SUA CONTA?",
+     "cor": "ivory",
+     "ancora": "sabe"
+    }
+   ],
+   "selo": "A CONTA",
+   "numero": {
+    "valor": "DIA 30",
+    "ancora": "dia",
+    "cor": "orange",
+    "px": 300,
+    "y": 830,
+    "antes": 0.1
+   },
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "EU FAÇO",
+     "cor": "ivory",
+     "ancora": "faço"
+    },
+    {
+     "linha": "ESSA CONTA",
+     "cor": "ivory",
+     "ancora": "conta"
+    },
+    {
+     "linha": "POR VOCÊ.",
+     "cor": "charcoal",
+     "ancora": "você",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "A CONTA",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}

@@ -1,0 +1,6 @@
+A inflação estourou o teto da meta
+==================================
+fontes:
+- IPCA 12 meses até setembro/2026 = 4,58%; teto da meta = 4,5% (meta 3% ± 1,5 p.p.). IBGE divulgou em 09/10/2026 (via Rankia: https://rankia.com.br/ipca-setembro-2026-0-82-12-meses-4-58-acima-teto-meta/; outra fonte, debit.com.br, mostra 4,57%: CONFERIR no IBGE).
+- Conta feita em código, não no texto: 1.000 x 1,0458 = 1.045,80. Diferença para o teto: 4,58 - 4,50 = 0,08 p.p.
+- Viralização: "R$ 1.000 viraram R$ 1.045,80" como contador na tela (prova numérica); ensina uma coisa que dá para repetir ("faz a conta no seu salário").

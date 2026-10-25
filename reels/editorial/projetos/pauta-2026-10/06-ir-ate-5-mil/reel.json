@@ -1,0 +1,251 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "IR: quem ganha até R$ 5 mil",
+ "nome": "06-ir-ate-5-mil",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/06-ir-ate-5-mil.md",
+  "pasta": "saida/.trabalho/06-ir-ate-5-mil"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85,
+    0.95
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_texto",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "VOCÊ OUVIU QUE",
+     "cor": "ivory",
+     "ancora": "ouviu"
+    },
+    {
+     "linha": "ATÉ R$ 5 MIL",
+     "cor": "orange",
+     "ancora": "até"
+    },
+    {
+     "linha": "NÃO PAGA IR?",
+     "cor": "ivory",
+     "ancora": "paga"
+    },
+    {
+     "linha": "NÃO É BEM ASSIM.",
+     "cor": "orange",
+     "ancora": "assim",
+     "desgaste": true
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "deco": "riscos",
+   "transicao_saida": "flash",
+   "destaque_legenda": "até"
+  },
+  {
+   "id": "desconto",
+   "modelo": "dado_texto",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "NÃO ZEROU A TABELA.",
+     "cor": "charcoal",
+     "ancora": "zerou"
+    },
+    {
+     "linha": "CRIOU UM DESCONTO",
+     "cor": "blue",
+     "ancora": "criou"
+    },
+    {
+     "linha": "QUE CANCELA O IMPOSTO",
+     "cor": "charcoal",
+     "ancora": "cancela"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "fundo_legenda": true,
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "faixa",
+   "modelo": "dado_linha",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "O DESCONTO DIMINUI",
+     "cor": "ivory",
+     "ancora": "diminuindo"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "marcos": [
+    {
+     "ano": "R$ 5.000",
+     "rotulo": "IMPOSTO ZERADO",
+     "ancora": "Entre",
+     "cor": "orange"
+    },
+    {
+     "ano": "R$ 7.350",
+     "rotulo": "TABELA NORMAL",
+     "ancora": "trezentos",
+     "cor": "blue"
+    }
+   ],
+   "transicao_saida": "rasgo"
+  },
+  {
+   "id": "maximo",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "ACIMA DISSO",
+     "cor": "ivory",
+     "ancora": "Acima",
+     "cima": true
+    },
+    {
+     "linha": "ALÍQUOTA MÁXIMA",
+     "cor": "ivory",
+     "ancora": "cento"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "numero": {
+    "valor": "27,5%",
+    "ancora": "vinte",
+    "cor": "orange",
+    "px": 330,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 27.5,
+     "casas": 1,
+     "prefixo": "",
+     "sufixo": "%"
+    }
+   },
+   "transicao_saida": "whip"
+  },
+  {
+   "id": "fontes",
+   "modelo": "dado_texto",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "MAIS DE UMA FONTE?",
+     "cor": "ivory",
+     "ancora": "fonte"
+    },
+    {
+     "linha": "A CONTA",
+     "cor": "ivory",
+     "ancora": "conta"
+    },
+    {
+     "linha": "SOMA TUDO.",
+     "cor": "orange",
+     "ancora": "soma"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "transicao_saida": "folha",
+   "destaque_legenda": "soma"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "EM QUAL FAIXA",
+     "cor": "ivory",
+     "ancora": "faixa"
+    },
+    {
+     "linha": "VOCÊ ESTÁ?",
+     "cor": "charcoal",
+     "ancora": "está",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "VOCÊ APRENDEU ERRADO",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}

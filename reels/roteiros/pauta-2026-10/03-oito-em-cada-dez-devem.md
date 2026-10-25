@@ -1,6 +1,6 @@
 ---
 titulo: Oito em cada dez famílias devem
-template: fluxo
+template: editorial
 status: rascunho (aguarda aprovação; conferir nota da CNC)
 ---
 
@@ -30,7 +30,7 @@ fala: Atrasadas, em agosto, eram quase três em cada dez.
 
 ## Cena 5
 texto-na-tela: Até 3 salários: 85,1%
-fala: E entre quem ganha até três salários mínimos, a dívida chega a oitenta e cinco por cento.
+fala: E entre quem ganha até três salários mínimos, a dívida chega a oitenta e cinco vírgula um por cento.
 
 ## Cena 6
 texto-na-tela: Qual a sua?

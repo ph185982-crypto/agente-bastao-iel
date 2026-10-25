@@ -63,3 +63,22 @@ encolhe as animações internas pelo `fator` (0.45 a 1.0). Outras chaves:
 
 Os cortes caem na meia batida da trilha sintetizada. Para voltar ao formato de janelas fixas, apague o bloco
 `ritmo` (vale o `inicio`/`fim` de cada cena) e ajuste `duracao_alvo`.
+
+
+## Modelos "dado" (sem foto: so grafico e texto)
+
+Usados na pauta de outubro/2026 (`editorial/projetos/pauta-2026-10/`). Nao precisam de imagens: servem para
+numero, comparacao, grade de pessoas e linha do tempo. Campos extras na cena: `fundo` (`carvao`, `azul`,
+`marfim`), `selo` (etiqueta da serie no topo), `deco: "riscos"` (linhas de velocidade no gancho).
+
+| Modelo | Uso |
+|---|---|
+| `dado_texto` | frases em ate 4 linhas, cada uma entra na palavra-ancora |
+| `dado_numero` | numero gigante que conta ate o valor (`numero.contar`), linhas acima (`cima: true`) e abaixo |
+| `dado_barras` | barras horizontais a partir do zero (`barras[]` com `rotulo`, `valor`, `texto`, `ancora`) |
+| `dado_grade` | 10 icones de pessoa, N preenchidos (`grade.preenchidos`) |
+| `dado_linha` | linha do tempo vertical (`marcos[]` com `ano`, `rotulo`, `ancora`) |
+| `cta_simples` | chamada final sem foto (texto, faixa SEGUE, seta) |
+
+Gerar os 10 projetos: `reels-voz/bin/python editorial/projetos/pauta-2026-10/gerar_projetos.py`.
+`ritmo.antecipar` (s) faz o texto entrar um pouco antes da palavra falada; `numero.antes` ajusta um numero em particular.

@@ -371,6 +371,25 @@ function etiqueta(txt, x, y, t, t0) {   // "ilustracao": aviso honesto, pequeno
   registrar('etiqueta', x, y, w, 34);
 }
 
+// ---- fundo e selo dos modelos "dado"
+const FUNDOS = { carvao: 'papel_carvao', azul: 'papel_azul', marfim: 'papel_marfim' };
+function selo(t, c) {   // etiqueta da serie, no topo (dentro da zona segura)
+  if (!c.selo) return;
+  ctx.save(); ctx.globalAlpha = clamp((t - c.inicio) / .3); ctx.font = '800 40px Mont';
+  const w = ctx.measureText(c.selo).width + 56, x = ZS.lados, y = ZS.topo + 6;
+  ctx.fillStyle = COR('orange'); ctx.beginPath(); ctx.roundRect(x, y, w, 72, 12); ctx.fill();
+  ctx.fillStyle = COR('ivory'); ctx.textBaseline = 'middle'; ctx.fillText(c.selo, x + 28, y + 38); ctx.restore();
+  registrar('etiqueta', x, y, w, 72);
+}
+function fundoDado(t, c) {
+  const L = t - c.inicio, k = c.ritmo || 1;
+  textura(FUNDOS[c.fundo || 'carvao'], 0, 0, W, H, L * 4, L * 2);
+  const escuro = c.fundo === 'marfim';
+  PaperReveal.draw(t, { id: 'fx' + c.id, x: -60, y: 1290, w: W + 120, h: 100, fill: COR(escuro ? 'blue' : 'orange'), amp: 18, passo: 20, rot: -2.2, sombra: false, t0: c.inicio, dur: .35 * k, lado: 'esquerda' });
+  PaperReveal.draw(t, { id: 'fy' + c.id, x: -60, y: 140, w: W + 120, h: 40, fill: COR('blue'), amp: 10, passo: 16, rot: 1.2, sombra: false, t0: c.inicio + .05, dur: .3 * k, lado: 'direita' });
+  selo(t, c);
+}
+
 // ================================================================ MODELOS de cena (Scene)
 const SAFE_W = W - 2 * ZS.lados;
 const MODELOS = {
@@ -666,6 +685,153 @@ const MODELOS = {
     const f = pr(t, S.total - .6, .6);
     if (f > 0) { ctx.fillStyle = `rgba(10,20,60,${.0 * f})`; ctx.fillRect(0, 0, W, H); }
   },
+  // ================================================================ modelos "dado": graficos puros, sem foto
+  // ---- fundo comum: papel + selo da serie + faixas rasgadas
+  // (definido fora do objeto, ver fundoDado)
+  dado_texto(t, c) {
+    fundoDado(t, c);
+    const k = c.ritmo || 1, escuro = c.fundo === 'marfim';
+    if (c.deco === 'riscos') riscosVelocidade(t, c, 40, [COR('orange'), escuro ? COR('blue') : '#000', COR('orange')]);
+    const tam = blocoTexto(c.texto, c.base || 185, SAFE_W / 1.04);
+    const alt = tam.reduce((a, b) => a + b * 1.02, 0);
+    let y = (c.centro || 830) - alt / 2;
+    c.texto.forEach((l, i) => {
+      y += tam[i] * 1.02;
+      KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tam[i], cor: l.cor, t: l.t, ts: l.ts, modo: l.modo || (i ? 'scale' : 'subir'), dir: [0, 60],
+        etiqueta: l.etiqueta_cor, sombra: !l.etiqueta_cor && !escuro, desgaste: l.desgaste, palavra_cor: l.palavra_cor, nome: 'titulo' });
+    });
+    if (c.sublinhar) {
+      const l = c.texto[c.sublinhar.linha], yy = (c.centro || 830) - alt / 2 + tam.slice(0, c.sublinhar.linha + 1).reduce((a, b) => a + b * 1.02, 0) + 14;
+      const m = medir(l.linha, tam[c.sublinhar.linha]).width;
+      KineticText.sublinhar(t, { x0: W / 2 - m / 2, x1: W / 2 + m / 2, y: yy, t0: l.t + .35, cor: c.sublinhar.cor || 'orange', esp: 14 });
+    }
+    vinheta(escuro ? .12 : .4);
+  },
+
+  dado_numero(t, c) {
+    fundoDado(t, c);
+    const k = c.ritmo || 1, n = c.numero, escuro = c.fundo === 'marfim';
+    const cima = c.texto.filter(l => l.cima), baixo = c.texto.filter(l => !l.cima);
+    let y = 330;
+    const tc = blocoTexto(cima, 96, SAFE_W / 1.1);
+    cima.forEach((l, i) => { y += tc[i] * 1.05;
+      KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tc[i], cor: l.cor, t: l.t, modo: 'subir', dir: [0, 50], sombra: !escuro, nome: 'titulo' }); });
+    // numero grande: conta ate o valor e trava com um tranco
+    const dur = .95 * k, u = pr(t, n.t, dur);
+    if (t >= n.t) {
+      let s = n.valor;
+      if (n.contar && u < 1) {
+        const v = n.contar.de + (n.contar.ate - n.contar.de) * E.out3(u), cs = n.contar.casas || 0;
+        s = (n.contar.prefixo || '') + v.toLocaleString('pt-BR', { minimumFractionDigits: cs, maximumFractionDigits: cs }) + (n.contar.sufixo || '');
+      }
+      const px = Math.min(n.px || 330, caber(n.valor, n.px || 330, SAFE_W / 1.14));
+      const pop = u < 1 ? 1 : 1 + .09 * Math.max(0, 1 - (t - n.t - dur) / .22);
+      ctx.save(); ctx.translate(W / 2, n.y || 830); ctx.scale(pop, pop); ctx.globalAlpha = clamp((t - n.t) / .08);
+      ctx.font = fonte(px); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      if (!escuro) { ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 28; ctx.shadowOffsetY = 12; }
+      ctx.fillStyle = COR(n.cor || 'orange'); ctx.fillText(s, 0, 0); ctx.restore();
+      const m = medir(n.valor, px).width;
+      registrar('numero', W / 2 - m * pop / 2, (n.y || 830) - px * .45, m * pop, px * .9);
+      KineticText.sublinhar(t, { x0: W / 2 - m / 2, x1: W / 2 + m / 2, y: (n.y || 830) + px * .5, t0: n.t + dur, cor: n.sublinha || 'ivory', esp: 12 });
+    }
+    y = (n.y || 830) + (Math.min(n.px || 330, 330)) * .5 + 90;
+    const tb = blocoTexto(baixo, 112, SAFE_W / 1.1);
+    baixo.forEach((l, i) => { y += tb[i] * 1.03;
+      KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tb[i], cor: l.cor, t: l.t, modo: i ? 'scale' : 'subir', dir: [0, 50], sombra: !escuro, nome: 'titulo' }); });
+    vinheta(escuro ? .1 : .4);
+  },
+
+  dado_barras(t, c) {
+    fundoDado(t, c);
+    const escuro = c.fundo === 'marfim', max = Math.max(...c.barras.map(b => b.valor));
+    let y = 300;
+    const tc = blocoTexto(c.texto, 108, SAFE_W / 1.1);
+    c.texto.forEach((l, i) => { y += tc[i] * 1.03;
+      KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tc[i], cor: l.cor, t: l.t, modo: i ? 'scale' : 'subir', dir: [0, 50], sombra: !escuro, nome: 'titulo' }); });
+    let yb = Math.max(y + 130, 640);
+    c.barras.forEach((b, i) => {
+      const larg = (SAFE_W) * b.valor / max, alt = 150, ub = pr(t, b.t, .55);
+      if (t < b.t) { yb += 300; return; }
+      ctx.save(); ctx.globalAlpha = clamp((t - b.t) / .12);
+      ctx.font = fonte(64); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = escuro ? COR('charcoal') : COR('ivory');
+      ctx.fillText(b.rotulo, ZS.lados, yb); ctx.restore();
+      registrar('titulo', ZS.lados, yb - 56, medir(b.rotulo, 64).width, 70);
+      PaperReveal.draw(t, { id: 'barra' + c.id + i, x: ZS.lados, y: yb + 20, w: larg, h: alt, fill: COR(b.cor), t0: b.t, dur: .55, lado: 'esquerda', amp: 12, passo: 16, sombra: !escuro });
+      if (ub > .6) { ctx.save(); ctx.globalAlpha = clamp((ub - .6) / .4); ctx.font = fonte(104); ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = b.cor_valor ? COR(b.cor_valor) : COR('ivory'); ctx.fillText(b.texto, ZS.lados + larg - 28, yb + 20 + alt / 2 + 6); ctx.restore();
+        registrar('numero', ZS.lados + larg - 28 - medir(b.texto, 104).width, yb + 20 + alt / 2 - 52, medir(b.texto, 104).width, 104); }
+      yb += 300;
+    });
+    if (c.nota) { ctx.save(); ctx.font = '600 28px Mont'; ctx.fillStyle = escuro ? COR('charcoal') : 'rgba(247,243,234,.8)'; ctx.textAlign = 'left';
+      ctx.fillText(c.nota, ZS.lados, yb + 10); ctx.restore(); registrar('etiqueta', ZS.lados, yb - 20, medir(c.nota, 28).width, 40); }
+    vinheta(escuro ? .1 : .4);
+  },
+
+  dado_grade(t, c) {
+    fundoDado(t, c);
+    const g = c.grade, escuro = c.fundo === 'marfim';
+    let y = 300;
+    const tc = blocoTexto(c.texto.filter(l => l.cima), 110, SAFE_W / 1.1);
+    c.texto.filter(l => l.cima).forEach((l, i) => { y += tc[i] * 1.03;
+      KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tc[i], cor: l.cor, t: l.t, modo: 'subir', dir: [0, 50], sombra: !escuro, nome: 'titulo' }); });
+    const tam = 150, esp = 42, x0 = (W - (5 * tam + 4 * esp)) / 2, y0 = 560;
+    for (let i = 0; i < g.total; i++) {
+      const col = i % 5, lin = Math.floor(i / 5), cx = x0 + col * (tam + esp) + tam / 2, cy = y0 + lin * (tam + 70) + tam / 2;
+      const tf = g.t + i * (g.passo || .09) * (c.ritmo || 1), cheio = i < g.preenchidos, ent = E.outBack(pr(t, c.inicio + .15 + i * .03, .3));
+      ctx.save(); ctx.translate(cx, cy); const sc = ent * (cheio && t >= tf ? 1 + .22 * Math.max(0, 1 - (t - tf) / .25) : 1); ctx.scale(sc, sc);
+      ctx.fillStyle = cheio && t >= tf ? COR(g.cor) : (escuro ? 'rgba(23,23,23,.18)' : 'rgba(247,243,234,.2)');
+      ctx.beginPath(); ctx.arc(0, -tam * .27, tam * .2, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(-tam * .34, -tam * .02, tam * .68, tam * .5, [tam * .3, tam * .3, tam * .06, tam * .06]); ctx.fill();
+      ctx.restore();
+    }
+    y = y0 + 2 * (tam + 70) + 40;
+    const tb = blocoTexto(c.texto.filter(l => !l.cima), 120, SAFE_W / 1.1);
+    c.texto.filter(l => !l.cima).forEach((l, i) => { y += tb[i] * 1.03;
+      KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tb[i], cor: l.cor, t: l.t, modo: i ? 'scale' : 'subir', dir: [0, 50], sombra: !escuro, nome: 'titulo' }); });
+    vinheta(escuro ? .1 : .4);
+  },
+
+  dado_linha(t, c) {
+    fundoDado(t, c);
+    const escuro = c.fundo === 'marfim';
+    let y = 300;
+    const tc = blocoTexto(c.texto, 108, SAFE_W / 1.1);
+    c.texto.forEach((l, i) => { y += tc[i] * 1.03;
+      KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tc[i], cor: l.cor, t: l.t, modo: i ? 'scale' : 'subir', dir: [0, 50], sombra: !escuro, nome: 'titulo' }); });
+    const y0 = Math.max(y + 110, 620), passo = 330, xl = 170;
+    const ult = c.marcos[c.marcos.length - 1], yfim = y0 + passo * (c.marcos.length - 1);
+    const ph = E.out3(pr(t, c.marcos[0].t - .1, (ult.t - c.marcos[0].t) + .5));
+    ctx.save(); ctx.strokeStyle = escuro ? COR('charcoal') : COR('ivory'); ctx.lineWidth = 10; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(xl, y0); ctx.lineTo(xl, y0 + (yfim - y0) * ph); ctx.stroke(); ctx.restore();
+    c.marcos.forEach((m, i) => {
+      if (t < m.t) return;
+      const yy = y0 + i * passo, u = E.out5(pr(t, m.t, .4));
+      ctx.save(); ctx.globalAlpha = u; ctx.translate(0, (1 - u) * 40);
+      ctx.fillStyle = COR(m.cor || 'orange'); ctx.beginPath(); ctx.arc(xl, yy, 34, 0, 7); ctx.fill();
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.font = fonte(m.px_ano || 120); ctx.fillStyle = COR(m.cor || 'orange'); ctx.fillText(m.ano, xl + 70, yy + 20);
+      ctx.font = fonte(m.px || 62); ctx.fillStyle = escuro ? COR('charcoal') : COR('ivory');
+      const px = Math.min(m.px || 62, caber(m.rotulo, m.px || 62, W - ZS.lados - (xl + 70)));
+      ctx.font = fonte(px); ctx.fillText(m.rotulo, xl + 70, yy + 100); ctx.restore();
+      registrar('titulo', xl + 70, yy - 80, Math.max(medir(m.ano, m.px_ano || 120).width, medir(m.rotulo, px).width), 190);
+    });
+    vinheta(escuro ? .1 : .4);
+  },
+
+  cta_simples(t, c) {
+    const L = t - c.inicio;
+    textura('papel_azul', 0, 0, W, H, L * 3, L * 2);
+    selo(t, c);
+    EndCard.seta(t, { pontos: [[60, 1560], [330, 1420], [470, 1470], [760, 1240], [700, 1235], [960, 1080]], t0: c.inicio + .3 * (c.ritmo || 1), dur: 1.1 * (c.ritmo || 1), esp: 66 });
+    const tam = blocoTexto(c.texto, 140, SAFE_W / 1.1);
+    let y = 300;
+    c.texto.forEach((l, i) => { y += tam[i] * 1.02;
+      KineticText.draw(t, { txt: l.linha, x: W / 2, y, px: tam[i], cor: l.cor, t: l.t, modo: i === c.texto.length - 1 ? 'carimbo' : 'subir', dir: [0, 60],
+        etiqueta: l.etiqueta_cor, sombra: !l.etiqueta_cor, nome: 'titulo' }); });
+    EndCard.pilula(t, { t0: c.cta.t, y: y + 170, px: 64, texto: c.cta.texto, perfil: c.cta.perfil });
+    vinheta(.3);
+  },
+
 };
 
 // ================================================================ MotionReel

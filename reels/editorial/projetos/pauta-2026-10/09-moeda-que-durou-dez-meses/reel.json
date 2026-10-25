@@ -1,0 +1,245 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "O dinheiro que durou menos de um ano",
+ "nome": "09-moeda-que-durou-dez-meses",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/09-moeda-que-durou-dez-meses.md",
+  "pasta": "saida/.trabalho/09-moeda-que-durou-dez-meses"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85,
+    0.95
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_texto",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "UMA MOEDA",
+     "cor": "ivory",
+     "ancora": "moeda"
+    },
+    {
+     "linha": "DUROU MENOS",
+     "cor": "orange",
+     "ancora": "durou"
+    },
+    {
+     "linha": "DE UM ANO.",
+     "cor": "ivory",
+     "ancora": "ano",
+     "desgaste": true
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "deco": "riscos",
+   "transicao_saida": "flash",
+   "destaque_legenda": "durou"
+  },
+  {
+   "id": "nasce",
+   "modelo": "dado_linha",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "O CRUZEIRO REAL",
+     "cor": "ivory",
+     "ancora": "cruzeiro"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "marcos": [
+    {
+     "ano": "OUT/1993",
+     "rotulo": "COMEÇA A CIRCULAR",
+     "ancora": "outubro",
+     "cor": "orange"
+    }
+   ],
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "zeros",
+   "modelo": "dado_numero",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "CADA CRUZEIRO REAL VALIA",
+     "cor": "charcoal",
+     "ancora": "Cada",
+     "cima": true
+    },
+    {
+     "linha": "TIRARAM 3 ZEROS.",
+     "cor": "orange",
+     "ancora": "zeros"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "fundo_legenda": true,
+   "numero": {
+    "valor": "1.000",
+    "ancora": "mil",
+    "cor": "blue",
+    "px": 380,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 1000,
+     "casas": 0,
+     "prefixo": "",
+     "sufixo": ""
+    }
+   },
+   "transicao_saida": "rasgo",
+   "destaque_legenda": "zeros"
+  },
+  {
+   "id": "fim",
+   "modelo": "dado_linha",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "MENOS DE UM ANO",
+     "cor": "ivory",
+     "ancora": "Mesmo"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "marcos": [
+    {
+     "ano": "OUT/1993",
+     "rotulo": "NASCE O CRUZEIRO REAL",
+     "ancora": "assim",
+     "cor": "orange"
+    },
+    {
+     "ano": "SET/1994",
+     "rotulo": "SUBSTITUÍDO PELO REAL",
+     "ancora": "setembro",
+     "cor": "blue"
+    }
+   ],
+   "transicao_saida": "whip"
+  },
+  {
+   "id": "nome",
+   "modelo": "dado_texto",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "TIRARAM ZEROS,",
+     "cor": "ivory",
+     "ancora": "zeros"
+    },
+    {
+     "linha": "TROCARAM DE NOME,",
+     "cor": "ivory",
+     "ancora": "nome"
+    },
+    {
+     "linha": "O PREÇO CONTINUOU SUBINDO.",
+     "cor": "orange",
+     "ancora": "subindo"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "transicao_saida": "folha",
+   "destaque_legenda": "subindo"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "O QUE MUDOU",
+     "cor": "ivory",
+     "ancora": "mudou"
+    },
+    {
+     "linha": "FOI O PLANO.",
+     "cor": "charcoal",
+     "ancora": "plano",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "DINHEIRO DO BRASIL",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}

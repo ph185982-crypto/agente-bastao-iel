@@ -1,7 +1,6 @@
 ---
 titulo: Black Friday - o ticket médio caiu
-template: fluxo
-entradas: antes=309,70; depois=268,20
+template: editorial
 status: rascunho (aguarda aprovação; conferir Neotrust)
 ---
 

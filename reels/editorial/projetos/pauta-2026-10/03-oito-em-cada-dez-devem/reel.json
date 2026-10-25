@@ -1,0 +1,259 @@
+{
+ "duration": 60,
+ "fps": 30,
+ "format": "1080x1920",
+ "profile": "@pedro_destrava",
+ "colors": {
+  "blue": "#1457D9",
+  "orange": "#F47A1F",
+  "ivory": "#F7F3EA",
+  "charcoal": "#171717"
+ },
+ "fontes": {
+  "titulo": "fontes/Anton-Regular.ttf",
+  "apoio": "fontes/Montserrat-VF.ttf"
+ },
+ "zona_segura": {
+  "topo": 180,
+  "base": 300,
+  "lados": 80
+ },
+ "legendas": {
+  "ativo": true,
+  "y": 1520,
+  "tamanho": 56,
+  "palavras_min": 2,
+  "palavras_max": 5,
+  "esconder_se_repetida": 0.7
+ },
+ "ritmo": {
+  "modo": "compacto",
+  "velocidade": 1.12,
+  "pausa_max": 0.1,
+  "antes_padrao": 0.12,
+  "depois": 0.28,
+  "final": 1.7,
+  "cena_min": 1.6,
+  "fator_padrao": 0.7,
+  "socos": true,
+  "empurrao": 0.05,
+  "antecipar": 0.06,
+  "observacao": "modo compacto: cena = respiro + fala + respiro; animacoes internas encolhem pelo fator"
+ },
+ "duracao_alvo": [
+  18,
+  60
+ ],
+ "titulo": "Oito em cada dez famílias devem",
+ "nome": "03-oito-em-cada-dez-devem",
+ "narracao": {
+  "roteiro": "roteiros/pauta-2026-10/03-oito-em-cada-dez-devem.md",
+  "pasta": "saida/.trabalho/03-oito-em-cada-dez-devem"
+ },
+ "trilha": {
+  "arquivo": null,
+  "sintetizada": {
+   "bpm": 128,
+   "tom": "D",
+   "intensidade": [
+    0.85,
+    0.9,
+    0.7,
+    1.0,
+    0.85,
+    0.95
+   ]
+  },
+  "loudness_lufs": -14
+ },
+ "cenas": [
+  {
+   "id": "gancho",
+   "modelo": "dado_grade",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "FAMÍLIAS BRASILEIRAS",
+     "cor": "ivory",
+     "ancora": "famílias",
+     "cima": true
+    },
+    {
+     "linha": "8 EM CADA 10 TÊM DÍVIDA",
+     "cor": "orange",
+     "ancora": "dívida"
+    }
+   ],
+   "selo": "A CONTA",
+   "grade": {
+    "total": 10,
+    "preenchidos": 8,
+    "cor": "orange",
+    "ancora": "Oito"
+   },
+   "transicao_saida": "flash",
+   "destaque_legenda": "dívida"
+  },
+  {
+   "id": "cnc",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "FAMÍLIAS ENDIVIDADAS",
+     "cor": "ivory",
+     "ancora": "Eram",
+     "cima": true
+    },
+    {
+     "linha": "SEGUNDO A CNC · SET/2026",
+     "cor": "ivory",
+     "ancora": "segundo"
+    }
+   ],
+   "selo": "A CONTA",
+   "numero": {
+    "valor": "81,7%",
+    "ancora": "oitenta",
+    "cor": "orange",
+    "px": 330,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 81.7,
+     "casas": 1,
+     "prefixo": "",
+     "sufixo": "%"
+    }
+   },
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "diferenca",
+   "modelo": "dado_texto",
+   "fundo": "marfim",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "DÍVIDA NÃO É",
+     "cor": "charcoal",
+     "ancora": "dívida"
+    },
+    {
+     "linha": "O MESMO QUE ATRASO.",
+     "cor": "orange",
+     "ancora": "mesmo"
+    },
+    {
+     "linha": "CARTÃO, CARNÊ",
+     "cor": "charcoal",
+     "ancora": "Cartão"
+    },
+    {
+     "linha": "E FINANCIAMENTO",
+     "cor": "blue",
+     "ancora": "financiamento"
+    }
+   ],
+   "selo": "A CONTA",
+   "fundo_legenda": true,
+   "transicao_saida": "rasgo",
+   "destaque_legenda": "mesmo"
+  },
+  {
+   "id": "atraso",
+   "modelo": "dado_grade",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "EM ATRASO, EM AGOSTO",
+     "cor": "ivory",
+     "ancora": "em",
+     "cima": true
+    },
+    {
+     "linha": "QUASE 3 EM CADA 10",
+     "cor": "ivory",
+     "ancora": "quase"
+    }
+   ],
+   "selo": "A CONTA",
+   "grade": {
+    "total": 10,
+    "preenchidos": 3,
+    "cor": "orange",
+    "ancora": "três"
+   },
+   "transicao_saida": "whip"
+  },
+  {
+   "id": "renda",
+   "modelo": "dado_numero",
+   "fundo": "carvao",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "ATÉ 3 SALÁRIOS MÍNIMOS",
+     "cor": "ivory",
+     "ancora": "salários",
+     "cima": true
+    },
+    {
+     "linha": "TÊM DÍVIDA",
+     "cor": "ivory",
+     "ancora": "dívida"
+    }
+   ],
+   "selo": "A CONTA",
+   "numero": {
+    "valor": "85,1%",
+    "ancora": "oitenta",
+    "cor": "orange",
+    "px": 330,
+    "y": 830,
+    "contar": {
+     "de": 0,
+     "ate": 85.1,
+     "casas": 1,
+     "prefixo": "",
+     "sufixo": "%"
+    }
+   },
+   "transicao_saida": "folha"
+  },
+  {
+   "id": "cta",
+   "modelo": "cta_simples",
+   "fundo": "azul",
+   "inicio": 0,
+   "fim": 5,
+   "texto": [
+    {
+     "linha": "QUAL A SUA",
+     "cor": "ivory",
+     "ancora": "Qual"
+    },
+    {
+     "linha": "DÍVIDA MAIS CARA?",
+     "cor": "charcoal",
+     "ancora": "cara",
+     "etiqueta_cor": "orange"
+    }
+   ],
+   "selo": "A CONTA",
+   "cta": {
+    "texto": "SEGUE",
+    "perfil": "@PEDRO_DESTRAVA",
+    "ancora": "Pedro"
+   }
+  }
+ ]
+}
