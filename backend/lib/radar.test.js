@@ -287,3 +287,35 @@ test('persistência: documentos do Radar ficam no armazém com controle de revis
   A._definir(null); assert.strictEqual(store.disponivel(), false);
   await assert.rejects(() => store.listar('oportunidade'), (e) => e.code === 'SEM_BANCO');
 });
+
+test('só matéria: o site oficial citado nas matérias é aberto, conferido e passa a valer como fonte oficial', async () => {
+  const item = (id, url, fonte) => ({ id, titulo: 'Lumen Pets lança', url, resumo: '', fonte_id: fonte, fonte_nome: fonte, fonte_classe: 'imprensa', publicada_em: '2026-10-22T00:00:00Z' });
+  const cand = Cand.normalizar({ nome: 'Lumen Pets', itens: ['a', 'b'], interesse: 3 }, new Map([['a', item('a', 'https://techcrunch.com/2026/10/lumenpets', 'techcrunch')], ['b', item('b', 'https://exame.com/2026/10/lumenpets', 'exame')]]));
+  assert.strictEqual(cand.url_oficial, null); assert.strictEqual(cand.url_sugerida, null);
+  const { verificacao: v } = await V.verificar(cand, { deps: { lerFonte: F.fakeLerFonte, pedirJson: F.fakePedirJson(), loja: false }, agora: Date.parse('2026-10-25T12:00:00Z') });
+  assert.strictEqual(v.estado, 'verificada'); assert.ok(v.fonte_oficial && /lumenpets\.com/.test(v.fonte_oficial.url));
+  assert.ok(v.claims.some((c) => c.tipo === 'receita' && c.usavel && c.atribuicao === 'segundo a empresa'));
+  // o endereço inventado pela IA, que não está nas matérias e não leva o nome da empresa, é recusado
+  const pedirMentiroso = async (o) => { const r = await F.fakePedirJson()(o); if (/Você confere fatos/.test(o.sistema)) r.dados.site_oficial = 'https://site-aleatorio.com'; return r; };
+  const { verificacao: v2 } = await V.verificar(cand, { deps: { lerFonte: F.fakeLerFonte, pedirJson: pedirMentiroso, loja: false }, agora: Date.parse('2026-10-25T12:00:00Z') });
+  assert.ok(!v2.fonte_oficial); assert.ok(v2.limitacoes.some((l) => /não está escrito/.test(l)));
+});
+test('segunda fonte sem busca nova: matérias de outros veículos que citam o negócio pelo nome são juntadas', () => {
+  const it = (id, host, titulo) => ({ id, titulo, url: `https://${host}/x/${id}`, resumo: '', fonte_id: host, fonte_nome: host, fonte_classe: 'imprensa', publicada_em: '2026-10-20' });
+  const cand = Cand.normalizar({ nome: 'Quiva', itens: ['i1'] }, new Map([['i1', it('i1', 'startups.com.br', 'Quiva reúne surfistas')]]));
+  const pool = [it('i1', 'startups.com.br', 'Quiva reúne surfistas'), it('i2', 'exame.com', 'Como a Quiva quer dominar o surfe'), it('i3', 'neofeed.com.br', 'Outra startup qualquer'), it('i4', 'startups.com.br', 'Quiva de novo no mesmo site')];
+  const r = Cand.reforcarFontes(cand, pool);
+  assert.deepStrictEqual(r.fontes_itens.map((f) => f.id), ['i1', 'i2']); assert.strictEqual(r.fontes_reforcadas, 1);
+  assert.strictEqual(Cand.reforcarFontes(Cand.normalizar({ nome: 'Data', itens: ['i1'] }, new Map([['i1', pool[0]]])), pool).fontes_itens.length, 1, 'nome genérico não é usado para juntar fontes');
+});
+test('coleta: catálogo (Product Hunt, Show HN) não afoga as reportagens e a nota prévia prefere quem tem dado', () => {
+  const mk = (i, classe) => ({ id: `i${i}${classe}`, titulo: `Produto numero ${i} ${classe} lançamento especial`, url: `https://s${i}${classe}.com/a`, resumo: '', fonte_id: `${classe}${i % 3}`, fonte_nome: classe, fonte_classe: classe, publicada_em: new Date().toISOString(), pontos: classe === 'comunidade' ? 80 : null });
+  const itens = [...Array.from({ length: 80 }, (_, i) => mk(i, 'plataforma')), ...Array.from({ length: 40 }, (_, i) => mk(i, 'comunidade')), ...Array.from({ length: 30 }, (_, i) => mk(i, 'imprensa'))];
+  const p = Fontes.preparar(itens, { porFonte: 100 });
+  const por = (c) => p.itens.filter((i) => i.fonte_classe === c).length;
+  assert.ok(por('plataforma') <= 40 && por('comunidade') <= 24 && por('imprensa') === 30, `${por('plataforma')}/${por('comunidade')}/${por('imprensa')}`);
+  const base = { interesse: 2, sinais_de_risco: [], investimento_para_testar: { nivel: 'medio' } };
+  const comDado = { ...base, dados_no_material: true, url_oficial: null, url_sugerida: null, fontes_itens: [{ fonte_classe: 'imprensa', url: 'https://a.com/1' }, { fonte_classe: 'imprensa', url: 'https://b.com/1' }] };
+  const catalogo = { ...base, dados_no_material: false, url_oficial: null, url_sugerida: 'https://x.com', fontes_itens: [{ fonte_classe: 'plataforma', url: 'https://producthunt.com/x' }] };
+  assert.ok(Cand.notaPrevia(comDado) > Cand.notaPrevia(catalogo) + 8);
+});

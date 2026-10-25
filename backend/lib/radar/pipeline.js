@@ -83,7 +83,7 @@ E.coletar = async (run, ctx) => {
   if (!ok.length) throw U.erro('Nenhuma fonte respondeu. Verifique a conexão do servidor e tente de novo.', 'SEM_FONTES', 502);
   const p = Fontes.preparar(r.itens, { agora: ctx.agora });
   run.contadores.itens_analisados = p.itens.length;
-  await store.salvar('coleta', run.id, { itens: p.itens, tendencias: r.tendencias, duplicados_de_itens: p.duplicados, antigos: p.antigos, brutos: [] });
+  await store.salvar('coleta', run.id, { itens: p.itens, todos: p.todos.map((i) => ({ id: i.id, titulo: i.titulo, url: i.url, resumo: U.limita(i.resumo, 160), publicada_em: i.publicada_em, fonte_id: i.fonte_id, fonte_nome: i.fonte_nome, fonte_classe: i.fonte_classe })), tendencias: r.tendencias, duplicados_de_itens: p.duplicados, antigos: p.antigos, brutos: [] });
   return { concluida: true };
 };
 
@@ -103,7 +103,7 @@ E.candidatos = async (run, ctx) => {
   }
   // junta, remove repetidos e barra o que já foi usado/sugerido
   const encontrados = coleta.brutos;
-  const juntos = Cand.juntar(encontrados);
+  const juntos = Cand.juntar(encontrados).map((c) => Cand.reforcarFontes(c, coleta.todos || []));
   const existentes = (await store.listar('oportunidade', 800)).filter((o) => o.run_id !== run.id);
   const { livres, barrados } = Cand.barrarRepetidos(juntos, existentes, { dias: (await store.config()).dias_sem_repetir, agora: ctx.agora, mesmoRunId: run.id });
   run.contadores.candidatos_encontrados = juntos.length;
@@ -125,7 +125,9 @@ E.verificar = async (run, ctx) => {
   if (!run.cursor.fila) {
     const todas = (await Promise.all((run.cursor.candidatos_ids || []).map(lerCand))).filter(Boolean).map((r) => r.doc);
     const ordenadas = todas.sort((a, b) => b.nota_previa - a.nota_previa);
-    const fila = ordenadas.filter((c) => !c.sinais_de_risco.length).slice(0, C.MAX_VERIFICAR).map((c) => c.id);
+    // No máximo 4 vagas para quem só tem pista de catálogo (Product Hunt, Kickstarter, Show HN): quase nunca trazem número.
+    let soCatalogo = 0;
+    const fila = ordenadas.filter((c) => !c.sinais_de_risco.length).filter((c) => { const so = !c.fontes_itens.some((f) => f.fonte_classe === 'imprensa'); if (so) { soCatalogo += 1; return soCatalogo <= 4; } return true; }).slice(0, C.MAX_VERIFICAR).map((c) => c.id);
     run.cursor.fila = fila; run.cursor.verificar_idx = 0;
     // quem não entrou na fila é descartado com motivo claro (pode voltar em 14 dias)
     for (const c of ordenadas.filter((x) => !fila.includes(x.id))) {

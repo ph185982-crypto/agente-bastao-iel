@@ -28,13 +28,14 @@ REGRAS:
 - Um candidato = um negócio/produto real. Ignore notícias de política, esporte, celebridades, vagas, tutoriais e projetos pessoais sem modelo de negócio.
 - "itens" lista os ids dos itens do material que falam desse negócio.
 - "url_oficial" só se o endereço do site da própria empresa aparece no material (campo url do item quando a fonte é o próprio site, ou citado no resumo). Caso contrário null; se você souber o site pela sua memória, coloque em "site_provavel" (será conferido depois; pode ser null).
-- "interesse" de 0 a 3: 3 = ideia fácil de explicar, com mecanismo de dinheiro visível e curiosa para um empreendedor brasileiro; 0 = pouco útil.
+- "interesse" de 0 a 3: 3 = ideia fácil de explicar, com mecanismo de dinheiro visível e curiosa para um empreendedor brasileiro; 0 = pouco útil. Ferramentas para programadores, projetos de código aberto, jogos de hobby e experimentos sem modelo de cobrança valem 0 ou 1.
+- "dados_no_material": true só se o material cita número de receita, clientes, usuários, vendas, crescimento ou investimento DESSE negócio.
 - "sinais_de_risco": use só estes códigos, quando o material indicar: piramide, aposta, renda_garantida, enriquecimento_rapido, ilegal, especulacao, patrocinado, franquia.
 - Escreva em português simples (sem jargão, sem clichê de IA).
 - Devolva no máximo 22 candidatos, os mais promissores. Se houver poucos, devolva menos.
 
 Responda APENAS JSON:
-{"candidatos":[{"nome":"","pais":"país de origem se estiver no material, senão \\"não informado\\"","categoria":"saas|startup|produto|servico|negocio_local|ecommerce","ia":false,"resumo":"1 frase: o que é","problema":"que dor resolve, em linguagem comum","solucao":"o que a empresa faz, em 1 frase","como_ganha_dinheiro":"como entra dinheiro, em 1 frase (ou \\"não informado\\")","modelo_receita":"assinatura|comissao|venda|licenca|mensalidade|publicidade|marketplace|servico_recorrente|null","prova_demanda_citada":"o que o material diz sobre demanda (sem inventar número), ou \\"não informado\\"","investimento_para_testar":{"nivel":"baixo|medio|alto","texto":"quanto custaria testar uma versão simples no Brasil, em termos gerais (sem inventar valores exatos)"},"adaptacao_brasil":"1 frase: hipótese de como a ideia poderia ser testada no Brasil","url_oficial":null,"site_provavel":null,"itens":["it_..."],"interesse":0,"sinais_de_risco":[]}]}`;
+{"candidatos":[{"nome":"","pais":"país de origem se estiver no material, senão \\"não informado\\"","categoria":"saas|startup|produto|servico|negocio_local|ecommerce","ia":false,"resumo":"1 frase: o que é","problema":"que dor resolve, em linguagem comum","solucao":"o que a empresa faz, em 1 frase","como_ganha_dinheiro":"como entra dinheiro, em 1 frase (ou \\"não informado\\")","modelo_receita":"assinatura|comissao|venda|licenca|mensalidade|publicidade|marketplace|servico_recorrente|null","prova_demanda_citada":"o que o material diz sobre demanda (sem inventar número), ou \\"não informado\\"","investimento_para_testar":{"nivel":"baixo|medio|alto","texto":"quanto custaria testar uma versão simples no Brasil, em termos gerais (sem inventar valores exatos)"},"adaptacao_brasil":"1 frase: hipótese de como a ideia poderia ser testada no Brasil","url_oficial":null,"site_provavel":null,"itens":["it_..."],"interesse":0,"dados_no_material":false,"sinais_de_risco":[]}]}`;
 
 function normalizar(raw, porId) {
   const nome = U.limita(raw.nome, 60);
@@ -68,7 +69,7 @@ function normalizar(raw, porId) {
     url_oficial: oficial, url_sugerida: siteProvavel,
     itens_ids: itensIds,
     fontes_itens: itens.map((i) => ({ id: i.id, titulo: i.titulo, url: i.url, fonte_id: i.fonte_id, fonte_nome: i.fonte_nome, fonte_classe: i.fonte_classe, publicada_em: i.publicada_em, pontos: i.pontos, comentarios: i.comentarios, url_discussao: i.url_discussao, imagem_feed: i.imagem_feed || null, resumo: i.resumo })),
-    interesse: Math.max(0, Math.min(3, Math.round(Number(raw.interesse) || 0))),
+    interesse: Math.max(0, Math.min(3, Math.round(Number(raw.interesse) || 0))), dados_no_material: raw.dados_no_material === true,
     sinais_de_risco: sinais,
   };
 }
@@ -97,7 +98,7 @@ function juntar(lista) {
     const ids = new Set(igual.fontes_itens.map((f) => f.id));
     c.fontes_itens.forEach((f) => { if (!ids.has(f.id)) igual.fontes_itens.push(f); });
     igual.url_oficial = igual.url_oficial || c.url_oficial; igual.url_sugerida = igual.url_sugerida || c.url_sugerida;
-    igual.interesse = Math.max(igual.interesse, c.interesse);
+    igual.interesse = Math.max(igual.interesse, c.interesse); igual.dados_no_material = igual.dados_no_material || c.dados_no_material;
     igual.sinais_de_risco = [...new Set([...igual.sinais_de_risco, ...c.sinais_de_risco])];
     if (!igual.chave.dominio && c.chave.dominio) igual.chave = { ...igual.chave, dominio: c.chave.dominio };
   }
@@ -130,7 +131,10 @@ function notaPrevia(c) {
   let n = c.interesse * 3;
   if (c.url_oficial) n += 3; else if (c.url_sugerida) n += 1.5;
   const classes = new Set(c.fontes_itens.map((f) => f.fonte_classe));
-  if (classes.has('imprensa')) n += 2;
+  if (classes.has('imprensa')) n += 3;
+  if (c.dados_no_material) n += 5;
+  const imprensa = new Set(c.fontes_itens.filter((f) => f.fonte_classe === 'imprensa').map((f) => U.host(f.url)));
+  if (imprensa.size >= 2) n += 3;
   if (c.fontes_itens.length >= 2) n += 1.5;
   if (c.fontes_itens.some((f) => (f.pontos || 0) >= 50)) n += 1;
   if (c.sinais_de_risco.length) n -= 6;
@@ -138,4 +142,23 @@ function notaPrevia(c) {
   return Math.round(n * 10) / 10;
 }
 
-module.exports = { extrairLote, normalizar, juntar, barrarRepetidos, notaPrevia, chaveEmpresa, mesmaEmpresa, lotes, TAMANHO_LOTE, urlCanon };
+// Procura, em TODOS os itens lidos (não só nos 200 analisados), outras reportagens de veículos diferentes que citem o negócio pelo nome:
+// é assim que uma matéria ganha a "segunda fonte independente" sem nenhuma busca nova. Nome curto ou comum demais não entra.
+const COMUM = /^(app|apps|ai|the|new|one|go|pay|bank|shop|cloud|data|pro|hub|lab|labs|team|flow|work|home|mind|base|code|open|smart|fast|easy)$/i;
+function reforcarFontes(cand, todos, { max = 3 } = {}) {
+  const nome = cand.nome.trim();
+  if (nome.length < 4 || COMUM.test(nome) || nome.split(/\s+/).length > 4) return cand;
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}])${nome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\p{L}\\p{N}]|$)`, 'iu');
+  const jaHosts = new Set(cand.fontes_itens.map((f) => U.host(f.url)));
+  const novos = [];
+  for (const i of todos) {
+    if (i.fonte_classe !== 'imprensa' || novos.length >= max) continue;
+    if (cand.itens_ids.includes(i.id) || jaHosts.has(U.host(i.url))) continue;
+    if (!re.test(`${i.titulo} ${i.resumo || ''}`)) continue;
+    jaHosts.add(U.host(i.url)); novos.push(i);
+  }
+  if (!novos.length) return cand;
+  return { ...cand, itens_ids: [...cand.itens_ids, ...novos.map((i) => i.id)], fontes_itens: [...cand.fontes_itens, ...novos.map((i) => ({ id: i.id, titulo: i.titulo, url: i.url, fonte_id: i.fonte_id, fonte_nome: i.fonte_nome, fonte_classe: i.fonte_classe, publicada_em: i.publicada_em, pontos: i.pontos, comentarios: i.comentarios, url_discussao: i.url_discussao, imagem_feed: i.imagem_feed || null, resumo: i.resumo }))], fontes_reforcadas: novos.length };
+}
+
+module.exports = { reforcarFontes, extrairLote, normalizar, juntar, barrarRepetidos, notaPrevia, chaveEmpresa, mesmaEmpresa, lotes, TAMANHO_LOTE, urlCanon };

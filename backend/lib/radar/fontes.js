@@ -123,14 +123,16 @@ function relevancia(item, { agora, termos }) {
   if (item.termo) s += 2;                                  // veio de uma busca por termo
   if (Number.isFinite(item.pontos)) s += Math.min(4, Math.log10(1 + item.pontos));
   if (Number.isFinite(item.comentarios)) s += Math.min(2, Math.log10(1 + item.comentarios));
-  if (item.fonte_classe === 'plataforma') s += 1.5;        // lançamentos de produto são, por natureza, candidatos
+  if (item.fonte_classe === 'plataforma') s += 0.5;        // lançamentos de produto são pista, mas quase nunca trazem números
+  if (item.fonte_classe === 'imprensa') s += 1.2;          // reportagem costuma trazer o dado (receita, clientes, investimento) e é fonte independente
   if (/\b(revenue|arr\b|mrr\b|profit|bootstrapp|customers|users|raises?|raised|funding|launch|startup|saas|faturamento|receita|lucro|clientes|usu[aá]rios|lan[cç]a|neg[oó]cio|empreend)/i.test(t)) s += 1.5;
   const idade = item.publicada_em ? (agora - Date.parse(item.publicada_em)) / 86400000 : 7;
   s += idade <= 2 ? 1.5 : idade <= 7 ? 0.8 : 0;
   return s;
 }
 
-function preparar(itens, { agora = Date.now(), limite = 220, porFonte = 28, janelaDias = 30, termos = [...C.TERMOS_EN, ...C.TERMOS_PT] } = {}) {
+const LIMITE_CLASSE = { plataforma: 40, comunidade: 24, imprensa: 150, tendencia: 0 };
+function preparar(itens, { agora = Date.now(), limite = 200, porFonte = 28, janelaDias = 30, termos = [...C.TERMOS_EN, ...C.TERMOS_PT] } = {}) {
   const vistos = new Set(); const titulos = new Set(); const out = [];
   let duplicados = 0; let velhos = 0; let ruido = 0;
   for (const i of itens) {
@@ -143,9 +145,13 @@ function preparar(itens, { agora = Date.now(), limite = 220, porFonte = 28, jane
     out.push({ ...i, relevancia: relevancia(i, { agora, termos }) });
   }
   out.sort((a, b) => b.relevancia - a.relevancia);
-  const contagem = {}; const final = [];
-  for (const i of out) { contagem[i.fonte_id] = (contagem[i.fonte_id] || 0) + 1; if (contagem[i.fonte_id] <= porFonte) final.push(i); if (final.length >= limite) break; }
-  return { itens: final, duplicados, antigos: velhos, ruido, total_lido: itens.length };
+  const contagem = {}; const porClasse = {}; const final = [];
+  for (const i of out) {
+    contagem[i.fonte_id] = (contagem[i.fonte_id] || 0) + 1; porClasse[i.fonte_classe] = (porClasse[i.fonte_classe] || 0) + 1;
+    if (contagem[i.fonte_id] <= porFonte && porClasse[i.fonte_classe] <= (LIMITE_CLASSE[i.fonte_classe] ?? 40)) final.push(i);
+    if (final.length >= limite) break;
+  }
+  return { itens: final, duplicados, antigos: velhos, ruido, total_lido: itens.length, todos: out };
 }
 
 module.exports = { coletar, preparar, lerItensDoFeed, lerTendencias, lerHN, relevancia, lerUmFeed };
