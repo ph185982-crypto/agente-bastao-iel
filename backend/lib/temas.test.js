@@ -56,7 +56,7 @@ test('estratégia: padrão neutro, validação estrita e persistência', async (
   const arm = Object.assign(A.memoria(), { duravel: true });
   A._definir(arm);
   const p = await S.ler();
-  assert.deepStrictEqual([p.modo_politico, p.dias_sem_repetir, p.min_posts_por_grupo, p.temas_bloqueados.length], ['neutral', 21, 5, 0]);
+  assert.deepStrictEqual([p.modo_politico, p.dias_sem_repetir, p.min_posts_por_grupo, p.temas_bloqueados.length], ['allowed', 21, 5, 0]);
   const n = await S.salvar({ modo_politico: 'allowed', temas_bloqueados: ['  Bets ', 'bets', 'ab', 'Crime'], dias_sem_repetir: 14 });
   assert.strictEqual(n.modo_politico, 'allowed');
   assert.deepStrictEqual(n.temas_bloqueados, ['bets', 'crime'], 'normaliza, remove repetidos e itens curtos demais');

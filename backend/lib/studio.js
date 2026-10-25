@@ -160,6 +160,17 @@ async function processar(id,job,{deps={}}={}) {
       }
       case 'foto': {
         const v=M.versaoAtiva(c);
+        // Tema "reportagem": sem foto de banco (modelo de banco não é a pessoa da notícia). O rosto vem da biblioteca de recortes
+        // do Pedro, pelo nome citado na pauta; sem recorte, a arte sai só com a forma de apoio e o aviso aparece na revisão.
+        const tema=(await require('./estrategia').ler()).visual?.tema||'reportagem';
+        if(tema==='reportagem'){
+          const recs=await(deps.recortes||require('./recortes')).escolherPara(c);
+          v.slides.forEach((s,i)=>{s.tema_visual='reportagem';delete s.recorte_id;if(recs.length&&s.layout!=='encerramento')s.recorte_id=recs[i%recs.length].id;});
+          c.imagens=[...(c.imagens||[]).filter(i=>i.tipo!=='recorte'),...recs.map(r=>({id:`recorte_${r.id}`,tipo:'recorte',autor:r.credito,licenca:r.licenca,origem:r.origem_url||'',exige_credito:r.exige_credito!==false,alt:`Recorte de ${r.nome}`}))];
+          v.hash=M.hash(M.conteudoDaVersao(v));
+          st.foto_aviso=recs.length?null:'Não há recorte para as pessoas desta pauta: a arte sai só com a forma de apoio. Envie o recorte em Perfil → Recortes.';
+          proxima('arte');break;
+        }
         const consultas=require('./fotosStudio').consultasPara(c.titulo);
         try {
           const foto=await(deps.buscarFoto || require('./fotosStudio').buscarFoto)(consultas[Math.min(st.indice,1)],{excluir:st.indice?c.imagens.map(i=>i.id):[]});
@@ -173,8 +184,10 @@ async function processar(id,job,{deps={}}={}) {
       }
       case 'arte': {
         const v=M.versaoAtiva(c);const s=v.slides[st.indice];
-        if(s){const imagem=s.imagem_id?(await armazem().arquivos.obter(conta(),`img:${s.imagem_id}`))?.dados:null;const encerramento=s.layout==='encerramento'?(await armazem().arquivos.obter(conta(),'upload:encerramento'))?.dados:null;
-          const r=await d.arte.renderizarSlide(s,{indice:st.indice+1,total:v.slides.length,imagem,arquivoEncerramento:encerramento});
+        if(s){const imagem=s.recorte_id?await(deps.recortes||require('./recortes')).obter(s.recorte_id):s.imagem_id?(await armazem().arquivos.obter(conta(),`img:${s.imagem_id}`))?.dados:null;const encerramento=s.layout==='encerramento'?(await armazem().arquivos.obter(conta(),'upload:encerramento'))?.dados:null;
+          let fundo=null;
+          if(s.tema_visual==='reportagem'){const f=await(deps.fundoIA||require('./fundoIA')).gerar(c,v,deps.fundoIAdeps);if(f.buffer)fundo=f.buffer;if(f.aviso)st.aviso_fundo=f.aviso;if(f.custo_usd&&!f.reaproveitado)c.arte_fundo={custo_usd:f.custo_usd,modelo:f.modelo||null,tentativas:f.tentativas||null,em:now()};}
+          const r=await d.arte.renderizarSlide(s,{indice:st.indice+1,total:v.slides.length,imagem,arquivoEncerramento:encerramento,fundo});
           const key=`render:${c.id}:${v.id}:${s.id}:${M.hashRender(s)}`;await armazem().arquivos.salvar(conta(),key,r.png,'image/png');
           c.arte.renders=[...c.arte.renders.filter(q=>q.versao!==v.id || q.slide_id!==s.id),{slide_id:s.id,versao:v.id,texto_hash:M.hashRender(s),blob_key:key,indice:st.indice+1,total:v.slides.length,metrics:r.metrics,elementos:r.metrics.elementos||[]}];}
         if(st.indice+1<v.slides.length)proxima('arte',st.indice+1);else proxima('motion');break;

@@ -60,6 +60,7 @@ app.use('/api/push', require('./routes/push'));
 app.use('/api/studio', require('./routes/studio'));
 app.use('/api/instagram', require('./routes/instagram'));
 app.use('/api/monitor', require('./routes/monitor'));
+app.use('/api/recortes', require('./routes/recortes'));
 app.use('/api/publico', require('./routes/publish').publico);
 app.use('/api/jobs', require('./routes/sync').jobs);
 
