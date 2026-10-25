@@ -48,7 +48,7 @@ const resposta = {
   await p.click('[data-action="tab"][data-tab="ajustes"]');
   await p.click('summary:has-text("Configurações")').catch(() => {});
   await p.waitForSelector('[data-action="es-modo"]', { state: 'visible', timeout: 10000 });
-  ok(await p.getAttribute('[data-action="es-modo"][data-v="neutral"]', 'aria-pressed') === 'true', 'padrão: política neutra');
+  ok(await p.getAttribute('[data-action="es-modo"][data-v="allowed"]', 'aria-pressed') === 'true', 'padrão: política liberada (perfil de opinião)');
   await p.fill('#est-bloq', 'bets, crime');
   await p.fill('#est-dias', '14');
   await p.click('[data-action="es-salvar"]');
