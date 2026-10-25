@@ -36,7 +36,7 @@ const GENERICO = new Set('empresa cliente clientes produto negocio ideia mercado
 const termos = (s) => sem(s).split(/[^a-z0-9]+/).filter((w) => w.length >= 5 && !STOP.has(w) && !GENERICO.has(w));
 const CAUSAL = /\b(causou|causa o crescimento|graças a|gracas a|fez crescer|resultou em|levou ao crescimento|impulsionou|explica o crescimento|por isso cresceu)\b/;
 const ATRIBUI_DECISAO = /\b(segundo a empresa|a empresa (decidiu|escolheu|afirma|diz|garante|cobra|monta|mudou))\b/;
-const MARCA_HIPOTESE = /\b(hipotese|hipótese|poderia|pode ser|poderia ser|testar|teste sugerido|simular|experimentar)\b/;
+const MARCA_HIPOTESE = /\b(hipotese|hipótese|poderia|pode ser|poderia ser|testar|teste|simular|experimentar|experimente)\b/;
 const EXAGERO = /\b(incrivel|incrível|revolucion|milagre|garantid|segredo|nunca falha|sem risco)\b/;
 const CONECTIVO = /\b(porque|assim|quando|para que|por isso|com isso|então|entao|dessa forma|desse jeito)\b/;
 
@@ -235,6 +235,7 @@ function escolherGancho(ganchos) {
   return { ganchos: pontuados.map(({ i, total, scores, ...g }) => ({ ...g, pontuacao: total, scores })), escolhido: escolhido.i, erros };
 }
 
+const SEM_PROBLEMA = /^\s*(nenhum|nenhuma|nada|n\/a|none|-)\s*[.!]?\s*$/i;   // a IA às vezes responde "Nenhum." com maiúscula ou ponto
 // Revisão por IA (segunda etapa). Só aponta; a correção vira sugestão. Quando não há chave, fica registrado como não executada.
 async function revisarIA(op, telas, b, { deps = {} } = {}) {
   const pedir = deps.pedirJson || (llmJson.hasLlmKey() ? llmJson.pedirJson : null);
@@ -242,7 +243,7 @@ async function revisarIA(op, telas, b, { deps = {} } = {}) {
   const texto = telas.map((t, i) => `${i + 1} (${FUNCOES_MIN[t.funcao].rotulo}, ${t.tipo}): ${t.textos.titulo || ''} — ${t.textos.corpo || t.textos.apoio || ''}`).join('\n');
   const { dados, llm } = await pedir({ sistema: `${REVISOR}\n\n${llmJson.REGRAS_DADOS}`, usuario: `${llmJson.dado('TELAS', texto, 6000).bloco}\n${llmJson.dado('BRIEFING', JSON.stringify(b || {}), 6000).bloco}`, maxTokens: 1800, temperatura: 0.2, budget: deps.budget });
   const revisao = (Array.isArray(dados?.telas) ? dados.telas : []).slice(0, 7).map((x, i) => ({ tela: i + 1, problema: U.limita(x?.problema, 220), correcao: U.limita(x?.correcao, 220), informacao_nova: x?.informacao_nova !== false, explica: x?.explica !== false, promessa_cumprida: x?.promessa_cumprida !== false, repete: x?.repete === true, tecnica_demonstrada: x?.tecnica_demonstrada !== false, imagem_relaciona: x?.imagem_relaciona !== false }));
-  return { executada: true, llm, telas: revisao, sugestoes: revisao.filter((x) => x.problema && x.problema !== 'nenhum').map((x) => `Tela ${x.tela}: ${x.problema}${x.correcao ? ` → ${x.correcao}` : ''}`) };
+  return { executada: true, llm, telas: revisao, sugestoes: revisao.filter((x) => x.problema && !SEM_PROBLEMA.test(x.problema)).map((x) => `Tela ${x.tela}: ${x.problema}${x.correcao ? ` → ${x.correcao}` : ''}`) };
 }
 
 // ── Pedido à IA: briefing → ganchos → telas, em uma chamada ───────────────────────
@@ -423,7 +424,7 @@ async function gerarMinimalista(op, { deps = {}, tentativas = 3, feedback: fb0 =
   // o que não se resolver fica PENDENTE e visível no editor.
   if (v1 && revisao.executada && ultimo.telas?.length) {
     const corrigidas = []; const pendentes = [];
-    for (const x of (revisao.telas || []).filter((y) => y.problema && y.problema !== 'nenhum').slice(0, 4)) {
+    for (const x of (revisao.telas || []).filter((y) => y.problema && !SEM_PROBLEMA.test(y.problema)).slice(0, 4)) {
       const i = x.tela - 1; if (!ultimo.telas[i] || ultimo.telas[i].funcao === 'encerramento') continue;
       try {
         const rr = await regenerarTelaMin(op, ultimo, i, { instrucao: `Correção pedida pela revisão: ${x.problema}. ${x.correcao || ''}`, deps, tentativas: 1 });
