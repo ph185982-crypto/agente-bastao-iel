@@ -396,3 +396,12 @@ test('método: faixa verificada vale nos dois números; campo do negócio e seç
   const v = Metodo.validarDocMin({ ...m, template: Padrao.ID }, op);
   assert.ok(!v.bloqueios.some((b) => /aponta um fato que não existe|precisa apontar fatos/.test(b.mensagem)), v.bloqueios.map((b) => b.mensagem).join(' | '));
 });
+
+test('revisão por IA: "Nenhum." com maiúscula não vira pendência; "Teste …" marca hipótese', async () => {
+  const op = await criarOp(); const r = rascunhoV1(op); const m = Metodo.montarDoc(r, op, { v1: true });
+  const rev = await Metodo.revisarIA(op, m.telas, m.briefing, { deps: { pedirJson: async () => ({ llm: {}, dados: { telas: [{ problema: 'Nenhum.' }, { problema: 'nenhum' }, { problema: 'NENHUM' }] } }) } });
+  assert.deepStrictEqual(rev.sugestoes, []);
+  r.telas[5].corpo = 'Teste reduzir o preço da assinatura por vaso em um escritório de um bairro e meça se ele renova depois de um mês, sem prometer resultado.';
+  const v = Metodo.validarDocMin({ ...Metodo.montarDoc(r, op, { v1: true }), template: Padrao.ID }, op);
+  assert.ok(!v.bloqueios.some((b) => /não está marcada como tal/.test(b.mensagem)), v.bloqueios.map((b) => b.mensagem).join(' | '));
+});
