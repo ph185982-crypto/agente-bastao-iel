@@ -420,6 +420,14 @@ async function produceViral(item, insights) {
 }
 
 async function produce(item, insights) {
+  // Padrão único de carrossel: o item da esteira vira pauta no Radar (o carrossel sai no "Pedro Destrava — Minimalista").
+  if (item.format === 'carrossel' && require('../lib/padraoCarrossel').atual()) {
+    const Pauta = require('../lib/radar/pauta');
+    const p = await Pauta.criar({ nome: '', titulo: item.title, texto: `${item.title}\n\n${item.summary || ''}\n\n${(item.sources || []).map((x) => x.url || x).join('\n')}`.padEnd(200, ' ') }, { origem: 'esteira' });
+    await require('../lib/radar/fila').continuar(p.id).catch(() => {});
+    const e = new Error(`Carrossel agora sai no padrão Pedro Destrava — Minimalista: a pauta foi enviada ao Radar (${p.id}) e aparece lá para revisão.`);
+    e.status = 409; e.code = 'PADRAO_V1'; e.pauta_id = p.id; throw e;
+  }
   if (item.format === 'carrossel' && PB.TEMPLATES[item.carousel_type]) return produceViral(item, insights);
   if (item.format === 'carrossel') {
     const path = CAROUSEL_ENDPOINTS[item.carousel_type] || CAROUSEL_ENDPOINTS.padrao;

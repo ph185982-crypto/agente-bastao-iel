@@ -18,7 +18,7 @@ const porMinuto = (max, nome) => limita({ max, janelaMs: 60000, nome });
 
 const erroJson = (res, e, status) => {
   const code = e.code || (e.isUrlError ? 'URL' : 'ERRO');
-  const http = status || (e.isUrlError ? 400 : e.code === 'SEM_IA' ? 503 : e.code === 'LIMITE' ? 429 : ['ENTRADA', 'IMAGEM', 'FONTE_ILEGIVEL', 'SEM_AFIRMACOES'].includes(e.code) ? 400 : 500);
+  const http = status || (e.isUrlError ? 400 : e.code === 'PADRAO_V1' ? 409 : e.code === 'SEM_IA' ? 503 : e.code === 'LIMITE' ? 429 : ['ENTRADA', 'IMAGEM', 'FONTE_ILEGIVEL', 'SEM_AFIRMACOES'].includes(e.code) ? 400 : 500);
   res.status(http).json({ error: e.message, code });
 };
 
@@ -139,6 +139,8 @@ etapa('briefing', 8, async (b) => {
 
 etapa('copy', 6, async (b) => {
   exigeIA();
+  // Carrossel novo só no padrão "Pedro Destrava — Minimalista" (pauta no Radar). Post único continua por aqui.
+  if (b.formato !== 'estatico' && require('../lib/padraoCarrossel').atual()) throw require('../lib/padraoCarrossel').erroLegado('content/copy');
   if (!b.briefing || typeof b.briefing !== 'object') throw Object.assign(new Error('Falta o briefing.'), { code: 'ENTRADA' });
   return redacao.gerarCopia({
     briefing: b.briefing, fonte: fonteDoCorpo(b.fonte), claims: claimsDoCorpo(b.claims), evidencias: evidsDoCorpo(b.evidencias),

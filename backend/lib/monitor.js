@@ -67,8 +67,10 @@ async function tick({ forcar = false, deps = {} } = {}) {
       .slice(0, cfg.max_alertas_por_rodada);
 
     const temIA = deps.temIA ? deps.temIA() : require('./llmJson').hasLlmKey();
-    const criar = deps.criar || ((o) => require('./studio').criar(o));
-    const kick = deps.kick || (async (c) => require('../routes/studio')._internos.kick(c));
+    // Padrão novo: a matéria em alta vira pauta no Radar e segue o fluxo do "Pedro Destrava — Minimalista".
+    const v1 = !deps.criar && !!require('./padraoCarrossel').atual();
+    const criar = deps.criar || (v1 ? async (o) => { const p = await require('./radar/pauta').criar({ url: o.url, titulo: o.titulo }, { origem: 'monitor' }); await require('./radar/fila').continuar(p.id).catch(() => {}); return { id: p.id, pauta: true }; } : (o) => require('./studio').criar(o));
+    const kick = deps.kick || (v1 ? async () => {} : async (c) => require('../routes/studio')._internos.kick(c));
     for (const { p, alta } of novas) {
       const alerta = { id: p.id, titulo: p.titulo, veiculos: alta.veiculos, horas: alta.horas, prioridade: p.prioridade, roteiro: false, motivo_sem_roteiro: null };
       const link = (p.fontes || []).find((f) => f.url)?.url;

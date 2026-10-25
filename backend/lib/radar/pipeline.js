@@ -11,7 +11,7 @@ const Cand = require('./candidatos');
 const Verif = require('./verificacao');
 const Pont = require('./pontuacao');
 const Imagens = require('./imagens');
-const Carrossel = require('./carrossel');
+const Carrossel = require('./carrossel2');
 const Aprend = require('./aprendizado');
 const C = require('./config');
 const U = require('./util');
@@ -215,7 +215,10 @@ E.gerar = async (run, ctx) => {
   if (run.resultado.carrossel_id) return { concluida: true };
   if (ctx.restante() < 26000) return { concluida: false };
   try {
-    const doc = await ctx.comIA(() => Carrossel.gerar(id, { deps: ctx.deps, origem: run.origem, agora: ctx.agora }));
+    // Padrão da descoberta de negócios: série "Negócios que você não viu". Se a IA não resolver todos os problemas de texto, o carrossel
+    // segue como RASCUNHO com os bloqueios visíveis no editor (não some nem é descartado).
+    const doc = await ctx.comIA(() => Carrossel.gerar(id, { deps: ctx.deps, origem: run.origem, agora: ctx.agora, orcamentoMs: Math.max(20000, ctx.restante() - 6000) }));
+    if (doc.etapa !== 'pronto' && doc.estado !== 'erro') return { concluida: false };     // etapa interna ainda em andamento: continua na próxima passada
     run.resultado.carrossel_id = doc.id; run.resultado.carrossel_estado = doc.estado;
   } catch (e) {
     if (['SEM_IA', 'LIMITE'].includes(e.code) || U.erroTemporario(e)) throw e;     // limite da IA: espera e tenta de novo, não desiste do carrossel

@@ -24,7 +24,7 @@ const CUE = {
   investimento: /(rais(?:ed|es|ing)\b|funding|funded|seed\b|series [a-e]\b|round\b|investment|invested|backed by|captou|capta[cç][aã]o|rodada|aporte|investimento|investiu)/i,
   valuation: /(valuation|valued at|valuing|avalia(?:da|do|[cç][aã]o)|vale(?:ndo)? \$|unic[oó]rnio|unicorn)/i,
   lucro: /(profitable|profit\b|profits\b|net income|lucrativ|lucro|rentabilidade|in the black|cash[- ]flow positive)/i,
-  pessoas: /(users|customers|subscribers|downloads|clients|merchants|sellers|members|businesses|companies|creators|drivers|patients|students|stores|usu[aá]rios|clientes|assinantes|lojistas|membros|empresas|criadores|motoristas|alunos|lojas)/i,
+  pessoas: /(users|customers|subscribers|downloads|clients|merchants|sellers|members|businesses|companies|creators|drivers|patients|students|stores|partners|retailers|restaurants|shops|vendors|suppliers|people|pessoas|campers|campistas|user base|userbase|community|comunidade|visitors|visitantes|hosts|anfitri[oõ]es|usu[aá]rios|clientes|assinantes|lojistas|membros|empresas|criadores|motoristas|alunos|lojas)/i,
   crescimento: /(growth|grew|growing|yoy|year[- ]over[- ]year|month[- ]over[- ]month|tripled|doubled|quadrupled|cresc|dobrou|triplicou|aument)/i,
   paises: /(countries|markets|pa[ií]ses|mercados)/i,
 };
@@ -229,7 +229,12 @@ function independentes(a, b) {
 }
 
 // Decide se cada afirmação pode ir para uma tela e como deve ser atribuída.
-function decidirUso(claims, docs) {
+// A matéria só repete o que a empresa diz ("segundo a Too Good To Go, o app tem…"): o número continua sendo declaração da empresa.
+const declaracaoDaEmpresa = (trecho, nome) => {
+  const n = String(nome || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); if (!n) return /(segundo a empresa|according to the company|the company (says|said|claims|reports))/i.test(trecho || '');
+  return new RegExp(`(according to (the company|${n})|${n}[^.]{0,30}\\b(says|said|claims|reports|states|affirms)\\b|the company (says|said|claims|reports)|(company )?spokesperson (says|said)|porta-voz|segundo (a )?(empresa|${n})|afirma (a )?(empresa|${n}))`, 'i').test(trecho || '');
+};
+function decidirUso(claims, docs, nomeEmpresa = '') {
   const porClaim = claims.map((c) => ({ ...c }));
   porClaim.forEach((c) => {
     const doc = docs[c.documento];
@@ -244,7 +249,8 @@ function decidirUso(claims, docs) {
     } else if (doc.classe === 'plataforma') {
       c.usavel = true; c.atribuicao = `segundo ${doc.veiculo}`; c.confianca = 'alta'; c.observacoes.push('Número medido pela própria plataforma.');
     } else if (distintas.size >= 2) {
-      c.usavel = true; c.atribuicao = null; c.confianca = 'alta'; c.observacoes.push('Confirmado por duas fontes independentes.');
+      const daEmpresa = declaracaoDaEmpresa(c.trecho, nomeEmpresa);
+      c.usavel = true; c.atribuicao = daEmpresa ? 'segundo a empresa' : null; c.confianca = 'alta'; c.observacoes.push(daEmpresa ? 'Número da própria empresa, repetido por mais de uma fonte independente: segue atribuído à empresa.' : 'Confirmado por duas fontes independentes.');
     } else {
       c.usavel = false; c.atribuicao = null; c.confianca = 'baixa';
       c.observacoes.push(c.numero !== null ? 'Só uma matéria traz este número: não pode ser usado sem fonte oficial ou segunda fonte independente.' : 'Só uma matéria traz esta afirmação.');
@@ -312,7 +318,7 @@ async function verificar(cand, { deps = {}, agora = Date.now() } = {}) {
     llm = r.llm;
     const conf = conferirAfirmacoes(r.afirmacoes, docs, { agora });
     rejeitadas = conf.rejeitadas;
-    claims = decidirUso(comMetricasDeLoja(conf.aceitas, docs, agora), docs);
+    claims = decidirUso(comMetricasDeLoja(conf.aceitas, docs, agora), docs, cand.nome);
     return r;
   };
   if (docs.length) {
@@ -334,4 +340,4 @@ async function verificar(cand, { deps = {}, agora = Date.now() } = {}) {
   return { verificacao, llm, docs_lidos: docs.length };
 }
 
-module.exports = { verificar, reunirDocumentos, conferirAfirmacoes, conferirTipo, decidirUso, concluir, avaliarIdade, anoDeFundacao, sinaisNoTexto, independentes, pedirAfirmacoes, TIPOS, NUMERICOS, DEMANDA, CUE };
+module.exports = { classeDoc, nomeNoTexto, verificar, reunirDocumentos, conferirAfirmacoes, conferirTipo, decidirUso, concluir, avaliarIdade, anoDeFundacao, sinaisNoTexto, independentes, pedirAfirmacoes, TIPOS, NUMERICOS, DEMANDA, CUE };

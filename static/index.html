@@ -22,6 +22,8 @@
 <meta name="apple-mobile-web-app-title" content="Pedro">
 <script src="./auth.js"></script>
 <script src="./support.js"></script>
+<style>html.padrao-v1 .legado-carrossel{display:none!important}html:not(.padrao-v1) .padrao-v1-aviso{display:none!important}</style>
+<script>/* Padrão único de carrossel: esconde os modelos antigos de criação (o servidor também os recusa). */(function(){document.documentElement.classList.add('padrao-v1');fetch('/api/radar/padrao',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null}).then(function(p){if(p&&p.ativo===false)document.documentElement.classList.remove('padrao-v1')}).catch(function(){})})();</script>
 </head>
 <body>
 <x-dc>
@@ -118,7 +120,8 @@
           </sc-if>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 10px; padding: 0 20px">
+        <div class="padrao-v1-aviso" style="padding: 0 20px"><div style="background: #FFFFFF; border-radius: 16px; padding: 14px; font-size: 14px; color: #1D1D1F">Os modelos antigos de carrossel foram substituídos pelo <b>Pedro Destrava — Minimalista</b>. Crie pelo Radar → Nova pauta (link, nome do negócio, texto ou lote).</div></div>
+        <div class="legado-carrossel" style="display: flex; flex-direction: column; gap: 10px; padding: 0 20px">
           <span style="font-size: 14px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Refazer no nosso formato</span>
           <div onClick="{{ selectTemplate }}" data-template="clonar" style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98)">
             <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #5856D6, #AF52DE); display: flex; align-items: center; justify-content: center; flex-shrink: 0">
@@ -132,7 +135,7 @@
           </div>
         </div>
 
-        <div style="display: flex; flex-direction: column; gap: 10px; padding: 0 20px">
+        <div class="legado-carrossel" style="display: flex; flex-direction: column; gap: 10px; padding: 0 20px">
           <span style="font-size: 14px; font-weight: 600; color: #86868B; text-transform: uppercase; letter-spacing: 0.5px">Template Classico</span>
           <div onClick="{{ selectTemplate }}" data-template="boas-noticias-mundo" style="background: #FFFFFF; border-radius: 16px; padding: 14px; display: flex; gap: 14px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.04); cursor: pointer; transition: all 0.2s" style-active="transform: scale(0.98)">
             <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #30D158, #00C7BE); display: flex; align-items: center; justify-content: center; flex-shrink: 0">
@@ -2418,6 +2421,7 @@ class Component extends DCLogic {
 <script src="./central.js"></script>
 <script src="./meuInstagram.js"></script>
 <script src="./radar.js"></script>
+<script src="./radarEditor.js"></script>
 <script src="./estrategia.js"></script>
 <script src="./recortes.js"></script>
 <script src="./contaAberta.js"></script>

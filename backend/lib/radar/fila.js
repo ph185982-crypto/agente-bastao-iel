@@ -12,10 +12,17 @@ async function enfileirar(runId, { atrasoS = 0, carimbo = Date.now() } = {}) {
 }
 
 const emAndamento = new Set();
+// Mesmo canal para a pesquisa (rd_), uma pauta (pt_) e um lote de pautas (lt_).
+function executar(id) {
+  const U2 = require('./util'); const deps = U2.depsDeTeste();
+  if (id.startsWith('pt_')) return require('./pauta').executarTudo(id, { deps });
+  if (id.startsWith('lt_')) return require('./pauta').executarLote(id, { deps });
+  return pipeline.executarTudo(id);
+}
 function localmente(runId, atrasoS = 0) {
   if (emAndamento.has(runId)) return;
   emAndamento.add(runId);
-  setTimeout(() => { pipeline.executarTudo(runId).catch((e) => console.error('[radar]', e.message)).finally(() => emAndamento.delete(runId)); }, Math.max(50, atrasoS * 1000));
+  setTimeout(() => { executar(runId).catch((e) => console.error('[radar]', e.message)).finally(() => emAndamento.delete(runId)); }, Math.max(50, atrasoS * 1000));
 }
 
 async function continuar(runId, { atrasoS = 0 } = {}) {

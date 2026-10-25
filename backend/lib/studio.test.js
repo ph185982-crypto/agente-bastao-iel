@@ -1,3 +1,5 @@
+// Fluxo antigo do estúdio para carrossel: roda com a REVERSÃO técnica (CARROSSEL_PADRAO=legado), que precisa continuar funcionando.
+process.env.CARROSSEL_PADRAO = 'legado';
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const sharp=require('sharp');

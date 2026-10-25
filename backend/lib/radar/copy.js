@@ -287,4 +287,4 @@ async function gerarReels(op, { deps = {}, tentativas = 2 } = {}) {
   throw Object.assign(new Error(`O roteiro de Reels não passou nas regras: ${erros.slice(0, 3).join('; ')}`), { code: 'COPY_INVALIDA', status: 422, erros });
 }
 
-module.exports = { repararAtribuicao, rotuloIncoerente, gerarCopia, gerarReels, montarTelas, validarTelas, montarLegenda, checarTexto, numerosNaoComprovados, atribuicaoFaltando, dinheiroNaCapa, claimsUsaveis, INTRO, ROTULOS_BRASIL, SISTEMA };
+module.exports = { dadosParaIa, repararAtribuicao, rotuloIncoerente, gerarCopia, gerarReels, montarTelas, validarTelas, montarLegenda, checarTexto, numerosNaoComprovados, atribuicaoFaltando, dinheiroNaCapa, claimsUsaveis, INTRO, ROTULOS_BRASIL, SISTEMA };

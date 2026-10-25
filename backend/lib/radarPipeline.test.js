@@ -39,19 +39,22 @@ test('pesquisa manual: executa o pipeline inteiro, acha 5 pautas, gera o carross
   assert.ok(ops.every((o) => o.status !== 'publicada'), 'nada publicado');
 });
 
-test('ZIP completo e carrossel: 8 imagens 1080×1350, legenda, ficha de fontes e origem das imagens', async () => {
+test('ZIP completo no padrão novo: 7 PNG 1080×1350 na ordem, legenda, fontes e créditos, objeto estruturado', async () => {
   novoBanco(); const { r } = await rodar();
   const c = (await store.obter('carrossel', r.run.resultado.carrossel_id)).doc;
-  assert.strictEqual(c.estado, 'aguardando_aprovacao'); assert.strictEqual(c.render.length, 8);
-  const zip = await store.arquivoObter(c.pacote.arquivo); const itens = Pacote.lerZip(zip.dados); const nomes = itens.map((i) => i.nome);
-  for (let i = 1; i <= 8; i++) assert.ok(nomes.includes(`slide-0${i}.png`), `slide-0${i}.png`);
-  for (const n of ['legenda.txt', 'ficha-de-fontes.md', 'ficha-de-fontes.json', 'imagens-origem.json', 'LEIA-ME.txt']) assert.ok(nomes.includes(n), n);
-  for (const it of itens.filter((x) => x.nome.endsWith('.png'))) { const m = await sharp(it.dados).metadata(); assert.deepStrictEqual([m.width, m.height], [1080, 1350]); }
-  assert.ok(itens.find((x) => x.nome === 'legenda.txt').dados.toString().length <= 700);
-  const origem = JSON.parse(itens.find((x) => x.nome === 'imagens-origem.json').dados.toString());
-  assert.strictEqual(origem[0].tipo, 'oficial_pagina'); assert.ok(origem[0].origem.url_imagem && origem[0].origem.url_pagina);
-  assert.ok(c.versoes.length === 1 && c.copia.slides.length === 8);
-  assert.ok(itens.find((x) => x.nome === 'ficha-de-fontes.md').dados.toString().includes('segundo a empresa'));
+  assert.strictEqual(c.template, 'pedro_minimalista_estrategico_v1', 'a pesquisa diária gera no padrão novo');
+  assert.strictEqual(c.estado, 'aguardando_aprovacao', JSON.stringify(c.validacao?.bloqueios)); assert.strictEqual(c.render.length, 7);
+  const zip = await require('./radar/carrossel2').exportar(c.id); const itens = Pacote.lerZip(zip.zip); const nomes = itens.map((i) => i.nome);
+  assert.deepStrictEqual(nomes.slice(0, 7), [1, 2, 3, 4, 5, 6, 7].map((i) => `slide-0${i}.png`), 'PNGs numerados na ordem de postagem');
+  for (const n of ['legenda.txt', 'fontes-e-creditos.md', 'carrossel.json', 'ficha-de-fontes.json', 'LEIA-ME.txt']) assert.ok(nomes.includes(n), n);
+  for (const it of itens.filter((x) => x.nome.endsWith('.png'))) { const m = await sharp(it.dados).metadata(); assert.deepStrictEqual([m.width, m.height, m.format], [1080, 1350, 'png']); }
+  assert.ok(itens.find((x) => x.nome === 'legenda.txt').dados.toString().length <= 900);
+  const obj = JSON.parse(itens.find((x) => x.nome === 'carrossel.json').dados.toString());
+  assert.strictEqual(obj.template, 'pedro_minimalista_estrategico_v1'); assert.ok(obj.briefing && obj.ganchos.length === 3 && obj.telas.length === 7);
+  obj.imagens.forEach((i) => assert.ok(i.origem && (i.origem.url_imagem || i.origem.declaracao) && i.licenca && i.permissao, 'toda imagem registra origem, licença e permissão'));
+  obj.telas.forEach((t, i) => assert.strictEqual(t.png.sha256, c.render[i].sha256, 'o objeto aponta para o PNG exportado'));
+  assert.ok(c.versoes.length >= 1 && c.copia.slides.length === 7 && c.serie === 'negocios');
+  assert.ok(itens.find((x) => x.nome === 'fontes-e-creditos.md').dados.toString().includes('segundo a empresa'));
 });
 
 test('cron diário: uma execução por dia (a segunda chamada devolve a mesma), e respeita o interruptor', async () => {
@@ -127,7 +130,7 @@ test('erro da IA: sem chave a execução para com mensagem clara; IA instável n
   const sem = await rodar('manual', { pedirJson: async () => { throw Object.assign(new Error('Nenhuma IA'), { code: 'SEM_IA' }); } });
   assert.strictEqual(sem.r.run.estado, 'erro'); assert.match(sem.r.run.erro_final.mensagem, /chave de IA/);
   novoBanco();
-  const copiaRuim = await rodar('manual', { pedirJson: Object.assign(async (o) => (/escreve carrosséis/.test(o.sistema) ? { llm: {}, dados: { slides: [] } } : F.fakePedirJson()(o)), {}) });
+  const copiaRuim = await rodar('manual', { pedirJson: Object.assign(async (o) => (/Pedro Destrava — Minimalista/.test(o.sistema) ? { llm: {}, dados: { telas: [] } } : F.fakePedirJson()(o)), {}) });
   assert.ok(['concluida', 'concluida_com_avisos'].includes(copiaRuim.r.run.estado));
   assert.strictEqual(copiaRuim.r.run.resultado.carrossel_id, undefined); assert.ok(copiaRuim.r.run.resultado.carrossel_erro);
   assert.strictEqual(copiaRuim.r.run.resultado.top5.length, 5, 'as pautas continuam salvas');
@@ -182,9 +185,9 @@ test('API: cron roda o pipeline, estado mostra os números, oportunidades filtra
     assert.ok((await s.req('GET', '/oportunidades?filtro=baixo_investimento')).json.oportunidades.every((o) => o.investimento_para_testar.nivel === 'baixo'));
     const img = await s.req('GET', `/oportunidades/${primeira.id}/imagem`); assert.strictEqual(img.status, 200); assert.ok(img.headers.get('content-type').startsWith('image/'));
     const cs = (await s.req('GET', '/carrosseis')).json.carrosseis; assert.strictEqual(cs.length, 1); const c = cs[0];
-    assert.strictEqual(c.slides.length, 8); assert.strictEqual(c.estado, 'aguardando_aprovacao');
+    assert.strictEqual(c.slides.length, 7); assert.strictEqual(c.estado, 'aguardando_aprovacao');
     const slide = await s.req('GET', `/carrosseis/${c.id}/slide/3`); assert.strictEqual(slide.status, 200); assert.strictEqual((await sharp(slide.buf).metadata()).width, 1080);
-    const zip = await s.req('GET', `/carrosseis/${c.id}/zip`); assert.strictEqual(zip.status, 200); assert.strictEqual(zip.headers.get('content-type'), 'application/zip'); assert.match(zip.headers.get('content-disposition'), /\.zip/); assert.strictEqual(Pacote.lerZip(zip.buf).length, 13);
+    const zip = await s.req('GET', `/carrosseis/${c.id}/zip`); assert.strictEqual(zip.status, 200); assert.strictEqual(zip.headers.get('content-type'), 'application/zip'); assert.match(zip.headers.get('content-disposition'), /\.zip/); assert.strictEqual(Pacote.lerZip(zip.buf).length, 12);
     const ap = await s.req('POST', `/carrosseis/${c.id}/decisao`, { acao: 'aprovar' }); assert.strictEqual(ap.json.estado, 'aprovado');
     assert.strictEqual((await s.req('GET', '/estado')).json.fila_aprovacao, 0);
     assert.strictEqual((await s.req('POST', `/oportunidades/${primeira.id}/acao`, { acao: 'nada' })).status, 400);

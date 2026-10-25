@@ -15,6 +15,9 @@ const { gerarCarrossel } = require('../lib/roboCopy');
 const { separarTelaDeCarrossel, montarCarrosselDoPrint } = require('../lib/lerCarrossel');
 const { PEDRO_DNA: PEDRO_DNA_BASE } = require('../lib/pedroDna');
 
+// Modelos antigos de carrossel: com o padrão "Pedro Destrava — Minimalista" ativo, estas rotas não criam carrossel novo
+// (409 PADRAO_V1). A reversão CARROSSEL_PADRAO=legado as devolve. Ler a tela de print (/ler-tela) continua livre.
+const Padrao = require('../lib/padraoCarrossel');
 const router = express.Router();
 
 // Print de uma tela do carrossel. O teto é o da Vercel (~4,5 MB por
@@ -1177,7 +1180,7 @@ router.get('/cover', async (req, res) => {
 });
 
 // POST /api/carousels/generate — gera um carrossel pronto para postar
-router.post('/generate', async (req, res) => {
+router.post('/generate', Padrao.bloquearCriacaoLegada('carousels/generate'), async (req, res) => {
   const { theme, topic, reference, slideCount, handle: rawHandle, modo, variante } = req.body || {};
   let handle = (rawHandle || '@pedro_destrava').trim();
   if (!handle.startsWith('@')) handle = '@' + handle;
@@ -1250,7 +1253,7 @@ router.post('/generate', async (req, res) => {
 // POST /api/carousels/generate-news — Carrossel "Boas Notícias do Mundo"
 // Estilo @intrafocun: foto real (Google Imagens) em cima + faixa branca com
 // manchete em CAIXA ALTA + foto real embaixo. Capa e CTA são foto única.
-router.post('/generate-news', async (req, res) => {
+router.post('/generate-news', Padrao.bloquearCriacaoLegada('carousels/generate-news'), async (req, res) => {
   const { handle: rawHandle } = req.body || {};
   if (!hasLlmKey()) {
     return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
@@ -1560,7 +1563,7 @@ async function renderComecouSlide(slide, photoBuf) {
 }
 
 // POST /api/carousels/generate-arquivo
-router.post('/generate-arquivo', async (req, res) => {
+router.post('/generate-arquivo', Padrao.bloquearCriacaoLegada('carousels/generate-arquivo'), async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
   if (!hasLlmKey()) return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
 
@@ -1640,7 +1643,7 @@ Responda APENAS JSON:
 });
 
 // POST /api/carousels/generate-boasnoticias
-router.post('/generate-boasnoticias', async (req, res) => {
+router.post('/generate-boasnoticias', Padrao.bloquearCriacaoLegada('carousels/generate-boasnoticias'), async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
   if (!hasLlmKey()) return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
 
@@ -1735,7 +1738,7 @@ Responda APENAS JSON:
 });
 
 // POST /api/carousels/generate-comecou
-router.post('/generate-comecou', async (req, res) => {
+router.post('/generate-comecou', Padrao.bloquearCriacaoLegada('carousels/generate-comecou'), async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
   if (!hasLlmKey()) return res.status(500).json({ error: NO_LLM_KEY_MESSAGE });
 
@@ -1833,7 +1836,7 @@ function enforceReadability(slides) {
 
 // ── POST /api/carousels/generate-trending ────────────────────────────────────
 // 4-agent pipeline: Estrategista → Redator Viral → Foto → Revisor
-router.post('/generate-trending', async (req, res) => {
+router.post('/generate-trending', Padrao.bloquearCriacaoLegada('carousels/generate-trending'), async (req, res) => {
   const { topic, handle: rawHandle } = req.body || {};
   if (!topic || !topic.title) return res.status(400).json({ error: 'Topic obrigatorio' });
   if (!hasLlmKey())
@@ -2206,7 +2209,7 @@ async function renderSlideClonado(slide, idx, total, handle) {
 // Recebe as telas já lidas (texto + foto extraída de cada print) e devolve o
 // carrossel renderizado no nosso formato — mesma resposta do /generate, então
 // o frontend exibe e baixa do mesmo jeito.
-router.post('/clonar', async (req, res) => {
+router.post('/clonar', Padrao.bloquearCriacaoLegada('carousels/clonar'), async (req, res) => {
   try {
     const { telas, tema, caption, variante } = req.body || {};
     if (!Array.isArray(telas) || !telas.length) {
