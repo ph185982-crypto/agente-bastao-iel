@@ -10,8 +10,9 @@ const PADRAO = {
   temas_bloqueados: [],
   dias_sem_repetir: 21,
   min_posts_por_grupo: 5,
-  // Monitor de notícias em alta: DESLIGADO até você ligar em Ajustes. Cada rodada gasta chamadas de IA.
-  monitor: { ativo: false, min_veiculos: 3, janela_horas: 12, limiar_prioridade: 50, max_roteiros_dia: 3, max_alertas_por_rodada: 3, intervalo_min: 30 },
+  // Monitor de notícias em alta: LIGADO por padrão (decisão do Pedro). Só roda com banco de dados no servidor e chave de IA;
+  // cada rodada gasta chamadas de IA, então o teto diário de roteiros segura o consumo. Desligue em Ajustes.
+  monitor: { ativo: true, min_veiculos: 3, janela_horas: 12, limiar_prioridade: 50, max_roteiros_dia: 3, max_alertas_por_rodada: 3, intervalo_min: 30 },
 };
 
 function validar(entrada = {}) {

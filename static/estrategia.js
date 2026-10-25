@@ -31,7 +31,7 @@
         <button data-action="es-mon-ativo" data-v="true" aria-pressed="${c.ativo}" ${st.salvando ? 'disabled' : ''}>Ligado</button>
         <button data-action="es-mon-ativo" data-v="false" aria-pressed="${!c.ativo}" ${st.salvando ? 'disabled' : ''}>Desligado</button>
       </div>
-      <div class="es-text ca-mudo">Cada rodada usa IA para triar e cada roteiro usa o pipeline de texto. Por isso vem desligado e tem teto diário.</div>
+      <div class="es-text ca-mudo">Cada rodada usa IA para triar e cada roteiro usa o pipeline de texto. Por isso tem teto diário de roteiros. Só roda com banco de dados e chave de IA no servidor.</div>
       <label class="es-label" for="mon-min" style="margin-top:10px">Veículos cobrindo o mesmo assunto (mínimo)</label><input id="mon-min" class="es-input" type="number" min="2" max="10" value="${esc(c.min_veiculos)}">
       <label class="es-label" for="mon-janela" style="margin-top:10px">Janela (horas)</label><input id="mon-janela" class="es-input" type="number" min="1" max="72" value="${esc(c.janela_horas)}">
       <label class="es-label" for="mon-lim" style="margin-top:10px">Prioridade mínima (0 a 100)</label><input id="mon-lim" class="es-input" type="number" min="0" max="100" value="${esc(c.limiar_prioridade)}">

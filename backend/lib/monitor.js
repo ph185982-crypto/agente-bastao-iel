@@ -6,8 +6,8 @@
 // "Em alta" aqui = o mesmo acontecimento aparece em pelo menos N veículos diferentes dentro da janela de
 // horas (padrão 3 veículos em 12 h). É um sinal de cobertura, não de audiência: a tela diz isso.
 //
-// Custo: cada rodada faz uma chamada de IA (triagem) e cada roteiro criado faz o pipeline de texto. Por isso
-// vem DESLIGADO e tem teto diário de roteiros (padrão 3).
+// Custo: cada rodada faz uma chamada de IA (triagem) e cada roteiro criado faz o pipeline de texto. Vem LIGADO por
+// padrão (decisão do Pedro) e tem teto diário de roteiros (padrão 3); sem banco ou sem chave de IA ele não gasta nada.
 const { armazem } = require('./armazem');
 const { ACCOUNT } = require('./account');
 const Estrategia = require('./estrategia');

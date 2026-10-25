@@ -16,8 +16,9 @@ Nada é publicado, nem o carrossel é gerado, sem o seu toque.
 
 ## Como ligar
 
-Ajustes → Perfil → Configurações → **Monitor de notícias em alta** → Ligado. Vem **desligado**: cada rodada usa IA (triagem) e cada
-roteiro usa o pipeline de texto. Defina o teto de roteiros por dia. "Buscar o que está em alta agora" roda uma rodada na hora.
+Vem **ligado** por padrão, mas só roda com banco de dados e chave de IA no servidor. Para desligar ou ajustar:
+Ajustes → Perfil → Configurações → **Monitor de notícias em alta**. Cada rodada usa IA (triagem) e cada roteiro usa o pipeline de texto,
+então defina o teto de roteiros por dia. "Buscar o que está em alta agora" roda uma rodada na hora.
 
 Precisa de: banco de dados no servidor (para lembrar o que já avisou), chave de IA, e para o aviso no celular as chaves VAPID e o app
 na Tela de Início (`docs/META_SETUP.md` e `docs/ARMAZENAMENTO.md`).

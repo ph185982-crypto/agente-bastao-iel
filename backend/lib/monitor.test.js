@@ -23,13 +23,14 @@ const deps = (pautas, extra = {}) => ({
 });
 const ligar = (monitor = {}) => E.salvar({ monitor: { ativo: true, ...monitor } });
 
-test('desligado por padrão: não lê nem cria nada, e diz por quê', async () => {
+test('vem ligado por padrão; desligado, não lê nem cria nada e diz por quê', async () => {
+  assert.strictEqual((await E.ler()).monitor.ativo, true);
+  await E.salvar({ monitor: { ativo: false } });
   const r = await Mon.tick({ deps: deps([pauta('a', 'Teto do MEI sobe', ['G1', 'Folha', 'UOL', 'CNN'], 2)]) });
   assert.strictEqual(r.executou, false);
   assert.match(r.motivo, /desligado/);
   assert.strictEqual(criados.length, 0);
   assert.strictEqual(avisos.length, 0);
-  assert.strictEqual((await E.ler()).monitor.ativo, false);
 });
 
 test('em alta = vários veículos na janela: alerta, cria o roteiro (roteiro_primeiro) e manda UMA notificação', async () => {
