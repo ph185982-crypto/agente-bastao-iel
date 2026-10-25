@@ -357,3 +357,14 @@ test('verificação: número citado pela IA em uma fonte só é procurado pelo c
   assert.ok(cli.some((c) => c.observacoes.some((o) => /Encontrada pelo código/.test(o))));
   assert.strictEqual(r.pauta.estado, 'concluida');
 });
+
+test('método: fato com id de afirmação verificada é reconhecido; proporção por extenso sem fonte é bloqueada', async () => {
+  const op = await criarOp(); const r = rascunhoV1(op);
+  const cUso = r.briefing.fatos[0].claim_id; r.briefing.fatos[0] = { id: cUso, texto: r.briefing.fatos[0].texto, claim_id: null, campo_do_negocio: null };
+  r.telas[4].base = [cUso];
+  const m = Metodo.montarDoc(r, op, { v1: true });
+  assert.ok(!Metodo.validarBriefing(m.briefing, op, { v1: true }).some((e) => /não tem fonte/.test(e)), 'id de afirmação vira claim_id');
+  r.telas[1].corpo = 'Um terço da comida produzida vai para o lixo, e a planta sem cuidado seca. A tarefa cai sempre no mesmo funcionário, que não tem tempo.';
+  const v = Metodo.validarDocMin({ ...Metodo.montarDoc(r, op, { v1: true }), template: Padrao.ID }, op);
+  assert.ok(v.bloqueios.some((b) => /proporção sem comprovação/.test(b.mensagem)), v.bloqueios.map((b) => b.mensagem).join(' | '));
+});

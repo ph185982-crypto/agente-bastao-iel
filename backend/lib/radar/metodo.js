@@ -166,6 +166,7 @@ function validarTelas(telas, op, b, { v1 = false } = {}) {
     // número, atribuição, promessa e frases proibidas
     const sp = Copy.numerosNaoComprovados(txt, usaveis, { permitirContagem: t.funcao === 'aplicacao' }); if (sp.length) bl.push(`${r}: número sem comprovação (${sp.join(', ')}).`);
     const fa = Copy.atribuicaoFaltando(txt, usaveis); if (fa.length) bl.push(`${r}: o número vem de “${fa[0]}”; escreva a atribuição na própria tela.`);
+    const pr = proporcoesSemFonte(txt, op); if (pr.length) bl.push(`${r}: proporção sem comprovação (“${pr[0]}”). Use só proporções que estão nas fontes verificadas.`);
     for (const f of C.FRASES_PROIBIDAS) if (s.includes(f)) bl.push(`${r}: frase proibida “${f.trim()}”.`);
     for (const f of C.ABSOLUTOS_NAO_PROVAVEIS) if (s.includes(f)) bl.push(`${r}: “${f}” não dá para provar.`);
     if (/[!]/.test(txt)) bl.push(`${r}: sem exclamação.`);
@@ -286,8 +287,23 @@ function dadosParaIa(op) {
 }
 
 // Do JSON da IA (ou de um rascunho escrito à mão, com o mesmo formato) para as telas e o documento.
+// Correção mecânica e segura: a IA às vezes usa o id da afirmação verificada (c1, c2…) como id do fato e não preenche claim_id.
+function normalizarBriefing(b, op) {
+  if (!b || !Array.isArray(b.fatos)) return b;
+  const ids = new Set(Copy.claimsUsaveis(op).map((c) => String(c.id)));
+  b.fatos = b.fatos.map((f) => (f && !f.claim_id && !f.campo_do_negocio && ids.has(String(f.id)) ? { ...f, claim_id: String(f.id) } : f));
+  return b;
+}
+// Proporção escrita por extenso ("um terço", "metade") também é número: só entra se estiver nas afirmações verificadas.
+const PROPORCAO = /\b(um terco|dois tercos|metade d[aoe]s?|um quarto|tres quartos|um quinto|a maioria d[aoe]s?)\b/;
+function proporcoesSemFonte(txt, op) {
+  const fontes = sem(Copy.claimsUsaveis(op).map((c) => `${c.texto} ${c.trecho || ''}`).join(' '));
+  const achadas = sem(txt).match(new RegExp(PROPORCAO.source, 'g')) || [];
+  return [...new Set(achadas)].filter((p) => !fontes.includes(p.split(' ').slice(0, 2).join(' ')) && !/\b(one third|two thirds|half|quarter|majority|most)\b/i.test(Copy.claimsUsaveis(op).map((c) => c.trecho || '').join(' ')));
+}
+
 function montarDoc(j, op, { agora = Date.now(), v1 = false } = {}) {
-  const b = j?.briefing || null; const erros = [];
+  const b = normalizarBriefing(j?.briefing || null, op); const erros = [];
   if (j?.sem_pauta) return { sem_pauta: j.sem_pauta, telas: [], capas: [], erros: [j.sem_pauta], briefing: b };
   const t = montarTelas(j, op, { agora, v1, briefing: b }); erros.push(...t.erros);
   const g = escolherGancho(j?.ganchos); erros.push(...g.erros);
@@ -420,4 +436,4 @@ async function regenerarTelaMin(op, doc, indice, { instrucao = '', campo = null,
   return { ...ultimo, com_problemas: true, tentativas };
 }
 
-module.exports = { briefingVisual, validarBriefingV1, validarVisualV1, SISTEMA_V1, TEMPLATE, ORDEM, FUNCOES_MIN, ANGULOS_MIN, validarBriefing, validarTelas, validarDocMin, montarDoc, montarTelas, escolherGancho, fichaDoBriefing, gerarMinimalista, regenerarTelaMin, revisarIA, termos, termosDoCaso, SISTEMA };
+module.exports = { normalizarBriefing, proporcoesSemFonte, briefingVisual, validarBriefingV1, validarVisualV1, SISTEMA_V1, TEMPLATE, ORDEM, FUNCOES_MIN, ANGULOS_MIN, validarBriefing, validarTelas, validarDocMin, montarDoc, montarTelas, escolherGancho, fichaDoBriefing, gerarMinimalista, regenerarTelaMin, revisarIA, termos, termosDoCaso, SISTEMA };
