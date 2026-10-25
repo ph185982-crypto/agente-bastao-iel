@@ -218,7 +218,7 @@ E.gerar = async (run, ctx) => {
     const doc = await ctx.comIA(() => Carrossel.gerar(id, { deps: ctx.deps, origem: run.origem, agora: ctx.agora }));
     run.resultado.carrossel_id = doc.id; run.resultado.carrossel_estado = doc.estado;
   } catch (e) {
-    if (['SEM_IA', 'LIMITE'].includes(e.code)) throw e;
+    if (['SEM_IA', 'LIMITE'].includes(e.code) || U.erroTemporario(e)) throw e;     // limite da IA: espera e tenta de novo, não desiste do carrossel
     run.resultado.carrossel_erro = U.limita(e.message, 240); run.avisos.push(`Não consegui gerar o carrossel: ${U.limita(e.message, 160)}`);
   }
   return { concluida: true };
