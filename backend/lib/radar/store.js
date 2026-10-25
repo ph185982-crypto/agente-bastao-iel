@@ -50,6 +50,7 @@ async function salvarConfig(patch) {
   if ('ativo' in patch) novo.ativo = patch.ativo === true;
   if ('max_manuais_dia' in patch) { const n = Number(patch.max_manuais_dia); if (!Number.isInteger(n) || n < 1 || n > 20) throw erro('max_manuais_dia deve ser de 1 a 20.'); novo.max_manuais_dia = n; }
   if ('dias_sem_repetir' in patch) { const n = Number(patch.dias_sem_repetir); if (!Number.isInteger(n) || n < 7 || n > 365) throw erro('dias_sem_repetir deve ser de 7 a 365.'); novo.dias_sem_repetir = n; }
+  if ('foto_pedro' in patch && patch.foto_pedro && typeof patch.foto_pedro === 'object') novo.foto_pedro = patch.foto_pedro;
   const reg = await obter('config', 'radar');
   await salvar('config', 'radar', novo, reg ? reg.rev : 0);
   return novo;
