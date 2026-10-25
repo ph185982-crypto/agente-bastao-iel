@@ -22,10 +22,12 @@ const sem = (s) => U.semAcento(s).toLowerCase().replace(/[“”"']/g, ' ').repl
 // ── Validadores (puros) ─────────────────────────────────────────────────────
 const claimsUsaveis = (op) => (op.verificacao?.claims || []).filter((c) => c.usavel);
 
-function numerosNaoComprovados(texto, claims) {
+function numerosNaoComprovados(texto, claims, { permitirContagem = false } = {}) {
   const valores = claims.filter((c) => c.numero !== null).map((c) => c.numero);
   const anosOk = claims.map((c) => c.data_do_fato).filter(Boolean).map((x) => Number(String(x).slice(0, 4)));
   return N.numerosDeDado(texto).filter((n) => {
+    // Na tela de HIPÓTESE, uma meta de contagem do teste (“os 30 primeiros clientes”) não é fato; dinheiro e porcentagem continuam proibidos.
+    if (permitirContagem && n.tipo === 'quantidade' && Number.isInteger(n.valor) && n.valor < 1000) return false;
     if (n.tipo === 'ano' && anosOk.includes(n.valor)) return false;
     if (n.tipo === 'ano' && claims.some((c) => (c.tipo === 'fundacao' || c.tipo === 'lancamento') && c.numero === n.valor)) return false;
     return !valores.some((v) => N.igual(v, n.valor));
@@ -121,7 +123,7 @@ function montarTelas(j, op, { fixo = C.CTA_FIXO } = {}) {
   const tit5 = semPonto(get(5).titulo);
   const atrib = [...new Set(prova.map((p) => p.atribuicao).filter(Boolean))];
   const fonteLinha = prova.length ? `${atrib.length ? `${atrib.map((a) => a.charAt(0).toUpperCase() + a.slice(1)).join(' · ')}. ` : ''}Fonte: ${[...new Set(prova.map((p) => p.veiculo))].join(', ')}${prova[0].data_publicacao ? `, ${String(prova[0].data_publicacao).slice(0, 10).split('-').reverse().join('/')}` : ''}.` : '';
-  slides.push({ n: 5, funcao: 'prova', layout: 'prova', rotulo: 'A prova', titulo: tit5, prova, fonte_linha: fonteLinha, texto: [tit5, ...prova.flatMap((p) => [p.valor, p.rotulo])].join(' ') });
+  slides.push({ n: 5, funcao: 'prova', layout: 'prova', rotulo: 'A prova', titulo: tit5, prova, fonte_linha: fonteLinha, texto: [tit5, ...prova.flatMap((p) => [p.valor, p.rotulo, p.atribuicao || ''])].join(' ') });
   // 6 por que funciona
   const itens6 = ['dor', 'facilidade', 'recorrencia'].map((k) => semPonto(get(6)[k]));
   slides.push({ n: 6, funcao: 'funciona', layout: 'funciona', rotulo: 'Por que funciona', intro: INTRO.funciona, itens: itens6, texto: `${INTRO.funciona} ${itens6.join(' ')}` });
@@ -146,7 +148,7 @@ function validarTelas(slides, op) {
     erros.push(...checarTexto(s.texto, r, { capa: s.n === 1 }));
     if (s.n !== 7 && HEDGES_FORA_DA_7.test(s.texto)) erros.push(`${r}: hipótese ou dúvida só pode aparecer na tela 7`);
     if (s.n !== 5) {
-      const sem_prova = numerosNaoComprovados(s.texto, usaveis);
+      const sem_prova = numerosNaoComprovados(s.texto, usaveis, { permitirContagem: s.n === 7 });
       if (sem_prova.length) erros.push(`${r}: número sem comprovação (${sem_prova.join(', ')})`);
       const f = atribuicaoFaltando(s.texto, usaveis);
       if (f.length) erros.push(`${r}: o número vem de “${f[0]}”; escreva a atribuição na própria tela`);
@@ -169,7 +171,7 @@ function validarTelas(slides, op) {
 function montarLegenda(j, op) {
   const erros = []; const usaveis = claimsUsaveis(op);
   const l = (k, max) => { const v = String(j?.legenda?.[k] ?? '').replace(/\s+/g, ' ').trim(); if (!v) erros.push(`Legenda: faltou “${k}”`); if (v.length > max) erros.push(`Legenda: “${k}” tem ${v.length} caracteres (máximo ${max})`); return v; };
-  const primeira = l('primeira_linha', 95); const resumo = l('resumo', 125); const como = l('como_ganha', 125); const brasil = l('brasil', 125);
+  const primeira = l('primeira_linha', 110); const resumo = l('resumo', 160); const como = l('como_ganha', 150); const brasil = l('brasil', 150);
   const hashtags = (Array.isArray(j?.hashtags) ? j.hashtags : []).map((h) => `#${String(h).replace(/^#/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => /^#[\p{L}\p{N}_]{3,30}$/u.test(h));
   if (!hashtags.length) erros.push('Legenda: inclua de 1 a 3 hashtags');
   const tags = [...new Set(hashtags)].slice(0, 3);
@@ -190,21 +192,21 @@ const SISTEMA = `Você escreve carrosséis de Instagram do perfil @pedro_destrav
 
 VOZ: uma pessoa explicando para um amigo. Palavras simples. Um fato por vez. Frases curtas. Comece pelo fato mais interessante. Explique os números. Sem moralismo, sem frase vazia, sem introdução abstrata, sem emoji, sem exclamação, sem perguntas em excesso.
 PROIBIDO: “em um mundo onde”, “você não vai acreditar”, “isso muda tudo”, “o futuro chegou”, “mais do que”, “não é apenas”, “revolucionário”, “game changer”, “no cenário atual”, “descubra como”, “jornada”.
-FATOS: use SOMENTE o que está em DADOS_VERIFICADOS. Nunca invente nem arredonde número. Não chame de lucrativo quem só cresceu ou recebeu investimento. Valuation não é dinheiro em caixa. Quando o dado vem da empresa, escreva “segundo a empresa” na própria tela em que o número aparece.
+FATOS: use SOMENTE o que está em DADOS_VERIFICADOS. Nunca invente nem arredonde número. Não chame de lucrativo quem só cresceu ou recebeu investimento. Valuation não é dinheiro em caixa. Quando o dado vem da empresa, escreva “segundo a empresa” na própria tela em que o número aparece (na capa e na legenda também). NUNCA escreva “milhões” ou “bilhões” a menos que um dado verificado seja de pelo menos 1 milhão do tipo certo; com 100 mil clientes, escreva “mais de 100 mil clientes, segundo a empresa”.
 NÃO afirme que o negócio “não existe no Brasil” nem que “vai funcionar” aqui: isso você não sabe. A tela 7 é HIPÓTESE.
 
 ESTRUTURA (o sistema monta as frases de abertura; você escreve só o que falta):
 1. capa (8 a 18 palavras): UMA afirmação concreta + curiosidade + consequência financeira (só se houver dado verificado). Modelos: “Essa empresa fatura milhões resolvendo um problema que todo mundo ignora.” / “Essa ideia simples virou um negócio de US$ X, segundo a empresa.” / “Alguém transformou [problema comum] em uma empresa de milhões.” Sem ? e sem !. Use **assim** em UMA expressão curta para destacar.
-2. problema: texto que completa “Tudo começou com um problema comum:” (de 2 a 19 palavras).
-3. solucao: “produto” (com artigo: “um aplicativo de…”) e “resultado” (o que ele resolve) para a frase “A solução foi criar [produto] que faz [resultado].”
-4. dinheiro: “modelo” (assinatura, comissao, venda, licenca, mensalidade, publicidade, marketplace ou servico_recorrente) e “explicacao” que completa “O dinheiro entra assim:” (3 a 20 palavras).
-5. prova: “titulo” (até 6 palavras) e “itens”: de 1 a 3 itens {claim_id, rotulo}, onde claim_id vem de DADOS_VERIFICADOS (somente afirmações com número) e rotulo (1 a 3 palavras, sem números) diz o que o número mede, ex.: “usuários ativos”. O valor aparece sozinho, vindo da fonte.
+2. problema: texto que completa “Tudo começou com um problema comum:” (de 6 a 18 palavras).
+3. solucao: “produto” (com artigo: “um aplicativo de…”, 3 a 8 palavras) e “resultado” (o que ele resolve, 3 a 10 palavras) para a frase “A solução foi criar [produto] que faz [resultado].”
+4. dinheiro: “modelo” (assinatura, comissao, venda, licenca, mensalidade, publicidade, marketplace ou servico_recorrente) e “explicacao” que completa “O dinheiro entra assim:” (de 6 a 18 palavras). Só descreva como cobra o que estiver nos DADOS_VERIFICADOS ou em negocio.como_ganha_dinheiro.
+5. prova (a tela soma título + valor + rótulo + a atribuição “segundo a empresa”, de 8 a 25 palavras; use 2 ou 3 itens se houver, e título de 4 a 6 palavras): “titulo” e “itens”: de 1 a 3 itens {claim_id, rotulo}, onde claim_id vem de DADOS_VERIFICADOS (somente afirmações com número) e rotulo (1 a 3 palavras, sem números) diz o que o número mede, ex.: “usuários ativos”. O valor aparece sozinho, vindo da fonte.
 6. funciona: “dor”, “facilidade”, “recorrencia”: três itens de 1 a 4 palavras que completam “Funciona porque junta três coisas:”.
-7. brasil (hipótese prática, nunca promessa): publico_inicial, produto_minimo, canal_de_vendas, forma_de_cobranca, teste_baixo_custo: cada um com 2 a 3 palavras (ex.: “pet shops de bairro”).
+7. brasil (hipótese prática, nunca promessa): publico_inicial, produto_minimo, canal_de_vendas, forma_de_cobranca, teste_baixo_custo: cada um com 2 a 3 palavras (ex.: “pet shops de bairro”). Sem valores em dinheiro nem porcentagens.
 (A tela 8 é fixa; não escreva.)
 Telas 2 a 7 somam entre 8 e 25 palavras CADA UMA (contando a frase de abertura e os rótulos Público/Produto/Canal/Cobrança/Teste na tela 7). A tela 7 já tem 6 + 5 = 11 palavras fixas: os cinco valores somam no máximo 14.
 
-LEGENDA (até 700 caracteres no total, o sistema monta o resto): primeira_linha (até 95 caracteres, forte), resumo (até 125), como_ganha (até 125), brasil (até 125, como hipótese). Até 3 hashtags, sem números.
+LEGENDA (o sistema acrescenta ~280 caracteres fixos; as quatro partes juntas devem ter no máximo 400 caracteres): primeira_linha (até 100 caracteres, forte), resumo (até 130), como_ganha (até 130), brasil (até 130, como hipótese). Até 3 hashtags, sem números.
 
 Responda APENAS JSON: {"slides":[{"n":1,"texto":""},{"n":2,"problema":""},{"n":3,"produto":"","resultado":""},{"n":4,"modelo":"","explicacao":""},{"n":5,"titulo":"","itens":[{"claim_id":"c1","rotulo":""}]},{"n":6,"dor":"","facilidade":"","recorrencia":""},{"n":7,"publico_inicial":"","produto_minimo":"","canal_de_vendas":"","forma_de_cobranca":"","teste_baixo_custo":""}],"legenda":{"primeira_linha":"","resumo":"","como_ganha":"","brasil":""},"hashtags":["",""]}`;
 
@@ -231,6 +233,7 @@ async function gerarCopia(op, { deps = {}, tentativas = 3, feedback: feedbackIni
     ultimo = { slides: m.slides, legenda: leg.texto, hashtags: leg.tags, partes_legenda: leg.partes, llm, erros };
     if (!erros.length) return { ...ultimo, tentativas: i, historico };
     feedback = [...new Set(erros)].slice(0, 12).join('\n- ');
+    if (deps.aoFalhar) await deps.aoFalhar({ tentativa: i, erros: [...new Set(erros)], feedback });
   }
   const e = Object.assign(new Error(`A copy não passou nas regras depois de ${tentativas} tentativas: ${ultimo.erros.slice(0, 4).join('; ')}`), { code: 'COPY_INVALIDA', status: 422, erros: ultimo.erros, historico });
   throw e;

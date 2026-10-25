@@ -180,6 +180,7 @@ async function lProva(s) {
     inner += texto(v, { x: M, y, fam: 'anton', cor: COR.azul, cd: COR.azul, sublinha: false }); blocos.push(blocoResumo(`valor_${i + 1}`, v, faixa * 0.62));
     const rt = ajustar({ texto: up(p.rotulo), k: 'iNegrito', larg: LARG, alt: 60, max: 36, min: 26, entrelinha: 1.1 });
     inner += texto(rt, { x: M, y: y + v.altura + 6, fam: 'interB', sublinha: false }); blocos.push(blocoResumo(`rotulo_${i + 1}`, rt, 60));
+    if (p.atribuicao) inner += `<rect x="${M}" y="${y + v.altura + rt.altura + 20}" width="${(A.largura('iNegrito', up(p.atribuicao), 22, 2) + 28).toFixed(0)}" height="36" fill="${COR.laranja}"/>${linhaSimples(up(p.atribuicao), { x: M + 14, y: y + v.altura + rt.altura + 45, fam: 'interB', tam: 22, espaco: 2 })}`;
     if (i < n - 1) inner += `<rect x="${M}" y="${y + faixa - 22}" width="${LARG}" height="2" fill="${COR.linha}"/>`;
   });
   inner += circuloMao(W - M - 70, 190, 52, 40, { semente: 6 }) + linhaSimples('✓', { x: W - M - 70, y: 208, fam: 'interB', tam: 46, cor: COR.laranja, ancora: 'middle' });

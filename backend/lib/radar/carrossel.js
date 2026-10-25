@@ -57,7 +57,10 @@ async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, or
   try {
     // 1) copy
     if (!doc.copia) {
-      const c = await Copy.gerarCopia(op, { deps });
+      // A IA gratuita às vezes erra a contagem de palavras: o que ela errou e quantas tentativas já foram ficam gravados, e uma nova chamada continua dali.
+      if ((doc.copia_tentativas || 0) >= 9) throw U.erro(`A copy não passou nas regras depois de ${doc.copia_tentativas} tentativas: ${(doc.feedback_copia || '').split('\n').slice(0, 3).join('; ')}`, 'COPY_INVALIDA', 422, { erros: (doc.feedback_copia || '').split('\n- ') });
+      const aoFalhar = async (info) => { doc.copia_tentativas = (doc.copia_tentativas || 0) + 1; doc.feedback_copia = info.feedback; await salvar(); };
+      const c = await Copy.gerarCopia(op, { deps: { ...deps, aoFalhar }, feedback: doc.feedback_copia || '' });
       doc.copia = { slides: c.slides, legenda: c.legenda, hashtags: c.hashtags, partes_legenda: c.partes_legenda, tentativas: c.tentativas, llm: c.llm };
       doc.etapa = 'imagens'; await salvar();
     }

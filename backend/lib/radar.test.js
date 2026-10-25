@@ -319,3 +319,15 @@ test('coleta: catálogo (Product Hunt, Show HN) não afoga as reportagens e a no
   const catalogo = { ...base, dados_no_material: false, url_oficial: null, url_sugerida: 'https://x.com', fontes_itens: [{ fonte_classe: 'plataforma', url: 'https://producthunt.com/x' }] };
   assert.ok(Cand.notaPrevia(comDado) > Cand.notaPrevia(catalogo) + 8);
 });
+
+test('copy: a atribuição entra na tela de prova, metas de contagem da hipótese são aceitas e as falhas ficam gravadas para a próxima chamada', async () => {
+  const op = opLumen();
+  const base = (mut) => { const j = JSON.parse(JSON.stringify({ slides: [{ n: 1, texto: 'Segundo a empresa, esse serviço de banho já tem 120 mil clientes' }, { n: 2, problema: 'dar banho no cachorro em casa vira bagunça e o pet shop vive lotado' }, { n: 3, produto: 'um serviço que leva o banhista até a porta', resultado: 'o cachorro ficar limpo sem você sair' }, { n: 4, modelo: 'assinatura', explicacao: 'o cliente paga uma mensalidade fixa e recebe visitas toda semana' }, { n: 5, titulo: 'O que a empresa mostra', itens: [{ claim_id: 'c1', rotulo: 'clientes' }] }, { n: 6, dor: 'dor de todo dono', facilidade: 'serviço na porta', recorrencia: 'cobrança mensal' }, { n: 7, publico_inicial: 'donos de cães', produto_minimo: 'banho em domicílio', canal_de_vendas: 'grupos de condomínio', forma_de_cobranca: 'pacote mensal', teste_baixo_custo: '30 clientes' }] })); mut(j); const m = Copy.montarTelas(j, op); return { m, erros: [...m.erros, ...Copy.validarTelas(m.slides, op)] }; };
+  const r = base(() => {}); assert.deepStrictEqual(r.erros, []);
+  assert.ok(r.m.slides[4].texto.includes('segundo a empresa') && r.m.slides[4].palavras >= 8, 'a atribuição faz parte da tela de prova');
+  assert.ok(base((j) => { j.slides[6].teste_baixo_custo = 'R$ 500 de teste'; }).erros.some((e) => /sem comprovação/.test(e)), 'dinheiro na hipótese continua proibido');
+  const falhas = [];
+  const ruim = async () => ({ llm: {}, dados: { slides: [{ n: 1, texto: 'curto' }] } });
+  await assert.rejects(() => Copy.gerarCopia(op, { deps: { pedirJson: ruim, aoFalhar: async (i) => { falhas.push(i); } }, tentativas: 2 }), /COPY_INVALIDA|não passou/);
+  assert.strictEqual(falhas.length, 2); assert.ok(falhas[1].feedback.length > 20);
+});
