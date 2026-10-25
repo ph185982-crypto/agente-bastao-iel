@@ -254,3 +254,15 @@ test('nova versão depois de uma copy que esgotou as tentativas recomeça na ver
     assert.strictEqual((await store.obter('carrossel', idV2)).doc.estado, 'substituido');
   } finally { s.fechar(); }
 });
+
+test('nova versão nunca reutiliza o número de uma versão existente (mesmo se uma versão com erro ficou fora da lista)', async () => {
+  const s = await servidor();
+  try {
+    await s.req('GET', '/cron');
+    const op = (await s.req('GET', '/oportunidades')).json.oportunidades.find((o) => o.nome === 'Lumen Pets');
+    const a = await s.req('POST', `/oportunidades/${op.id}/acao`, { acao: 'gerar_carrossel', nova_versao: true }); assert.strictEqual(a.json.carrossel.versao, 2);
+    await store.salvar('carrossel', `cr_${op.id.replace(/^op_/, '')}_v3`, { op_id: op.id, versao: 3, estado: 'erro', copia_tentativas: 11, historico: [] }, 0);
+    const b = await s.req('POST', `/oportunidades/${op.id}/acao`, { acao: 'gerar_carrossel', nova_versao: true }); assert.strictEqual(b.json.carrossel.versao, 4, 'a v3 com erro foi substituída e a nova é a v4');
+    const c = await s.req('POST', `/oportunidades/${op.id}/acao`, { acao: 'gerar_carrossel', nova_versao: true }); assert.strictEqual(c.json.carrossel.versao, 5);
+  } finally { s.fechar(); }
+});
