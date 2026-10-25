@@ -382,3 +382,17 @@ test('método: briefing no formato da IA real (fatos como texto com ids, telas a
   assert.ok(errs.some((e) => /f4 não tem fonte/.test(e)), 'o fato inventado continua bloqueado');
   assert.strictEqual(errs.filter((e) => !/f4 não tem fonte/.test(e)).length, 0, errs.join(' | '));
 });
+
+test('método: faixa verificada vale nos dois números; campo do negócio e seções do briefing citados como base são normalizados', async () => {
+  const Copy = require('./radar/copy');
+  const claims = [{ id: 'c6', tipo: 'preco', numero: 4, texto: 'Os compradores pagam entre US$4 e US$6 por bolsa.', trecho: 'The buyer pays $4 to $6 for the bag', usavel: true }];
+  assert.deepStrictEqual(Copy.numerosNaoComprovados('A bolsa custa de US$ 4 a US$ 6.', claims), []);
+  assert.deepStrictEqual(Copy.numerosNaoComprovados('A bolsa custa US$ 9.', claims).length, 1, 'número fora da faixa continua bloqueado');
+  const op = await criarOp(); const r = rascunhoV1(op);
+  r.briefing.analises[0].base = ['negocio.operacao']; r.telas[1].base = ['negocio.problema']; r.telas[5].base = ['hipoteses', 'h1'];
+  const m = Metodo.montarDoc(r, op, { v1: true });
+  assert.ok(m.briefing.fatos.some((f) => f.id === 'negocio.operacao' && f.campo_do_negocio === 'operacao'));
+  assert.deepStrictEqual(m.telas.find((t) => t.funcao === 'aplicacao').base, []);
+  const v = Metodo.validarDocMin({ ...m, template: Padrao.ID }, op);
+  assert.ok(!v.bloqueios.some((b) => /aponta um fato que não existe|precisa apontar fatos/.test(b.mensagem)), v.bloqueios.map((b) => b.mensagem).join(' | '));
+});
