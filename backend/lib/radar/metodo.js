@@ -249,6 +249,12 @@ function validarDocMin(doc, op) {
   }
   const ganchos = (doc.capas || []).map((c) => c.titulo);
   if (ganchos.length !== 3) bl.push('São necessários três ganchos com ângulos diferentes.');
+  // imagem gerada por IA é ilustração: nunca ilustra fato, análise, o negócio nem o problema
+  const imgs = doc.imagens || [];
+  (doc.telas || []).forEach((t, i) => {
+    const im = imgs.find((x) => x.id === t.foto?.imagem_id);
+    if (im && im.tipo === 'ia_ilustracao' && !['aplicacao'].includes(t.funcao)) bl.push(`Tela ${i + 1}: imagem gerada por IA não pode ilustrar ${FUNCOES_MIN[t.funcao]?.rotulo.toLowerCase() || 'esta tela'}. Ela só cabe na tela de teste, marcada como ilustração.`);
+  });
   (doc.telas || []).forEach((t, i) => { if (t.layout === 'min_foto' && !t.foto?.imagem_id) sg.push(`Tela ${i + 1}: sem foto adequada (${FUNCOES_MIN[t.funcao]?.imagem || 'imagem real'}). Envie uma foto ou um print verdadeiro; o modelo não usa imagem genérica para disfarçar a falta.`); });
   if (doc.revisao?.sugestoes?.length) sg.push(...doc.revisao.sugestoes);
   if (doc.revisao && !doc.revisao.executada) sg.push(`Revisão por IA não executada: ${doc.revisao.motivo}.`);

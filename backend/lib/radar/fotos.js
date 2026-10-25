@@ -176,12 +176,12 @@ async function guardar(store, carrosselId, achado, id) {
 }
 
 // Imagem enviada pelo Pedro (arquivo) ou buscada por link. A origem e a permissão são dele; ficam registradas.
-async function deUsuario({ buf, url = null, descricao = '', credito = '', licenca = '', pagina = '', permissao = false, papel = 'foto', agora = Date.now() }) {
+async function deUsuario({ buf, url = null, descricao = '', credito = '', licenca = '', pagina = '', permissao = false, papel = 'foto', tipo = 'enviada', declaracao = null, agora = Date.now() }) {
   const v = await validar(buf, { permitirRetrato: papel === 'print', ladoMin: 500 }); if (!v.ok) throw U.erro(`Imagem recusada: ${v.motivo}.`, 'IMAGEM', 422);
   const dominio = url ? U.host(url) : (pagina ? U.host(pagina) : 'enviada por você');
   const papelOk = ['foto', 'print', 'documento', 'ilustracao'].includes(papel) ? papel : 'foto';
-  return { buf, tipo: 'enviada', papel: papelOk, relacao: papelOk === 'ilustracao' ? 'ilustrativa' : 'negocio', descricao: U.limita(descricao || 'Imagem enviada pelo Pedro', 140),
-    origem: { url_imagem: url || null, url_pagina: pagina || null, dominio, consultado_em: new Date(agora).toISOString(), sha256: sha256(buf), largura: v.largura, altura: v.altura, declaracao: url || pagina ? undefined : 'Arquivo enviado pelo Pedro; origem declarada por ele.' },
+  return { buf, tipo, papel: papelOk, relacao: papelOk === 'ilustracao' ? 'ilustrativa' : 'negocio', descricao: U.limita(descricao || 'Imagem enviada pelo Pedro', 140),
+    origem: { url_imagem: url || null, url_pagina: pagina || null, dominio, consultado_em: new Date(agora).toISOString(), sha256: sha256(buf), largura: v.largura, altura: v.altura, declaracao: declaracao || (url || pagina ? undefined : 'Arquivo enviado pelo Pedro; origem declarada por ele.') },
     licenca: U.limita(licenca || (permissao ? 'Uso confirmado por você.' : 'Origem e permissão ainda não confirmadas.'), 220), credito: U.limita(credito, 56), permissao: permissao ? 'confirmada' : 'verificar' };
 }
 
