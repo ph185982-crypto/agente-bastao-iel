@@ -1,0 +1,76 @@
+{
+  "historia": {
+    "nome": "Too Good To Go",
+    "pais": "Dinamarca",
+    "categoria": "startup",
+    "site_oficial": "https://www.toogoodtogo.com",
+    "resumo": "Aplicativo em que padarias, restaurantes e mercados vendem com desconto a comida que sobrou no dia, em sacolas-surpresa.",
+    "problema": "Comida boa que sobra no fim do dia vira prejuízo para o comércio.",
+    "solucao": "Um aplicativo que conecta quem tem sobra a quem quer comprar mais barato, em sacolas-surpresa retiradas no local.",
+    "como_ganha_dinheiro": "Comissão por sacola vendida e taxa anual cobrada do comércio.",
+    "modelo_receita": "comissao",
+    "adaptacao_brasil": "Testar com uma padaria e um bairro antes de pensar em aplicativo próprio.",
+    "fontes": [
+      "https://www.toogoodtogo.com/en-us/business",
+      "https://www.modernretail.co/operations/too-good-to-go-teams-up-with-whole-foods/",
+      "https://www.nbcmiami.com/news/business/money-report/this-startup-brings-in-162-million-a-year-helping-people-find-food-at-huge-discounts-its-the-most-genius-app/3473838/",
+      "https://www.aol.com/news/did-food-waste-apps-too-050000205.html",
+      "https://www.foodbusinessnews.net/articles/19145-too-good-to-go-reducing-food-waste-one-click-at-a-time"
+    ],
+    "afirmacoes": [
+      { "fonte": 1, "tipo": "usuarios", "texto": "O aplicativo tem 100 milhões de usuários cadastrados no mundo.", "numero": 100000000, "unidade": "usuarios", "periodo": "2024", "trecho": "According to Too Good To Go, the app currently has 100 million registered users globally and 160,000 active partners." },
+      { "fonte": 3, "tipo": "usuarios", "texto": "O aplicativo tem 100 milhões de usuários cadastrados no mundo.", "numero": 100000000, "unidade": "usuarios", "periodo": "2025", "trecho": "Over a decade, the company has amassed 100 million registered users and saved more than 400 million meals" },
+      { "fonte": 2, "tipo": "usuarios", "texto": "O aplicativo tem 100 milhões de usuários cadastrados no mundo.", "numero": 100000000, "unidade": "usuarios", "periodo": "2024", "trecho": "Since then, Lykke has re-expanded the company to include a grocery service, a software system for food retailers and 100 million users across in 19 countries" },
+      { "fonte": 1, "tipo": "modelo_receita", "texto": "A empresa cobra do comércio uma comissão por sacola vendida.", "trecho": "Too Good To Go takes a $1.79 in commission from each meal sold on the app, with the business getting the remaining sum." },
+      { "fonte": 2, "tipo": "modelo_receita", "texto": "A empresa cobra do comércio uma comissão por sacola vendida.", "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says." },
+      { "fonte": 4, "tipo": "modelo_receita", "texto": "A empresa cobra do comércio uma comissão por sacola vendida.", "trecho": "The app takes a commission of $1.79 on every transaction, with the rest paid to the seller." },
+      { "fonte": 1, "tipo": "modelo_receita", "texto": "O comércio também paga uma taxa anual de administração.", "trecho": "The company also charges partners an annual $89 administrative fee that’s taken out of their total profits." },
+      { "fonte": 2, "tipo": "modelo_receita", "texto": "O comércio também paga uma taxa anual de administração.", "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says." },
+      { "fonte": 1, "tipo": "produto", "texto": "O comércio lista sacolas-surpresa com o que sobrou e o cliente reserva e retira no fim do dia.", "trecho": "The Too Good To Go app works by allowing businesses to list “surprise bags” of unsold items that users can reserve to pick up at the end of the day." },
+      { "fonte": 4, "tipo": "produto", "texto": "O comércio lista sacolas-surpresa com o que sobrou e o cliente reserva e retira no fim do dia.", "trecho": "The app connects consumers to surplus food from restaurants, bakeries, cafes and grocery stores at the end of each business day." },
+      { "fonte": 2, "tipo": "outro", "texto": "A CEO diz que a empresa expandiu rápido demais, sem entender bem o próprio modelo de negócio.", "trecho": "The business had expanded \"way too fast, way too soon\" without fully figuring out its business model, she says." }
+    ]
+  },
+  "rascunho": {
+    "ficha": {
+      "problema": "Comida boa que sobra no fim do dia vira prejuízo para padarias, restaurantes e mercados.",
+      "quem_compra": "Clientes que querem comida boa mais barata. O comércio, que vende o que ia para o lixo.",
+      "por_que_compra": "O cliente paga menos; a loja recupera dinheiro de uma sobra que já tinha custado.",
+      "como_cobra": "Comissão por sacola vendida e taxa anual do comércio; o cliente não paga para usar o app.",
+      "evidencia": [{ "claim_id": "c1", "nota": "100 milhões de usuários cadastrados, número da própria empresa, repetido por três veículos." }],
+      "surpresa": "O app não fabrica nada: só conecta quem tem sobra a quem quer comprar mais barato.",
+      "dificuldades": [{ "texto": "A CEO contou à CNBC que a empresa cresceu rápido demais, sem entender o próprio modelo, e teve de recuar.", "claim_id": "c10" }, "O comércio precisa mudar a rotina e listar a sobra todos os dias."],
+      "inspiracao_brasil": "Hipótese: começar com uma padaria e um bairro, antes de pensar em aplicativo próprio.",
+      "imagens_necessarias": [
+        { "funcao": "descoberta", "mostrar": "sacola da Too Good To Go com pães" },
+        { "funcao": "tensao", "mostrar": "pães que sobram numa padaria" },
+        { "funcao": "revelacao", "mostrar": "comerciante entregando a sacola a um cliente" },
+        { "funcao": "evidencia", "mostrar": "tela real do aplicativo" }
+      ],
+      "ilustracao": { "consulta": "bakery bread shelves end of day", "descricao": "pães numa padaria" }
+    },
+    "capas": [
+      { "angulo": "contradicao", "titulo": "Este app ganha dinheiro com o que **sobra** nas padarias.", "apoio": "E não precisa fazer um único pão." },
+      { "angulo": "situacao", "titulo": "No fim do dia, a padaria joga fora o pão que **não vendeu**.", "apoio": "Um app transformou essa sobra em venda." },
+      { "angulo": "descoberta", "titulo": "100 milhões de pessoas se cadastraram para comprar a **sobra** dos outros, segundo a empresa.", "apoio": "" }
+    ],
+    "capa_escolhida": 1,
+    "telas": [
+      { "funcao": "descoberta" },
+      { "funcao": "tensao", "rotulo": "A conta que ninguém vê", "titulo": "O pão não vendeu.", "linha2": "O custo já foi pago.", "apoio": "Quando a loja fecha, a comida que sobrou pode virar prejuízo.", "palavra": "Sobrou." },
+      { "funcao": "revelacao", "rotulo": "Aí entra a **Too Good To Go**", "titulo": "Ela vende uma **segunda chance** para essa comida.", "apoio": "O comércio monta uma sacola-surpresa. O cliente compra com desconto e retira no local." },
+      { "funcao": "dinheiro", "rotulo": "Onde está o dinheiro?", "titulo": "O cliente economiza. A loja vende. E **o app cobra.**", "apoio": "A receita vem de uma comissão por sacola e de uma taxa anual cobrada do comércio." },
+      { "funcao": "evidencia", "rotulo": "A ideia ganhou o mundo", "claim_id": "c1", "legenda": "de usuários cadastrados.", "apoio": "Número informado pela própria Too Good To Go. Cadastro não é cliente ativo." },
+      { "funcao": "estrategia", "rotulo": "O detalhe que importa", "titulo": "A ideia parece **óbvia**. A operação é o desafio.", "apoio": "A CEO contou à CNBC que a empresa cresceu rápido demais, sem entender o próprio modelo, e recuou em vários países." },
+      { "funcao": "licao", "rotulo": "A lição para quem quer começar", "titulo": "Antes de criar um app, **converse com quem tem o problema.**", "apoio": "No Brasil, o teste poderia ser uma padaria e um bairro: veja se as pessoas querem a sobra.", "nota": "Não é promessa de lucro. É uma hipótese para testar.", "palavra": "Antes" },
+      { "funcao": "pedro", "titulo": "Tem negócio bom escondido em **problema que todo mundo ignora.**", "apoio": "para descobrir negócios que já funcionam no mundo." }
+    ],
+    "legenda": {
+      "primeira_linha": "A padaria vendeu o que sobrou e o app ficou com a comissão.",
+      "historia": "A Too Good To Go junta quem tem comida sobrando com quem quer pagar menos. O comércio monta a sacola-surpresa e o cliente retira no local.",
+      "como_ganha": "A empresa cobra uma comissão por sacola e uma taxa anual do comércio.",
+      "brasil": "Hipótese para testar: começar com uma padaria e um bairro, antes de pensar em aplicativo."
+    },
+    "hashtags": ["negocios", "empreendedorismo", "ideiasdenegocio"]
+  }
+}

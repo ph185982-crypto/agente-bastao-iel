@@ -7,3 +7,5 @@
 - Poppins e PT Serif seguem no repositório apenas para os módulos antigos (Editor de Vídeo, cortes de TV).
 - **Anton** (Regular): letra condensada pesada do tema "reportagem" (títulos, números e faixas). SIL Open Font License 1.1,
   origem: Google Fonts (github.com/google/fonts, pasta ofl/anton). Texto da licença em `Anton-OFL.txt`.
+
+- **Inter Tight** (ExtraBold 800, Black 900): títulos da série “Negócios que você não viu” (família Inter com espaçamento mais fechado). SIL Open Font License 1.1, origem: Google Fonts, pacote `@expo-google-fonts/inter-tight`. Texto da licença em `InterTight-OFL.txt`.

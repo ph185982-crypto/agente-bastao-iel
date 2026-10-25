@@ -5,6 +5,9 @@ const sharp = require('sharp');
 const store = require('../lib/radar/store');
 const pipeline = require('../lib/radar/pipeline');
 const Carrossel = require('../lib/radar/carrossel');
+const Carrossel2 = require('../lib/radar/carrossel2');
+const Serie = require('../lib/radar/serie');
+const HistoriaManual = require('../lib/radar/historiaManual');
 const Aprend = require('../lib/radar/aprendizado');
 const Copy = require('../lib/radar/copy');
 const Fila = require('../lib/radar/fila');
@@ -41,11 +44,30 @@ function visao(o, { detalhe = false } = {}) {
   if (!detalhe) return base;
   return { ...base, problema: o.problema, solucao: o.solucao, criterios: o.criterios || null, motivo_avaliacao: o.motivo_avaliacao || null, verificacao: { ...v, claims: (v.claims || []) }, decisoes: o.decisoes || [], avisos: o.avisos || [], carrosseis: o.carrosseis || [], limiar: C.LIMIAR_CARROSSEL };
 }
+
+// Parte do carrossel da série "Negócios que você não viu": camadas editáveis, capas, ficha, validação e imagens (com origem).
+function visaoSerie(c, op) {
+  const claims = Serie.claimsPorId(op || {}); const imgUrl = (id) => `/api/radar/carrosseis/${c.id}/imagem/${id}`;
+  return {
+    serie: 'negocios', serie_nome: C.SERIE_NOVA, pronto: !!c.pronto, hash: c.hash_atual || null, aprovacao: c.aprovacao || null,
+    telas: (c.telas || []).map((t, i) => ({
+      n: i + 1, id: t.id, funcao: t.funcao, funcao_rotulo: Serie.FUNCOES[t.funcao]?.rotulo, layout: t.layout, variante: t.variante || null, estilo: t.estilo || null, textos: t.textos, bloqueada: !!t.bloqueada,
+      composicoes: Serie.FUNCOES[t.funcao]?.permitidos || [t.layout], imagem_precisa: Serie.FUNCOES[t.funcao]?.imagem || null, foto: { ...(t.foto || {}), url: t.foto?.imagem_id ? imgUrl(t.foto.imagem_id) : null },
+      palavras: Serie.palavrasDaTela(t, { claims }), cabe: c.render?.[i]?.metricas?.cabe !== false, problemas: c.render?.[i]?.metricas?.problemas || [], sem_imagem: !!c.render?.[i]?.metricas?.sem_imagem, remover_permitido: Serie.OMITIVEIS.includes(t.funcao) && (c.telas || []).length > 7,
+      url: `/api/radar/carrosseis/${c.id}/slide/${i + 1}`, sha: c.render?.[i]?.sha256?.slice(0, 12) || null,
+    })),
+    capas: c.capas || [], capa_escolhida: c.capa_escolhida || null, angulos: Serie.ANGULOS, ficha: c.ficha || null, validacao: c.validacao || { ok: false, bloqueios: [], sugestoes: [] },
+    dados_verificados: Object.values(claims).filter((x) => x.numero !== null).map((x) => ({ id: x.id, valor: x.valor_exibicao, texto: x.texto, atribuicao: x.atribuicao || null })),
+    imagens_editor: (c.imagens || []).map((im) => ({ id: im.id, url: imgUrl(im.id), tipo: im.tipo, papel: im.papel, relacao: im.relacao, descricao: im.descricao, credito: im.credito, licenca: im.licenca, permissao: im.permissao, origem: im.origem ? { url_imagem: im.origem.url_imagem, url_pagina: im.origem.url_pagina, dominio: im.origem.dominio, consultado_em: im.origem.consultado_em } : null })),
+    versoes: (c.versoes || []).map((v) => ({ v: v.v, em: v.em, hash: v.hash, motivo: v.motivo })), legenda_texto: c.legenda?.texto || '', copia_com_problemas: !!c.copia_com_problemas,
+  };
+}
 const visaoCarrossel = (c, op) => ({
+  ...(c.serie === 'negocios' ? visaoSerie(c, op) : {}),
   id: c.id, op_id: c.op_id, versao: c.versao, estado: c.estado, etapa: c.etapa, nome: op?.nome || null, categoria: op?.categoria || null, pontuacao: op?.pontuacao ?? null,
   criado_em: c.criado_em, pronto_em: c.pronto_em || null, slides: (c.render || []).map((r) => ({ n: r.n, url: `/api/radar/carrosseis/${c.id}/slide/${r.n}`, cabe: r.metricas?.cabe })),
   textos: (c.copia?.slides || []).map((s) => ({ n: s.n, funcao: s.funcao, texto: s.texto, palavras: s.palavras })), legenda: c.copia?.legenda || null, hashtags: c.copia?.hashtags || [],
-  imagens: c.imagens || [], avisos: c.avisos || [], erro: c.erro || null, zip: c.pacote ? { url: `/api/radar/carrosseis/${c.id}/zip`, bytes: c.pacote.bytes, nome: c.pacote.nome_download, arquivos: c.pacote.arquivos } : null,
+  imagens: c.serie === 'negocios' ? [] : (c.imagens || []), avisos: c.avisos || [], erro: c.erro || null, zip: c.pacote ? { url: `/api/radar/carrosseis/${c.id}/zip`, bytes: c.pacote.bytes, nome: c.pacote.nome_download, arquivos: c.pacote.arquivos } : null,
   ficha_markdown: c.ficha_markdown || null, decisao: c.decisao || null, publicacao: c.publicacao || null, metricas: c.metricas || null, excecao_limiar: !!c.excecao_limiar, historico: (c.historico || []).slice(-10),
 });
 
@@ -167,15 +189,19 @@ router.post('/oportunidades/:id/acao', limita({ max: 20, janelaMs: 60000, nome: 
     return saida((o) => { const antes = {}; Object.keys(novos).forEach((k) => { antes[k] = o[k]; o[k] = novos[k]; }); return registrar(o, { antes, depois: novos, nota: 'Edição só de texto descritivo: números e fontes continuam os verificados.' }); });
   }
   if (acao === 'gerar_carrossel') {
-    if (!llmJson.hasLlmKey()) throw U.erro('Nenhuma chave de IA está configurada no servidor.', 'SEM_IA', 503);
+    // Padrão da descoberta de negócios: série "Negócios que você não viu". A série antiga continua disponível com serie: 'ideias'.
+    const antiga = req.body.serie === 'ideias'; const rascunho = !antiga && req.body.rascunho && typeof req.body.rascunho === 'object' ? req.body.rascunho : null;
+    if (!rascunho && !llmJson.hasLlmKey()) throw U.erro('Nenhuma chave de IA está configurada no servidor. Você pode enviar o texto pronto (rascunho) em vez de pedir à IA.', 'SEM_IA', 503);
     const existentes = reg.doc.carrosseis || [];
     const ultimo = existentes.length ? (await store.obter('carrossel', existentes[existentes.length - 1]))?.doc : null;
-    const retomar = ultimo && ['gerando', 'erro'].includes(ultimo.estado);
+    const retomar = ultimo && ['gerando', 'erro'].includes(ultimo.estado) && (!ultimo.serie ? antiga : !antiga);
     if (ultimo && !retomar && req.body.nova_versao !== true) return res.json({ carrossel: visaoCarrossel(ultimo, reg.doc), existente: true });
     const maior = existentes.reduce((m, cid) => Math.max(m, Number((/_v(\d+)$/.exec(cid) || [])[1]) || 0), 0);
     const versao = ultimo ? (retomar ? ultimo.versao : maior + 1) : 1;
-    const doc = await Carrossel.gerar(id, { deps: U.depsDeTeste(), versao, reiniciar: req.body.nova_versao === true, permitirBaixa: req.body.permitir_baixa === true, origem: 'manual' });
-    return res.json({ carrossel: visaoCarrossel(doc, reg.doc) });
+    const gerador = antiga ? Carrossel : Carrossel2;
+    const doc = await gerador.gerar(id, { deps: U.depsDeTeste(), versao, reiniciar: req.body.nova_versao === true, permitirBaixa: req.body.permitir_baixa === true, origem: 'manual', ...(rascunho ? { rascunho } : {}) });
+    const op2 = (await store.obter('oportunidade', id))?.doc || reg.doc;
+    return res.json({ carrossel: visaoCarrossel(doc, op2), parcial: doc.etapa !== 'pronto' });
   }
   if (acao === 'gerar_reels') {
     if (!llmJson.hasLlmKey()) throw U.erro('Nenhuma chave de IA está configurada no servidor.', 'SEM_IA', 503);
@@ -208,16 +234,53 @@ router.get('/carrosseis/:id/slide/:n', rota(async (req, res) => {
   res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=3600', ...(req.query.baixar ? { 'Content-Disposition': `attachment; filename="slide-${String(n).padStart(2, '0')}.png"` } : {}) }).end(a.dados);
 }));
 router.get('/carrosseis/:id/zip', rota(async (req, res) => {
-  const id = exigeId(req.params.id); const r = await store.obter('carrossel', id);
-  const a = r && await store.arquivoObter(Carrossel.chaveZip(id)); if (!a) return res.status(404).json({ error: 'O pacote ainda não está pronto.' });
+  const id = exigeId(req.params.id); const r = await store.obter('carrossel', id); if (!r) return res.status(404).json({ error: 'Carrossel não encontrado.' });
+  if (r.doc.serie === 'negocios') { const x = await Carrossel2.exportar(id); return res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${x.nome}"`, 'Content-Length': String(x.zip.length) }).end(x.zip); }
+  const a = await store.arquivoObter(Carrossel.chaveZip(id)); if (!a) return res.status(404).json({ error: 'O pacote ainda não está pronto.' });
   res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${r.doc.pacote.nome_download}"`, 'Content-Length': String(a.dados.length) }).end(a.dados);
+}));
+// ── Editor da série "Negócios que você não viu" ─────────────────────────────
+const edita = limita({ max: 60, janelaMs: 60000, nome: 'radar-editor' });
+const respostaEdicao = async (res, out) => { const op = out.op || (await store.obter('oportunidade', out.doc.op_id))?.doc; res.json({ carrossel: visaoCarrossel(out.doc, op), ...(out.regeneracao ? { regeneracao: out.regeneracao } : {}) }); };
+router.post('/carrosseis/:id/tela/:n', edita, rota(async (req, res) => { await respostaEdicao(res, await Carrossel2.editarTela(exigeId(req.params.id), Number(req.params.n), req.body || {})); }));
+router.post('/carrosseis/:id/tela/:n/regenerar', limita({ max: 12, janelaMs: 60000, nome: 'radar-regenerar' }), rota(async (req, res) => {
+  if (!llmJson.hasLlmKey()) throw U.erro('Nenhuma chave de IA está configurada no servidor. Edite o texto à mão.', 'SEM_IA', 503);
+  await respostaEdicao(res, await Carrossel2.regenerarTela(exigeId(req.params.id), Number(req.params.n), { instrucao: String(req.body?.instrucao || ''), campo: Serie.CAMPOS.includes(req.body?.campo) ? req.body.campo : null, deps: U.depsDeTeste() }));
+}));
+router.post('/carrosseis/:id/capa', edita, rota(async (req, res) => { const id = exigeId(req.params.id); const b = req.body || {}; if (b.titulo != null || b.apoio != null) await Carrossel2.editarCapa(id, String(b.capa_id || ''), b); await respostaEdicao(res, await Carrossel2.escolherCapa(id, String(b.escolher || b.capa_id || ''))); }));
+router.post('/carrosseis/:id/reordenar', edita, rota(async (req, res) => { await respostaEdicao(res, await Carrossel2.reordenar(exigeId(req.params.id), req.body?.ordem)); }));
+router.post('/carrosseis/:id/remover', edita, rota(async (req, res) => { await respostaEdicao(res, await Carrossel2.remover(exigeId(req.params.id), Number(req.body?.n))); }));
+router.post('/carrosseis/:id/legenda', edita, rota(async (req, res) => { await respostaEdicao(res, await Carrossel2.editarLegenda(exigeId(req.params.id), req.body?.texto)); }));
+router.post('/carrosseis/:id/restaurar', edita, rota(async (req, res) => { await respostaEdicao(res, await Carrossel2.restaurarVersao(exigeId(req.params.id), Number(req.body?.v))); }));
+router.post('/carrosseis/:id/imagens', limita({ max: 20, janelaMs: 60000, nome: 'radar-imagens' }), rota(async (req, res) => {
+  const b = req.body || {}; let buf; let url = null;
+  if (typeof b.arquivo_base64 === 'string' && b.arquivo_base64.length) { buf = Buffer.from(b.arquivo_base64.replace(/^data:[^,]*,/, ''), 'base64'); if (buf.length > 12 * 1024 * 1024) throw U.erro('Imagem grande demais (máximo 12 MB).', 'IMAGEM', 413); }
+  else if (typeof b.url === 'string' && b.url) { const Fotos = require('../lib/radar/fotos'); url = String(b.url); try { buf = await Fotos.baixar(url); } catch (e) { throw U.erro(`Não consegui baixar a imagem (${U.limita(e.message, 80)}).`, 'IMAGEM', 422); } }
+  else throw U.erro('Envie o arquivo da imagem ou o link dela.', 'ENTRADA');
+  await respostaEdicao(res, await Carrossel2.adicionarImagem(exigeId(req.params.id), { buf, url, descricao: b.descricao, credito: b.credito, licenca: b.licenca, pagina: b.pagina, permissao: b.permissao === true, papel: b.papel, tela: b.tela ? Number(b.tela) : null }));
+}));
+router.post('/carrosseis/:id/imagens/:imId/permissao', edita, rota(async (req, res) => { await respostaEdicao(res, await Carrossel2.confirmarPermissao(exigeId(req.params.id), exigeId(req.params.imId), req.body?.confirmada !== false)); }));
+router.get('/carrosseis/:id/imagem/:imId', rota(async (req, res) => {
+  const r = await store.obter('carrossel', exigeId(req.params.id)); const im = r && (r.doc.imagens || []).find((x) => x.id === exigeId(req.params.imId)); if (!im) return res.status(404).end();
+  const a = await store.arquivoObter(im.arquivo); if (!a) return res.status(404).end();
+  const w = Math.min(1800, Math.max(120, Number(req.query.w) || 640));
+  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' }).end(await sharp(a.dados).resize({ width: w, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer());
+}));
+// Nova história escolhida pelo Pedro (fatos conferidos em código, como na pesquisa automática).
+router.post('/historias', limita({ max: 6, janelaMs: 60000, nome: 'radar-historia' }), rota(async (req, res) => {
+  if (!store.disponivel()) throw U.erro('O Radar precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
+  const op = await HistoriaManual.criar(req.body || {}, { deps: U.depsDeTeste() });
+  res.status(201).json(visao(op, { detalhe: true }));
 }));
 router.post('/carrosseis/:id/decisao', limita({ max: 20, janelaMs: 60000, nome: 'radar-decisao' }), rota(async (req, res) => {
   const id = exigeId(req.params.id); const { acao } = req.body || {}; const agora = new Date().toISOString();
   if (acao === 'publicado') { const doc = await Aprend.marcarPublicado(id, { publicado_em: req.body.publicado_em, link: req.body.link || null, metricas: req.body.metricas || {} }); return res.json({ ok: true, estado: doc.estado, publicacao: doc.publicacao, metricas: doc.metricas }); }
   const { doc } = await store.atualizar('carrossel', id, (c) => {
     if (!['aguardando_aprovacao', 'aprovado', 'reprovado'].includes(c.estado)) throw U.erro('Este carrossel não está na fila de aprovação.', 'ESTADO', 409);
-    if (acao === 'aprovar') { c.estado = 'aprovado'; c.decisao = { acao, em: agora, nota: U.limita(req.body.nota, 200) || null }; }
+    if (acao === 'aprovar') {
+      if (c.serie === 'negocios' && (c.validacao?.bloqueios || []).length) throw U.erro(`Há ${c.validacao.bloqueios.length} bloqueio(s) a corrigir antes de aprovar: ${c.validacao.bloqueios[0].mensagem}`, 'BLOQUEADO', 409, { erros: c.validacao.bloqueios.map((b) => b.mensagem) });
+      c.estado = 'aprovado'; c.decisao = { acao, em: agora, nota: U.limita(req.body.nota, 200) || null }; if (c.serie === 'negocios') c.aprovacao = { hash: c.hash_atual, em: agora };
+    }
     else if (acao === 'reprovar') { c.estado = 'reprovado'; c.decisao = { acao, em: agora, motivo: U.limita(req.body.motivo, 300) || 'Reprovado por você.' }; }
     else if (acao === 'reabrir') { c.estado = 'aguardando_aprovacao'; c.decisao = null; }
     else throw U.erro('Ação desconhecida.', 'ENTRADA');

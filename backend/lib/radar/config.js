@@ -69,6 +69,7 @@ const CTA_FIXO = Object.freeze({
 });
 const ENCERRAMENTO_LEGENDA = 'Eu pesquiso negócios que estão crescendo no mundo e explico como funcionam. Segue @pedro_destrava para não perder a próxima ideia.';
 const SERIE = 'IDEIAS QUE DÃO DINHEIRO';
+const SERIE_NOVA = 'Negócios que você não viu';
 
 const COR = Object.freeze({ marfim: '#FBF8F0', azul: '#1457D9', laranja: '#F47A1F', preto: '#171717', mudo: '#6B6860', linha: '#D9D3C4' });
 
@@ -118,11 +119,11 @@ const FONTES_API = Object.freeze([
   { id: 'hn_busca', nome: 'Hacker News: busca por termos', classe: 'comunidade', pais: 'EUA' },
 ]);
 
-const DOMINIOS_IMPRENSA = /(techcrunch|crunchbase|fastcompany|forbes|inc\.com|entrepreneur|eu-startups|sifted|thenextweb|inc42|restofworld|exame|startups\.com\.br|neofeed|businessinsider|bloomberg|reuters|wsj|ft\.com|theverge|wired|cnbc|bbc|nytimes|washingtonpost|theguardian|medium\.com\/@?[a-z-]*(?:\/|$)|startse|pegn|infomoney|valor\.globo|folha|estadao|g1\.globo|vcnewsletter|axios|semafor|theinformation|businessinsider)/i;
+const DOMINIOS_IMPRENSA = /(techcrunch|crunchbase|fastcompany|forbes|inc\.com|entrepreneur|eu-startups|sifted|thenextweb|inc42|restofworld|exame|startups\.com\.br|neofeed|businessinsider|bloomberg|reuters|wsj|ft\.com|theverge|wired|cnbc|bbc|nytimes|washingtonpost|theguardian|medium\.com\/@?[a-z-]*(?:\/|$)|startse|pegn|modernretail|foodbusinessnews|aol\.com|nbc[a-z]*\.com|necn\.com|usatoday|apnews|npr\.org|time\.com|fortune\.com|bostonglobe|ilsole24ore|lemonde|elpais|thehill|businessinsider|infomoney|valor\.globo|folha|estadao|g1\.globo|vcnewsletter|axios|semafor|theinformation|businessinsider)/i;
 const DOMINIOS_AGREGADORES = /(^|\.)(producthunt\.com|news\.ycombinator\.com|ycombinator\.com|kickstarter\.com|reddit\.com|twitter\.com|x\.com|facebook\.com|instagram\.com|linkedin\.com|youtube\.com|youtu\.be|tiktok\.com|t\.me|github\.com|medium\.com|substack\.com|google\.com|news\.google\.com|apple\.com|play\.google\.com|wikipedia\.org|archive\.org)$/i;
 
 module.exports = {
   PESOS, CRITERIOS_ROTULO, LIMIAR_CARROSSEL, TOTAL_SLIDES, MIN_CANDIDATOS, TOP_PAUTAS, MAX_VERIFICAR, DIAS_SEM_REPETIR, IDADE_MAX_HISTORIA_DIAS, ANOS_NEGOCIO_ANTIGO, LIMITE_PESQUISAS_MANUAIS_DIA,
-  CATEGORIAS, FILTROS, MODELOS_RECEITA, SINAIS_DESCARTE, REGEX_DESCARTE, FRASES_PROIBIDAS, ABSOLUTOS_NAO_PROVAVEIS, CTA_FIXO, ENCERRAMENTO_LEGENDA, SERIE, COR,
+  CATEGORIAS, FILTROS, MODELOS_RECEITA, SINAIS_DESCARTE, REGEX_DESCARTE, FRASES_PROIBIDAS, ABSOLUTOS_NAO_PROVAVEIS, CTA_FIXO, ENCERRAMENTO_LEGENDA, SERIE, SERIE_NOVA, COR,
   TERMOS_EN, TERMOS_PT, FONTES, FONTES_API, DOMINIOS_IMPRENSA, DOMINIOS_AGREGADORES,
 };
