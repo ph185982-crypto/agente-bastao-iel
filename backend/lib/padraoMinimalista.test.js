@@ -342,3 +342,18 @@ test('pauta com segunda matéria: com o site oficial bloqueado, duas fontes inde
   const r = await Pauta.executarTudo(p.id, { deps, orcamentoMs: 120000 });
   assert.strictEqual(r.pauta.estado, 'concluida', JSON.stringify(r.pauta.verificacao)); assert.ok(r.pauta.carrossel_id);
 });
+
+test('verificação: número citado pela IA em uma fonte só é procurado pelo código na outra fonte independente (trecho literal)', async () => {
+  novoBanco();
+  const lerFonte = async (u) => (/lumenpets\.com/.test(u) && !/techcrunch|exame/.test(u) ? { legivel: false, acesso: 'negado' } : F.fakeLerFonte(u));
+  const base = F.fakePedirJson();
+  const pedirJson = async (o) => { const r = await base(o); if (/Você confere fatos/.test(o.sistema)) { const um = Math.min(...r.dados.afirmacoes.map((a) => a.documento)); r.dados.afirmacoes = r.dados.afirmacoes.filter((a) => a.documento === um); } return r; };
+  const deps = depsPauta({ lerFonte, pedirJson });
+  const p = await Pauta.criar({ url: 'https://exame.com/2026/10/lumenpets', fontes: ['https://techcrunch.com/2026/10/lumenpets'] }, { deps });
+  const r = await Pauta.executarTudo(p.id, { deps, orcamentoMs: 120000 });
+  const op = (await store.obter('oportunidade', r.pauta.op_id)).doc;
+  const cli = op.verificacao.claims.filter((c) => c.tipo === 'clientes');
+  assert.strictEqual(cli.length, 2, 'a segunda fonte foi encontrada pelo código'); assert.ok(cli.every((c) => c.usavel));
+  assert.ok(cli.some((c) => c.observacoes.some((o) => /Encontrada pelo código/.test(o))));
+  assert.strictEqual(r.pauta.estado, 'concluida');
+});
