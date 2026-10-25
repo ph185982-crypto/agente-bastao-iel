@@ -10,6 +10,11 @@ if (process.env.TESTE_MEMORIA === '1') {
   const arm = require(path.join(RAIZ, 'backend/lib/armazem'));
   arm._definir(process.env.TESTE_DURAVEL === '1' ? Object.assign(arm.memoria(), { duravel: true }) : arm.memoria());
 }
+if (process.env.TESTE_RADAR === '1') {
+  // Radar de Negócios: feeds, páginas e IA simulados (nada de rede externa).
+  const F = require(path.join(RAIZ, 'backend/lib/radarFixtures'));
+  global.__RADAR_DEPS__ = { fetcher: F.fakeFetcher(), lerFonte: F.fakeLerFonte, pedirJson: F.fakePedirJson(), loja: false, semEspera: true, notificar: async () => ({ enviadas: 0, motivo: 'teste' }) };
+}
 const chamadas = {};
 const atraso = Number(process.env.ATRASO_MS || 2500);
 const TRECHO = 'O Senado aprovou nesta quinta-feira o projeto que eleva o teto de faturamento anual do microempreendedor individual para R$ 140 mil';

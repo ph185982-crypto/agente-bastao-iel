@@ -21,6 +21,18 @@
           "topic": "pedro-studio"
         }
       ]
+    },
+    "api/radar-worker.js": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "includeFiles": "{node_modules/ffprobe-static/bin/linux/x64/**,backend/assets/**,node_modules/tesseract.js*/**,node_modules/{wasm-feature-detect,zlibjs,bmp-js,is-url}/**}",
+      "excludeFiles": "{node_modules/ffprobe-static/bin/{darwin,win32}/**,node_modules/tesseract.js-core/tesseract-core.*,node_modules/tesseract.js-core/tesseract-core-simd.*,node_modules/tesseract.js-core/tesseract-core-relaxedsimd.*}",
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "pedro-radar"
+        }
+      ]
     }
   },
   "rewrites": [
@@ -41,6 +53,10 @@
     {
       "path": "/api/trending/mine",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/radar/cron",
+      "schedule": "0 10 * * *"
     }
   ]
 }
