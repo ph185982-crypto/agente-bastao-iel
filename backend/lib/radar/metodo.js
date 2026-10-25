@@ -140,7 +140,9 @@ function montarTelas(dados, op, { agora = Date.now(), v1 = false, briefing = nul
     const textos = funcao === 'encerramento'
       ? { titulo: U.limita(t.titulo, 160), apoio: U.limita(t.apoio || t.corpo, 220) }
       : { titulo: U.limita(t.titulo, 140), corpo: U.limita(String(t.corpo || '').trim(), 600) };
-    const base = Array.isArray(t.base) ? t.base.map(String) : Array.isArray(t.fatos_usados) ? t.fatos_usados.map(String) : [];
+    // seções do briefing citadas como base (hipóteses, aprendizado…) não são fatos: saem da base; hipótese não precisa de base
+    const SECOES = new Set(['hipoteses', 'hipotese', 'aprendizado_leitor', 'aplicacao', 'tese', 'limitacoes', 'teste_de_valor', 'pergunta_capa']);
+    const base = (Array.isArray(t.base) ? t.base.map(String) : Array.isArray(t.fatos_usados) ? t.fatos_usados.map(String) : []).filter((x) => !SECOES.has(x) && !/^h\d+$/.test(x));
     const tela = { id: `t_${funcao}`, funcao, layout: f.layout, textos, foto: { imagem_id: null, enq: 'auto', forma: null }, tipo: t.tipo || f.tipo, base, notas_imagem: f.imagem, bloqueada: false, template: v1 ? Padrao.ID : TEMPLATE };
     if (v1) {
       Object.assign(tela, { informacao_nova: U.limita(t.informacao_nova, 240), relacao_anterior: U.limita(t.relacao_anterior, 240), fatos_usados: base, evidencias: (Array.isArray(t.evidencias) ? t.evidencias : []).map(String).slice(0, 8), travas: { texto: false, imagem: false } });
@@ -305,6 +307,8 @@ function normalizarBriefing(b, op, telas = []) {
   const citadas = [...(b.analises || []).flatMap((a) => a?.base || []), ...(b.mecanismos || []).flatMap((m) => m?.base || []), ...(b.decisao_especifica?.base || []), ...(Array.isArray(telas) ? telas : []).flatMap((t) => [...(t?.base || []), ...(t?.fatos_usados || [])])].map(String);
   const ids = new Set(fatos.map((f) => String(f.id)));
   for (const c of citadas) if (porId.has(c) && !ids.has(c)) { fatos.push({ id: c, texto: porId.get(c).texto, claim_id: c, campo_do_negocio: null }); ids.add(c); }
+  // campo do negócio citado como base ("negocio.solucao") vira fato do tipo campo do negócio, com o texto do próprio campo
+  for (const c of citadas) { const m = /^negocio\.(\w+)$/.exec(c); const v = m && b.negocio?.[m[1]]; if (v && !ids.has(c)) { fatos.push({ id: c, texto: U.limita(v, 260), claim_id: null, campo_do_negocio: m[1] }); ids.add(c); } }
   b.fatos = fatos;
   return b;
 }

@@ -25,7 +25,9 @@ const sem = (s) => U.semAcento(s).toLowerCase().replace(/[“”"']/g, ' ').repl
 const claimsUsaveis = (op) => (op.verificacao?.claims || []).filter((c) => c.usavel);
 
 function numerosNaoComprovados(texto, claims, { permitirContagem = false } = {}) {
-  const valores = claims.filter((c) => c.numero !== null).map((c) => c.numero);
+  // faixa verificada ("entre US$ 4 e US$ 6"): os números que estão no texto da afirmação E no trecho que a comprova também valem
+  const daFaixa = claims.filter((c) => c.numero !== null && c.trecho).flatMap((c) => { const noTrecho = N.numerosDeDado(c.trecho).map((x) => x.valor); return N.numerosDeDado(c.texto || '').map((x) => x.valor).filter((v) => noTrecho.some((t) => N.igual(t, v))); });
+  const valores = [...claims.filter((c) => c.numero !== null).map((c) => c.numero), ...daFaixa];
   const anosOk = claims.map((c) => c.data_do_fato).filter(Boolean).map((x) => Number(String(x).slice(0, 4)));
   return N.numerosDeDado(texto).filter((n) => {
     // Na tela de HIPÓTESE, uma meta de contagem do teste (“os 30 primeiros clientes”) não é fato; dinheiro e porcentagem continuam proibidos.
