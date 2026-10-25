@@ -80,6 +80,31 @@ function configMemoria() {
   };
 }
 
+
+// Documentos do Radar de Negócios (oportunidades, execuções, carrosséis). Tabela própria, separada dos conteúdos da Mesa:
+// assim nada do Radar aparece na biblioteca nem é puxado pelo navegador como se fosse um post.
+// `baseRev` opcional: número = só grava se a revisão atual for essa (0 = só se ainda não existir).
+function radarMemoria() {
+  const m = new Map();
+  const k = (c, t, id) => `${c}|${t}|${id}`;
+  const copia = (x) => JSON.parse(JSON.stringify(x));
+  return {
+    async obter(conta, tipo, id) { const v = m.get(k(conta, tipo, id)); return v ? { doc: copia(v.doc), rev: v.rev, atualizado_em: v.em } : null; },
+    async salvar(conta, tipo, id, doc, baseRev) {
+      const atual = m.get(k(conta, tipo, id));
+      if (baseRev !== undefined && (atual?.rev || 0) !== baseRev) throw erro('Outra execução gravou antes.', 'CONFLITO', { rev_atual: atual?.rev || 0 });
+      const v = { doc: copia(doc), rev: (atual?.rev || 0) + 1, em: new Date().toISOString() };
+      m.set(k(conta, tipo, id), v);
+      return { rev: v.rev };
+    },
+    async listar(conta, tipo, { limite = 500 } = {}) {
+      return [...m.entries()].filter(([key]) => key.startsWith(`${conta}|${tipo}|`)).map(([, v]) => ({ doc: copia(v.doc), rev: v.rev, atualizado_em: v.em }))
+        .sort((a, b) => b.atualizado_em.localeCompare(a.atualizado_em)).slice(0, limite);
+    },
+    async apagar(conta, tipo, id) { m.delete(k(conta, tipo, id)); },
+  };
+}
+
 // ── Memória (testes) ───────────────────────────────────────────────────────
 function memoria() {
   const docs = new Map(); const hist = []; const arqs = new Map(); const jobs = new Map(); const feedback = new Map();
@@ -112,6 +137,7 @@ function memoria() {
     },
     publicacoes: publicacoesMemoria(),
     config: configMemoria(),
+    radar: radarMemoria(),
     feedback: {
       async salvar(conta, dado) { const key = `${conta}|${dado.id}`; if (!feedback.has(key)) feedback.set(key, { ...JSON.parse(JSON.stringify(dado)), conta }); return feedback.get(key); },
       async listar(conta) { return [...feedback.values()].filter(x => x.conta === conta).sort((a,b) => b.em.localeCompare(a.em)).slice(0,200); },
@@ -153,6 +179,9 @@ function postgres({ url, pool }) {
     create table if not exists pico_jobs (rid text primary key, etapa text, conteudo_id text, estado text not null,
       criado_em timestamptz not null default now(), atualizado_em timestamptz, resultado jsonb, erro text);
     create table if not exists pico_feedback (conta text not null, id text not null, em timestamptz not null default now(), dado jsonb not null, primary key(conta,id));
+    create table if not exists pico_radar (conta text not null, tipo text not null, id text not null, rev integer not null default 1,
+      doc jsonb not null, criado_em timestamptz not null default now(), atualizado_em timestamptz not null default now(), primary key (conta, tipo, id));
+    create index if not exists pico_radar_tipo_atual on pico_radar (conta, tipo, atualizado_em desc);
   `).catch((e) => { pronto = null; throw e; }));
 
   return {
@@ -254,6 +283,37 @@ function postgres({ url, pool }) {
         const r = await q(`insert into pico_config (conta, valor) values ($1, $2::jsonb) on conflict (conta) do update set valor = pico_config.valor || excluded.valor, atualizada_em = now() returning valor`, [conta, JSON.stringify(patch || {})]);
         return r.rows[0].valor;
       },
+    },
+    radar: {
+      async obter(conta, tipo, id) {
+        await iniciar();
+        const r = (await q('select doc, rev, atualizado_em from pico_radar where conta = $1 and tipo = $2 and id = $3', [conta, tipo, id])).rows[0];
+        return r ? { doc: r.doc, rev: r.rev, atualizado_em: r.atualizado_em.toISOString() } : null;
+      },
+      async salvar(conta, tipo, id, doc, baseRev) {
+        await iniciar();
+        const corpo = JSON.stringify(doc);
+        if (Buffer.byteLength(corpo) > 4 * 1024 * 1024) throw erro('Documento do Radar grande demais (acima de 4 MB).', 'TAMANHO');
+        if (baseRev === undefined) {
+          const r = await q(`insert into pico_radar (conta, tipo, id, doc) values ($1, $2, $3, $4::jsonb)
+            on conflict (conta, tipo, id) do update set doc = excluded.doc, rev = pico_radar.rev + 1, atualizado_em = now() returning rev`, [conta, tipo, id, corpo]);
+          return { rev: r.rows[0].rev };
+        }
+        if (baseRev === 0) {
+          const r = await q('insert into pico_radar (conta, tipo, id, doc) values ($1, $2, $3, $4::jsonb) on conflict do nothing returning rev', [conta, tipo, id, corpo]);
+          if (!r.rows[0]) throw erro('Outra execução gravou antes.', 'CONFLITO');
+          return { rev: r.rows[0].rev };
+        }
+        const r = await q('update pico_radar set doc = $4::jsonb, rev = rev + 1, atualizado_em = now() where conta = $1 and tipo = $2 and id = $3 and rev = $5 returning rev', [conta, tipo, id, corpo, baseRev]);
+        if (!r.rows[0]) throw erro('Outra execução gravou antes.', 'CONFLITO');
+        return { rev: r.rows[0].rev };
+      },
+      async listar(conta, tipo, { limite = 500 } = {}) {
+        await iniciar();
+        const r = await q('select doc, rev, atualizado_em from pico_radar where conta = $1 and tipo = $2 order by atualizado_em desc limit $3', [conta, tipo, limite]);
+        return r.rows.map((x) => ({ doc: x.doc, rev: x.rev, atualizado_em: x.atualizado_em.toISOString() }));
+      },
+      async apagar(conta, tipo, id) { await iniciar(); await q('delete from pico_radar where conta = $1 and tipo = $2 and id = $3', [conta, tipo, id]); },
     },
     feedback: {
       async salvar(conta, dado) { await iniciar(); await q('insert into pico_feedback(conta,id,em,dado) values($1,$2,$3,$4) on conflict do nothing', [conta,dado.id,dado.em,JSON.stringify(dado)]); return dado; },

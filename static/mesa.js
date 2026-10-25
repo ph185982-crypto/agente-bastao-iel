@@ -177,6 +177,7 @@
     central: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12.5l3 3 5-6"/></svg>',
     resultados: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
     criar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
+    radar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12l6-6"/></svg>',
     ajustes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#fff"/><circle cx="15" cy="12" r="2" fill="#fff"/><circle cx="7" cy="18" r="2" fill="#fff"/></svg>',
   };
 
@@ -530,10 +531,12 @@
     if (state.tab === 'mesa') corpo = state.sub === 'descobrir' ? telaDescobrir() : state.sub === 'conta-aberta' ? (window.ContaAberta ? window.ContaAberta.render(ctxEditor()) : '') : state.sub === 'conteudo' ? telaConteudo() : telaMesa();
     else if (state.tab === 'central') corpo = window.MesaCentral ? window.MesaCentral.render(ctxEditor()) : '';
     else if (state.tab === 'resultados') corpo = window.MeuInstagram ? window.MeuInstagram.render(ctxEditor()) : '';
+    else if (state.tab === 'radar') corpo = window.RadarUI ? window.RadarUI.render(ctxEditor()) : '';
     else if (state.tab === 'semana') corpo = telaSemana();
     else if (state.tab === 'ajustes') corpo = telaAjustes();
     const nCentral = window.MesaCentral ? window.MesaCentral.badge() : 0;
-    const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['criar', 'Ferramentas'], ['resultados', 'Resultados'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['criar', 'Criar'], ['resultados', 'Resultados'], ['ajustes', 'Ajustes']];
+    const nRadar = window.RadarUI ? window.RadarUI.badge() : 0;
+    const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['radar', 'Radar'], ['criar', 'Ferramentas'], ['resultados', 'Resultados'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['radar', 'Radar'], ['criar', 'Criar'], ['resultados', 'Resultados'], ['ajustes', 'Ajustes']];
     const [saveClass, saveText] = estadoSalvamento();
     root.innerHTML = `
       <a class="studio-skip" href="#${state.tab === 'criar' ? 'pico-legacy-app' : 'studio-main'}">Ir para o conteúdo</a>
@@ -542,7 +545,7 @@
       <div class="es-top" ${state.tab === 'criar' ? '' : 'hidden'}>${CRIAR.filter((m) => !escondido(m.id)).map((m) => `<button data-action="criar" data-m="${m.id}" aria-pressed="${state.criarModulo === m.id}">${m.label}</button>`).join('')}</div>
       <main id="studio-main" class="es-main" tabindex="-1" ${state.tab === 'criar' ? 'hidden' : ''}><div class="studio-page ${state.tab === 'mesa' && !state.sub ? 'studio-home' : ''}">${corpo}</div></main>
       <div class="es-toast-slot">${state.toast ? `<div class="es-toast" role="status">${esc(state.toast)}</div>` : ''}</div>
-      <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span>${id === 'central' && nCentral ? `<i class="es-badge" aria-label="${nCentral} para aprovar">${nCentral}</i>` : ''}</button>`).join('')}</nav>`;
+      <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span>${id === 'central' && nCentral ? `<i class="es-badge" aria-label="${nCentral} para aprovar">${nCentral}</i>` : ''}${id === 'radar' && nRadar ? `<i class="es-badge" aria-label="${nRadar} ideia pronta">${nRadar}</i>` : ''}</button>`).join('')}</nav>`;
     root.insertAdjacentHTML('beforeend', `<div class="studio-rail-footer"><span class="studio-avatar">PD</span><div><b>Pedro Destrava</b><span>${esc(M.ACCOUNT_PIN.handle)}</span></div></div>`);
     const m = root.querySelector('.es-main');
     if (m) { m.scrollTop = mudouTela ? (scrollDasTelas.get(tela) || 0) : scroll; if (mudouTela && !m.hidden) m.focus({ preventScroll: true }); }
@@ -581,11 +584,12 @@
       if (window.MesaEditor?.acao && await window.MesaEditor.acao(a, el, ctxEditor())) return;
       if (window.MesaCentral?.acao && await window.MesaCentral.acao(a, el, ctxEditor())) return;
       if (window.MeuInstagram?.acao && await window.MeuInstagram.acao(a, el, ctxEditor())) return;
+      if (window.RadarUI?.acao && await window.RadarUI.acao(a, el, ctxEditor())) return;
       if (window.MesaEstrategia?.acao && await window.MesaEstrategia.acao(a, el, ctxEditor())) return;
       if (window.Recortes?.acao && await window.Recortes.acao(a, el, ctxEditor())) return;
       if (window.ContaAberta?.acao && await window.ContaAberta.acao(a, el, ctxEditor())) return;
       switch (a) {
-        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') { window.Recortes?.carregar(ctxEditor()); window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); window.MesaEstrategia?.carregar(ctxEditor()); } if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
+        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'radar') window.RadarUI?.carregar(ctxEditor(), { forcar: true }); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') { window.Recortes?.carregar(ctxEditor()); window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); window.MesaEstrategia?.carregar(ctxEditor()); } if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
         case 'criar': state.criarModulo = el.dataset.m; trocarAntigo(state.criarModulo); return render();
         case 'voltar': state.sub = null; state.atual = null; state.novo = null; return render();
         case 'abrir': return abrirConteudo(id);
