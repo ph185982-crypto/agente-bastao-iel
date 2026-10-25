@@ -368,3 +368,17 @@ test('método: fato com id de afirmação verificada é reconhecido; proporção
   const v = Metodo.validarDocMin({ ...Metodo.montarDoc(r, op, { v1: true }), template: Padrao.ID }, op);
   assert.ok(v.bloqueios.some((b) => /proporção sem comprovação/.test(b.mensagem)), v.bloqueios.map((b) => b.mensagem).join(' | '));
 });
+
+test('método: briefing no formato da IA real (fatos como texto com ids, telas apontando as afirmações) é normalizado sem criar fato sem fonte', async () => {
+  const op = await criarOp(); const r = rascunhoV1(op);
+  const cUso = r.briefing.fatos[0].claim_id; const cMod = r.briefing.fatos[1].claim_id;
+  r.briefing.fatos = [`A Casa Verde tem mais de 250 mil usuários, segundo a empresa (${cUso}).`, `A empresa cobra assinatura mensal por vaso (${cMod}).`, { texto: 'O escritório sem planta fica frio e a planta sem cuidado seca.', campo_do_negocio: 'problema' }, 'Um fato inventado sem nenhuma fonte.'];
+  r.briefing.analises = [{ texto: 'Uma leitura é que o escritório paga pela troca e pelo cuidado.', base: [cMod, 'f3'], causalidade_demonstrada: false }];
+  r.briefing.mecanismos.forEach((m) => { m.base = [cMod]; }); r.briefing.decisao_especifica.base = [cMod];
+  r.telas.forEach((t) => { if (t.base?.length) t.base = [cMod]; }); r.telas[4].base = [cUso];
+  const m = Metodo.montarDoc(r, op, { v1: true }); const errs = Metodo.validarBriefing(m.briefing, op, { v1: true });
+  assert.ok(m.briefing.fatos.some((f) => f.claim_id === cUso && !/\(c\d/.test(f.texto)), 'fato-texto ligado à afirmação e sem os ids no texto');
+  assert.ok(m.briefing.analises[0].id, 'análise ganha id');
+  assert.ok(errs.some((e) => /f4 não tem fonte/.test(e)), 'o fato inventado continua bloqueado');
+  assert.strictEqual(errs.filter((e) => !/f4 não tem fonte/.test(e)).length, 0, errs.join(' | '));
+});
