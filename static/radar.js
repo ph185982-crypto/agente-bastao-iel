@@ -202,10 +202,16 @@
       <p class="rd-meta">Termos pesquisados: ${esc((ST.estado?.termos?.en || []).concat(ST.estado?.termos?.pt || []).join(' · '))}. Só fontes abertas (RSS e APIs públicas), sem raspagem nem contorno de bloqueio.</p></details>`;
   };
 
+  const MOTIVOS = {
+    descartar: ['Já conhecido', 'Não é para o meu público', 'Difícil de copiar no Brasil', 'Dado fraco ou duvidoso', 'Tema repetido'],
+    reprovar: ['Texto longo', 'Imagem fraca', 'Tema repetido', 'Dado duvidoso', 'Tom fora do meu'],
+  };
+  const escolhas = (tipo) => `<div class="rd-chips" role="radiogroup" aria-label="Motivo">${MOTIVOS[tipo].map((x) => `<label class="rd-chip"><input type="radio" name="motivo_opcao" value="${esc(x)}"><span>${esc(x)}</span></label>`).join('')}</div><details class="rd-det"><summary>Escrever outro motivo</summary><textarea name="motivo" maxlength="200" aria-label="Outro motivo"></textarea></details>`;
+
   function modal() {
     const m = ST.modal; if (!m) return '';
-    if (m.tipo === 'reprovar') return `<div class="rd-modal"><div role="dialog" aria-modal="true"><h3>Reprovar carrossel</h3><form class="rd-form" data-rd-form="reprovar" data-id="${esc(m.id)}"><label>Motivo (opcional)<textarea name="motivo" maxlength="300" placeholder="Ex.: texto longo, imagem fraca, tema repetido"></textarea></label><div class="rd-acoes"><button class="rd-btn risco" type="submit">Reprovar</button><button class="rd-btn fantasma" type="button" data-action="rd-fechar">Cancelar</button></div></form></div></div>`;
-    if (m.tipo === 'descartar') return `<div class="rd-modal"><div role="dialog" aria-modal="true"><h3>Descartar oportunidade</h3><form class="rd-form" data-rd-form="descartar" data-id="${esc(m.id)}"><label>Motivo (opcional)<textarea name="motivo" maxlength="200"></textarea></label><p class="rd-meta">Ela não será sugerida de novo.</p><div class="rd-acoes"><button class="rd-btn risco" type="submit">Descartar</button><button class="rd-btn fantasma" type="button" data-action="rd-fechar">Cancelar</button></div></form></div></div>`;
+    if (m.tipo === 'reprovar') return `<div class="rd-modal"><div role="dialog" aria-modal="true"><h3>Reprovar carrossel</h3><form class="rd-form" data-rd-form="reprovar" data-id="${esc(m.id)}"><p class="rd-meta">Toque no motivo (opcional):</p>${escolhas('reprovar')}<div class="rd-acoes rd-fixo"><button class="rd-btn risco" type="submit">Reprovar</button><button class="rd-btn fantasma" type="button" data-action="rd-fechar">Cancelar</button></div></form></div></div>`;
+    if (m.tipo === 'descartar') return `<div class="rd-modal"><div role="dialog" aria-modal="true"><h3>Descartar oportunidade</h3><form class="rd-form" data-rd-form="descartar" data-id="${esc(m.id)}"><p class="rd-meta">Toque no motivo (opcional):</p>${escolhas('descartar')}<p class="rd-meta">Ela não será sugerida de novo.</p><div class="rd-acoes rd-fixo"><button class="rd-btn risco" type="submit">Descartar</button><button class="rd-btn fantasma" type="button" data-action="rd-fechar">Cancelar</button></div></form></div></div>`;
     if (m.tipo === 'publicado' || m.tipo === 'metricas') {
       const c = ST.carrosseis.find((x) => x.id === m.id) || {}; const mt = c.metricas || {};
       const agora = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -299,7 +305,7 @@
   const root = document.getElementById('esteira');
   root.addEventListener('submit', async (ev) => {
     const f = ev.target.closest('[data-rd-form]'); if (!f) return;
-    ev.preventDefault(); const ctx = ctxAtual(); const id = f.dataset.id; const tipo = f.dataset.rdForm; const v = Object.fromEntries(new FormData(f).entries());
+    ev.preventDefault(); const ctx = ctxAtual(); const id = f.dataset.id; const tipo = f.dataset.rdForm; const v = Object.fromEntries(new FormData(f).entries()); if ('motivo_opcao' in v || 'motivo' in v) v.motivo = [v.motivo_opcao, (v.motivo || '').trim()].filter(Boolean).join(' — ');
     try {
       if (tipo === 'editar') { await ctx.api(`/api/radar/oportunidades/${encodeURIComponent(id)}/acao`, { method: 'POST', body: { acao: 'editar', campos: v } }); ST.editando = null; ctx.toast('Dados atualizados.'); delete ST.detalhes[id]; await recarregarLista(ctx); }
       if (tipo === 'descartar') { await ctx.api(`/api/radar/oportunidades/${encodeURIComponent(id)}/acao`, { method: 'POST', body: { acao: 'descartar', motivo: v.motivo } }); ST.modal = null; ctx.toast('Descartada. Não será sugerida de novo.'); await recarregarLista(ctx); }
