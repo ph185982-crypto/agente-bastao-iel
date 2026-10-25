@@ -60,3 +60,7 @@ O app segue a mesma identidade da arte, definida em `static/marca.css` (última 
 - As folhas antigas foram retematizadas por `python3 scripts/retema-css.py static/*.css` (troca cores azul-acinzentadas pelos tons da marca; pode rodar de novo sem efeito).
 - A aba **Ferramentas** (módulo antigo, estilos em linha) recebeu só o essencial; ainda não foi redesenhada por dentro.
 - Divergência registrada: o padrão de produção anterior cita Montserrat; o app e a arte usam Manrope e Inter (identidade Avanteza). Trocar é decisão do Pedro.
+
+## Visual "Reportagem" dos carrosséis
+
+Além da identidade acima, os carrosséis podem sair no visual **Reportagem** (marinho, amarelo, vermelho, Anton, rosto recortado). É o padrão; troque em Perfil → Visual dos carrosséis. Detalhes e regras em `TEMA_REPORTAGEM.md`.

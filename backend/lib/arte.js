@@ -49,6 +49,8 @@ const ARQ = {
   iSemi: { arquivo: 'Inter-SemiBold.ttf', familia: "'Inter SemiBold', 'Inter', sans-serif", peso: 600 },
   iCorpo: { arquivo: 'Inter-Regular.ttf', familia: "'Inter', sans-serif", peso: 400 },
   iNegrito: { arquivo: 'Inter-Bold.ttf', familia: "'Inter', sans-serif", peso: 700 },
+  // Tema "reportagem" (arteReportagem.js): letra condensada pesada para títulos, números e faixas.
+  aDisplay: { arquivo: 'Anton-Regular.ttf', familia: "'Anton', 'Impact', sans-serif", peso: 400 },
 };
 // Versão em negrito de cada fonte de corpo (palavra em destaque).
 const NEGRITO = { corpo: 'corpoNegrito', iCorpo: 'iNegrito' };
@@ -59,7 +61,9 @@ const fonte = (k) => (_fontes[k] ||= opentype.loadSync(path.join(ASSETS, ARQ[k].
 // identidade visual; antes de reduzir a letra, o texto deve ser encurtado: abaixo do mínimo a arte é bloqueada.
 const MINIMO = { titulo_capa: 58, titulo: 44, corpo: 38, corpo_prova: 36, texto_comparacao: 34, valor: 56, fonte_linha: 20, cta: 48,
   // identidade: capa 88–116, títulos 64–84, apoio 36–44, créditos 24–28
-  id_titulo_capa: 88, id_titulo: 64, id_corpo: 36, id_corpo_prova: 36, id_texto_comparacao: 32, id_valor: 56, id_fonte_linha: 24, id_cta: 56 };
+  id_titulo_capa: 88, id_titulo: 64, id_corpo: 36, id_corpo_prova: 36, id_texto_comparacao: 32, id_valor: 56, id_fonte_linha: 24, id_cta: 56,
+  // tema reportagem (letra condensada: mínimos maiores em altura, textos de apoio em Inter)
+  r_titulo: 64, r_numero: 200, r_valor: 72, r_chip: 34, r_faixa: 60, r_corpo: 30, r_fonte: 22, r_cta: 50 };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 
@@ -424,7 +428,7 @@ async function renderExperimental(s, ctx, imagem) {
 // ── Entrada principal ──────────────────────────────────────────────────────
 // slide: { layout, funcao, titulo?, texto, rotulo?, dados?, fonte_linha?, fundo? }
 // opcoes: { indice, total, imagem (Buffer), arquivoEncerramento (Buffer) }
-async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, arquivoEncerramento = null } = {}) {
+async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, arquivoEncerramento = null, fundo = null } = {}) {
   const ctx = { indice, total };
   const elementos = [];
   let layout = slide.layout;
@@ -436,6 +440,7 @@ async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, ar
     return { png, metrics: { cabe: true, fonte_px: null, blocos: [], layout, elementos: ['arquivo_aprovado', ...(igual ? [] : ['arquivo_aprovado_redimensionado'])], arquivo: { largura: meta.width, altura: meta.height } } };
   }
 
+  if (String(layout || '').startsWith('rep_') || slide.tema_visual === 'reportagem') return require('./arteReportagem').renderizar(slide, ctx, imagem, arquivoEncerramento, fundo);
   if (slide.design === 'editorial_2026') return require('./editorialStudio').renderizar(slide, ctx, imagem);
   if (['foto_editorial', 'impacto', 'revista'].includes(slide.estilo)) return renderExperimental(slide, ctx, imagem);
 
@@ -474,4 +479,4 @@ function resumirMetricas(blocos, layout, elementos) {
   };
 }
 
-module.exports = { renderizarSlide, ajustar, quebrar, largura, palavras, textoSvg, rotuloSvg, resumo, MINIMO, COR, TEMA, W, H, MARGEM };
+module.exports = { renderizarSlide, ajustar, quebrar, largura, palavras, textoSvg, rotuloSvg, resumo, resumirMetricas, esc, ARQ, MINIMO, COR, TEMA, W, H, MARGEM };

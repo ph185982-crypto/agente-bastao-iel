@@ -197,3 +197,41 @@ test('sem roteiro_primeiro o fluxo continua direto até o carrossel (comportamen
   const atual=await rodar(c);
   assert.equal(atual.studio.estado,'pronto');assert.equal(atual.arte.renders.length,3);
 });
+
+// ── Visual "reportagem": rosto vem da biblioteca de recortes, nunca de foto de banco ──
+async function recorteDeTeste(nome){
+  const png=await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="800"><ellipse cx="400" cy="320" rx="160" ry="220" fill="#999"/></svg>')).png().toBuffer();
+  return require('./recortes').adicionar({nome,credito:'Fotógrafo de teste',licenca:'FIXTURE',png});
+}
+test('visual reportagem: usa o recorte da pessoa citada, não busca foto de banco e a arte sai no tema',async()=>{
+  const reg=await recorteDeTeste('Empresa');
+  const {c,rodar,fotos}=await producaoRoteiro('fixture-reportagem-recorte',{pausa:false});
+  const atual=await rodar(c);
+  assert.equal(atual.studio.estado,'pronto',JSON.stringify(atual.studio));
+  const v=M.versaoAtiva(atual);
+  assert.equal(fotos(),0,'foto de banco não é buscada no tema reportagem');
+  assert(v.slides.every(s=>s.tema_visual==='reportagem'));
+  assert.equal(v.slides[0].recorte_id,reg.id);
+  assert(atual.imagens.some(i=>i.tipo==='recorte'&&i.autor==='Fotógrafo de teste'),'o crédito do recorte fica registrado');
+  const r0=atual.arte.renders.find(r=>r.slide_id===v.slides[0].id);
+  assert(r0.elementos.includes('tema_reportagem')&&!r0.elementos.includes('sem_recorte'));
+});
+test('visual reportagem sem recorte para a pessoa: arte só com a forma e aviso, sem inventar rosto',async()=>{
+  await recorteDeTeste('Outra Pessoa');
+  const {c,rodar,fotos}=await producaoRoteiro('fixture-reportagem-sem-recorte',{pausa:false});
+  const atual=await rodar(c);
+  assert.equal(atual.studio.estado,'pronto',JSON.stringify(atual.studio));
+  assert.equal(fotos(),0);
+  assert(!M.versaoAtiva(atual).slides.some(s=>s.recorte_id));
+  assert.match(atual.studio.foto_aviso||'',/recorte/i);
+  const capa=atual.arte.renders.find(r=>r.slide_id===M.versaoAtiva(atual).slides[0].id);
+  assert(capa.elementos.includes('tema_reportagem')&&capa.elementos.includes('sem_recorte'),'a capa sai no tema, sem rosto');
+});
+test('visual avanteza mantém o caminho anterior (foto de banco e estilos em teste)',async()=>{
+  await require('./estrategia').salvar({visual:{tema:'avanteza'}});
+  const {c,rodar,fotos}=await producaoRoteiro('fixture-avanteza',{pausa:false});
+  const atual=await rodar(c);
+  assert.equal(atual.studio.estado,'pronto',JSON.stringify(atual.studio));
+  assert(fotos()>0);
+  assert(!M.versaoAtiva(atual).slides.some(s=>s.tema_visual));
+});

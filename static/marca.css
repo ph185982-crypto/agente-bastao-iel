@@ -244,3 +244,19 @@ h2 { letter-spacing: -.025em; font-weight: 800; }
 .es-top { background: var(--pd-cartao); border-bottom: 1px solid var(--pd-linha); }
 .es-top button { border: 1.5px solid var(--pd-linha); background: var(--pd-cartao); color: var(--pd-tinta); font-weight: 700; }
 .es-top button[aria-pressed="true"] { background: var(--pd-tinta); border-color: var(--pd-tinta); color: var(--pd-papel); }
+
+/* Visual dos carrosséis e recortes (Perfil) */
+.rc-temas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+.rc-tema { text-align: left; padding: 12px; border: 1.5px solid var(--pd-linha); border-radius: 12px; background: var(--pd-cartao); color: var(--pd-tinta); cursor: pointer; display: grid; gap: 4px; }
+.rc-tema b { font-family: var(--pd-titulo) !important; font-weight: 800; }
+.rc-tema small { color: var(--pd-cinza); line-height: 1.35; }
+.rc-tema[aria-pressed="true"] { background: var(--pd-tinta); color: var(--pd-papel); border-color: var(--pd-tinta); }
+.rc-tema[aria-pressed="true"] small { color: #C9CBD3; }
+.rc-mudo { margin-top: 8px; }
+.rc-lista { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 8px; }
+.rc-item { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; padding: 8px; border: 1px solid var(--pd-linha); border-radius: 12px; background: var(--pd-cartao); }
+.rc-item img { width: 64px; height: 80px; object-fit: contain; background: var(--pd-papel-2); border-radius: 8px; }
+.rc-item small { display: block; color: var(--pd-cinza); }
+.rc-novo { margin-top: 10px; }
+.rc-novo summary { min-height: 44px; display: flex; align-items: center; }
+.st-creditos { font-size: 13px; color: var(--pd-cinza); line-height: 1.45; margin-top: 8px; }

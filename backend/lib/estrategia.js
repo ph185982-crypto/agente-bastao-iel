@@ -4,14 +4,17 @@ const { armazem } = require('./armazem');
 const { ACCOUNT } = require('./account');
 
 const PADRAO = {
-  // Decisão do Pedro ainda pendente: enquanto 'neutral', pautas partidárias ou eleitorais ficam de fora
-  // (economia aplicada, como imposto, juros e preço, continua entrando). 'allowed' libera tudo.
-  modo_politico: 'neutral',
+  // O perfil é de opinião política e econômica (padrão de produção do Pedro): vem 'allowed'. Em 'neutral', pautas partidárias ou
+  // eleitorais ficam de fora (economia aplicada, como imposto, juros e preço, continua entrando). Mude em Perfil → Estratégia de pautas.
+  modo_politico: 'allowed',
   temas_bloqueados: [],
   dias_sem_repetir: 21,
   min_posts_por_grupo: 5,
   // Monitor de notícias em alta: LIGADO por padrão (decisão do Pedro). Só roda com banco de dados no servidor e chave de IA;
   // cada rodada gasta chamadas de IA, então o teto diário de roteiros segura o consumo. Desligue em Ajustes.
+  // Visual dos carrosséis: 'reportagem' (marinho, amarelo, vermelho, letra condensada, rosto recortado: a referência aprovada)
+  // ou 'avanteza' (identidade azul e laranja da marca). Escolha do Pedro em Perfil → Visual dos carrosséis.
+  visual: { tema: 'reportagem' },
   monitor: { ativo: true, min_veiculos: 3, janela_horas: 12, limiar_prioridade: 50, max_roteiros_dia: 3, max_alertas_por_rodada: 3, intervalo_min: 30 },
 };
 
@@ -35,6 +38,11 @@ function validar(entrada = {}) {
     if (!Number.isInteger(n) || n < 3 || n > 20) throw Object.assign(new Error('min_posts_por_grupo deve ser um número inteiro de 3 a 20.'), { status: 400 });
     out.min_posts_por_grupo = n;
   }
+  if ('visual' in entrada) {
+    const t = entrada.visual && entrada.visual.tema;
+    if (!['reportagem', 'avanteza'].includes(t)) throw Object.assign(new Error('visual.tema deve ser "reportagem" ou "avanteza".'), { status: 400 });
+    out.visual = { tema: t };
+  }
   if ('monitor' in entrada) {
     const m = entrada.monitor;
     if (!m || typeof m !== 'object' || Array.isArray(m)) throw Object.assign(new Error('monitor deve ser um objeto.'), { status: 400 });
@@ -49,12 +57,12 @@ function validar(entrada = {}) {
 async function ler() {
   const a = armazem();
   const guardada = a?.duravel ? ((await a.config.obter(ACCOUNT.ig_id)).estrategia || {}) : {};
-  return { ...PADRAO, ...guardada, monitor: { ...PADRAO.monitor, ...(guardada.monitor || {}) } };
+  return { ...PADRAO, ...guardada, visual: { ...PADRAO.visual, ...(guardada.visual || {}) }, monitor: { ...PADRAO.monitor, ...(guardada.monitor || {}) } };
 }
 async function salvar(patch) {
   const v = validar(patch);
   const atual = await ler();
-  const novo = { ...atual, ...v, ...(v.monitor ? { monitor: { ...atual.monitor, ...v.monitor } } : {}) };
+  const novo = { ...atual, ...v, ...(v.monitor ? { monitor: { ...atual.monitor, ...v.monitor } } : {}), ...(v.visual ? { visual: { ...atual.visual, ...v.visual } } : {}) };
   const a = armazem();
   if (a?.duravel) await a.config.salvar(ACCOUNT.ig_id, { estrategia: novo });
   return { ...novo, guardada: !!a?.duravel };

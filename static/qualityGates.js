@@ -21,9 +21,24 @@
   const norm = (s) => M.semAcento(s).replace(/[^a-z0-9% ]+/g, ' ').replace(/\s+/g, ' ').trim();
   const limpa = (s) => String(s || '').replace(/\*\*/g, '');
 
+  // Números que aparecem só nos dados do slide (comparação, número gigante) também precisam de origem.
+  function dadosComoTexto(d) {
+    if (!d) return '';
+    const lado = (l) => (l ? ` ${l.rotulo || ''}: ${l.valor || ''} ${l.unidade || ''} ${l.detalhe || ''}` : '');
+    return `${lado(d.esquerda)}${lado(d.direita)}${d.faixa ? ` ${d.faixa.valor || ''} ${d.faixa.texto || ''}` : ''}${d.numero ? ` ${d.numero.rotulo || ''}: ${d.numero.valor || ''}` : ''}`;
+  }
+  // Variação percentual entre os dois lados (calculada, não digitada): aceita com 0,15 ponto de tolerância
+  // porque os valores mostrados são arredondados.
+  function variacaoDosDados(d) {
+    if (!d || !d.esquerda || !d.direita) return null;
+    const a = M.extrairNumeros(`${d.esquerda.valor} ${d.esquerda.unidade || ''}`)[0]; const b = M.extrairNumeros(`${d.direita.valor} ${d.direita.unidade || ''}`)[0];
+    if (!a || !b || !(a.valor > 0)) return null;
+    return Math.abs((b.valor - a.valor) / a.valor * 100);
+  }
+
   function textosDaVersao(v) {
     const t = [];
-    (v.slides || []).forEach((s, i) => t.push({ onde: { slide: s.id, indice: i + 1 }, texto: limpa(`${s.titulo ? s.titulo + '. ' : ''}${s.texto}`), claim_ids: s.claim_ids || [], tipo: 'slide', layout: s.layout }));
+    (v.slides || []).forEach((s, i) => t.push({ onde: { slide: s.id, indice: i + 1 }, texto: limpa(`${s.titulo ? s.titulo + '. ' : ''}${s.texto}${dadosComoTexto(s.dados)}`), claim_ids: s.claim_ids || [], tipo: 'slide', layout: s.layout, dados: s.dados || null }));
     t.push({ onde: { campo: 'legenda' }, texto: limpa(v.legenda), claim_ids: v.legenda_claim_ids || [], tipo: 'legenda' });
     t.push({ onde: { campo: 'cta' }, texto: limpa(v.cta), claim_ids: v.legenda_claim_ids || [], tipo: 'cta' });
     return t;
@@ -161,7 +176,7 @@
     for (const t of textos) {
       const permitidos = M.valoresPermitidos(c, t.claim_ids);
       for (const n of M.extrairNumeros(t.texto).filter(M.exigeOrigem)) {
-        const ok = permitidos.some((p) => M.igual(n.valor, p));
+        const ok = permitidos.some((p) => M.igual(n.valor, p)) || (n.tipo === 'percentual' && t.dados && variacaoDosDados(t.dados) != null && Math.abs(Math.abs(n.valor) - variacaoDosDados(t.dados)) <= 0.15);
         if (ok) continue;
         if (!t.claim_ids.length) {
           out.push(bloqueio('numero_sem_afirmacao', 'fatos', 'Número sem afirmação ligada', `“${n.raw}” aparece ${rotuloOnde(t)} sem estar ligado a uma afirmação com fonte.`, t.onde, 'Ligar a uma fonte ou remover'));

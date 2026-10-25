@@ -139,7 +139,7 @@
   });
 
   // Hash do que aparece na arte de um slide (detecta arte desatualizada).
-  const hashRender = (s) => hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null, d: s.dados || undefined, r: s.rotulo || undefined, f: s.fonte_linha || undefined, ...(s.estilo ? { estilo:s.estilo } : {}), ...(s.design ? { design:s.design,composicao:s.composicao||null } : {}) });
+  const hashRender = (s) => hash({ t: s.texto, l: s.layout, i: s.imagem_id || null, ti: s.titulo || null, d: s.dados || undefined, r: s.rotulo || undefined, f: s.fonte_linha || undefined, ...(s.tema_visual ? { tv: s.tema_visual, rc: s.recorte_id || null, fm: s.forma || null } : {}), ...(s.estilo ? { estilo:s.estilo } : {}), ...(s.design ? { design:s.design,composicao:s.composicao||null } : {}) });
 
   const versaoAtiva = (c) => c.copia.versoes.find((v) => v.id === c.copia.versao_ativa) || null;
 

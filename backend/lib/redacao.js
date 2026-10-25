@@ -109,6 +109,18 @@ const DIRECAO_EDITORIAL = `DIREÇÃO PARA O CELULAR:
 // ── Copy ───────────────────────────────────────────────────────────────────
 const LAYOUT_POR_FUNCAO = { capa: 'capa_tipografica', contexto: 'explicacao', explicacao: 'explicacao', consequencia: 'explicacao', opiniao: 'explicacao', prova: 'prova', comparacao: 'comparacao', encerramento: 'encerramento' };
 
+
+// Dados dos slides do tema "reportagem": só texto curto, sem HTML; o valor passa depois pelos mesmos gates de número dos textos.
+const curto = (v, n) => String(v ?? '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
+const ladoDado = (l) => ({ rotulo: curto(l && l.rotulo, 14), valor: curto(l && l.valor, 14), ...(l && l.unidade ? { unidade: curto(l.unidade, 24) } : {}), ...(l && l.detalhe ? { detalhe: curto(l.detalhe, 60) } : {}) });
+function dadosComparacao(d) {
+  const out = { esquerda: ladoDado(d.esquerda), direita: ladoDado(d.direita) };
+  if (d.faixa && d.faixa.valor) out.faixa = { valor: curto(d.faixa.valor, 28), ...(d.faixa.texto ? { texto: curto(d.faixa.texto, 30) } : {}) };
+  out.tom = d.tom === 'alerta' ? 'alerta' : 'neutro';
+  return out;
+}
+const dadosNumero = (d) => ({ numero: { valor: curto(d.numero.valor, 8), rotulo: curto(d.numero.rotulo, 22) } });
+
 function montarVersao({ dados, claims, evidencias, formato, editorial = false, recentes = [] }) {
   const ids = new Set(claims.map((c) => c.id));
   const novasOpinioes = [];
@@ -152,7 +164,7 @@ function montarVersao({ dados, claims, evidencias, formato, editorial = false, r
     slides.push({
       id: `s${slides.length + 1}`, funcao: ehCapa ? 'capa' : (funcao === 'capa' ? 'contexto' : funcao), layout,
       titulo: s.titulo ? String(s.titulo).slice(0, 120) : null, texto: String(s.texto).slice(0, 700), rotulo: ehCapa && s.rotulo ? String(s.rotulo).slice(0, 28) : null,
-      dados: layout === 'comparacao' ? { esquerda: s.dados.esquerda, direita: s.dados.direita } : null, claim_ids,
+      dados: layout === 'comparacao' ? dadosComparacao(s.dados) : (s.dados && s.dados.numero ? dadosNumero(s.dados) : null), claim_ids,
       ...(editorial ? { design:'editorial_2026', composicao:['numero','recorte','pergunta','foto','manifesto','texto'].includes(s.composicao) ? s.composicao : null } : {}),
     });
   });
@@ -245,7 +257,7 @@ ${E.padraoParaPrompt({ formato, editorial })}
 ESTRUTURA: escolha a que a pauta pede (a sugerida é ${briefing.estrutura}). Cada slide tem UMA função (capa, contexto, prova, explicacao, comparacao, consequencia, opiniao) e acrescenta informação ou compreensão. ${formato === 'estatico' ? 'Uma imagem.' : editorial ? 'Use 5 a 6 slides de conteúdo + CTA final; histórias curtas podem ter 4.' : `Base de ${E.SLIDES_BASE.min} a ${E.SLIDES_BASE.max} slides contando o encerramento fixo (4 a 5 de conteúdo mais o fecho); até 8 de conteúdo só quando a pauta exigir.`} CAPA de 4 a 10 palavras, com um número, uma contradição ou uma consequência concreta no bolso de quem lê (nada de capa que parece manchete de jornal nem "Como…?" genérico); demais telas até ${editorial?28:35} palavras, contando título e corpo, e UMA ideia por tela.
 ${editorial ? DIRECAO_EDITORIAL : ''}
 Marque com **duas estrelas** UM único trecho por slide (a expressão principal); nunca mais de um.
-Para "comparacao" preencha dados: {"esquerda":{"rotulo":"","valor":"","detalhe":""},"direita":{...}} só com valores das afirmações.
+Para "comparacao" preencha dados: {"esquerda":{"rotulo":"DEZ/2022","valor":"198,7 mil","unidade":"pessoas"},"direita":{...},"faixa":{"valor":"+97,4%","texto":"em cadastros"},"tom":"neutro"} só com valores das afirmações (rótulo de até 14 caracteres, valor de até 14, unidade de até 24). "tom":"alerta" só quando as fontes mostram piora e você assume essa leitura; na dúvida use "neutro". Quando UM número carrega o slide (função "prova"), use dados: {"numero":{"valor":"36","rotulo":"Impostos"}} e escreva em "texto" o que ele conta. Não invente rótulo, valor nem variação: a variação percentual só entra se o cálculo estiver nas afirmações ou for exata entre os dois valores.
 
 TRÊS CAPAS realmente diferentes para a MESMA base factual, uma de cada foco: "acontecimento" (o fato novo, direto), "consequencia" (${editorial ? 'um detalhe relevante da matéria; só mencione efeito prático se a base o demonstrar' : 'o efeito na vida prática'}), "tensao" (a pergunta ou tensão central). Explique em 1 frase a diferença. Não escolha a que tiver mais números ou palavras agressivas.
 GANCHO DA CAPA: cada capa usa uma FÓRMULA diferente entre estas (a mecânica se repete, o texto não): ${Object.values(HG.FORMULAS).map((f) => `${f.nome} (${f.dica})`).join('; ')}. EXEMPLOS PROIBIDOS: não copie nem parafraseie nenhum destes (eles só mostram o mecanismo, e dois deles já saíram sem resultado algum): ${HG.proibidos().map((x) => `“${x.texto}”`).join(' · ')}. Também não repita a abertura de nenhum post recente listado.

@@ -35,15 +35,26 @@
     const n=ui.slides[c.id]||0;
     return `<div class="st-carousel-wrap"><div class="st-carousel" data-st-carousel="${esc(c.id)}" role="group" aria-label="Carrossel de ${v.slides.length} slides">${renders.map((r,i)=>`<img src="/api/sync/arquivos/${encodeURIComponent(r.blob_key)}" alt="Slide ${i+1}: ${esc(v.slides[i].texto.replace(/\*\*/g,''))}" loading="${i?'lazy':'eager'}" width="1080" height="1350">`).join('')}</div><div class="st-carousel-toolbar"><button data-action="st-voltar-slide" data-id="${esc(c.id)}" aria-label="Slide anterior">‹</button><span class="st-position" data-st-counter="${esc(c.id)}" aria-live="polite">${n+1}/${renders.length}</span><button data-action="st-avancar-slide" data-id="${esc(c.id)}" aria-label="Próximo slide">›</button></div><div class="st-dots" aria-label="Selecionar slide">${renders.map((_,i)=>`<button data-action="st-slide" data-id="${esc(c.id)}" data-i="${i}" aria-label="Ver slide ${i+1}" aria-current="${n===i?'true':'false'}"><i></i></button>`).join('')}</div></div>`;
   }
+  function rotuloEstilo(c){
+    if((versao(c)?.slides||[]).some(s=>s.tema_visual))return '<i>· Reportagem</i>';
+    return c.experimento?.estilo&&estilos[c.experimento.estilo]?`<i>· ${esc(estilos[c.experimento.estilo])}</i>`:'';
+  }
+  function creditos(c){
+    const rec=(c.imagens||[]).filter(i=>i.tipo==='recorte');
+    const aviso=c.studio&&c.studio.foto_aviso&&/recorte/i.test(c.studio.foto_aviso)?`<p class="st-inline-error" role="status">${esc(c.studio.foto_aviso)}</p>`:'';
+    const fundo=c.studio&&c.studio.aviso_fundo?`<p class="st-inline-error" role="status">${esc(c.studio.aviso_fundo)}</p>`:'';
+    const lista=rec.length?`<p class="st-creditos"><b>Créditos das fotos:</b> ${rec.map(i=>`${esc(i.alt||'Foto')}, ${esc(i.autor||'')} (${esc(i.licenca||'')})${i.exige_credito?' · cite o crédito na legenda':''}`).join(' · ')}</p>`:'';
+    return aviso+fundo+lista;
+  }
   function cartao(c){
     const v=versao(c);const g=revisar(c);const pronto=!g.bloqueios.length && (c.formato!=='reels'||(c.motion?.estado==='pronto'&&c.motion.hash===v.hash));
     const pausado=original._st.config?.publish_paused;
-    return `<article class="st-review-card" data-st-card="${esc(c.id)}"><div class="st-card-heading"><span class="st-format">${c.formato==='reels'?'Reel motion':c.formato==='estatico'?'Post único':'Carrossel'} ${c.experimento?.estilo?`<i>· ${esc(estilos[c.experimento.estilo])}</i>`:''}</span><h2>${esc(c.titulo)}</h2></div>
+    return `<article class="st-review-card" data-st-card="${esc(c.id)}"><div class="st-card-heading"><span class="st-format">${c.formato==='reels'?'Reel motion':c.formato==='estatico'?'Post único':'Carrossel'} ${rotuloEstilo(c)}</span><h2>${esc(c.titulo)}</h2></div>
       ${preview(c)}${diagnostico(c)}
       <div class="st-review-body">${c.studio?.erro?`<p class="st-inline-error" role="status">${esc(c.studio.erro)}</p>`:''}
       ${!pronto?'<p class="st-preparing-note">Vou resolver as pendências e montar uma prévia completa. Você aprova uma única vez, no final.</p>':''}
       <div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Refazer</button><button class="st-approve" data-action="${pronto?'st-aprovar':'st-preparar'}" data-id="${esc(c.id)}" ${ui.ocupado||pausado?'disabled':''}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':pausado?'Publicações pausadas':pronto?'✓ Aprovar e publicar':'Preparar automaticamente'}</button></div>
-      <details class="st-caption"><summary>Ver legenda e detalhes</summary><p>${esc([v.legenda,v.cta,(v.hashtags||[]).join(' ')].filter(Boolean).join('\n\n'))}</p><button class="st-text-button" data-action="cn-revisar" data-id="${esc(c.id)}">Ajustar manualmente</button></details></div></article>`;
+      <details class="st-caption"><summary>Ver legenda e detalhes</summary><p>${esc([v.legenda,v.cta,(v.hashtags||[]).join(' ')].filter(Boolean).join('\n\n'))}</p>${creditos(c)}<button class="st-text-button" data-action="cn-revisar" data-id="${esc(c.id)}">Ajustar manualmente</button></details></div></article>`;
   }
   function cartaoRoteiro(c){
     const v=versao(c),m=c.monitor||{};

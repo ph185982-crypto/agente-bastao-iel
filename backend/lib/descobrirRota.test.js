@@ -47,6 +47,7 @@ const descobrir = async (extra = {}) => (await fetch(`${base}/discover`, { metho
 test('o prompt traz os critérios com níveis e não pede nota; a resposta separa pautas e descartadas', async () => {
   niveis = (x) => (/pesca/i.test(JSON.stringify(x)) ? nota({ aderencia: 0 }) : /Candidato/i.test(JSON.stringify(x)) ? nota({ partidario: true }) : nota());
   prompts = [];
+  await require('./estrategia').salvar({ modo_politico: 'neutral' }); // o padrão do app é 'allowed'; este teste cobre o modo neutro
   const r = await descobrir();
   assert.match(prompts[0], /enviabilidade/);
   assert.match(prompts[0], /NÍVEIS de 0 a 3/);
