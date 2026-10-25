@@ -724,9 +724,19 @@
     x.state.novo = { modo: 'link' }; x.state.sub = 'conteudo'; x.state.atual = null; x.render();
   }
 
+  // Padrão único de carrossel ("Pedro Destrava — Minimalista"): a criação nova vai para o Radar, que pesquisa, escreve,
+  // escolhe imagens e revisa no servidor. A reversão técnica (CARROSSEL_PADRAO=legado) devolve o fluxo antigo da mesa.
+  let _padrao = null;
+  async function padraoNovo(x) { if (_padrao === null) { try { _padrao = (await x.api('/api/radar/padrao')).ativo !== false; } catch { _padrao = true; } } return _padrao; }
+  async function enviarAoRadar(x, corpo) {
+    const r = await x.api('/api/radar/pautas', { method: 'POST', body: { ...corpo, origem: 'mesa' } });
+    x.state.tab = 'radar'; if (window.RadarUI) { window.RadarUI._st.pautas.unshift(r.pauta); window.RadarUI.carregar(x, { forcar: true }); }
+    x.toast('Pauta enviada ao Radar: o carrossel sai no padrão Pedro Destrava — Minimalista.'); x.render();
+  }
   async function desenvolverPauta(p, x) {
     const fonte = (p.fontes || [])[0];
     if (!fonte?.url) { x.toast('Esta pauta não tem link de matéria.'); return; }
+    if (await padraoNovo(x)) { try { await enviarAoRadar(x, { url: fonte.url, titulo: p.titulo }); } catch (e) { x.toast(e.message); } return; }
     const c = x.criarConteudoDeFonte({ url: fonte.url, titulo: p.titulo, pauta: { id: p.id, titulo: p.titulo, pilar: p.pilar, por_que_interessa: p.por_que_interessa, angulo: p.angulo, objetivo_sugerido: p.objetivo_sugerido, formato_sugerido: p.formato_sugerido, fontes: p.fontes } });
     await x.persistir(c);
     await x.abrirConteudo(c.id);
@@ -763,6 +773,13 @@
       lote.alvo = Math.min(n, restante);
       const fila = await pautasDoLote(x);
       if (!fila.length) { lote.motivo = 'Nenhuma pauta nova adequada agora (as sensíveis e as parecidas com posts recentes são puladas).'; return; }
+      if (await padraoNovo(x)) {
+        // Lote no padrão novo: o servidor processa uma pauta por vez, com estado e erro por item, e retoma se cair.
+        const itens = fila.slice(0, lote.alvo).map((p) => ({ url: p.fontes[0].url, titulo: p.titulo }));
+        const r = await x.api('/api/radar/lotes', { method: 'POST', body: { itens, origem: 'mesa' } });
+        lote.motivo = `Lote enviado ao Radar (${r.lote.total} pauta(s)). Acompanhe item por item na aba Radar; o app pode ser fechado.`;
+        return;
+      }
       for (const p of fila) {
         if (lote.parar || lote.feitos >= lote.alvo || lote.erros >= 3) break;
         lote.atual = p.titulo; x.render();
@@ -791,6 +808,7 @@
     const texto = document.getElementById('ed-novo-texto')?.value.trim();
     if (modo === 'link' && !/^https?:\/\/\S+$/i.test(url || '')) { x.toast('Cole um link que comece com http:// ou https://'); return; }
     if (modo === 'texto' && (texto || '').length < 200) { x.toast('Cole um texto maior (pelo menos uns 200 caracteres).'); return; }
+    if (await padraoNovo(x)) { try { await enviarAoRadar(x, modo === 'link' ? { url } : { texto }); } catch (e) { x.toast(e.message); } return; }
     const c = x.criarConteudoDeFonte(modo === 'link' ? { url } : { texto, titulo: texto.split('\n')[0].slice(0, 80) });
     await x.persistir(c);
     await x.abrirConteudo(c.id);

@@ -6,7 +6,9 @@
   const ST = {
     carregando: false, carregou: false, erro: null, estado: null, filtro: 'todos', grupo: 'ativas', ops: [], total: 0, carrosseis: [], aprendizado: null,
     abertos: {}, editando: null, ocupado: {}, runId: null, progresso: null, polling: false, modal: null, slide: {}, detalhes: {}, publicando: null,
+    padrao: null, pautas: [], pauta: { modo: 'link', url: '', texto: '', nome: '', lote: '' }, conduzindo: {},
   };
+  const v1 = () => ST.padrao?.ativo !== false;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TZ = 'America/Sao_Paulo';
   const dh = (iso) => { if (!iso) return '—'; const d = new Date(iso); return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
@@ -38,8 +40,9 @@
     if (ST.carregando || (ST.carregou && !forcar)) return;
     ST.carregando = true; ctx.render();
     try {
-      const [estado, ops, cs, ap] = await Promise.all([ctx.api('/api/radar/estado'), ctx.api(`/api/radar/oportunidades?status=${ST.grupo}&filtro=${ST.filtro}`), ctx.api('/api/radar/carrosseis').catch(() => ({ carrosseis: [] })), ctx.api('/api/radar/aprendizado').catch(() => null)]);
-      ST.estado = estado; ST.ops = ops.oportunidades || []; ST.total = ops.total || 0; ST.carrosseis = cs.carrosseis || []; ST.aprendizado = ap; ST.erro = null;
+      const [estado, ops, cs, ap, pd, pt] = await Promise.all([ctx.api('/api/radar/estado'), ctx.api(`/api/radar/oportunidades?status=${ST.grupo}&filtro=${ST.filtro}`), ctx.api('/api/radar/carrosseis').catch(() => ({ carrosseis: [] })), ctx.api('/api/radar/aprendizado').catch(() => null), ctx.api('/api/radar/padrao').catch(() => null), ctx.api('/api/radar/pautas').catch(() => ({ pautas: [] }))]);
+      ST.estado = estado; ST.ops = ops.oportunidades || []; ST.total = ops.total || 0; ST.carrosseis = cs.carrosseis || []; ST.aprendizado = ap; ST.erro = null; ST.padrao = pd; ST.pautas = pt.pautas || [];
+      ST.pautas.filter((p) => p.estado === 'em_andamento').slice(0, 3).forEach((p) => conduzirPauta(ctx, p.id));
       if (estado.execucao_ativa && !ST.polling) conduzir(ctx, estado.execucao_ativa.id);
     } catch (e) { ST.erro = e.message || 'Não consegui abrir o Radar.'; }
     ST.carregando = false; ST.carregou = true; ctx.render();
@@ -78,6 +81,56 @@
     delete ST.ocupado.pesquisar; ctx.render();
   }
 
+  // Pauta (link/texto/nome) no padrão novo: o app aberto conduz; o servidor também continua pela fila.
+  async function conduzirPauta(ctx, id) {
+    if (ST.conduzindo[id]) return; ST.conduzindo[id] = true;
+    try {
+      for (let i = 0; i < 300; i++) {
+        let r; try { r = await ctx.api(`/api/radar/pautas/${encodeURIComponent(id)}/passo`, { method: 'POST', body: {} }); } catch (e) { if (e.status === 429) { await new Promise((x) => setTimeout(x, 8000)); continue; } await new Promise((x) => setTimeout(x, 5000)); continue; }
+        const k = ST.pautas.findIndex((p) => p.id === id); if (k >= 0) ST.pautas[k] = r.pauta; else ST.pautas.unshift(r.pauta);
+        if (ctx.state.tab === 'radar') ctx.render();
+        if (r.concluida) {
+          const p = r.pauta;
+          ctx.toast(p.estado === 'concluida' ? (p.bloqueios ? `Carrossel de “${p.entrada.nome}” criado como rascunho: ${p.bloqueios} bloqueio(s) para corrigir no editor.` : `Carrossel de “${p.entrada.nome}” pronto para aprovar.`) : p.estado === 'insuficiente' || p.estado === 'sem_negocio' ? `Pauta parada: ${p.motivo}` : `Pauta com erro: ${p.erro?.mensagem || 'erro'}`);
+          break;
+        }
+        await new Promise((x) => setTimeout(x, r.ocupado ? 4000 : r.esperar_s ? Math.min(r.esperar_s, 10) * 1000 : 1500));
+      }
+    } finally { delete ST.conduzindo[id]; }
+    await carregar(ctx, { forcar: true });
+  }
+  async function novaPauta(ctx) {
+    const s = ST.pauta; const corpo = s.modo === 'link' ? { url: s.url.trim() } : s.modo === 'nome' ? { nome: s.nome.trim(), texto: s.texto.trim() || undefined } : { texto: s.texto.trim() };
+    if (s.modo === 'link' && !/^https?:\/\/\S+$/i.test(corpo.url || '')) { ctx.toast('Cole um link que comece com http:// ou https://'); return; }
+    if (s.modo === 'texto' && (corpo.texto || '').length < 200) { ctx.toast('Cole um texto com pelo menos 200 caracteres.'); return; }
+    if (s.modo === 'nome' && (corpo.nome || '').length < 2) { ctx.toast('Escreva o nome do negócio.'); return; }
+    ST.ocupado.pauta = true; ctx.render();
+    try { const r = await ctx.api('/api/radar/pautas', { method: 'POST', body: { ...corpo, origem: 'radar' } }); ST.pautas.unshift(r.pauta); ST.pauta = { ...ST.pauta, url: '', texto: '', nome: '' }; ctx.toast('Pauta recebida. Pesquisando e conferindo as fontes.'); conduzirPauta(ctx, r.pauta.id); }
+    catch (e) { ctx.toast(e.message); } finally { delete ST.ocupado.pauta; ctx.render(); }
+  }
+  async function novoLote(ctx) {
+    const itens = ST.pauta.lote.split(/\n+/).map((x) => x.trim()).filter(Boolean).map((x) => (/^https?:\/\//i.test(x) ? { url: x } : { nome: x }));
+    if (!itens.length) { ctx.toast('Escreva um link ou um nome de negócio por linha.'); return; }
+    ST.ocupado.lote = true; ctx.render();
+    try { const r = await ctx.api('/api/radar/lotes', { method: 'POST', body: { itens, origem: 'radar' } }); ST.pauta.lote = ''; ctx.toast(`Lote com ${r.lote.total} pauta(s) iniciado${r.lote.recusadas.length ? `; ${r.lote.recusadas.length} recusada(s): ${r.lote.recusadas[0].erro}` : ''}.`); await carregar(ctx, { forcar: true }); }
+    catch (e) { ctx.toast(e.message); } finally { delete ST.ocupado.lote; ctx.render(); }
+  }
+  const ROT_PAUTA = { em_andamento: 'Em andamento', concluida: 'Carrossel criado', erro: 'Erro', insuficiente: 'Fontes insuficientes', sem_negocio: 'Sem negócio específico' };
+  function pautasHtml() {
+    const p = ST.padrao; const s = ST.pauta;
+    const lista = ST.pautas.slice(0, 8).map((x) => `<li class="rd-pauta ${esc(x.estado)}"><b>${esc(x.entrada.nome || x.entrada.titulo || x.entrada.url || 'Pauta')}</b><span class="rd-tag ${x.estado === 'concluida' ? 'azul' : x.estado === 'em_andamento' ? 'laranja' : 'alerta'}">${esc(ROT_PAUTA[x.estado] || x.estado)}</span>${x.estado === 'em_andamento' ? `<div class="rd-barra"><i style="width:${Math.max(6, x.percentual || 0)}%"></i></div><small>${esc(x.rotulo)}${x.lote_id ? ' · lote' : ''}</small>` : ''}${x.motivo ? `<small>${esc(x.motivo)}</small>` : ''}${x.erro ? `<small>${esc(x.erro.mensagem)}</small>` : ''}${x.carrossel_id ? `<button class="rd-btn peq fantasma" data-action="rd-ed-abrir" data-id="${esc(x.carrossel_id)}">Abrir no editor</button>` : ''}</li>`).join('');
+    return `<section class="rd-novapauta" aria-labelledby="rd-np-t"><div class="rd-h2"><h2 id="rd-np-t">Nova pauta</h2><span>${esc(p?.nome || 'Pedro Destrava — Minimalista')}</span></div>
+      <p class="rd-meta">Todo carrossel novo sai no padrão ${esc(p?.nome || 'Pedro Destrava — Minimalista')}: pesquisa, briefing, ganchos, texto, imagens e revisão. Nada é publicado sozinho.</p>
+      <div class="rd-abas" role="group" aria-label="Tipo de pauta">${[['link', 'Link'], ['nome', 'Nome do negócio'], ['texto', 'Colar texto'], ['lote', 'Lote']].map(([k, r]) => `<button data-action="rd-pauta-modo" data-m="${k}" aria-pressed="${s.modo === k}">${r}</button>`).join('')}</div>
+      ${s.modo === 'link' ? `<label class="rd-campo">Link da matéria ou do site<input id="rd-np-url" type="url" inputmode="url" placeholder="https://…" value="${esc(s.url)}"></label>` : ''}
+      ${s.modo === 'nome' ? `<label class="rd-campo">Nome do negócio<input id="rd-np-nome" type="text" placeholder="Ex.: Too Good To Go" value="${esc(s.nome)}"></label>` : ''}
+      ${s.modo === 'texto' ? `<label class="rd-campo">Texto da pauta (mín. 200 caracteres)<textarea id="rd-np-texto" rows="6">${esc(s.texto)}</textarea></label>` : ''}
+      ${s.modo === 'lote' ? `<label class="rd-campo">Um link ou nome por linha (até ${esc(p?.lote_max || 10)})<textarea id="rd-np-lote" rows="6" placeholder="https://…&#10;Hipcamp">${esc(s.lote)}</textarea></label><button class="rd-btn laranja cheio" data-action="rd-lote" ${ST.ocupado.lote ? 'disabled' : ''}>${ST.ocupado.lote ? 'Criando o lote…' : 'Criar carrosséis em lote'}</button>` : `<button class="rd-btn laranja cheio" data-action="rd-pauta" ${ST.ocupado.pauta ? 'disabled' : ''}>${ST.ocupado.pauta ? 'Enviando…' : 'Criar carrossel'}</button>`}
+      ${lista ? `<ul class="rd-pautas">${lista}</ul>` : ''}
+      <details class="rd-det"><summary>Foto do Pedro no encerramento</summary><p class="rd-meta">${p?.foto_pedro ? (p.foto_pedro.origem === 'enviada' ? `Foto enviada e aprovada em ${dh(p.foto_pedro.aprovada_em)}.` : 'Usando a foto de perfil aprovada do app, em recorte retangular, sem alterar o rosto.') : 'Sem foto aprovada: o encerramento sai só com texto.'}</p><label class="rd-campo">Enviar outra foto aprovada (JPG/PNG, mín. 500 px)<input id="rd-foto-pedro" type="file" accept="image/jpeg,image/png,image/webp"></label></details>
+    </section>`;
+  }
+
   // ── Telas ───────────────────────────────────────────────────────────────────
   function painel() {
     const e = ST.estado; if (!e) return '';
@@ -111,7 +164,7 @@
     const estadoRotulo = { rascunho: 'Rascunho: há bloqueios a corrigir', aguardando_aprovacao: 'Aguardando sua aprovação', aprovado: 'Aprovado: pronto para postar', reprovado: 'Reprovado', publicado: 'Publicado', gerando: 'Gerando…', erro: 'Erro ao gerar' }[c.estado] || c.estado;
     return `<article class="rd-card" data-rd-card="${esc(c.id)}"><div class="rd-corpo">
       <div class="rd-tags"><span class="rd-tag laranja">${esc(estadoRotulo)}</span>${c.pontuacao != null ? `<span class="rd-tag">${esc(c.pontuacao)} pontos</span>` : ''}${c.excecao_limiar ? '<span class="rd-tag alerta">abaixo de 75, gerado por você</span>' : ''}<span class="rd-tag suave">versão ${esc(c.versao)}</span></div>
-      <h3>${esc(c.nome || 'Carrossel')}</h3>${c.serie === 'negocios' ? `<p class="rd-meta">Série “${esc(c.serie_nome)}” · ${c.validacao?.bloqueios?.length ? `<b style="color:#A63B24">${c.validacao.bloqueios.length} bloqueio(s): ${esc(c.validacao.bloqueios[0].mensagem)}</b>` : 'sem bloqueios'}${c.validacao?.sugestoes?.length ? ` · ${c.validacao.sugestoes.length} sugestão(ões) editoriais` : ''}</p>` : ''}${slidesHtml(c)}
+      <h3>${esc(c.nome || 'Carrossel')}</h3>${c.serie === 'negocios' ? `<p class="rd-meta">${c.padrao_v1 ? 'Modelo' : 'Modelo antigo (somente leitura e edição)'} “${esc(c.serie_nome)}” · ${c.validacao?.bloqueios?.length ? `<b style="color:#A63B24">${c.validacao.bloqueios.length} bloqueio(s): ${esc(c.validacao.bloqueios[0].mensagem)}</b>` : 'sem bloqueios'}${c.validacao?.sugestoes?.length ? ` · ${c.validacao.sugestoes.length} sugestão(ões) editoriais` : ''}</p>` : ''}${slidesHtml(c)}
       ${c.avisos?.length ? `<div class="rd-aviso">${c.avisos.map(esc).join('<br>')}</div>` : ''}
       <details class="rd-det" open><summary>Legenda (${(c.legenda || '').length}/700)</summary><div class="rd-legenda">${esc(c.legenda || '')}</div></details>
       ${fontes}
@@ -119,6 +172,8 @@
       <div class="rd-acoes">
         ${c.serie === 'negocios' ? `<button class="rd-btn laranja" data-action="rd-ed-abrir" data-id="${esc(c.id)}">Editar telas, fotos e legenda</button>` : ''}
         ${c.zip ? `<button class="rd-btn azul" data-action="rd-zip" data-id="${esc(c.id)}" ${c.serie === 'negocios' && c.validacao?.bloqueios?.length ? 'disabled' : ''}>Baixar ZIP (${(c.slides || []).length || 8} imagens + legenda + fontes)</button>` : ''}
+        ${v1() && !c.padrao_v1 && !c.convertido_para && ['rascunho', 'aguardando_aprovacao', 'aprovado', 'reprovado', 'publicado'].includes(c.estado) ? `<button class="rd-btn fantasma" data-action="rd-converter" data-id="${esc(c.id)}" ${ocupado ? 'disabled' : ''}>${ocupado === 'converter' ? 'Convertendo…' : 'Criar nova versão no padrão novo'}</button>` : ''}
+        ${c.convertido_para ? `<span class="rd-meta">Convertido: nova versão ${esc(c.convertido_para)}</span>` : ''}
         ${c.estado === 'aguardando_aprovacao' ? `<button class="rd-btn laranja" data-action="rd-aprovar" data-id="${esc(c.id)}" ${ocupado || c.validacao?.bloqueios?.length ? 'disabled' : ''}>Aprovar</button><button class="rd-btn risco" data-action="rd-reprovar" data-id="${esc(c.id)}" ${ocupado ? 'disabled' : ''}>Reprovar</button>` : ''}
         ${['aprovado', 'aguardando_aprovacao'].includes(c.estado) ? `<button class="rd-btn fantasma" data-action="rd-publicado" data-id="${esc(c.id)}">Já publiquei no Instagram</button>` : ''}
         ${c.estado === 'reprovado' ? `<button class="rd-btn fantasma" data-action="rd-reabrir" data-id="${esc(c.id)}">Reabrir</button>` : ''}
@@ -154,7 +209,7 @@
       ${o.descartada_motivo ? `<div class="rd-aviso">Descartada: ${esc(o.descartada_motivo)}</div>` : ''}
       ${!o.elegivel_carrossel && o.motivo_sem_carrossel && !o.descartada_motivo ? `<p class="rd-meta">${esc(o.motivo_sem_carrossel)}</p>` : ''}
       <div class="rd-acoes">
-        ${o.carrossel_id ? '<button class="rd-btn azul" data-action="rd-ver-carrossel" data-id="' + esc(o.carrossel_id) + '">Ver carrossel</button>' : `<button class="rd-btn azul" data-action="rd-gerar" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''}>${ocupado === 'gerar' ? 'Gerando… (até 1 min)' : 'Gerar carrossel'}</button><button class="rd-btn fantasma peq" data-action="rd-gerar-min" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''} title="Modelo minimalista: estratégia por trás, 7 telas">Modelo minimalista</button><button class="rd-btn fantasma peq" data-action="rd-gerar-antiga" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''} title="Modelo anterior da série “Ideias que dão dinheiro”">Série antiga</button>`}
+        ${o.carrossel_id ? '<button class="rd-btn azul" data-action="rd-ver-carrossel" data-id="' + esc(o.carrossel_id) + '">Ver carrossel</button>' : `<button class="rd-btn azul" data-action="rd-gerar" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''}>${ocupado === 'gerar' ? 'Gerando… (até 1 min)' : 'Gerar carrossel'}</button>${v1() ? '' : `<button class="rd-btn fantasma peq" data-action="rd-gerar-min" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''}>Modelo minimalista</button><button class="rd-btn fantasma peq" data-action="rd-gerar-antiga" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''}>Série antiga</button>`}`}
         <button class="rd-btn" data-action="rd-reels" data-id="${esc(o.id)}" ${ocupado || !o.elegivel_carrossel ? 'disabled' : ''}>${ocupado === 'reels' ? 'Gerando…' : o.reels ? 'Ver Reels' : 'Gerar Reels'}</button>
         ${o.status !== 'salva' && o.status !== 'descartada' && o.status !== 'descartada_usuario' ? `<button class="rd-btn fantasma" data-action="rd-op" data-acao="salvar_pauta" data-id="${esc(o.id)}">Salvar pauta</button>` : ''}
         ${['descartada', 'descartada_usuario'].includes(o.status) ? `<button class="rd-btn fantasma" data-action="rd-op" data-acao="restaurar" data-id="${esc(o.id)}">Restaurar</button>` : `<button class="rd-btn risco" data-action="rd-descartar" data-id="${esc(o.id)}">Descartar</button>`}
@@ -250,6 +305,7 @@
       <div style="height:12px"></div>${barra()}
       ${ST.carregando && !e ? '<div class="rd-vazio">Abrindo o Radar…</div>' : ''}
       ${e?.resultado_ultima?.sem_carrossel_motivo && !ativa ? `<div class="rd-aviso">${esc(e.resultado_ultima.sem_carrossel_motivo)}</div>` : ''}
+      ${pautasHtml()}
       <div id="rd-fila">${filaAprovacao()}</div>
       <div class="rd-h2"><h2>Oportunidades</h2><span>${ST.total} no total</span></div>${novaHistoria()}${filtros()}
       ${ST.ops.length ? ST.ops.map(cartaoOp).join('') : `<div class="rd-vazio">${e ? 'Nenhuma oportunidade neste filtro. Toque em “Pesquisar oportunidades agora” para buscar.' : ''}</div>`}
@@ -280,7 +336,7 @@
         case 'rd-op': await op(el.dataset.acao); ctx.toast({ salvar_pauta: 'Pauta salva.', marcar_usada: 'Marcada como já utilizada.', restaurar: 'Restaurada.' }[el.dataset.acao] || 'Pronto.'); await recarregarLista(ctx); break;
         case 'rd-descartar': ST.modal = { tipo: 'descartar', id }; ctx.render(); break;
         case 'rd-gerar': case 'rd-gerar-antiga': case 'rd-gerar-min': {
-          ST.ocupado[id] = 'gerar'; ctx.render(); const corpo = a === 'rd-gerar-antiga' ? { serie: 'ideias' } : a === 'rd-gerar-min' ? { template: 'minimalista' } : {};
+          ST.ocupado[id] = 'gerar'; ctx.render(); const corpo = v1() ? {} : a === 'rd-gerar-antiga' ? { serie: 'ideias' } : a === 'rd-gerar-min' ? { template: 'minimalista' } : {};
           try {
             let r = await op('gerar_carrossel', corpo);
             for (let i = 0; i < 6 && r.parcial; i++) { ctx.toast('Gerando as imagens…'); r = await op('gerar_carrossel', corpo); }
@@ -289,6 +345,16 @@
           }
           catch (e) { if (e.code === 'ABAIXO_DO_LIMIAR' && confirm(`${e.message}\n\nGerar mesmo assim?`)) { const r = await op('gerar_carrossel', { ...corpo, permitir_baixa: true }); void r; await carregar(ctx, { forcar: true }); } else ctx.toast(e.message); }
           finally { delete ST.ocupado[id]; ctx.render(); }
+          break;
+        }
+        case 'rd-pauta-modo': ST.pauta.modo = el.dataset.m; ctx.render(); break;
+        case 'rd-pauta': await novaPauta(ctx); break;
+        case 'rd-lote': await novoLote(ctx); break;
+        case 'rd-converter': {
+          if (!confirm('Criar uma NOVA versão deste carrossel no padrão Pedro Destrava — Minimalista? O antigo continua guardado como está.')) break;
+          ST.ocupado[id] = 'converter'; ctx.render();
+          try { const r = await ctx.api(`/api/radar/carrosseis/${encodeURIComponent(id)}/converter`, { method: 'POST', body: {} }); ctx.toast(r.carrossel.estado === 'rascunho' ? 'Nova versão criada como rascunho: veja os bloqueios no editor.' : 'Nova versão pronta para aprovar.'); await carregar(ctx, { forcar: true }); }
+          catch (e) { ctx.toast(e.message); } finally { delete ST.ocupado[id]; ctx.render(); }
           break;
         }
         case 'rd-reels': {
@@ -316,7 +382,16 @@
   // Formulários (envio com Enter ou toque) e rolagem do carrossel
   const root = document.getElementById('esteira');
   root.addEventListener('click', (ev) => { const sm = ev.target.closest('summary[data-rd-nova]'); if (sm) { ST.nova = { ...(ST.nova || {}), aberta: !sm.parentElement.open }; } });
-  root.addEventListener('input', (ev) => { const t = ev.target; if (t.matches?.('[data-rd-form="historia"] textarea')) ST.nova = { ...(ST.nova || {}), json: t.value }; });
+  root.addEventListener('input', (ev) => {
+    const t = ev.target; if (t.matches?.('[data-rd-form="historia"] textarea')) ST.nova = { ...(ST.nova || {}), json: t.value };
+    const campo = { 'rd-np-url': 'url', 'rd-np-nome': 'nome', 'rd-np-texto': 'texto', 'rd-np-lote': 'lote' }[t.id]; if (campo) ST.pauta[campo] = t.value;
+  });
+  root.addEventListener('change', async (ev) => {
+    const t = ev.target; if (t.id !== 'rd-foto-pedro' || !t.files?.[0]) return; const ctx = ctxAtual();
+    if (!confirm('Usar esta foto como a sua foto aprovada no encerramento dos carrosséis?')) { t.value = ''; return; }
+    try { const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(t.files[0]); }); await ctx.api('/api/radar/foto-pedro', { method: 'POST', body: { arquivo_base64: b64, aprovada: true } }); ctx.toast('Foto aprovada salva. Vale para os próximos encerramentos.'); await carregar(ctx, { forcar: true }); }
+    catch (e) { ctx.toast(e.message); }
+  });
   root.addEventListener('submit', async (ev) => {
     const f = ev.target.closest('[data-rd-form]'); if (!f) return;
     ev.preventDefault(); const ctx = ctxAtual(); const id = f.dataset.id; const tipo = f.dataset.rdForm; const v = Object.fromEntries(new FormData(f).entries()); if ('motivo_opcao' in v || 'motivo' in v) v.motivo = [v.motivo_opcao, (v.motivo || '').trim()].filter(Boolean).join(' — ');

@@ -131,3 +131,17 @@
 .rdn-rodape{display:flex;gap:10px;align-items:center;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid #D9D3C4;background:#fff}.rdn-rodape .rd-btn{flex:1}
 @media (min-width:700px){.rdn-img{grid-template-columns:180px 1fr}}
 .rdn .rd-btn.peq{min-height:44px}.rdn summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
+
+/* Padrão "Pedro Destrava — Minimalista": nova pauta, lote, foco do recorte */
+.rd-novapauta { background: #fff; border: 1px solid #E4E2DC; border-radius: 16px; padding: 16px; margin: 16px 0; }
+.rd-campo { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; margin: 12px 0; }
+.rd-campo input, .rd-campo textarea { font: inherit; font-weight: 400; font-size: 16px; padding: 12px; border: 1px solid #CFCCC4; border-radius: 10px; min-height: 48px; width: 100%; box-sizing: border-box; }
+.rd-pautas { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 8px; }
+.rd-pauta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; border: 1px solid #ECEAE4; border-radius: 12px; }
+.rd-pauta b { flex: 1 1 60%; min-width: 0; overflow-wrap: anywhere; }
+.rd-pauta small { flex: 1 1 100%; color: #555; }
+.rd-pauta .rd-barra { flex: 1 1 100%; }
+.rdn-focos { display: grid; grid-template-columns: repeat(3, 48px); gap: 6px; margin: 8px 0; }
+.rdn-foco { width: 48px; height: 48px; border-radius: 8px; border: 1px solid #CFCCC4; background: #F6F5F1; }
+.rdn-foco.on { background: #111; border-color: #111; }
+.rdn-foco:disabled { opacity: .45; }
