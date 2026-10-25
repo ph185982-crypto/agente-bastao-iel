@@ -52,6 +52,8 @@ async function recentes() {
   return (await armazem().conteudos.listar(conta())).slice(0,10).map(x=>x.resumo.titulo).filter(Boolean);
 }
 async function criar({url,texto,formato='carrossel',estilo='auto',indice=0,request_id,voz='',objetivo='seguidores',roteiro_primeiro=false,monitor=null,titulo=''}) {
+  // Padrão único: carrossel novo só pelo "Pedro Destrava — Minimalista" (pauta no Radar). Reels e post único seguem aqui.
+  if(!['reels','estatico'].includes(formato)&&require('./padraoCarrossel').atual())throw require('./padraoCarrossel').erroLegado('studio.criar');
   const a=armazem(); if(!a?.duravel)throw falha('A produção precisa do armazenamento no servidor.',503);
   if(!url && (!texto || String(texto).trim().length<200))throw falha('Envie um link ou um texto com pelo menos 200 caracteres.');
   const request=String(request_id || crypto.randomUUID()).slice(0,80);

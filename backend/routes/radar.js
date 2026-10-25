@@ -16,6 +16,9 @@ const C = require('../lib/radar/config');
 const U = require('../lib/radar/util');
 const llmJson = require('../lib/llmJson');
 const { limita } = require('../lib/access');
+const Padrao = require('../lib/padraoCarrossel');
+const Pauta = require('../lib/radar/pauta');
+const FotoPedro = require('../lib/radar/fotoPedro');
 
 const router = express.Router();
 const erro = (res, e) => res.status(e.status || (e.code === 'CONFLITO' ? 409 : 500)).json({ error: e.status || e.code === 'CONFLITO' ? e.message : `Erro no Radar: ${U.limita(e.message, 160)}`, code: e.code || 'RADAR', ...(e.erros ? { erros: e.erros } : {}) });
@@ -49,16 +52,17 @@ function visao(o, { detalhe = false } = {}) {
 // Parte do carrossel da série "Negócios que você não viu": camadas editáveis, capas, ficha, validação e imagens (com origem).
 function visaoSerie(c, op) {
   const claims = Serie.claimsPorId(op || {}); const imgUrl = (id) => `/api/radar/carrosseis/${c.id}/imagem/${id}`;
-  const min = c.template === 'minimalista'; const F = min ? Metodo.FUNCOES_MIN : Serie.FUNCOES;
+  const v1 = Padrao.ehV1(c.template); const min = c.template === 'minimalista' || v1; const F = min ? Metodo.FUNCOES_MIN : Serie.FUNCOES;
   return {
-    serie: 'negocios', serie_nome: min ? 'Estratégia por trás' : C.SERIE_NOVA, template: c.template || 'editorial', briefing: c.briefing || null, revisao: c.revisao || null, pronto: !!c.pronto, hash: c.hash_atual || null, aprovacao: c.aprovacao || null,
+    serie: 'negocios', serie_nome: v1 ? Padrao.NOME : min ? 'Estratégia por trás' : C.SERIE_NOVA, template: c.template || 'editorial', padrao_v1: v1, legado: !v1, convertido_de: c.convertido_de || null, convertido_para: c.convertido_para || null, telas_omitidas: c.telas_omitidas || [], briefing: c.briefing || null, revisao: c.revisao || null, pronto: !!c.pronto, hash: c.hash_atual || null, aprovacao: c.aprovacao || null,
     telas: (c.telas || []).map((t, i) => ({
       n: i + 1, id: t.id, funcao: t.funcao, funcao_rotulo: F[t.funcao]?.rotulo, layout: t.layout, variante: t.variante || null, estilo: t.estilo || null, textos: t.textos, bloqueada: !!t.bloqueada,
       composicoes: F[t.funcao]?.permitidos || [t.layout], imagem_precisa: F[t.funcao]?.imagem || null, foto: { ...(t.foto || {}), url: t.foto?.imagem_id ? imgUrl(t.foto.imagem_id) : null },
-      palavras: Serie.palavrasDaTela(t, { claims }), cabe: c.render?.[i]?.metricas?.cabe !== false, problemas: c.render?.[i]?.metricas?.problemas || [], sem_imagem: !!c.render?.[i]?.metricas?.sem_imagem, remover_permitido: !min && Serie.OMITIVEIS.includes(t.funcao) && (c.telas || []).length > 7,
+      palavras: Serie.palavrasDaTela(t, { claims }), cabe: c.render?.[i]?.metricas?.cabe !== false, problemas: c.render?.[i]?.metricas?.problemas || [], sem_imagem: !!c.render?.[i]?.metricas?.sem_imagem, remover_permitido: v1 ? !!Metodo.FUNCOES_MIN[t.funcao]?.opcional && (c.telas || []).length > 5 : !min && Serie.OMITIVEIS.includes(t.funcao) && (c.telas || []).length > 7,
+      ...(v1 ? { tipo: t.tipo, informacao_nova: t.informacao_nova || '', relacao_anterior: t.relacao_anterior || '', fatos_usados: t.fatos_usados || t.base || [], evidencias: t.evidencias || [], briefing_visual: t.briefing_visual || null, travas: t.travas || { texto: false, imagem: false }, avisos: c.render?.[i]?.metricas?.avisos || [], medidas: c.render?.[i]?.metricas?.medidas || null, foto_info: c.render?.[i]?.metricas?.foto || null } : {}),
       url: `/api/radar/carrosseis/${c.id}/slide/${i + 1}`, sha: c.render?.[i]?.sha256?.slice(0, 12) || null,
     })),
-    capas: c.capas || [], capa_escolhida: c.capa_escolhida || null, angulos: min ? Metodo.ANGULOS_MIN : Serie.ANGULOS, ficha: c.ficha || null, validacao: c.validacao || { ok: false, bloqueios: [], sugestoes: [] },
+    capas: (c.capas || []).map((x) => ({ ...x, ...((c.ganchos || []).find((g) => g.id === x.id) ? { pontuacao: (c.ganchos || []).find((g) => g.id === x.id).pontuacao, scores: (c.ganchos || []).find((g) => g.id === x.id).scores } : {}) })), capa_escolhida: c.capa_escolhida || null, angulos: min ? Metodo.ANGULOS_MIN : Serie.ANGULOS, ficha: c.ficha || null, validacao: c.validacao || { ok: false, bloqueios: [], sugestoes: [] },
     dados_verificados: Object.values(claims).filter((x) => x.numero !== null).map((x) => ({ id: x.id, valor: x.valor_exibicao, texto: x.texto, atribuicao: x.atribuicao || null })),
     imagens_editor: (c.imagens || []).map((im) => ({ id: im.id, url: imgUrl(im.id), tipo: im.tipo, papel: im.papel, relacao: im.relacao, descricao: im.descricao, credito: im.credito, licenca: im.licenca, permissao: im.permissao, origem: im.origem ? { url_imagem: im.origem.url_imagem, url_pagina: im.origem.url_pagina, dominio: im.origem.dominio, consultado_em: im.origem.consultado_em } : null })),
     versoes: (c.versoes || []).map((v) => ({ v: v.v, em: v.em, hash: v.hash, motivo: v.motivo })), legenda_texto: c.legenda?.texto || '', copia_com_problemas: !!c.copia_com_problemas,
@@ -89,6 +93,8 @@ router.get('/estado', rota(async (req, res) => {
   const aprovacao = carrosseis.filter((c) => c.estado === 'aguardando_aprovacao');
   // retoma execução parada (processo morreu no meio): o ponto de retomada está gravado
   if (ativa && (!ativa.lease_ate || Date.parse(ativa.lease_ate) < agora) && agora - Date.parse(ativa.atualizado_em) > 60000 && cfg.ativo !== false) Fila.continuar(ativa.id).catch(() => {});
+  // pautas paradas no meio (processo caiu) retomam do último ponto gravado
+  for (const p of (await Pauta.pendentes({ agora }).catch(() => [])).filter((x) => agora - Date.parse(x.atualizada_em) > 60000).slice(0, 3)) Fila.continuar(p.lote_id || p.id).catch(() => {});
   const doRun = (ultima && ultima.contadores) || null;
   res.json({
     ...base, config: cfg,
@@ -192,6 +198,8 @@ router.post('/oportunidades/:id/acao', limita({ max: 20, janelaMs: 60000, nome: 
   }
   if (acao === 'gerar_carrossel') {
     // Padrão da descoberta de negócios: série "Negócios que você não viu". A série antiga continua disponível com serie: 'ideias'.
+    // Padrão único: com o padrão novo ativo, toda geração é "Pedro Destrava — Minimalista"; os modelos antigos não criam carrossel novo.
+    if (Padrao.atual() && (req.body.serie === 'ideias' || ['editorial', 'minimalista'].includes(req.body.template))) throw Padrao.erroLegado('gerar_carrossel');
     const antiga = req.body.serie === 'ideias'; const rascunho = !antiga && req.body.rascunho && typeof req.body.rascunho === 'object' ? req.body.rascunho : null;
     if (!rascunho && !llmJson.hasLlmKey()) throw U.erro('Nenhuma chave de IA está configurada no servidor. Você pode enviar o texto pronto (rascunho) em vez de pedir à IA.', 'SEM_IA', 503);
     const existentes = reg.doc.carrosseis || [];
@@ -201,7 +209,7 @@ router.post('/oportunidades/:id/acao', limita({ max: 20, janelaMs: 60000, nome: 
     const maior = existentes.reduce((m, cid) => Math.max(m, Number((/_v(\d+)$/.exec(cid) || [])[1]) || 0), 0);
     const versao = ultimo ? (retomar ? ultimo.versao : maior + 1) : 1;
     const gerador = antiga ? Carrossel : Carrossel2;
-    const template = req.body.template === 'minimalista' ? 'minimalista' : 'editorial';
+    const template = Padrao.atual() || (req.body.template === 'minimalista' ? 'minimalista' : 'editorial');
     const doc = await gerador.gerar(id, { deps: U.depsDeTeste(), versao, reiniciar: req.body.nova_versao === true, permitirBaixa: req.body.permitir_baixa === true, origem: 'manual', template: antiga ? undefined : template, ...(rascunho ? { rascunho } : {}) });
     const op2 = (await store.obter('oportunidade', id))?.doc || reg.doc;
     return res.json({ carrossel: visaoCarrossel(doc, op2), parcial: doc.etapa !== 'pronto' });
@@ -267,7 +275,50 @@ router.get('/carrosseis/:id/imagem/:imId', rota(async (req, res) => {
   const r = await store.obter('carrossel', exigeId(req.params.id)); const im = r && (r.doc.imagens || []).find((x) => x.id === exigeId(req.params.imId)); if (!im) return res.status(404).end();
   const a = await store.arquivoObter(im.arquivo); if (!a) return res.status(404).end();
   const w = Math.min(1800, Math.max(120, Number(req.query.w) || 640));
-  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' }).end(await sharp(a.dados).resize({ width: w, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer());
+  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=3600' }).end(await sharp(a.dados).flatten({ background: '#FFFFFF' }).resize({ width: w, withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer());
+}));
+// ── Padrão "Pedro Destrava — Minimalista": entrada de pautas, lote, conversão e foto do Pedro ──────────────
+router.get('/padrao', rota(async (req, res) => { const f = await FotoPedro.obter().catch(() => null); res.json({ ...Padrao.info(), foto_pedro: f ? { origem: f.origem, aprovada_em: f.aprovada_em } : null, lote_max: Pauta.MAX_LOTE }); }));
+const exigeIa = () => { if (!llmJson.hasLlmKey() && !U.depsDeTeste().pedirJson) throw U.erro('Nenhuma chave de IA está configurada no servidor: a pauta não pode ser escrita. Configure a chave no ambiente (o painel da Vercel) e tente de novo.', 'SEM_IA', 503); };
+router.post('/pautas', limita({ max: 10, janelaMs: 60000, nome: 'radar-pauta' }), rota(async (req, res) => {
+  if (!store.disponivel()) throw U.erro('O Radar precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
+  exigeIa();
+  const b = req.body || {}; const origem = ['estudio', 'mesa', 'esteira', 'radar'].includes(b.origem) ? b.origem : 'radar';
+  const p = await Pauta.criar({ url: b.url, texto: b.texto, titulo: b.titulo, nome: b.nome }, { origem, deps: U.depsDeTeste() });
+  await Fila.continuar(p.id).catch(() => {});
+  res.status(201).json({ pauta: Pauta.resumo(p), padrao: Padrao.info() });
+}));
+router.get('/pautas', rota(async (req, res) => { res.json({ pautas: (await store.listar('pauta', 40)).sort((a, b) => String(b.criada_em).localeCompare(String(a.criada_em))).map(Pauta.resumo) }); }));
+router.get('/pautas/:id', rota(async (req, res) => { const r = await store.obter('pauta', exigeId(req.params.id)); if (!r) return res.status(404).json({ error: 'Pauta não encontrada.' }); res.json({ pauta: Pauta.resumo(r.doc), erros: (r.doc.erros || []).slice(-3) }); }));
+router.post('/pautas/:id/passo', limita({ max: 30, janelaMs: 60000, nome: 'radar-pauta-passo' }), rota(async (req, res) => {
+  const r = await Pauta.avancar(exigeId(req.params.id), { orcamentoMs: process.env.VERCEL ? 42000 : 30000, deps: U.depsDeTeste() });
+  res.json({ concluida: r.concluida, ocupado: !!r.ocupado, esperar_s: r.esperar_s || null, pauta: Pauta.resumo(r.pauta) });
+}));
+router.post('/lotes', limita({ max: 4, janelaMs: 60000, nome: 'radar-lote' }), rota(async (req, res) => {
+  if (!store.disponivel()) throw U.erro('O Radar precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
+  exigeIa();
+  const b = req.body || {}; const origem = ['mesa', 'esteira', 'radar', 'lote'].includes(b.origem) ? b.origem : 'lote';
+  const l = await Pauta.criarLote(b.itens, { origem, deps: U.depsDeTeste() });
+  await Fila.continuar(l.id).catch(() => {});
+  res.status(201).json({ lote: await Pauta.estadoLote(l.id) });
+}));
+router.get('/lotes/:id', rota(async (req, res) => { res.json({ lote: await Pauta.estadoLote(exigeId(req.params.id)) }); }));
+router.post('/lotes/:id/passo', limita({ max: 30, janelaMs: 60000, nome: 'radar-lote-passo' }), rota(async (req, res) => {
+  const r = await Pauta.avancarLote(exigeId(req.params.id), { orcamentoMs: process.env.VERCEL ? 42000 : 30000, deps: U.depsDeTeste() });
+  res.json({ concluido: r.concluido, esperar_s: r.esperar_s || null, lote: r.lote });
+}));
+router.post('/carrosseis/:id/converter', limita({ max: 6, janelaMs: 60000, nome: 'radar-converter' }), rota(async (req, res) => {
+  if (!Padrao.atual()) throw U.erro('O padrão novo está desligado (reversão ativa).', 'PADRAO', 409);
+  const rascunho = req.body?.rascunho && typeof req.body.rascunho === 'object' ? req.body.rascunho : null;
+  if (!rascunho) exigeIa();
+  const doc = await Carrossel2.converterParaPadrao(exigeId(req.params.id), { deps: U.depsDeTeste(), rascunho });
+  const op = (await store.obter('oportunidade', doc.op_id))?.doc; res.status(201).json({ carrossel: visaoCarrossel(doc, op) });
+}));
+router.post('/foto-pedro', limita({ max: 6, janelaMs: 60000, nome: 'radar-foto-pedro' }), rota(async (req, res) => {
+  const b = req.body || {}; if (typeof b.arquivo_base64 !== 'string' || !b.arquivo_base64) throw U.erro('Envie o arquivo da foto.', 'ENTRADA');
+  const buf = Buffer.from(b.arquivo_base64.replace(/^data:[^,]*,/, ''), 'base64'); if (buf.length > 12 * 1024 * 1024) throw U.erro('Foto grande demais (máximo 12 MB).', 'IMAGEM', 413);
+  if (b.aprovada !== true) throw U.erro('Confirme que esta é a sua foto aprovada para o encerramento.', 'ENTRADA');
+  const f = await FotoPedro.salvar({ buf }); res.json({ foto_pedro: { origem: f.origem, aprovada_em: f.aprovada_em } });
 }));
 // Nova história escolhida pelo Pedro (fatos conferidos em código, como na pesquisa automática).
 router.post('/historias', limita({ max: 6, janelaMs: 60000, nome: 'radar-historia' }), rota(async (req, res) => {
