@@ -43,12 +43,14 @@ async function fotosDoCarrossel(op, deps) {
 }
 
 // opId → carrossel pronto para a fila. `versao` > 1 é uma nova geração (a anterior continua guardada).
-async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, origem = 'manual', agora = Date.now() } = {}) {
+async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, origem = 'manual', agora = Date.now(), reiniciar = false } = {}) {
   const op = await carregarOp(opId);
   exigirVerificada(op, { permitirBaixa });
-  const v = versao || ((op.carrosseis || []).length + 1);
+  let v = versao || ((op.carrosseis || []).length + 1);
+  let existente = await store.obter('carrossel', idDe(opId, v));
+  // Versão que esgotou as tentativas de copy: com "nova versão" o carrossel recomeça do zero na versão seguinte.
+  while (reiniciar && existente && existente.doc.estado === 'erro' && (existente.doc.copia_tentativas || 0) >= 9) { await store.salvar('carrossel', existente.doc.id, { ...existente.doc, estado: 'substituido' }, existente.rev).catch(() => {}); v += 1; existente = await store.obter('carrossel', idDe(opId, v)); }
   const id = idDe(opId, v);
-  const existente = await store.obter('carrossel', id);
   if (existente?.doc.estado === 'aguardando_aprovacao' || existente?.doc.estado === 'aprovado' || existente?.doc.estado === 'publicado') return existente.doc;   // retomada: já está pronto
   let doc = existente?.doc || { id, op_id: opId, versao: v, origem, criado_em: new Date(agora).toISOString(), estado: 'gerando', etapa: 'copy', historico: [], excecao_limiar: permitirBaixa && (op.pontuacao ?? 0) < C.LIMIAR_CARROSSEL };
   let rev = existente ? existente.rev : 0;
