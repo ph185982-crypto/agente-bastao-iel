@@ -231,7 +231,11 @@ async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, or
   const t0 = Date.now(); const op = await carregarOp(opId); exigirVerificada(op, { permitirBaixa });
   let v = versao || ((op.carrosseis || []).length + 1);
   let existente = await store.obter('carrossel', idDe(opId, v));
-  while (reiniciar && existente && ['erro', 'rascunho'].includes(existente.doc.estado) && existente.doc.serie === 'negocios') { v += 1; existente = await store.obter('carrossel', idDe(opId, v)); }
+  // nunca reaproveita o número de uma versão de outra série; numa versão nova, a anterior com erro vira "substituida"
+  while (existente && (existente.doc.serie !== 'negocios' || (reiniciar && ['erro', 'rascunho'].includes(existente.doc.estado)))) {
+    if (existente.doc.estado === 'erro') await store.salvar('carrossel', existente.doc.id || idDe(opId, v), { ...existente.doc, estado: 'substituido' }, existente.rev).catch(() => {});
+    v += 1; existente = await store.obter('carrossel', idDe(opId, v));
+  }
   const id = idDe(opId, v);
   if (existente && ['aguardando_aprovacao', 'aprovado', 'publicado', 'rascunho'].includes(existente.doc.estado) && existente.doc.etapa === 'pronto') return existente.doc;
   let doc = existente?.doc || { id, op_id: opId, versao: v, serie: 'negocios', template: Padrao.ehV1(template) ? Padrao.ID : template === 'minimalista' ? 'minimalista' : 'editorial', ...(Padrao.ehV1(template) ? { modelo_nome: Padrao.NOME } : {}), ...(convertidoDe ? { convertido_de: convertidoDe } : {}), origem, criado_em: new Date(agora).toISOString(), estado: 'gerando', etapa: 'copy', historico: [], excecao_limiar: permitirBaixa && (op.pontuacao ?? 0) < C.LIMIAR_CARROSSEL };
