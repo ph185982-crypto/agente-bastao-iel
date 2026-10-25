@@ -172,7 +172,8 @@ router.post('/oportunidades/:id/acao', limita({ max: 20, janelaMs: 60000, nome: 
     const ultimo = existentes.length ? (await store.obter('carrossel', existentes[existentes.length - 1]))?.doc : null;
     const retomar = ultimo && ['gerando', 'erro'].includes(ultimo.estado);
     if (ultimo && !retomar && req.body.nova_versao !== true) return res.json({ carrossel: visaoCarrossel(ultimo, reg.doc), existente: true });
-    const versao = ultimo ? (retomar ? ultimo.versao : existentes.length + 1) : 1;
+    const maior = existentes.reduce((m, cid) => Math.max(m, Number((/_v(\d+)$/.exec(cid) || [])[1]) || 0), 0);
+    const versao = ultimo ? (retomar ? ultimo.versao : maior + 1) : 1;
     const doc = await Carrossel.gerar(id, { deps: U.depsDeTeste(), versao, reiniciar: req.body.nova_versao === true, permitirBaixa: req.body.permitir_baixa === true, origem: 'manual' });
     return res.json({ carrossel: visaoCarrossel(doc, reg.doc) });
   }
