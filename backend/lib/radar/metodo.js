@@ -287,11 +287,25 @@ function dadosParaIa(op) {
 }
 
 // Do JSON da IA (ou de um rascunho escrito à mão, com o mesmo formato) para as telas e o documento.
-// Correção mecânica e segura: a IA às vezes usa o id da afirmação verificada (c1, c2…) como id do fato e não preenche claim_id.
-function normalizarBriefing(b, op) {
-  if (!b || !Array.isArray(b.fatos)) return b;
-  const ids = new Set(Copy.claimsUsaveis(op).map((c) => String(c.id)));
-  b.fatos = b.fatos.map((f) => (f && !f.claim_id && !f.campo_do_negocio && ids.has(String(f.id)) ? { ...f, claim_id: String(f.id) } : f));
+// Correções mecânicas e seguras do formato do briefing (vistas com a IA real em produção). Nenhuma cria fato sem fonte:
+// - fato escrito como texto com os ids das afirmações entre parênteses ("… (c5, c13)") vira fato ligado à primeira afirmação verificada;
+// - fato sem id ganha id; fato com id de afirmação verificada e sem claim_id é ligado a ela; análise sem id ganha id;
+// - afirmação VERIFICADA citada direto (em análise, mecanismo, decisão ou tela) entra como fato com a própria fonte.
+function normalizarBriefing(b, op, telas = []) {
+  if (!b || typeof b !== 'object') return b;
+  const porId = new Map(Copy.claimsUsaveis(op).map((c) => [String(c.id), c]));
+  const fatos = (Array.isArray(b.fatos) ? b.fatos : []).map((f, i) => {
+    if (typeof f === 'string') { const ids = (f.match(/\bc\d+\b/g) || []).filter((x) => porId.has(x)); return { id: ids[0] || `f${i + 1}`, texto: f.replace(/\s*\((?:\s*c\d+\s*,?)+\)/g, '').trim(), claim_id: ids[0] || null, campo_do_negocio: null }; }
+    if (!f || typeof f !== 'object') return null;
+    const o = { ...f }; if (!o.id) o.id = o.claim_id || `f${i + 1}`;
+    if (!o.claim_id && !o.campo_do_negocio && porId.has(String(o.id))) o.claim_id = String(o.id);
+    return o;
+  }).filter(Boolean);
+  if (Array.isArray(b.analises)) b.analises = b.analises.map((a, i) => (a && typeof a === 'object' ? { ...a, id: a.id || `a${i + 1}` } : a));
+  const citadas = [...(b.analises || []).flatMap((a) => a?.base || []), ...(b.mecanismos || []).flatMap((m) => m?.base || []), ...(b.decisao_especifica?.base || []), ...(Array.isArray(telas) ? telas : []).flatMap((t) => [...(t?.base || []), ...(t?.fatos_usados || [])])].map(String);
+  const ids = new Set(fatos.map((f) => String(f.id)));
+  for (const c of citadas) if (porId.has(c) && !ids.has(c)) { fatos.push({ id: c, texto: porId.get(c).texto, claim_id: c, campo_do_negocio: null }); ids.add(c); }
+  b.fatos = fatos;
   return b;
 }
 // Proporção escrita por extenso ("um terço", "metade") também é número: só entra se estiver nas afirmações verificadas.
@@ -303,7 +317,7 @@ function proporcoesSemFonte(txt, op) {
 }
 
 function montarDoc(j, op, { agora = Date.now(), v1 = false } = {}) {
-  const b = normalizarBriefing(j?.briefing || null, op); const erros = [];
+  const b = normalizarBriefing(j?.briefing || null, op, j?.telas); const erros = [];
   if (j?.sem_pauta) return { sem_pauta: j.sem_pauta, telas: [], capas: [], erros: [j.sem_pauta], briefing: b };
   const t = montarTelas(j, op, { agora, v1, briefing: b }); erros.push(...t.erros);
   const g = escolherGancho(j?.ganchos); erros.push(...g.erros);
