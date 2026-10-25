@@ -241,3 +241,16 @@ test('notificação do PWA: payload com a frase combinada e destino /?tab=radar 
   assert.match(sw, /tab=radar/); assert.match(sw, /abrir-aba/);
   delete process.env.VAPID_PUBLIC_KEY; delete process.env.VAPID_PRIVATE_KEY;
 });
+
+test('nova versão depois de uma copy que esgotou as tentativas recomeça na versão seguinte', async () => {
+  const s = await servidor();
+  try {
+    await s.req('GET', '/cron');
+    const op = (await s.req('GET', '/oportunidades')).json.oportunidades.find((o) => o.nome === 'Lumen Pets');
+    const idV2 = `cr_${op.id.replace(/^op_/, '')}_v2`;
+    await store.salvar('carrossel', idV2, { op_id: op.id, versao: 2, estado: 'erro', etapa: 'copy', copia_tentativas: 11, feedback_copia: 'x', historico: [], criado_em: new Date().toISOString() }, 0);
+    const r = await s.req('POST', `/oportunidades/${op.id}/acao`, { acao: 'gerar_carrossel', nova_versao: true });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json)); assert.strictEqual(r.json.carrossel.versao, 3); assert.strictEqual(r.json.carrossel.estado, 'aguardando_aprovacao');
+    assert.strictEqual((await store.obter('carrossel', idV2)).doc.estado, 'substituido');
+  } finally { s.fechar(); }
+});
