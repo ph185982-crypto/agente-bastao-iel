@@ -331,3 +331,12 @@ test('copy: a atribuição entra na tela de prova, metas de contagem da hipótes
   await assert.rejects(() => Copy.gerarCopia(op, { deps: { pedirJson: ruim, aoFalhar: async (i) => { falhas.push(i); } }, tentativas: 2 }), /COPY_INVALIDA|não passou/);
   assert.strictEqual(falhas.length, 2); assert.ok(falhas[1].feedback.length > 20);
 });
+
+test('copy: a frase de abertura repetida pela IA é removida e "que faz" não duplica', () => {
+  const op = opLumen();
+  const j = { slides: [{ n: 1, texto: 'x' }, { n: 2, problema: 'Tudo começou com um problema comum: o pet shop vive lotado e ninguém tem tempo.' }, { n: 3, produto: 'criar um serviço de banho em casa', resultado: 'faz o cachorro ficar limpo sem sair' }, { n: 4, modelo: 'assinatura', explicacao: 'O dinheiro entra assim: o cliente paga uma mensalidade fixa por semana' }, { n: 5, titulo: 't', itens: [] }, { n: 6, dor: 'dor', facilidade: 'f', recorrencia: 'r' }, { n: 7 }] };
+  const m = Copy.montarTelas(j, op);
+  assert.strictEqual(m.slides[1].texto, 'Tudo começou com um problema comum: o pet shop vive lotado e ninguém tem tempo.');
+  assert.strictEqual(m.slides[2].texto, 'A solução foi criar um serviço de banho em casa que faz o cachorro ficar limpo sem sair.');
+  assert.strictEqual(m.slides[3].texto, 'O dinheiro entra assim: o cliente paga uma mensalidade fixa por semana.');
+});
