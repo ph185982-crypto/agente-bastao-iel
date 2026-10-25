@@ -75,6 +75,8 @@ function avaliarCandidato(i, t, usados) {
   if (usados.has(i.id)) return { id: i.id, aceita: false, nota: -99, motivos: ['já usada em outra tela'] };
   if (i.tipo === 'oficial_pagina') return { id: i.id, aceita: false, nota: -99, motivos: ['banner do site com texto de divulgação sobreposto'] };
   if (i.tipo === 'ia_ilustracao' && t.funcao !== 'aplicacao') return { id: i.id, aceita: false, nota: -99, motivos: ['imagem gerada por IA só ilustra a tela de teste'] };
+  if (i.tipo === 'loja_print' && !i.manual) return { id: i.id, aceita: false, nota: -99, motivos: ['captura da loja de apps: costuma ter moldura de celular e texto de divulgação, e fica pequena e ilegível na tela (escolha à mão se for só a interface)'] };
+  if ((i.altura || 0) / (i.largura || 1) > 1.5 && ['print', 'documento'].includes(i.papel)) return { id: i.id, aceita: false, nota: -99, motivos: ['print muito alto: o texto dele ficaria ilegível no espaço da foto'] };
   if (i.relacao !== 'negocio' && t.funcao !== 'aplicacao') return { id: i.id, aceita: false, nota: -99, motivos: ['não é da empresa (ilustrativa): só cabe na tela de teste'] };
   const larg = i.largura || i.origem?.largura || 0;
   if (larg && larg < 600) return { id: i.id, aceita: false, nota: -99, motivos: [`pequena demais (${larg} px de largura)`] };
@@ -84,11 +86,11 @@ function avaliarCandidato(i, t, usados) {
   if (mec && (i.papel === 'print' || tags.includes('app'))) { nota += 3; motivos.push('mostra o funcionamento (app/print)'); }
   if (t.funcao === 'gancho' && (tags.includes('produto') || tags.includes('local'))) { nota += 3; motivos.push('mostra o produto ou o lugar real'); }
   if (t.funcao === 'gancho' && i.papel === 'print') { nota -= 1; motivos.push('print abre pior que foto'); }
-  if (tags.includes('pessoa') && !['mecanismo_1', 'mecanismo_2'].includes(t.funcao)) { nota -= 3; motivos.push('retrato de pessoa fora da tela de operação'); }
+  if (tags.includes('pessoa')) { nota -= 3; motivos.push('retrato de pessoa: só entra se o texto for sobre ela (escolha à mão)'); }
   if (i.tipo === 'enviada') { nota += 2; motivos.push('enviada pelo Pedro (primeira na hierarquia de fontes)'); }
   if (/presskit|press|kit de imprensa|media kit/i.test(`${i.descricao} ${i.origem?.url_pagina || ''}`)) { nota += 1; motivos.push('kit de imprensa'); }
   if (i.relacao === 'ilustrativa') { nota -= 1; motivos.push('ilustrativa: rotulada como tal'); }
-  return { id: i.id, aceita: nota > -3, nota, motivos };
+  return { id: i.id, aceita: nota >= 0, nota, motivos };
 }
 function atribuirImagensV1(telas, imagens) {
   const usados = new Set(telas.filter((t) => t.foto?.imagem_id && (t.foto.manual || t.travas?.imagem)).map((t) => t.foto.imagem_id));

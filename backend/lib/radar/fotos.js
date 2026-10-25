@@ -141,7 +141,7 @@ async function commons(consulta, { exigirNome = null, deps = {}, agora = Date.no
       const autor = U.limita(semHtml(m.Artist?.value) || 'autor não informado', 26);
       out.push({ buf, tipo: 'commons', papel: 'foto', relacao, descricao: relacao === 'negocio' ? `${U.limita(desc || titulo, 110)} (Wikimedia Commons)` : `Foto ilustrativa${descricaoBase ? ` de ${descricaoBase}` : ''} (não é da empresa): ${U.limita(titulo.replace(/\.[a-z]{3,4}$/i, '').replace(/[_]+/g, ' '), 70)}`,
         origem: { url_imagem: info.url, url_pagina: info.descriptionurl, dominio: 'commons.wikimedia.org', consultado_em: new Date(agora).toISOString(), sha256: sha256(buf), largura: v.largura, altura: v.altura, arquivo: titulo, autor: semHtml(m.Artist?.value) },
-        licenca: `${lic}${m.LicenseUrl?.value ? ` · ${m.LicenseUrl.value}` : ''}. Crédito ao autor obrigatório (está na imagem).`, credito: `Foto: ${autor} · ${U.limita(lic, 14)}${relacao === 'negocio' ? '' : ' · ilustrativa'}`, permissao: 'confirmada' });
+        licenca: `${lic}${m.LicenseUrl?.value ? ` · ${m.LicenseUrl.value}` : ''}. Crédito ao autor obrigatório (vai na legenda e na ficha).`, credito: `Foto: ${autor} · ${U.limita(lic, 14)}${relacao === 'negocio' ? '' : ' · ilustrativa'}`, permissao: 'confirmada' });
     } catch { /* arquivo inacessível */ }
   }
   if (!out.length) avisos.push(`Wikimedia Commons: nenhuma foto de licença aberta para “${consulta}”.`);
@@ -188,7 +188,7 @@ async function guardar(store, carrosselId, achado, id) {
 
 // Imagem enviada pelo Pedro (arquivo) ou buscada por link. A origem e a permissão são dele; ficam registradas.
 async function deUsuario({ buf, url = null, descricao = '', credito = '', licenca = '', pagina = '', permissao = false, papel = 'foto', tipo = 'enviada', declaracao = null, agora = Date.now() }) {
-  const v = await validar(buf, { permitirRetrato: papel === 'print', ladoMin: 500 }); if (!v.ok) throw U.erro(`Imagem recusada: ${v.motivo}.`, 'IMAGEM', 422);
+  const v = await validar(buf, { permitirRetrato: papel === 'print', ladoMin: papel === 'print' ? 400 : 500 });   // recorte de print é pequeno por natureza; o render recusa ampliação exagerada if (!v.ok) throw U.erro(`Imagem recusada: ${v.motivo}.`, 'IMAGEM', 422);
   const dominio = url ? U.host(url) : (pagina ? U.host(pagina) : 'enviada por você');
   const papelOk = ['foto', 'print', 'documento', 'ilustracao'].includes(papel) ? papel : 'foto';
   return { buf, tipo, papel: papelOk, relacao: papelOk === 'ilustracao' ? 'ilustrativa' : 'negocio', descricao: U.limita(descricao || 'Imagem enviada pelo Pedro', 140),

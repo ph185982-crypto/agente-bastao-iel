@@ -131,11 +131,11 @@ function avaliarFoto(f, r) {
 const fundo = () => `<rect width="${W}" height="${H}" fill="${COR.fundo}"/>`;
 const numero = (ctx) => (ctx.numeracao ? `<text x="${W - M}" y="${H - 40}" font-family="${A.ARQ[K_C].familia}" font-size="22" fill="${COR.corpo}" text-anchor="end">${ctx.n}/${ctx.total}</text>` : '');
 
-// B — só texto, à esquerda, centrado na vertical (um pouco acima do centro óptico).
+// B — só texto, à esquerda, começando na mesma altura das outras telas (o título não "pula" ao passar o carrossel).
 async function lTexto(t, ctx, r) {
   const m = medir({ titulo: TXT(t.textos?.titulo), corpo: TXT(t.textos?.corpo), alt: FIM - TOPO });
   if (m.falhou) r.problemas.push(`Título e texto passam ${m.falta} px do espaço. Encurte o texto`);
-  const y = Math.max(TOPO, Math.round((H - m.altura) / 2 - 40));
+  const y = TOPO;
   return fundo() + desenharTexto(m, y, r);
 }
 
@@ -149,6 +149,7 @@ async function lFoto(t, ctx, r, { produto = false } = {}) {
   const yFoto = Math.round(TOPO + m.altura + GAP_FOTO);
   const { recorte } = await meta(im.buf);
   const f = await colocarFoto(im, { x: M, y: yFoto, w: LARG, h: Math.max(FOTO_MIN, FIM - yFoto) }, t.foto, { inteira: ['print', 'documento'].includes(im.papel), recorte: produto && recorte });
+  if (['print', 'documento'].includes(im.papel) && f.caixa.w < LARG * 0.45) r.avisos.push('O print ficou pequeno na tela: o texto dele pode ficar ilegível no celular. Prefira um recorte do trecho que importa');
   if (produto && !recorte) r.avisos.push('A imagem do produto não tem recorte limpo (fundo transparente): entrou como foto retangular');
   avaliarFoto(f, r); r.caixas.push(f.caixa); svg += f.svg;
   return svg;
@@ -163,7 +164,7 @@ async function lEncerramento(t, ctx, r) {
     r.avisos.push('Sem foto aprovada do Pedro: encerramento tipográfico'); r.sem_foto_pedro = true;
     const m = medir({ titulo, corpo: apoio, alt: FIM - TOPO });
     if (m.falhou) r.problemas.push(`Título e convite passam ${m.falta} px do espaço. Encurte o convite`);
-    return fundo() + desenharTexto(m, Math.max(TOPO, Math.round((H - m.altura) / 2 - 40)), r);
+    return fundo() + desenharTexto(m, TOPO, r);
   }
   const m = medir({ titulo, corpo: apoio, alt: FIM - TOPO - GAP_FOTO - 320 });
   if (m.falhou) r.problemas.push(`Título e convite passam ${m.falta} px do espaço. Encurte o convite`);
