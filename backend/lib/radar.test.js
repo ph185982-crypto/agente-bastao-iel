@@ -364,3 +364,13 @@ test('copy: atribuição esquecida pela IA é acrescentada na frase do número (
   const l = Copy.montarLegenda({ legenda: { primeira_linha: 'Mais de 120 mil clientes usam o serviço.', resumo: 'Banho em casa.', como_ganha: 'Assinatura mensal.', brasil: 'Dá para testar em condomínios.' }, hashtags: ['negocios', 'saas'] }, opLumen());
   assert.deepStrictEqual(l.erros.filter((e) => /atribuição/.test(e)), []); assert.match(l.texto, /120 mil clientes usam o serviço, segundo a empresa\./);
 });
+
+test('copy: tela 3 sem verbo "ser" depois de "que faz" e rótulo da prova que não repete o valor', () => {
+  const op = opLumen();
+  const base = (res, rot) => ({ slides: [{ n: 1, texto: 'x' }, { n: 2, problema: 'dar banho no cachorro em casa vira bagunça e o pet shop vive lotado' }, { n: 3, produto: 'um aplicativo de gestão', resultado: res }, { n: 4, modelo: 'assinatura', explicacao: 'o cliente paga uma mensalidade fixa e recebe visitas toda semana' }, { n: 5, titulo: 'O que a empresa mostra', itens: [{ claim_id: 'c1', rotulo: rot }] }, { n: 6, dor: 'dor de todo dono', facilidade: 'serviço na porta', recorrencia: 'cobrança mensal' }, { n: 7 }] });
+  const e = (res, rot) => { const m = Copy.montarTelas(base(res, rot), op); return [...m.erros, ...Copy.validarTelas(m.slides, op)]; };
+  assert.ok(e('as referências são rastreadas sem esforço', 'clientes').some((x) => /Tela 3: depois de “que faz” use um infinitivo/.test(x)));
+  assert.ok(!e('as comissões serem pagas sozinhas', 'clientes').some((x) => /Tela 3: depois/.test(x)));
+  assert.ok(e('as comissões serem pagas sozinhas', 'mais de 100 mil clientes').some((x) => /repete o valor/.test(x)));
+  assert.ok(!e('as comissões serem pagas sozinhas', 'clientes ativos').some((x) => /repete o valor/.test(x)));
+});

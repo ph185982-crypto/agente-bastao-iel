@@ -135,6 +135,7 @@ function montarTelas(j, op, { fixo = C.CTA_FIXO } = {}) {
     if (it.claim.numero === null || !it.claim.valor_exibicao) { erros.push(`Tela 5: a afirmação ${it.claim.id} não tem número`); return; }
     if (/\d/.test(it.rotulo)) erros.push(`Tela 5: o rótulo “${it.rotulo}” não pode ter número (o valor vem da fonte)`);
     const inc = rotuloIncoerente(it.rotulo, it.claim); if (inc) erros.push(`Tela 5: ${inc}`);
+    if (/\b(mil|milh[aãõo]\w*|bilh[aãõo]\w*|mais de|cerca de|quase)\b/i.test(it.rotulo)) erros.push(`Tela 5: o rótulo “${it.rotulo}” repete o valor; diga só o que o número mede (“clientes ativos”)`);
     if (itens5.slice(0, i).some((o) => o.claim && o.claim.id === it.claim.id)) erros.push(`Tela 5: o número ${it.claim.id} aparece duas vezes`);
     prova.push({ claim_id: it.claim.id, valor: it.claim.valor_exibicao, rotulo: it.rotulo, tipo: it.claim.tipo, atribuicao: it.claim.atribuicao, url: it.claim.url, veiculo: it.claim.veiculo, data_publicacao: it.claim.data_publicacao, periodo: it.claim.periodo });
   });
@@ -179,6 +180,7 @@ function validarTelas(slides, op) {
       s.itens.forEach((i) => { if (U.contaPalavras(i.valor) > 3) erros.push(`Tela 7: “${i.valor}” tem mais de 3 palavras`); });
     }
     if (s.n === 6 && s.itens.some((i) => !i || U.contaPalavras(i) > 4 || U.contaPalavras(i) < 2)) erros.push('Tela 6: cada item deve ser uma expressão com sentido completo, de 2 a 4 palavras (não uma palavra solta)');
+    if (s.n === 3 && /\b(s[aã]o|[eé]|foi|est[aã]o|est[aá]|fica|ficam|t[eê]m|tem|pode|podem|ser[aã]o|s[aã]o)\b/i.test(String(s.texto).split(/\bque faz\s+/i).pop() || '')) erros.push('Tela 3: depois de “que faz” use um infinitivo (“o cliente receber…”, “as comissões serem pagas sozinhas”), sem “é”, “são” ou “foi”');
     if (s.n === 3 && VERBO_CONJUGADO.test(String(s.texto).split(/\bque faz\s+/i).pop() || '')) erros.push('Tela 3: depois de “que faz” escreva o que muda para o cliente (“o cachorro ficar limpo sem sair de casa”), não outro verbo conjugado');
     if (s.n === 2 && !s.corpo.replace(/[.]/g, '').trim()) erros.push('Tela 2: faltou descrever o problema');
   });
