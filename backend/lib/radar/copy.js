@@ -61,6 +61,20 @@ function dinheiroNaCapa(texto, claims) {
   return erros;
 }
 
+// Se o texto traz um número que veio da empresa e a IA esqueceu "segundo a empresa", o código acrescenta a atribuição na frase do número
+// (só ACRESCENTA a fonte, nunca muda o dado). O resultado ainda passa pelos validadores de tamanho.
+function repararAtribuicao(texto, claims) {
+  let t = String(texto || ''); const norm = (x) => sem(x);
+  for (const n of N.numerosDeDado(t)) {
+    const c = claims.find((x) => x.numero !== null && N.igual(x.numero, n.valor) && x.atribuicao);
+    if (!c || norm(t).includes(norm(c.atribuicao)) || /segundo (a empresa|o fundador|a app store|a apple)/.test(norm(t))) continue;
+    const i = t.indexOf(n.raw); if (i < 0) continue;
+    const resto = t.slice(i); const m = /[.!?]|\n|$/.exec(resto); const fim = i + m.index;
+    t = `${t.slice(0, fim).replace(/[,;\s]+$/, '')}, ${c.atribuicao}${t.slice(fim)}`;
+  }
+  return t;
+}
+
 function checarTexto(texto, rotulo, { capa = false } = {}) {
   const e = []; const t = sem(texto);
   for (const f of C.FRASES_PROIBIDAS) if (t.includes(f)) e.push(`${rotulo}: frase proibida “${f.trim()}”`);
@@ -100,7 +114,7 @@ function montarTelas(j, op, { fixo = C.CTA_FIXO } = {}) {
   const slides = [];
 
   // 1 capa
-  const capa = limpa(get(1).texto).replace(/\*\*/g, (m) => m);
+  const capa = repararAtribuicao(limpa(get(1).texto), usaveis);
   slides.push({ n: 1, funcao: 'capa', layout: 'capa', texto: capa, imagem: 'negocio' });
   // 2 problema
   const prob = semEco(get(2).problema, INTRO.problema);
@@ -176,7 +190,7 @@ function validarTelas(slides, op) {
 
 function montarLegenda(j, op) {
   const erros = []; const usaveis = claimsUsaveis(op);
-  const l = (k, max) => { const v = String(j?.legenda?.[k] ?? '').replace(/\s+/g, ' ').trim(); if (!v) erros.push(`Legenda: faltou “${k}”`); if (v.length > max) erros.push(`Legenda: “${k}” tem ${v.length} caracteres (máximo ${max})`); return v; };
+  const l = (k, max) => { const v = repararAtribuicao(String(j?.legenda?.[k] ?? '').replace(/\s+/g, ' ').trim(), usaveis); if (!v) erros.push(`Legenda: faltou “${k}”`); if (v.length > max) erros.push(`Legenda: “${k}” tem ${v.length} caracteres (máximo ${max})`); return v; };
   const primeira = l('primeira_linha', 110); const resumo = l('resumo', 160); const como = l('como_ganha', 150); const brasil = l('brasil', 150);
   const hashtags = (Array.isArray(j?.hashtags) ? j.hashtags : []).map((h) => `#${String(h).replace(/^#/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => /^#[\p{L}\p{N}_]{3,30}$/u.test(h));
   if (!hashtags.length) erros.push('Legenda: inclua de 1 a 3 hashtags');
@@ -271,4 +285,4 @@ async function gerarReels(op, { deps = {}, tentativas = 2 } = {}) {
   throw Object.assign(new Error(`O roteiro de Reels não passou nas regras: ${erros.slice(0, 3).join('; ')}`), { code: 'COPY_INVALIDA', status: 422, erros });
 }
 
-module.exports = { rotuloIncoerente, gerarCopia, gerarReels, montarTelas, validarTelas, montarLegenda, checarTexto, numerosNaoComprovados, atribuicaoFaltando, dinheiroNaCapa, claimsUsaveis, INTRO, ROTULOS_BRASIL, SISTEMA };
+module.exports = { repararAtribuicao, rotuloIncoerente, gerarCopia, gerarReels, montarTelas, validarTelas, montarLegenda, checarTexto, numerosNaoComprovados, atribuicaoFaltando, dinheiroNaCapa, claimsUsaveis, INTRO, ROTULOS_BRASIL, SISTEMA };
