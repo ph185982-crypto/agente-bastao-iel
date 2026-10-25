@@ -300,19 +300,11 @@ async function detectContentRegion(videoPath, vw, vh, sid) {
   return { cropW: vw, cropH, cropX: 0, cropY };
 }
 
+// Links vêm do navegador: baixa com proteção contra acesso à rede interna (SSRF).
 function streamDownload(url, destPath) {
-  return new Promise((resolve, reject) => {
-    axios.get(url, {
-      responseType: 'stream',
-      timeout: 90000,
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
-    }).then(resp => {
-      const writer = fs.createWriteStream(destPath);
-      resp.data.pipe(writer);
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-      resp.data.on('error', err => { writer.destroy(); reject(err); });
-    }).catch(reject);
+  return require('../lib/midiaSegura').baixarParaArquivo(url, destPath, {
+    timeout: 90000,
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.instagram.com/' },
   });
 }
 

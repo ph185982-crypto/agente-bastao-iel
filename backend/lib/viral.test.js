@@ -40,12 +40,12 @@ test('leitura do perfil: acha o post campeão, o melhor formato e os padrões', 
     mk(5, 1, 450, 'frase curta', t + 4 * 86400),
     mk(6, 2, 90, 'outro vídeo', t + 5 * 86400),
   ];
-  const ins = computeInsights(posts, 100000);
+  const ins = computeInsights(posts, 100000, { agora: t + 30 * 86400 });
   assert.strictEqual(ins.top[0].gancho, 'Seus R$ 100 de 1994 valem R$ 11');
-  assert.strictEqual(ins.melhor_formato, 'carrossel');
+  assert.ok(ins.hipoteses.every((h) => h.suficiente === false), 'amostra de 6 posts não sustenta conclusão de formato');
   assert.ok(ins.por_formato.video.eng_mediana < ins.por_formato.imagem.eng_mediana);
   assert.ok(ins.top[0].vezes_mediana > 10);
-  assert.match(insightsParaPrompt(ins), /POSTS QUE MAIS RENDERAM/);
+  assert.match(insightsParaPrompt(ins), /POSTS COM MAIOR ENGAJAMENTO/);
 });
 
 test('quebra de linha mantém pontuação colada no destaque', () => {
@@ -94,4 +94,19 @@ test('robô sem IA não inventa número: vira Print com a pauta', () => {
 test('R$ nunca fica sozinho no fim da linha', () => {
   const linhas = wrap('A conta de luz hoje chega a **R$ 150** por mês', 60, 560, 0.6);
   for (const l of linhas) assert.notStrictEqual(l[l.length - 1].t, 'R$');
+});
+
+test('nenhum gerador desenha selo de verificado para uma conta não verificada', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const { ACCOUNT } = require('./account');
+  assert.strictEqual(ACCOUNT.verified, false);
+  const tv = fs.readFileSync(path.join(__dirname, '..', 'routes', 'tvCuts.js'), 'utf8');
+  const ve = fs.readFileSync(path.join(__dirname, '..', 'routes', 'videoEditor.js'), 'utf8');
+  const vr = fs.readFileSync(path.join(__dirname, 'viralRender.js'), 'utf8');
+  // toda chamada de desenho do selo precisa estar condicionada à conta verificada
+  const chamadasTv = [...tv.matchAll(/\$\{([^}]*)viralBadgeSvg\(/g)].map((m) => m[1]);
+  assert.ok(chamadasTv.length && chamadasTv.every((pre) => /ACCOUNT\.verified \?/.test(pre)), 'cortes de TV');
+  assert.match(ve, /const PROFILE_VERIFIED = ACCOUNT\.verified === true;/, 'editor de vídeo não liga o selo por variável de ambiente');
+  assert.ok(!/1D9BF0/.test(vr), 'template Print sem o círculo azul');
 });

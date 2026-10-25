@@ -31,6 +31,11 @@ app.use(cors({
 
 app.use(express.json({ limit: '20mb' }));
 
+// Acesso por código (só quando APP_ACCESS_CODE está definido) + login.
+const access = require('./lib/access');
+access.registrarRotas(app);
+app.use('/api', access.exigeAcesso);
+
 // Routes
 app.use('/api/download', require('./routes/download'));
 app.use('/api/ocr', require('./routes/ocr'));
@@ -47,16 +52,28 @@ app.use('/api/trending', require('./routes/trending'));
 app.use('/api/tv-cuts', require('./routes/tvCuts'));
 app.use('/api/video-editor', require('./routes/videoEditor'));
 app.use('/api/queue', require('./routes/queue'));
+app.use('/api/content', require('./routes/content'));
+app.use('/api/account', require('./routes/account'));
+app.use('/api/sync', require('./routes/sync'));
+app.use('/api/publish', require('./routes/publish'));
+app.use('/api/push', require('./routes/push'));
+app.use('/api/studio', require('./routes/studio'));
+app.use('/api/instagram', require('./routes/instagram'));
+app.use('/api/monitor', require('./routes/monitor'));
+app.use('/api/publico', require('./routes/publish').publico);
+app.use('/api/jobs', require('./routes/sync').jobs);
 
 app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 );
 
-// Redirect root to the frontend so visiting the Render URL doesn't show a blank error
+// O mesmo servidor entrega a interface e a API, inclusive na instalação local.
+// Um frontend separado só é usado quando foi configurado explicitamente.
 app.get('/', (req, res) => {
-  const frontend = process.env.FRONTEND_URL || 'https://nexos-paginas.netlify.app';
-  res.redirect(302, frontend);
+  if (process.env.FRONTEND_URL) return res.redirect(302, process.env.FRONTEND_URL);
+  res.sendFile(require('path').join(__dirname, '..', 'static', 'index.html'));
 });
+app.use(express.static(require('path').join(__dirname, '..', 'static')));
 
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {

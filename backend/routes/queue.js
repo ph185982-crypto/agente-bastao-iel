@@ -255,7 +255,7 @@ router.post('/suggest', async (req, res) => {
     let fonte = 'ia';
     if (hasLlmKey()) {
       try {
-        pautas = await llmPautas(candidates, pillars, req.body?.performance || null, req.body?.insights || insightsLib.lastInsights());
+        pautas = await llmPautas(candidates, pillars, req.body?.performance || null, insightsLib.insightsConfiaveis(req.body?.insights));
       } catch (e) {
         console.warn('[queue/suggest] IA falhou, usando regra fixa:', e.message?.slice(0, 120));
       }
@@ -452,7 +452,7 @@ async function handleProduce(req, res) {
   const item = req.body?.item;
   if (!item?.title || !item?.format) return res.status(400).json({ error: 'Item incompleto (título e formato)' });
   try {
-    const result = await produce(item, req.body?.insights || null);
+    const result = await produce(item, insightsLib.insightsConfiaveis(req.body?.insights));
     if (store.enabled() && req.params.id) {
       await store.updateItem(req.params.id, {
         status: 'pronto', caption: result.caption, hashtags: result.hashtags,

@@ -11,8 +11,11 @@ const PROVIDERS = [
     envKey: 'GROQ_API_KEY',
     baseURL: 'https://api.groq.com/openai/v1',
     // Do maior contexto para o menor — 413 faz cair pro próximo.
-    large: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.6-27b', 'groq/compound'],
-    small: ['openai/gpt-oss-20b', 'qwen/qwen3.6-27b', 'groq/compound-mini', 'groq/compound'],
+    large: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],
+    small: ['openai/gpt-oss-20b', 'qwen/qwen3.8-27b'],
+    // Keep Portuguese editorial work on the general-purpose text models.
+    // A specialized reserve must not turn a temporary quota into poor copy.
+    discoverFilter: id => !/^allam-/i.test(id),
   },
   {
     name: 'gemini',
@@ -77,7 +80,7 @@ const NO_LLM_KEY_MESSAGE = `Nenhuma chave de IA configurada no servidor (${PROVI
 // ── Classificação de erro ─────────────────────────────────────────────────────
 // modelo  → só esse modelo está ruim, tenta o próximo do mesmo provedor
 // provedor→ o provedor inteiro está fora, pula pro próximo provedor
-function errorScope(err) {
+function errorScope(err, provider) {
   const status = err?.status;
   const code = err?.error?.code || err?.code || '';
   const msg = err?.message || '';
@@ -86,22 +89,35 @@ function errorScope(err) {
   if (status === 413) return 'model'; // prompt maior que o contexto do modelo
   if (status === 400) {
     if (/model_decommissioned|model_not_found|json_validate_failed|does not exist/i.test(`${code} ${msg}`)) return 'model';
-    if (/decommissioned|deprecated|not.*support|context length|too large/i.test(msg)) return 'model';
+    if (/decommissioned|deprecated|not.*support|context length|too large|reduce the length of (?:the )?messages|maximum context|token limit.*exceed/i.test(msg)) return 'model';
     // visão/multimodal não suportado por este modelo → tenta o próximo
     if (/image_url|image.*content|vision|multimodal/i.test(`${code} ${msg}`)) return 'model';
     return 'fatal'; // 400 de verdade (payload malformado) — não adianta insistir
   }
   if (status === 401 || status === 403) return 'provider'; // chave inválida/sem acesso
-  if (status === 429) return 'provider';                   // cota/rate-limit estourado
+  // Groq reports quotas per model. A full quota on 120B does not mean the
+  // configured 20B model is unavailable. Account/billing/global limits still
+  // stop the provider, and exhausting all models preserves the 429 for backoff.
+  if (status === 429) return provider?.name === 'groq' && /rate limit reached for model\b/i.test(msg) ? 'model' : 'provider';
   if (status >= 500) return 'provider';
   if (/ETIMEDOUT|ECONNABORTED|ECONNRESET|ENOTFOUND|fetch failed/i.test(`${code} ${msg}`)) return 'provider';
   return 'fatal';
 }
 
+// Never log provider response text: it may contain an organization identifier,
+// a credential fragment or echoed user content. Keep only operational fields.
+function errorInfo(err, scope) {
+  const msg = String(err?.message || '');
+  const header = typeof err?.headers?.get === 'function' ? err.headers.get('retry-after') : err?.headers?.['retry-after'];
+  const metric = msg.match(/\b(?:input |output )?(?:tokens|requests) per (?:minute|day)\b/i)?.[0]?.toLowerCase() || null;
+  const number = label => { const v = msg.match(new RegExp(`\\b${label}\\s*:?\\s*([\\d.]+)`, 'i'))?.[1]; return v && Number.isFinite(Number(v)) ? Number(v) : null; };
+  return { status: Number(err?.status) || null, scope, metric, limit: number('Limit'), used: number('Used'), requested: number('Requested'), retry_after_seconds: header && Number.isFinite(Number(header)) ? Number(header) : null };
+}
+
 // ── Descoberta de modelos ─────────────────────────────────────────────────────
 // Quando a lista fixa acaba, perguntamos ao provedor quais modelos ele tem hoje.
 // É o que impede o app de parar quando um modelo é desativado sem aviso.
-const NOT_CHAT = /whisper|tts|embed|guard|moderation|safety|rerank|vision-only|image|audio|video|distil/i;
+const NOT_CHAT = /whisper|tts|orpheus|canopylabs|embed|guard|moderation|safety|rerank|vision-only|image|audio|video|distil/i;
 
 async function discoverModels(provider) {
   if (provider.discover === false) return [];
@@ -154,67 +170,94 @@ function modelsFor(provider, requestedModel) {
   return requestedModel === 'gpt-4o-mini' ? provider.small : provider.large;
 }
 
-async function tryModel(provider, model, opts, requestOptions) {
+async function tryModel(provider, model, opts, requestOptions, cont) {
+  if (cont) cont.n += 1;
   const client = clientFor(provider);
-  const res = await client.chat.completions.create({ ...opts, model }, requestOptions);
+  // Modelos gpt-oss "pensam" antes de responder e isso pode passar de 30 s:
+  // pedimos raciocínio curto (reasoning_effort, documentado pela Groq) e sem o
+  // texto do raciocínio na resposta. Se o provedor recusar o parâmetro, repete sem.
+  const { esforco, ...base } = opts || {};
+  const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : {};
+  let res;
+  try {
+    res = await client.chat.completions.create({ ...base, ...extra, model }, requestOptions);
+  } catch (err) {
+    if (Object.keys(extra).length && err?.status === 400 && /reasoning/i.test(err?.message || '')) res = await client.chat.completions.create({ ...base, model }, requestOptions);
+    else throw err;
+  }
   _lastGood = { provider: provider.name, model };
-  return opts?.response_format?.type === 'json_object' ? withSanitizedJson(res) : res;
+  const out = opts?.response_format?.type === 'json_object' ? withSanitizedJson(res) : res;
+  // Quem usou a resposta pode registrar qual provedor/modelo a produziu.
+  const u = res?.usage;
+  const tokens = u ? { entrada: u.prompt_tokens ?? null, saida: u.completion_tokens ?? null, total: u.total_tokens ?? null } : null;
+  try { Object.defineProperty(out, '__llm', { value: { provider: provider.name, model: res?.model || model, pago: !!provider.paid, tokens, tentativas_provedor: cont ? cont.n : 1 }, enumerable: false }); } catch { /* resposta congelada */ }
+  return out;
 }
 
 // Percorre provedores × modelos até um responder.
 async function cascade(opts, requestOptions) {
   const providers = availableProviders();
+  const cont = { n: 0 };
   if (!providers.length) throw new Error('Nenhuma chave de IA configurada (GROQ_API_KEY, GEMINI_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY ou OPENAI_API_KEY)');
 
-  let lastErr;
+  let lastErr, rateErr;
+  const attempted = new Set(), down = new Set();
+  const attempt = (provider, model) => { attempted.add(`${provider.name}/${model}`); return tryModel(provider, model, opts, requestOptions, cont); };
+  const remember = (provider, model, err) => {
+    const scope = errorScope(err, provider);
+    lastErr = err;
+    if (err?.status === 429) rateErr = err;
+    if (scope === 'provider') down.add(provider.name);
+    console.warn(`[llm] ${provider.name}/${model} falhou:`, JSON.stringify(errorInfo(err, scope)));
+    return scope;
+  };
 
   // Atalho: tenta primeiro a combinação que funcionou na chamada anterior.
-  if (_lastGood) {
-    const p = providers.find(x => x.name === _lastGood.provider);
+  const previous = _lastGood;
+  if (previous) {
+    const p = providers.find(x => x.name === previous.provider);
     if (p) {
       try {
-        return await tryModel(p, _lastGood.model, opts, requestOptions);
+        return await attempt(p, previous.model);
       } catch (err) {
-        if (errorScope(err) === 'fatal') throw err;
-        lastErr = err;
-        _lastGood = null;
+        if (remember(p, previous.model, err) === 'fatal') throw err;
+        if (_lastGood === previous) _lastGood = null;
       }
     }
   }
 
   for (const provider of providers) {
+    if (down.has(provider.name)) continue;
     if (provider.paid) console.warn(`[llm] caindo no provedor pago ${provider.name} — os gratuitos falharam`);
 
     const fixed = modelsFor(provider, opts.model) || [];
     let providerDown = false;
     for (const model of fixed) {
+      if (attempted.has(`${provider.name}/${model}`)) continue;
       try {
-        return await tryModel(provider, model, opts, requestOptions);
+        return await attempt(provider, model);
       } catch (err) {
-        const scope = errorScope(err);
-        lastErr = err;
+        const scope = remember(provider, model, err);
         if (scope === 'fatal') throw err;
-        console.warn(`[llm] ${provider.name}/${model} falhou (${scope}):`, err.message?.slice(0, 100));
         if (scope === 'provider') { providerDown = true; break; }
       }
     }
     if (providerDown) continue;
 
     // Lista fixa esgotada — pergunta ao provedor o que ele tem hoje.
-    const discovered = (await discoverModels(provider)).filter(id => !fixed.includes(id));
+    const discovered = (await discoverModels(provider)).filter(id => !attempted.has(`${provider.name}/${id}`));
     for (const model of discovered.slice(0, 6)) {
       try {
-        return await tryModel(provider, model, opts, requestOptions);
+        return await attempt(provider, model);
       } catch (err) {
-        const scope = errorScope(err);
-        lastErr = err;
+        const scope = remember(provider, model, err);
         if (scope === 'fatal') throw err;
         if (scope === 'provider') break;
       }
     }
   }
 
-  throw lastErr || new Error('Todos os provedores de IA falharam');
+  throw rateErr || lastErr || new Error('Todos os provedores de IA falharam');
 }
 
 function createCompatClient() {
@@ -225,6 +268,7 @@ function createCompatClient() {
           try {
             return await cascade(opts, requestOptions);
           } catch (err) {
+            if(err?.status===429||err?.status===401||err?.status===403||/abort|timeout/i.test(`${err?.name||''} ${err?.message||''}`))throw err;
             // Última cartada: se pedimos JSON estruturado e ninguém aceitou,
             // repete sem response_format e pede o JSON no próprio prompt.
             if (opts?.response_format?.type !== 'json_object') throw err;

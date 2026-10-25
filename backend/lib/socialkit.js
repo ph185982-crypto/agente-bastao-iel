@@ -29,7 +29,9 @@ function interpretarErroHttp(err) {
   const status = err?.response?.status;
   const msg = String(err?.response?.data?.message || '').toLowerCase();
 
-  if (status === 401 || /access key|unauthorized/.test(msg)) {
+  // Conferido ao vivo (20/10/2026): chave inválida volta HTTP 403 com
+  // {"success":false,"message":"You are not authorized to access this resource."}.
+  if (status === 401 || status === 403 || /access key|unauthorized|not authorized/.test(msg)) {
     return erroDownload('A chave da socialkit.dev foi recusada. Verifique a SOCIALKIT_API_KEY.');
   }
   if (status === 429 || /rate limit|too many/.test(msg)) {

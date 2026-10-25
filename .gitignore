@@ -20,3 +20,7 @@ backend/.env
 # Netlify CLI cache
 .netlify/
 .vercel
+tests/e2e/out/
+dist/
+.env.local
+.env.*.local

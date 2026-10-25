@@ -4,7 +4,7 @@
 // conjunto sair fraco, reescreve uma vez com as falhas apontadas.
 const { createCompatClient, hasLlmKey } = require('./llm');
 const { PEDRO_DNA, LINGUAGEM_LEIGO, PROFILE_HANDLE } = require('./pedroDna');
-const { insightsParaPrompt, lastInsights } = require('./profileInsights');
+const { insightsParaPrompt, insightsConfiaveis } = require('./profileInsights');
 const PB = require('../../static/viralPlaybook');
 
 let _llm = null;
@@ -66,7 +66,7 @@ function nota(template, c) {
 }
 
 async function chamarIA(item, template, feedback, insights) {
-  const ins = insightsParaPrompt(insights || lastInsights());
+  const ins = insightsParaPrompt(insightsConfiaveis(insights));
   const ai = await llm().chat.completions.create({
     model: 'gpt-4o',
     temperature: 0.75,

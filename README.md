@@ -1,4 +1,58 @@
-# Nexos Páginas — Content Tool para Instagram
+# Pedro Destrava / Nexos Páginas
+
+## Versão atual: Mesa e Central de aprovação
+
+Interface em `static/`, API Node/Express em `backend/`, implantação Vercel em
+`api/index.js`. Esta é a branch de trabalho `claude/create-nexos-paginas-5Yvxh`.
+O conteúdo pode ser criado por link ou texto, revisado com evidências, transformado
+em arte 1080×1350, aprovado por versão e exportado. Publicação real depende das
+conexões do servidor e de aprovação explícita.
+
+### Abrir a versão atual no computador
+
+Com Node.js 20 ou superior (validação desta entrega em Node 24):
+
+```sh
+npm ci
+npm start
+```
+
+Abra **http://localhost:3001**. A interface e a API usam o mesmo servidor.
+Não é necessário iniciar o frontend legado. `FRONTEND_URL` só deve ser definido
+se você quiser redirecionar a página inicial para uma hospedagem separada.
+
+Sem chave de IA, a geração informa que falta configuração; sem `DATABASE_URL`,
+o armazenamento fica só no navegador. As chaves ficam exclusivamente no servidor.
+Não use chaves ou tokens que tenham sido expostos em conversas.
+
+### Validar
+
+```sh
+npm test
+npx playwright install chromium
+npm run test:e2e
+```
+
+O primeiro comando executa a suíte unitária e de integração. O último inicia
+servidores locais isolados, usa IA e Meta simuladas e bloqueia rede externa.
+O armazenamento do executor de navegador é **em memória**, renovado a cada
+arquivo; não substitui a validação com PostgreSQL. Veja [testes de navegador](tests/e2e/README.md).
+
+Resultado e pendências desta entrega: [VALIDACAO.md](docs/VALIDACAO.md).
+Configuração real: [acesso](docs/ACESSO.md), [banco](docs/ARMAZENAMENTO.md)
+e [Instagram](docs/META_SETUP.md).
+
+**Não promover para `main`, publicar em produção nem enviar posts sem a
+autorização explícita do Pedro.**
+
+---
+
+## Histórico das ferramentas legadas
+
+As instruções abaixo documentam o frontend e as ferramentas anteriores à Mesa.
+Para a versão atual, use os comandos no início deste documento.
+
+### Nexos Páginas — Content Tool para Instagram
 
 Ferramenta web para criar conteúdo para o Instagram em 3 passos:
 

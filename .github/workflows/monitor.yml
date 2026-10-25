@@ -1,0 +1,26 @@
+# Monitor de notícias em alta com o app fechado: chama a rodada a cada 30 minutos.
+# Só roda se este arquivo estiver na branch principal do repositório e se as duas configurações abaixo existirem:
+#   Settings → Secrets and variables → Actions
+#     • Variável  MONITOR_URL  = endereço de PRODUÇÃO do app, sem barra no fim (ex.: https://seu-app.vercel.app)
+#     • Secret    CRON_SECRET  = o mesmo CRON_SECRET definido na Vercel
+# Sem essas configurações o job não faz nada. A rodada só cria ROTEIROS em preparação e só se o monitor estiver
+# ligado em Ajustes; nunca gera carrossel nem publica.
+name: Monitor de notícias em alta
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  rodada:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: ${{ vars.MONITOR_URL != '' }}
+    steps:
+      - name: Chamar a rodada do monitor
+        env:
+          URL: ${{ vars.MONITOR_URL }}
+          SEGREDO: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$SEGREDO" || { echo "Falta o secret CRON_SECRET."; exit 1; }
+          curl --fail --silent --show-error --max-time 100 -X POST -H "Authorization: Bearer $SEGREDO" -H "Content-Type: application/json" -d '{}' "$URL/api/monitor/tick"
