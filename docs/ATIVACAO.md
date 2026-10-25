@@ -1,5 +1,7 @@
 # Ativação: o que ligar para o fluxo completo funcionar
 
+> **URGENTE: acesso aberto.** Em 25/10/2026 a produção estava com `APP_ACCESS_MODE=public`: qualquer pessoa com o endereço consegue usar a API, ler as métricas do Instagram e criar conteúdo. Por isso o app **bloqueia publicar** enquanto o acesso estiver aberto. Para fechar: crie `APP_ACCESS_CODE` (10+ caracteres) e **apague** `APP_ACCESS_MODE` na Vercel (o script abaixo faz as duas coisas), depois faça um novo deploy.
+
 > **Atalho:** `bash scripts/configurar-vercel.sh` (no seu computador, com `npx vercel login` feito) cria de uma vez `APP_ACCESS_CODE`, `PUBLISH_SECRET`, `CRON_SECRET`, `PUBLIC_BASE_URL`, as chaves VAPID e a `OPENAI_API_KEY` (a chave é pedida sem aparecer na tela). Não sobrescreve o que já existe e não toca nas `META_*`. O banco (`DATABASE_URL`) você conecta no painel da Vercel. Depois rode `npx vercel --prod` ou faça um novo deploy.
 
 
