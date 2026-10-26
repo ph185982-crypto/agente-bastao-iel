@@ -289,7 +289,8 @@ COMPLEMENTOS OBRIGATÓRIOS DO PADRÃO:
 - Cada mecanismo segue: afirmação → como funciona → exemplo → evidência (base) → limitação (condicao_de_falha) → implicação (vantagem).
 - Ganchos: scores também em "entregabilidade" (as telas cumprem a promessa?).
 - Telas: de 5 a 7. "problema" e "mecanismo_2" podem ter "omitir": "motivo" se não houver conteúdo específico (menos telas é melhor que enchimento).
-- Cada tela: informacao_nova (o que ela acrescenta), relacao_anterior, base (fatos/análises usados), evidencias (ids de DADOS_VERIFICADOS), briefing_visual {mostrar, acrescenta, buscas, enquadramento, deve_aparecer, proibido}.
+- Cada tela: informacao_nova (o que ela acrescenta), relacao_anterior, base (fatos/análises usados), evidencias (ids de DADOS_VERIFICADOS). briefing_visual só se houver algo específico a pedir (o código preenche o padrão).
+- SEJA ECONÔMICO no briefing (a resposta inteira precisa caber em ~3.500 tokens): no máximo 6 fatos, 3 análises, 2 mecanismos, frases curtas. A criatividade vai nas TELAS, não no briefing.
 - ESCRITA QUE PRENDE (o leitor desliza porque cada tela abre uma pergunta que a próxima responde):
   · Título é FRASE COMPLETA com verbo e um elemento concreto do caso (objeto, preço, cena, decisão). De 6 a 14 palavras. Nunca rótulo.
     RUIM: "Escala global" · "Modelo de comissão" · "O que aprendemos" · "Teste de viabilidade" · "Desperdício massivo".
@@ -432,7 +433,7 @@ async function gerarMinimalista(op, { deps = {}, tentativas = 3, feedback: fb0 =
   let feedback = fb0; const historico = []; let ultimo = null;
   for (let i = 1; i <= tentativas; i++) {
     const d = llmJson.dado('NEGOCIO', JSON.stringify(dadosParaIa(op)), 16000);
-    const { dados, llm } = await pedir({ sistema: `${v1 ? SISTEMA_V1 : SISTEMA}\n\n${llmJson.REGRAS_DADOS}`, usuario: `${d.bloco}\n${feedback ? `\nA VERSÃO ANTERIOR TEVE ESTES PROBLEMAS. Corrija todos sem perder o que estava bom:\n- ${feedback}\n` : ''}`, maxTokens: 7000, temperatura: i === 1 ? (v1 ? 0.75 : 0.6) : 0.4, budget: deps.budget, ...(v1 ? { esforco: 'medium' } : {}) });
+    const { dados, llm } = await pedir({ sistema: `${v1 ? SISTEMA_V1 : SISTEMA}\n\n${llmJson.REGRAS_DADOS}`, usuario: `${d.bloco}\n${feedback ? `\nA VERSÃO ANTERIOR TEVE ESTES PROBLEMAS. Corrija todos sem perder o que estava bom:\n- ${feedback}\n` : ''}`, maxTokens: v1 ? 4200 : 6500, temperatura: i === 1 ? (v1 ? 0.75 : 0.6) : 0.4, budget: deps.budget, ...(v1 ? { preferirMelhor: true } : {}) });   // v1: cabe no limite por minuto do melhor modelo gratuito (8 mil tokens por pedido)
     const r = montarDoc(dados, op, { agora, v1 }); const v = validarDocMin(r, op);
     historico.push({ tentativa: i, bloqueios: v.bloqueios.length, llm });
     ultimo = { ...r, llm, validacao: v };
