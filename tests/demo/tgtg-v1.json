@@ -48,32 +48,42 @@
    {
     "fonte": 1,
     "tipo": "modelo_receita",
-    "texto": "A empresa cobra do comércio uma comissão por sacola vendida.",
-    "trecho": "Too Good To Go takes a $1.79 in commission from each meal sold on the app, with the business getting the remaining sum."
+    "texto": "A empresa cobra do comércio uma comissão de US$ 1,79 por sacola vendida.",
+    "trecho": "Too Good To Go takes a $1.79 in commission from each meal sold on the app, with the business getting the remaining sum.",
+    "numero": 1.79,
+    "unidade": "USD"
    },
    {
     "fonte": 2,
     "tipo": "modelo_receita",
-    "texto": "A empresa cobra do comércio uma comissão por sacola vendida.",
-    "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says."
+    "texto": "A empresa cobra do comércio uma comissão de US$ 1,79 por sacola vendida.",
+    "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says.",
+    "numero": 1.79,
+    "unidade": "USD"
    },
    {
     "fonte": 4,
     "tipo": "modelo_receita",
-    "texto": "A empresa cobra do comércio uma comissão por sacola vendida.",
-    "trecho": "The app takes a commission of $1.79 on every transaction, with the rest paid to the seller."
+    "texto": "A empresa cobra do comércio uma comissão de US$ 1,79 por sacola vendida.",
+    "trecho": "The app takes a commission of $1.79 on every transaction, with the rest paid to the seller.",
+    "numero": 1.79,
+    "unidade": "USD"
    },
    {
     "fonte": 1,
     "tipo": "modelo_receita",
-    "texto": "O comércio também paga uma taxa anual de administração.",
-    "trecho": "The company also charges partners an annual $89 administrative fee that’s taken out of their total profits."
+    "texto": "O comércio paga uma taxa anual de US$ 89.",
+    "trecho": "The company also charges partners an annual $89 administrative fee that’s taken out of their total profits.",
+    "numero": 89,
+    "unidade": "USD"
    },
    {
     "fonte": 2,
     "tipo": "modelo_receita",
-    "texto": "O comércio também paga uma taxa anual de administração.",
-    "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says."
+    "texto": "A empresa cobra do comércio uma comissão de US$ 1,79 por sacola vendida.",
+    "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says.",
+    "numero": 1.79,
+    "unidade": "USD"
    },
    {
     "fonte": 1,
@@ -92,6 +102,22 @@
     "tipo": "outro",
     "texto": "A CEO diz que a empresa expandiu rápido demais, sem entender bem o próprio modelo de negócio.",
     "trecho": "The business had expanded \"way too fast, way too soon\" without fully figuring out its business model, she says."
+   },
+   {
+    "fonte": 2,
+    "tipo": "modelo_receita",
+    "texto": "O comércio paga uma taxa anual de US$ 89.",
+    "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says.",
+    "numero": 89,
+    "unidade": "USD"
+   },
+   {
+    "fonte": 2,
+    "tipo": "modelo_receita",
+    "texto": "O comércio paga uma taxa anual de US$ 89.",
+    "trecho": "In the U.S., the company typically takes $1.79 per bag and charges an annual membership fee of $89, a company spokesperson says.",
+    "numero": 89,
+    "unidade": "USD"
    }
   ]
  },
@@ -214,7 +240,7 @@
   "ganchos": [
    {
     "angulo": "oportunidade",
-    "titulo": "Uma sobra de padaria pode virar venda antes de estragar.",
+    "titulo": "A padaria vende o pão de ontem antes de ele virar lixo.",
     "scores": {
      "clareza": 4,
      "relevancia": 4,
@@ -225,7 +251,7 @@
    },
    {
     "angulo": "contradicao",
-    "titulo": "O cliente compra uma sacola sem saber o que tem dentro.",
+    "titulo": "O cliente paga por uma sacola sem saber o que tem dentro.",
     "scores": {
      "clareza": 4,
      "relevancia": 4,
@@ -236,7 +262,7 @@
    },
    {
     "angulo": "erro",
-    "titulo": "O erro de quem vende sobra é tentar vender a sobra como produto de vitrine.",
+    "titulo": "O erro é tratar a sobra como produto de vitrine.",
     "scores": {
      "clareza": 3,
      "relevancia": 3,
@@ -253,8 +279,8 @@
     "base": [
      "f2"
     ],
-    "titulo": "Uma sobra de padaria pode virar venda antes de estragar.",
-    "corpo": "O comércio monta uma sacola com o que sobrou no dia. O cliente reserva pelo aplicativo e retira no local, pagando uma comissão por sacola vendida ao app.",
+    "titulo": "A padaria vende o pão de ontem antes de ele virar lixo.",
+    "corpo": "No fim do dia, o que sobrou vai para uma sacola-surpresa com preço fixo. O cliente reserva pelo aplicativo, passa no balcão e leva. A loja recupera parte do custo e o app fica com uma comissão por sacola.",
     "informacao_nova": "a sobra vira venda por sacola de preço fixo, retirada no local",
     "relacao_anterior": "",
     "evidencias": [
@@ -268,8 +294,8 @@
     "base": [
      "f4"
     ],
-    "titulo": "Comida boa que sobra vira prejuízo.",
-    "corpo": "Pão e doce que não saem no fim do dia perdem valor a cada hora. A loja já pagou pela produção, e o custo fica no balanço. Sem uma saída, o resto vai para o lixo.",
+    "titulo": "Cada pão que sobra já foi pago, e perde valor a cada hora.",
+    "corpo": "Farinha, forno e funcionário já custaram. Depois do fechamento, o pão de vitrine vale menos. Sem uma saída rápida para a sobra, o comércio joga fora o dinheiro que já gastou.",
     "informacao_nova": "o custo da sobra já foi pago e perde valor a cada hora",
     "relacao_anterior": "explica por que o comércio aceita vender barato"
    },
@@ -280,8 +306,8 @@
      "f3",
      "f4"
     ],
-    "titulo": "O cliente aceita não escolher, porque paga menos.",
-    "corpo": "A sacola com a sobra do dia tem preço fixo e nenhum produto escolhido. Assim a loja vende o que sobrou sem criar produto novo, e o cliente leva uma surpresa a cada compra.",
+    "titulo": "O cliente aceita não escolher, e é isso que faz a conta fechar.",
+    "corpo": "A sacola tem preço fixo e conteúdo surpresa. Assim a loja não precisa etiquetar item por item, porque coloca o que sobrou naquele dia. O cliente paga menos e ganha a curiosidade de abrir a sacola.",
     "informacao_nova": "o cliente troca a escolha pelo preço; a loja não cria produto novo",
     "relacao_anterior": "mostra a resposta ao problema da sobra",
     "evidencias": [
@@ -292,12 +318,26 @@
     "funcao": "mecanismo_2",
     "tipo": "ANALISE",
     "base": [
-     "a2"
+     "f2"
     ],
-    "titulo": "A retirada no local mantém a conta barata.",
-    "corpo": "Sem entrega, cada venda dispensa motoboy e rota. A sacola fica pronta ao lado do caixa, em horário combinado, porque a loja só precisa de uma equipe no horário de retirada. Se não houver equipe, a venda se perde.",
+    "titulo": "O app ganha duas vezes: em cada sacola e uma vez por ano.",
+    "corpo": "Segundo a empresa, a comissão é de US$ 1,79 por sacola, e a loja paga uma taxa anual de US$ 89. Assim a receita cresce com o volume de sacolas, mas a taxa pesa mais para a loja pequena.",
     "informacao_nova": "sem entrega, cada venda custa menos; a retirada depende de equipe no horário",
-    "relacao_anterior": "mostra o segundo pedaço da operação e onde ela falha"
+    "relacao_anterior": "mostra o segundo pedaço da operação e onde ela falha",
+    "comparacao": [
+     {
+      "rotulo": "por sacola vendida",
+      "valor": "US$ 1,79"
+     },
+     {
+      "rotulo": "por ano, de cada loja parceira",
+      "valor": "US$ 89"
+     }
+    ],
+    "evidencias": [
+     "@modelo_receita~1,79",
+     "@modelo_receita~89"
+    ]
    },
    {
     "funcao": "conta",
@@ -311,14 +351,18 @@
     "relacao_anterior": "põe tamanho e limite no que foi explicado",
     "evidencias": [
      "@usuarios"
-    ]
+    ],
+    "destaque": {
+     "valor": "100 milhões",
+     "legenda": "de usuários cadastrados, segundo a empresa"
+    }
    },
    {
     "funcao": "aplicacao",
     "tipo": "HIPOTESE",
     "base": [],
-    "titulo": "Um teste pequeno poderia começar com três padarias.",
-    "corpo": "Escolha três padarias de um bairro, venda a sobra em sacola com preço fixo e meça a sobra por sacola e a recompra. No Brasil, isso seria uma hipótese para testar, não uma promessa.",
+    "titulo": "Você poderia testar isso com três padarias do seu bairro.",
+    "corpo": "Monte a sacola com o que sobrar às 18h, com preço fixo, e anuncie num grupo do bairro. Meça duas coisas por quatro semanas: quanto sobra por sacola e quem volta a comprar. No Brasil, seria um teste, não uma promessa.",
     "informacao_nova": "um teste de bairro com duas métricas concretas",
     "relacao_anterior": "leva o mecanismo para o leitor testar"
    },

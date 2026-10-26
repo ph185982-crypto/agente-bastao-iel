@@ -180,18 +180,77 @@ async function lEncerramento(t, ctx, r) {
   return svg;
 }
 
-const LAYOUTS = { min_foto: lFoto, min_texto: lTexto, min_produto: (t, ctx, r) => lFoto(t, ctx, r, { produto: true }), min_encerramento: lEncerramento };
+// E — foto sangrando no topo (de borda a borda), texto embaixo com as margens do padrão. Abre o carrossel com impacto.
+async function lFotoCheia(t, ctx, r) {
+  const im = ctx.imagens?.[t.foto?.imagem_id];
+  if (!im) { r.sem_imagem = true; return lTexto(t, ctx, r); }
+  const titulo = TXT(t.textos?.titulo); const corpo = TXT(t.textos?.corpo);
+  let hFoto = 720; let m;
+  for (; hFoto >= 520; hFoto -= 40) { m = medir({ titulo, corpo, alt: FIM - (hFoto + GAP_FOTO) }); if (!m.falhou) break; }
+  if (m.falhou) { hFoto = 520; r.problemas.push(`Título e texto passam ${m.falta} px do espaço abaixo da foto. Encurte o texto`); }
+  const f = await colocarFoto(im, { x: 0, y: 0, w: W, h: hFoto }, t.foto, {});
+  // cobre a largura toda: se a proporção deixou sobra, preenche com recorte "cover" (a foto sangrando não deixa faixa branca)
+  let svg = fundo();
+  if (f.caixa.w < W || f.caixa.h < hFoto) {
+    const out = await sharp(im.buf, { limitInputPixels: 60e6 }).rotate().resize(W, hFoto, { fit: 'cover', position: focoDe(t.foto) ? undefined : sharp.strategy.attention }).jpeg({ quality: 92 }).toBuffer();
+    svg += `<image x="0" y="0" width="${W}" height="${hFoto}" preserveAspectRatio="none" href="data:image/jpeg;base64,${out.toString('base64')}"/>`;
+    const { sw, sh } = await meta(im.buf); r.foto = { ampliacao: r1(Math.max(W / sw, hFoto / sh)), corte_pct: Math.round((1 - Math.min(1, (sw / sh) / (W / hFoto), (W / hFoto) / (sw / sh))) * 100), origem_px: [sw, sh], modo: 'sangria' };
+    if (r.foto.ampliacao > AMPLIACAO_MAX) r.problemas.push(`A imagem é pequena demais (${sw}×${sh} px) para ocupar a largura toda. Use a composição de foto com margem ou troque a imagem`);
+  } else { svg += f.svg; avaliarFoto(f, r); }
+  r.caixas.push({ nome: 'foto', x: 0, y: 0, w: W, h: hFoto, sangra: true });
+  return svg + desenharTexto(m, hFoto + GAP_FOTO, r);
+}
+
+// F — número verificado em destaque (grande), com a legenda que diz o que ele mede; título e texto embaixo.
+async function lDestaque(t, ctx, r) {
+  const valor = TXT(t.textos?.destaque_valor); const legenda = TXT(t.textos?.destaque_legenda);
+  if (!valor) return lTexto(t, ctx, r);
+  let svg = fundo();
+  let bd; for (let tam = 230; tam >= 120; tam -= 10) { bd = E.ajustar({ texto: valor, k: K_T, larg: LARG, alt: 9999, max: tam, min: tam, entrelinha: 1.0 }); if (bd.cabe && bd.linhas.length === 1) break; }
+  svg += bloco(bd, { x: M, y: TOPO, cor: COR.titulo, k: K_T });
+  r.caixas.push({ nome: 'destaque', x: M, y: TOPO, w: Math.round(bd.largura), h: Math.round(bd.altura) }); r.blocos.push({ nome: 'destaque', tam: bd.tam, cabe: bd.cabe });
+  let y = TOPO + bd.altura + 20;
+  if (legenda) { const bl = E.ajustar({ texto: legenda, k: K_C, larg: LARG, alt: 9999, max: 40, min: 34, entrelinha: 1.25 }); svg += bloco(bl, { x: M, y, cor: COR.corpo, k: K_C }); r.caixas.push({ nome: 'legenda_destaque', x: M, y: Math.round(y), w: Math.round(bl.largura), h: Math.round(bl.altura) }); y += bl.altura; }
+  y = Math.round(y + 96);
+  const m = medir({ titulo: TXT(t.textos?.titulo), corpo: TXT(t.textos?.corpo), alt: FIM - y });
+  if (m.falhou) r.problemas.push(`Título e texto passam ${m.falta} px do espaço abaixo do número. Encurte o texto`);
+  return svg + desenharTexto(m, y, r);
+}
+
+// G — comparação de dois números verificados, lado a lado, só com tipografia (sem caixa, sem seta).
+async function lComparacao(t, ctx, r) {
+  const x = t.textos || {}; const itens = [[x.comp_a_valor, x.comp_a_rotulo], [x.comp_b_valor, x.comp_b_rotulo]].map(([v, l]) => [TXT(v), TXT(l)]);
+  if (itens.some(([v]) => !v)) return lTexto(t, ctx, r);
+  const gapCol = 56; const colW = Math.floor((LARG - gapCol) / 2);
+  const m = medir({ titulo: TXT(x.titulo), corpo: TXT(x.corpo), alt: FIM - TOPO - 96 - 260 });
+  if (m.falhou) r.problemas.push(`Título e texto passam ${m.falta} px do espaço acima da comparação. Encurte o texto`);
+  let svg = fundo() + desenharTexto(m, TOPO, r);
+  const y = Math.round(TOPO + m.altura + 96);
+  const cabeV = (tam) => itens.every(([v]) => { const a = E.ajustar({ texto: v, k: K_T, larg: colW, alt: 9999, max: tam, min: tam, entrelinha: 1 }); return a.cabe && a.linhas.length === 1; });
+  let tamV = 120; for (; tamV > 64 && !cabeV(tamV); tamV -= 4);
+  if (!cabeV(tamV)) r.problemas.push('Um valor da comparação é longo demais para a coluna. Use um número curto (ex.: “US$ 1,79”)');
+  itens.forEach(([v, l], i) => {
+    const cx = M + i * (colW + gapCol);
+    const bv = E.ajustar({ texto: v, k: K_T, larg: colW, alt: 9999, max: tamV, min: tamV, entrelinha: 1 }); svg += bloco(bv, { x: cx, y, cor: COR.titulo, k: K_T });
+    const bl = E.ajustar({ texto: l, k: K_C, larg: colW, alt: 9999, max: 36, min: 30, entrelinha: 1.25 }); svg += bloco(bl, { x: cx, y: y + bv.altura + 16, cor: COR.corpo, k: K_C });
+    r.caixas.push({ nome: `comp_${i ? 'b' : 'a'}`, x: cx, y, w: Math.max(Math.round(bv.largura), Math.round(bl.largura)), h: Math.round(bv.altura + 16 + bl.altura) });
+    if (y + bv.altura + 16 + bl.altura > FIM) r.problemas.push('A comparação passa da margem inferior. Encurte o texto');
+  });
+  return svg;
+}
+
+const LAYOUTS = { min_foto_cheia: lFotoCheia, min_destaque: lDestaque, min_comparacao: lComparacao, min_foto: lFoto, min_texto: lTexto, min_produto: (t, ctx, r) => lFoto(t, ctx, r, { produto: true }), min_encerramento: lEncerramento };
 
 // Conferência por medição: margens, topo/base, tamanhos, entrelinhas, distâncias e sobreposição das caixas desenhadas.
 function medidas(r) {
-  const cx = r.caixas; const tit = cx.find((c) => c.nome === 'titulo'); const cor = cx.find((c) => c.nome === 'corpo');
-  const foto = cx.find((c) => c.nome === 'foto' || c.nome === 'foto_pedro'); const texto = cor || tit;
+  const cx = r.caixas.filter((c) => !c.sangra); const tit = cx.find((c) => c.nome === 'titulo'); const cor = cx.find((c) => c.nome === 'corpo');
+  const foto = r.caixas.find((c) => c.nome === 'foto' || c.nome === 'foto_pedro'); const texto = cor || tit;
   const bt = r.blocos.find((b) => b.nome === 'título'); const bc = r.blocos.find((b) => b.nome === 'corpo');
   const out = {
     margem_esquerda: Math.min(...cx.map((c) => c.x)), margem_direita: Math.min(...cx.map((c) => W - (c.x + c.w))),
     topo: Math.min(...cx.map((c) => c.y)), base: Math.min(...cx.map((c) => H - (c.y + c.h))),
     titulo_px: bt?.tam ?? null, titulo_entrelinha: bt?.entrelinha ?? null, corpo_px: bc?.tam ?? null, corpo_entrelinha: bc?.entrelinha ?? null,
-    gap_titulo_corpo: tit && cor ? Math.round(cor.y - (tit.y + tit.h)) : null, gap_texto_foto: foto && texto ? Math.round(foto.y - (texto.y + texto.h)) : null,
+    gap_titulo_corpo: tit && cor ? Math.round(cor.y - (tit.y + tit.h)) : null, gap_texto_foto: foto && texto ? Math.round(foto.y > texto.y ? foto.y - (texto.y + texto.h) : (tit || texto).y - (foto.y + foto.h)) : null,
   };
   const p = []; const F = FAIXAS; const fora = (v, [a, b]) => v != null && (v < a - 0.5 || v > b + 0.5);
   if (out.margem_esquerda < F.margem[0] || out.margem_esquerda > F.margem[1]) p.push(`margem esquerda ${out.margem_esquerda} px (padrão 88–100)`);
@@ -204,7 +263,7 @@ function medidas(r) {
   if (fora(out.corpo_entrelinha, F.corpo_entrelinha)) p.push('entrelinha do corpo fora do padrão');
   if (fora(out.gap_titulo_corpo, F.gap_titulo_corpo)) p.push(`distância título→corpo ${out.gap_titulo_corpo} px (padrão 36–52)`);
   if (fora(out.gap_texto_foto, F.gap_texto_foto)) p.push(`distância texto→foto ${out.gap_texto_foto} px (padrão 40–64)`);
-  for (let i = 0; i < cx.length; i++) for (let j = i + 1; j < cx.length; j++) { const a = cx[i]; const b = cx[j]; if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) p.push(`${a.nome} e ${b.nome} se sobrepõem`); }
+  const todas = r.caixas; for (let i = 0; i < todas.length; i++) for (let j = i + 1; j < todas.length; j++) { const a = todas[i]; const b = todas[j]; if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) p.push(`${a.nome} e ${b.nome} se sobrepõem`); }
   return { ...out, fora_do_padrao: p };
 }
 
