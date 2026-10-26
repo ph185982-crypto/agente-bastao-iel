@@ -179,7 +179,7 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
   // Modelos gpt-oss "pensam" antes de responder e isso pode passar de 30 s:
   // pedimos raciocínio curto (reasoning_effort, documentado pela Groq) e sem o
   // texto do raciocínio na resposta. Se o provedor recusar o parâmetro, repete sem.
-  const { esforco, ...base } = opts || {};
+  const { esforco, preferirMelhor, ...base } = opts || {};
   const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : {};
   let res;
   try {
@@ -244,6 +244,14 @@ async function cascade(opts, requestOptions) {
         const scope = remember(provider, model, err);
         if (scope === 'fatal') throw err;
         if (scope === 'provider') { providerDown = true; break; }
+        // Limite POR MINUTO no melhor modelo de texto grande: esperar alguns segundos sai melhor do que cair num modelo
+        // mais fraco (era isso que deixava a copy do carrossel rasa). Limite por dia não espera: segue a fila.
+        const info = errorInfo(err, scope); const espera = info.retry_after_seconds;
+        const folga = requestOptions?.timeout ? requestOptions.timeout - 4000 : 60000;
+        if (opts.preferirMelhor && err?.status === 429 && /minute/.test(info.metric || '') && model === fixed[0] && nivel(opts.model) === 'large' && espera && espera <= 20 && espera * 1000 < folga) {
+          await new Promise((r) => setTimeout(r, espera * 1000 + 500));
+          try { return await tryModel(provider, model, opts, requestOptions, cont); } catch (e2) { if (remember(provider, model, e2) === 'fatal') throw e2; }
+        }
       }
     }
     if (providerDown) continue;
