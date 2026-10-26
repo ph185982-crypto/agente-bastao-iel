@@ -53,7 +53,10 @@ const PROVIDERS = [
 
 const _clients = new Map();   // name → OpenAI client
 const _discovered = new Map(); // name → string[] (modelos vindos do /models)
-let _lastGood = null;          // { provider, model } que funcionou por último
+// { large: {provider, model}, small: {...} } que funcionou por último, POR NÍVEL: um pedido de texto grande
+// nunca herda o modelo pequeno usado numa etapa simples (isso fazia a copy do carrossel cair no modelo fraco).
+const _lastGood = {};
+const nivel = (requestedModel) => (requestedModel === 'gpt-4o-mini' ? 'small' : 'large');
 
 function clientFor(provider) {
   if (_clients.has(provider.name)) return _clients.get(provider.name);
@@ -185,7 +188,7 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
     if (Object.keys(extra).length && err?.status === 400 && /reasoning/i.test(err?.message || '')) res = await client.chat.completions.create({ ...base, model }, requestOptions);
     else throw err;
   }
-  _lastGood = { provider: provider.name, model };
+  _lastGood[nivel(opts?.model)] = { provider: provider.name, model };
   const out = opts?.response_format?.type === 'json_object' ? withSanitizedJson(res) : res;
   // Quem usou a resposta pode registrar qual provedor/modelo a produziu.
   const u = res?.usage;
@@ -213,15 +216,16 @@ async function cascade(opts, requestOptions) {
   };
 
   // Atalho: tenta primeiro a combinação que funcionou na chamada anterior.
-  const previous = _lastGood;
+  // Só pula direto para ele se for o MELHOR modelo daquele provedor no nível; senão a ordem normal tenta o melhor de novo.
+  const previous = _lastGood[nivel(opts.model)];
   if (previous) {
     const p = providers.find(x => x.name === previous.provider);
-    if (p) {
+    if (p && (modelsFor(p, opts.model) || [])[0] === previous.model) {
       try {
         return await attempt(p, previous.model);
       } catch (err) {
         if (remember(p, previous.model, err) === 'fatal') throw err;
-        if (_lastGood === previous) _lastGood = null;
+        if (_lastGood[nivel(opts.model)] === previous) delete _lastGood[nivel(opts.model)];
       }
     }
   }

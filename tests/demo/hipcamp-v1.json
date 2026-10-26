@@ -91,8 +91,10 @@
    {
     "fonte": 1,
     "tipo": "modelo_receita",
-    "texto": "O Hipcamp cobra uma comissão sobre as reservas do anfitrião.",
-    "trecho": "Once you start hosting Hipcampers, Hipcamp takes a 12.5% plus VAT commission on your earnings"
+    "texto": "O Hipcamp cobra 12,5% de comissão sobre os ganhos do anfitrião (Reino Unido, mais imposto).",
+    "trecho": "Hipcamp takes a 12.5% plus VAT commission on your earnings",
+    "numero": 12.5,
+    "unidade": "%"
    },
    {
     "fonte": 0,
@@ -242,7 +244,7 @@
   "ganchos": [
    {
     "angulo": "oportunidade",
-    "titulo": "Um dono de terra pode ganhar com campistas sem pagar nada para anunciar.",
+    "titulo": "Um fazendeiro ganha com campistas sem gastar nada para anunciar a terra.",
     "scores": {
      "clareza": 4,
      "relevancia": 4,
@@ -281,7 +283,7 @@
     "base": [
      "f2"
     ],
-    "titulo": "Um dono de terra pode ganhar com campistas sem pagar nada para anunciar.",
+    "titulo": "Um fazendeiro ganha com campistas sem gastar nada para anunciar a terra.",
     "corpo": "No Hipcamp, o anúncio é grátis. O dono da fazenda define regras e preço, e o app ganha uma comissão quando a reserva acontece.",
     "informacao_nova": "anúncio grátis e comissão só na reserva",
     "relacao_anterior": "",
@@ -296,13 +298,17 @@
     "base": [
      "f5"
     ],
-    "titulo": "Falta vaga para acampar.",
-    "corpo": "Segundo a empresa, 56% dos campistas tiveram dificuldade de reservar porque os campings estavam lotados. Quem tem terra e não sabe anunciar fica de fora dessa demanda.",
+    "titulo": "Os campings lotam, e quem tem terra parada nem fica sabendo.",
+    "corpo": "Segundo a empresa, 56% dos campistas tiveram dificuldade de reservar porque os campings estavam lotados. Do outro lado, há sítio e fazenda com espaço livre e nenhum jeito simples de anunciar para quem procura.",
     "informacao_nova": "campings lotados e terra parada são dois lados da mesma falta",
     "relacao_anterior": "explica a demanda que o anúncio atende",
     "evidencias": [
      "@outro~56"
-    ]
+    ],
+    "destaque": {
+     "valor": "56%",
+     "legenda": "dos campistas tiveram dificuldade para reservar, segundo a empresa"
+    }
    },
    {
     "funcao": "mecanismo_1",
@@ -311,10 +317,24 @@
      "f2",
      "f3"
     ],
-    "titulo": "O dono entra sem custo fixo, porque o app ganha na reserva.",
-    "corpo": "O anúncio é grátis, e a comissão só aparece quando a reserva acontece. Assim o dono testa com pouco custo, e o app cresce com as reservas, porque ganha quando o campista chega.",
+    "titulo": "O dono não paga para entrar: o app só ganha quando o campista chega.",
+    "corpo": "Criar o anúncio é grátis, segundo a empresa, e a comissão de 12,5% aparece quando a reserva acontece (no Reino Unido, mais imposto). Assim o dono testa sem custo fixo, porque o risco de não ter reserva fica com o app.",
     "informacao_nova": "sem custo fixo, o dono testa; o app ganha quando o campista chega",
-    "relacao_anterior": "responde por que o dono entra"
+    "relacao_anterior": "responde por que o dono entra",
+    "comparacao": [
+     {
+      "rotulo": "para anunciar a terra",
+      "valor": "Grátis"
+     },
+     {
+      "rotulo": "de comissão, só quando há reserva",
+      "valor": "12,5%"
+     }
+    ],
+    "evidencias": [
+     "@modelo_receita~grátis",
+     "@modelo_receita~12"
+    ]
    },
    {
     "funcao": "mecanismo_2",
@@ -323,7 +343,7 @@
      "a1",
      "f5"
     ],
-    "titulo": "Misturar fazenda e camping mantém o campista na busca.",
+    "titulo": "Fazenda, parque e camping na mesma busca seguram o campista no app.",
     "corpo": "Parques, resorts de RV e fazendas aparecem na mesma busca. Quando o campista não acha vaga num lugar, encontra outro na mesma tela, e isso aumenta as reservas para todos. Assim a busca fica útil, porque o campista não precisa abrir outro site.",
     "informacao_nova": "fazenda, parque e camping na mesma busca mantêm o campista no app",
     "relacao_anterior": "mostra o lado do campista"
@@ -334,19 +354,23 @@
     "base": [
      "f1"
     ],
-    "titulo": "A comunidade já tem sete milhões de campistas.",
+    "titulo": "Sete milhões de campistas: alcance, não lucro.",
     "corpo": "Segundo a empresa, são mais de 7 milhões de campistas frequentes. É alcance declarado pela própria empresa, não receita nem lucro.",
     "informacao_nova": "o alcance declarado e o que ele não prova",
     "relacao_anterior": "põe tamanho e limite no mecanismo",
     "evidencias": [
      "@usuarios"
-    ]
+    ],
+    "destaque": {
+     "valor": "7 milhões",
+     "legenda": "de campistas frequentes na comunidade"
+    }
    },
    {
     "funcao": "aplicacao",
     "tipo": "HIPOTESE",
     "base": [],
-    "titulo": "Um teste pequeno poderia começar com um sítio.",
+    "titulo": "Você poderia testar isso com um sítio e uma lista de espera.",
     "corpo": "Escolha um sítio com espaço para barracas, abra uma lista de espera de campistas e meça quantas pessoas pedem uma vaga. No Brasil, isso seria uma hipótese para testar, não uma promessa.",
     "informacao_nova": "um teste com lista de espera, sem app",
     "relacao_anterior": "leva o mecanismo para o leitor"

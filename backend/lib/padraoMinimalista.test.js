@@ -405,3 +405,41 @@ test('revisão por IA: "Nenhum." com maiúscula não vira pendência; "Teste …
   const v = Metodo.validarDocMin({ ...Metodo.montarDoc(r, op, { v1: true }), template: Padrao.ID }, op);
   assert.ok(!v.bloqueios.some((b) => /não está marcada como tal/.test(b.mensagem)), v.bloqueios.map((b) => b.mensagem).join(' | '));
 });
+
+test('composições novas: foto sangrando, número em destaque e comparação saem medidas; número do destaque precisa ser verificado', async () => {
+  const buf = await fotoTeste(1800, 1200);
+  const casos = [
+    { layout: 'min_foto_cheia', textos: { titulo: 'Uma padaria vende o pão de ontem antes de o cliente chegar.', corpo: 'No fim do dia, a sobra vira sacola com preço fixo.' }, foto: { imagem_id: 'a' } },
+    { layout: 'min_destaque', textos: { destaque_valor: '250 mil', destaque_legenda: 'pessoas usam o serviço, segundo a empresa', titulo: 'A conta começa com quem já usa o serviço.', corpo: 'Isso mostra alcance, não quanto sobra no caixa.' } },
+    { layout: 'min_comparacao', textos: { titulo: 'O escritório paga pelo cuidado, não pela planta.', corpo: 'A receita vem da assinatura, e não da venda do vaso.', comp_a_valor: 'Grátis', comp_a_rotulo: 'o vaso', comp_b_valor: 'Assinatura', comp_b_rotulo: 'o cuidado, todo mês' } },
+  ];
+  for (const c of casos) {
+    const r = await ArteMin.renderizarTela(c, { imagens: { a: { buf, papel: 'foto' } } });
+    const m = await sharp(r.png).metadata(); assert.deepStrictEqual([m.width, m.height], [1080, 1350]);
+    assert.strictEqual(r.metrics.cabe, true, `${c.layout}: ${r.metrics.problemas.join('; ')}`);
+    assert.ok(r.metrics.medidas.margem_esquerda >= 88 && r.metrics.medidas.base >= 80, `${c.layout}: ${JSON.stringify(r.metrics.medidas)}`);
+  }
+  const op = await criarOp(); const r = rascunhoV1(op);
+  r.telas[4].destaque = { valor: '900 mil', legenda: 'clientes' };
+  const v = Metodo.validarDocMin({ ...Metodo.montarDoc(r, op, { v1: true }), template: Padrao.ID }, op);
+  assert.ok(v.bloqueios.some((b) => /Tela 5: número sem comprovação/.test(b.mensagem)), 'destaque com número inventado é bloqueado');
+});
+
+test('título-rótulo ("Escala global", "O que aprendemos") é bloqueado; frase com cena passa', async () => {
+  const op = await criarOp(); const r = rascunhoV1(op);
+  r.telas[4].titulo = 'Escala global'; r.telas[6].titulo = 'O que aprendemos';
+  const v = Metodo.validarDocMin({ ...Metodo.montarDoc(r, op, { v1: true }), template: Padrao.ID }, op);
+  assert.ok(v.bloqueios.some((b) => /Tela 5: o título “Escala global” é rótulo/.test(b.mensagem)));
+  assert.ok(v.bloqueios.some((b) => /Tela 7: o título “O que aprendemos” é rótulo/.test(b.mensagem)));
+});
+
+test('escolha de composição: gancho com foto boa sangra; tela sem foto com número verificado vira destaque; escolha manual é respeitada', () => {
+  const telas = [
+    { funcao: 'gancho', layout: 'min_foto', textos: {}, foto: { imagem_id: 'im1' } },
+    { funcao: 'conta', layout: 'min_foto', textos: { destaque_valor: '250 mil' }, foto: { imagem_id: null } },
+    { funcao: 'mecanismo_2', layout: 'min_texto', textos: { comp_a_valor: 'A', comp_b_valor: 'B' }, foto: {} },
+    { funcao: 'aplicacao', layout: 'min_foto', layout_manual: true, textos: { destaque_valor: '3' }, foto: {} },
+  ];
+  C2.escolherComposicoesV1(telas, [{ id: 'im1', papel: 'foto', largura: 1600 }]);
+  assert.deepStrictEqual(telas.map((t) => t.layout), ['min_foto_cheia', 'min_destaque', 'min_comparacao', 'min_foto']);
+});

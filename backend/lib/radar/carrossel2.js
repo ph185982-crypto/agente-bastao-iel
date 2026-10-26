@@ -106,6 +106,19 @@ function atribuirImagensV1(telas, imagens) {
   }
 }
 const FUNCOES_MIN_V1 = Metodo.FUNCOES_MIN;
+// Variedade visual (dentro do minimalista): o gancho com foto boa abre com a foto sangrando; número verificado vira destaque;
+// dois números verificados viram comparação. Composição escolhida à mão pelo Pedro não é trocada.
+function escolherComposicoesV1(telas, imagens) {
+  for (const t of telas) {
+    if (t.layout === 'min_encerramento' || t.layout_manual) continue;
+    const x = t.textos || {}; const im = imagens.find((i) => i.id === t.foto?.imagem_id);
+    if (t.funcao === 'gancho' && im && im.papel === 'foto' && (im.largura || 0) >= 1000) { t.layout = 'min_foto_cheia'; continue; }
+    if (!im && x.comp_a_valor && x.comp_b_valor) { t.layout = 'min_comparacao'; continue; }
+    if (!im && x.destaque_valor) { t.layout = 'min_destaque'; continue; }
+    if (!im && ['min_foto', 'min_produto', 'min_foto_cheia'].includes(t.layout)) t.layout = 'min_texto';
+    if (im && t.layout === 'min_texto') t.layout = 'min_foto';
+  }
+}
 
 async function bufferesDaTela(doc, tela) {
   const id = tela.foto?.imagem_id; if (!id) return null; const im = (doc.imagens || []).find((x) => x.id === id); if (!im) return null;
@@ -279,7 +292,7 @@ async function gerar(opId, { deps = {}, versao = null, permitirBaixa = false, or
       const r = await Fotos.reunir(op, { deps, agora, ilustracao: doc.ilustracao });
       doc.imagens = []; let k = 0; for (const a of r.imagens.slice(0, 8)) doc.imagens.push(await Fotos.guardar(store, id, a, `im${++k}`));
       doc.avisos = [...new Set(r.avisos)]; doc.imagens_prontas = true;
-      if (Padrao.ehV1(doc.template)) atribuirImagensV1(doc.telas, doc.imagens); else atribuirImagens(doc.telas, doc.imagens, { minimalista: minimalista(doc) });
+      if (Padrao.ehV1(doc.template)) { atribuirImagensV1(doc.telas, doc.imagens); escolherComposicoesV1(doc.telas, doc.imagens); } else atribuirImagens(doc.telas, doc.imagens, { minimalista: minimalista(doc) });
       doc.etapa = 'render'; await salvar();
     }
     // 3) render + validação + pacote
@@ -325,11 +338,15 @@ async function editarTela(id, n, patch = {}) {
     if (Object.keys(patch).some((k) => !['bloqueada', 'travas'].includes(k))) naoBloqueada(t);
     if (patch.textos && t.travas?.texto) throw U.erro('O texto desta tela está travado. Destrave para editar.', 'TRAVADA', 409);
     if (patch.foto && t.travas?.imagem && ('imagem_id' in patch.foto || 'foco' in patch.foto || 'enq' in patch.foto)) throw U.erro('A imagem e o enquadramento desta tela estão travados. Destrave para trocar.', 'TRAVADA', 409);
+    const CAMPOS_V1 = { destaque_valor: 24, destaque_legenda: 90, comp_a_valor: 20, comp_a_rotulo: 60, comp_b_valor: 20, comp_b_rotulo: 60 };
+    if (patch.textos && typeof patch.textos === 'object' && Padrao.ehV1(doc.template)) for (const [k, max] of Object.entries(CAMPOS_V1)) if (k in patch.textos) { const v = patch.textos[k]; if (v === null || String(v).trim() === '') delete t.textos[k]; else t.textos[k] = U.limita(String(v).replace(/\s+/g, ' ').trim(), max); }
     if (patch.textos && typeof patch.textos === 'object') for (const k of [...Serie.CAMPOS, 'claim_id']) if (k in patch.textos) {
       const v = patch.textos[k]; if (v === null || String(v).trim() === '') delete t.textos[k];
       else if (k === 'claim_id') { if (!Serie.claimsPorId(op)[String(v)]) throw U.erro('Esse dado não está entre os verificados.', 'ENTRADA', 400); t.textos[k] = String(v); }
       else t.textos[k] = Serie.limpaTxt(v, Serie.LIMITES[k] + 60);
     }
+    if (patch.layout && !Padrao.ehV1(doc.template) && minimalista(doc) && !ArteMinLegado.LAYOUTS.includes(patch.layout)) throw U.erro('Esta composição só existe no padrão novo. Use “Criar nova versão no padrão novo”.', 'ENTRADA', 400);
+    if (patch.layout) t.layout_manual = true;
     if (patch.layout) { if (!f.permitidos.includes(patch.layout)) throw U.erro(`A tela de ${f.rotulo.toLowerCase()} aceita as composições: ${f.permitidos.join(', ')}.`, 'ENTRADA', 400); t.layout = patch.layout; if (patch.layout !== 'manchete_produto') delete t.variante; else t.variante = patch.variante || (f.variante || 'meia_lua'); }
     else if (patch.variante && t.layout === 'manchete_produto' && ['meia_lua', 'canto'].includes(patch.variante)) t.variante = patch.variante;
     if (patch.estilo && typeof patch.estilo === 'object') t.estilo = { ...(t.estilo || {}), ...Object.fromEntries(Object.entries(patch.estilo).filter(([k, v]) => ({ cor: ['preto', 'azul'], destaque: ['laranja', 'azul'], marca: ['nenhuma', 'circulo', 'sublinhado'], barra: [true, false] }[k] || []).includes(v))) };
@@ -397,7 +414,9 @@ async function regenerarTela(id, n, { instrucao = '', campo = null, deps = {} } 
 async function adicionarImagem(id, dados) {
   const reg = await store.obter('carrossel', id); if (!reg) throw U.erro('Carrossel não encontrado.', 'NAO_ENCONTRADO', 404);
   const achado = await Fotos.deUsuario(dados);
-  return mutar(id, async (doc) => { const novoId = `im${(doc.imagens || []).reduce((m, x) => Math.max(m, Number(String(x.id).replace(/\D/g, '')) || 0), 0) + 1}`; const reg2 = await Fotos.guardar(store, id, achado, novoId); (doc.imagens ||= []).push(reg2); if (dados.tela) { const i = indiceDaTela(doc, dados.tela); naoBloqueada(doc.telas[i]); if (doc.telas[i].travas?.imagem) throw U.erro('A imagem desta tela está travada.', 'TRAVADA', 409); doc.telas[i].foto = { ...(doc.telas[i].foto || {}), imagem_id: novoId, manual: true, forma: dados.papel === 'print' ? 'print' : (doc.telas[i].foto?.forma || null) }; } }, { motivo: 'imagem enviada' });
+  return mutar(id, async (doc) => { const novoId = `im${(doc.imagens || []).reduce((m, x) => Math.max(m, Number(String(x.id).replace(/\D/g, '')) || 0), 0) + 1}`; const reg2 = await Fotos.guardar(store, id, achado, novoId); (doc.imagens ||= []).push(reg2); if (dados.tela) { const i = indiceDaTela(doc, dados.tela); naoBloqueada(doc.telas[i]); if (doc.telas[i].travas?.imagem) throw U.erro('A imagem desta tela está travada.', 'TRAVADA', 409); doc.telas[i].foto = { ...(doc.telas[i].foto || {}), imagem_id: novoId, manual: true, forma: dados.papel === 'print' ? 'print' : (doc.telas[i].foto?.forma || null) };
+        // padrão v1: imagem enviada para uma tela só de texto passa a aparecer (composição foto + texto)
+        if (Padrao.ehV1(doc.template) && ['min_texto', 'min_destaque', 'min_comparacao'].includes(doc.telas[i].layout)) { doc.telas[i].layout = 'min_foto'; doc.telas[i].layout_manual = true; } } }, { motivo: 'imagem enviada' });
 }
 async function confirmarPermissao(id, imagemId, confirmada = true) {
   return mutar(id, (doc) => { const im = (doc.imagens || []).find((x) => x.id === imagemId); if (!im) throw U.erro('Imagem desconhecida.', 'ENTRADA', 400); im.permissao = confirmada ? 'confirmada' : 'verificar'; im.permissao_confirmada_em = confirmada ? new Date().toISOString() : null; }, { motivo: 'permissão de imagem' });
@@ -429,4 +448,4 @@ async function converterParaPadrao(id, { deps = {}, agora = Date.now(), rascunho
   return novo;
 }
 
-module.exports = { converterParaPadrao, atribuirImagensV1, avaliarCandidato, extrasV1, creditosDe, gerar, editarTela, escolherCapa, editarCapa, reordenar, remover, editarLegenda, regenerarTela, adicionarImagem, confirmarPermissao, restaurarVersao, exportar, renderizar, montarPacote, fichaDaSerie, atribuirImagens, exigirVerificada, hashDaVersao, idDe, chaveSlide, chaveZip, fechar };
+module.exports = { escolherComposicoesV1, converterParaPadrao, atribuirImagensV1, avaliarCandidato, extrasV1, creditosDe, gerar, editarTela, escolherCapa, editarCapa, reordenar, remover, editarLegenda, regenerarTela, adicionarImagem, confirmarPermissao, restaurarVersao, exportar, renderizar, montarPacote, fichaDaSerie, atribuirImagens, exigirVerificada, hashDaVersao, idDe, chaveSlide, chaveZip, fechar };

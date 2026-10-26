@@ -18,12 +18,12 @@ const TEMPLATE = 'minimalista';
 const ORDEM = ['gancho', 'problema', 'mecanismo_1', 'mecanismo_2', 'conta', 'aplicacao', 'encerramento'];
 // Função de cada tela → composição. Fotos: gancho, mecanismo 1, conta e aplicação (como no modelo de referência); Pedro só no encerramento.
 const FUNCOES_MIN = Object.freeze({
-  gancho: { rotulo: 'Gancho', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto'], imagem: 'o negócio em operação, real', tipo: 'FATO', foto: true },
-  problema: { rotulo: 'Problema e contexto', layout: 'min_texto', permitidos: ['min_texto', 'min_foto', 'min_produto'], imagem: 'opcional', tipo: 'FATO', foto: false, opcional: true },
-  mecanismo_1: { rotulo: 'Primeiro mecanismo', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto'], imagem: 'a operação ou o produto que mostra o mecanismo', tipo: 'ANALISE', foto: true },
-  mecanismo_2: { rotulo: 'Segundo mecanismo', layout: 'min_texto', permitidos: ['min_texto', 'min_foto', 'min_produto'], imagem: 'opcional', tipo: 'ANALISE', foto: false, opcional: true },
-  conta: { rotulo: 'Conta, evidência ou limite', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto'], imagem: 'print verdadeiro ou o uso real que sustenta o número', tipo: 'FATO', foto: true },
-  aplicacao: { rotulo: 'Aplicação e teste', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto'], imagem: 'uma cena real de teste ou de uso (ilustrativa se não for da empresa)', tipo: 'HIPOTESE', foto: true },
+  gancho: { rotulo: 'Gancho', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto', 'min_foto_cheia', 'min_destaque', 'min_comparacao'], imagem: 'o negócio em operação, real', tipo: 'FATO', foto: true },
+  problema: { rotulo: 'Problema e contexto', layout: 'min_texto', permitidos: ['min_texto', 'min_foto', 'min_produto', 'min_foto_cheia', 'min_destaque', 'min_comparacao'], imagem: 'opcional', tipo: 'FATO', foto: false, opcional: true },
+  mecanismo_1: { rotulo: 'Primeiro mecanismo', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto', 'min_foto_cheia', 'min_destaque', 'min_comparacao'], imagem: 'a operação ou o produto que mostra o mecanismo', tipo: 'ANALISE', foto: true },
+  mecanismo_2: { rotulo: 'Segundo mecanismo', layout: 'min_texto', permitidos: ['min_texto', 'min_foto', 'min_produto', 'min_foto_cheia', 'min_destaque', 'min_comparacao'], imagem: 'opcional', tipo: 'ANALISE', foto: false, opcional: true },
+  conta: { rotulo: 'Conta, evidência ou limite', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto', 'min_foto_cheia', 'min_destaque', 'min_comparacao'], imagem: 'print verdadeiro ou o uso real que sustenta o número', tipo: 'FATO', foto: true },
+  aplicacao: { rotulo: 'Aplicação e teste', layout: 'min_foto', permitidos: ['min_foto', 'min_texto', 'min_produto', 'min_foto_cheia', 'min_destaque', 'min_comparacao'], imagem: 'uma cena real de teste ou de uso (ilustrativa se não for da empresa)', tipo: 'HIPOTESE', foto: true },
   encerramento: { rotulo: 'Síntese e convite', layout: 'min_encerramento', permitidos: ['min_encerramento'], imagem: 'foto aprovada do Pedro', tipo: 'MISTO', foto: false },
 });
 const ANGULOS_MIN = Object.freeze({ oportunidade: 'Oportunidade ou benefício', contradicao: 'Contradição', erro: 'Erro, perda ou detalhe ignorado' });
@@ -38,6 +38,8 @@ const CAUSAL = /\b(causou|causa o crescimento|graças a|gracas a|fez crescer|res
 const ATRIBUI_DECISAO = /\b(segundo a empresa|a empresa (decidiu|escolheu|afirma|diz|garante|cobra|monta|mudou))\b/;
 const MARCA_HIPOTESE = /\b(hipotese|hipótese|poderia|pode ser|poderia ser|testar|teste|simular|experimentar|experimente)\b/;
 const EXAGERO = /\b(incrivel|incrível|revolucion|milagre|garantid|segredo|nunca falha|sem risco)\b/;
+// Títulos-rótulo (genéricos, sem cena nem verbo): bloqueados no padrão v1.
+const ROTULO = /^(o que aprendemos|escala global|modelo de (negocio|comissao|receita)|teste de (viabilidade|comissao)|conclusao|resumo|introducao|a prova( da escala)?|o problema|desperdicio massivo|taxa de parceiros|como funciona( a comissao)?|limitacao( da comissao)?|o teste|a licao|licao|aprendizado|resultado|contexto)\.?$/;
 const CONECTIVO = /\b(porque|assim|quando|para que|por isso|com isso|então|entao|dessa forma|desse jeito)\b/;
 
 // ── Briefing: a ficha auditável que fica antes da redação ───────────────────────
@@ -140,6 +142,12 @@ function montarTelas(dados, op, { agora = Date.now(), v1 = false, briefing = nul
     const textos = funcao === 'encerramento'
       ? { titulo: U.limita(t.titulo, 160), apoio: U.limita(t.apoio || t.corpo, 220) }
       : { titulo: U.limita(t.titulo, 140), corpo: U.limita(String(t.corpo || '').trim(), 600) };
+    // v1: número em destaque e comparação (só desenhados se os números forem verificados; a validação confere)
+    if (v1 && funcao !== 'encerramento') {
+      if (t.destaque && typeof t.destaque === 'object' && String(t.destaque.valor || '').trim()) { textos.destaque_valor = U.limita(t.destaque.valor, 24); textos.destaque_legenda = U.limita(t.destaque.legenda, 90); }
+      const c = Array.isArray(t.comparacao) ? t.comparacao.filter((x) => x && String(x.valor || '').trim()) : [];
+      if (c.length >= 2) { textos.comp_a_valor = U.limita(c[0].valor, 20); textos.comp_a_rotulo = U.limita(c[0].rotulo, 60); textos.comp_b_valor = U.limita(c[1].valor, 20); textos.comp_b_rotulo = U.limita(c[1].rotulo, 60); }
+    }
     // seções do briefing citadas como base (hipóteses, aprendizado…) não são fatos: saem da base; hipótese não precisa de base
     const SECOES = new Set(['hipoteses', 'hipotese', 'aprendizado_leitor', 'aplicacao', 'tese', 'limitacoes', 'teste_de_valor', 'pergunta_capa']);
     const base = (Array.isArray(t.base) ? t.base.map(String) : Array.isArray(t.fatos_usados) ? t.fatos_usados.map(String) : []).filter((x) => !SECOES.has(x) && !/^h\d+$/.test(x));
@@ -159,7 +167,7 @@ function validarTelas(telas, op, b, { v1 = false } = {}) {
   const ids = new Set([...(b?.fatos || []), ...(b?.analises || [])].map((f) => String(f.id)));
   const tudoFala = telas.map((t) => `${t.textos.titulo || ''} ${t.textos.corpo || t.textos.apoio || ''}`).join(' ');
   telas.forEach((t, i) => {
-    const n = i + 1; const txt = `${t.textos.titulo || ''} ${t.textos.corpo || t.textos.apoio || ''}`; const s = sem(txt); const r = `Tela ${n}`;
+    const n = i + 1; const x = t.textos || {}; const txt = [x.titulo, x.corpo || x.apoio, x.destaque_valor, x.destaque_legenda, x.comp_a_valor, x.comp_a_rotulo, x.comp_b_valor, x.comp_b_rotulo].filter(Boolean).join(' '); const s = sem(txt); const r = `Tela ${n}`;
     if (!String(t.textos.titulo || '').trim()) bl.push(`${r}: falta o título.`);
     if (t.funcao !== 'encerramento') {
       const pal = U.contaPalavras(t.textos.corpo || ''); if (pal < MIN_CORPO) bl.push(`${r}: o texto tem ${pal} palavras; falta explicar (mínimo ${MIN_CORPO}).`);
@@ -208,6 +216,11 @@ function validarTelas(telas, op, b, { v1 = false } = {}) {
       if (!String(t.informacao_nova || '').trim()) bl.push(`Tela ${i + 1}: diga qual informação nova ela acrescenta (campo “informação nova”).`);
       if (i > 0 && !String(t.relacao_anterior || '').trim()) sg.push(`Tela ${i + 1}: registre a relação com a tela anterior.`);
       for (const ev of t.evidencias || []) if (!usaveis.some((c) => c.id === ev)) bl.push(`Tela ${i + 1}: a evidência ${ev} não está entre as afirmações verificadas.`);
+    });
+    telas.forEach((t, i) => {
+      const tt = String(t.textos?.titulo || ''); const p = U.contaPalavras(tt);
+      if (tt && (p < 5 || ROTULO.test(sem(tt)))) bl.push(`Tela ${i + 1}: o título “${U.limita(tt, 60)}” é rótulo, não frase. Escreva uma frase completa (6 a 14 palavras) com um elemento concreto do caso e um verbo, que faça o leitor querer a próxima tela.`);
+      else if (p > 18) sg.push(`Tela ${i + 1}: título com ${p} palavras; até 14 prende mais.`);
     });
     const novas = telas.map((t) => sem(t.informacao_nova || '')).filter(Boolean);
     if (new Set(novas).size < novas.length) sg.push('Duas telas declaram a mesma informação nova: uma delas repete a outra.');
@@ -277,6 +290,14 @@ COMPLEMENTOS OBRIGATÓRIOS DO PADRÃO:
 - Ganchos: scores também em "entregabilidade" (as telas cumprem a promessa?).
 - Telas: de 5 a 7. "problema" e "mecanismo_2" podem ter "omitir": "motivo" se não houver conteúdo específico (menos telas é melhor que enchimento).
 - Cada tela: informacao_nova (o que ela acrescenta), relacao_anterior, base (fatos/análises usados), evidencias (ids de DADOS_VERIFICADOS), briefing_visual {mostrar, acrescenta, buscas, enquadramento, deve_aparecer, proibido}.
+- ESCRITA QUE PRENDE (o leitor desliza porque cada tela abre uma pergunta que a próxima responde):
+  · Título é FRASE COMPLETA com verbo e um elemento concreto do caso (objeto, preço, cena, decisão). De 6 a 14 palavras. Nunca rótulo.
+    RUIM: "Escala global" · "Modelo de comissão" · "O que aprendemos" · "Teste de viabilidade" · "Desperdício massivo".
+    BOM: "A padaria vende o pão de ontem antes de o cliente chegar" · "O app ganha US$ 1,79 mesmo quando a sacola custa US$ 4" · "O cliente aceita não escolher, e é isso que faz a conta fechar".
+  · Abra o corpo com uma cena ou um exemplo concreto (quem, onde, quando, quanto), depois explique o porquê.
+  · Use contraste e tensão real do caso ("parece X, mas na verdade Y"), sem exagero e sem frase de efeito vazia.
+  · Fale com o leitor ("você") quando a tela for de aplicação; nas outras, mostre a cena.
+  · Opcional por tela, para variar o visual (só com número VERIFICADO): "destaque": {"valor": "US$ 1,79", "legenda": "por sacola vendida, segundo a empresa"} ou "comparacao": [{"rotulo": "", "valor": ""}, {"rotulo": "", "valor": ""}].
 - Só título e corpo vão para a imagem. Sem nome, @ ou foto do Pedro antes do encerramento. Encerramento: aprendizado específico desta pauta, um único convite, ${ACCOUNT.handle}, motivo para seguir.
 Responda APENAS JSON no formato: {"sem_pauta":null,"briefing":{"publico":"","interesse":"","nivel_conhecimento":"","negocio":{"nome":"","produto":"","problema":"","para_quem":"","quem_paga":"","pelo_que_paga":"","forma_cobranca":"","operacao":""},"fatos":[],"analises":[],"hipoteses":[],"decisao_especifica":{"texto":"","base":[]},"mecanismos":[{"nome":"","como_funciona":"","exemplo":"","vantagem":"","condicao_de_falha":"","base":[]}],"limitacoes":[],"aprendizado_leitor":"","aplicacao":"","duvidas_abertas":[],"teste_de_valor":{"o_que_aprende":"","por_que_importa":"","aprovado":true}},"ganchos":[{"angulo":"oportunidade","titulo":"","scores":{"clareza":3,"relevancia":3,"especificidade":3,"sustentacao":3,"entregabilidade":3}},{"angulo":"contradicao","titulo":"","scores":{}},{"angulo":"erro","titulo":"","scores":{}}],"telas":[{"funcao":"gancho","tipo":"FATO","base":[],"evidencias":[],"informacao_nova":"","relacao_anterior":"","titulo":"","corpo":"","briefing_visual":{}}],"legenda":{"primeira_linha":"","historia":"","como_ganha":"","brasil":""},"hashtags":[]}`;
 
@@ -395,7 +416,8 @@ function validarVisualV1(doc) {
     if (im.permissao !== 'confirmada' && ['editorial', 'stock_duvidoso', 'desconhecida'].includes(im.licenca_classe)) bl.push(`Tela ${i + 1}: uso de imagem com direito duvidoso ainda não revisado.`);
   });
   // não deixar as últimas telas só com texto: ao menos uma das duas telas antes do encerramento tem imagem
-  const antes = telas.slice(-3, -1); if (antes.length && antes.every((t) => !t.foto?.imagem_id)) sg.push('As telas finais estão todas só com texto: envie uma imagem pertinente para a conta ou para a aplicação.');
+  const visual = (t) => !!t.foto?.imagem_id || ['min_destaque', 'min_comparacao'].includes(t.layout);
+  const antes = telas.slice(-3, -1); if (antes.length && antes.every((t) => !visual(t))) sg.push('As telas finais estão todas só com texto: envie uma imagem pertinente para a conta ou para a aplicação.');
   const comFoto = telas.filter((t) => t.foto?.imagem_id && t.funcao !== 'encerramento').length;
   if (comFoto < 3) sg.push(`Só ${comFoto} tela(s) com imagem do assunto (o padrão costuma ter 3 ou 4). Faltam imagens pertinentes; nenhuma genérica foi colocada no lugar.`);
   if ((doc.legenda?.hashtags || []).length > 3) bl.push('A legenda tem mais de 3 hashtags.');
@@ -410,7 +432,7 @@ async function gerarMinimalista(op, { deps = {}, tentativas = 3, feedback: fb0 =
   let feedback = fb0; const historico = []; let ultimo = null;
   for (let i = 1; i <= tentativas; i++) {
     const d = llmJson.dado('NEGOCIO', JSON.stringify(dadosParaIa(op)), 16000);
-    const { dados, llm } = await pedir({ sistema: `${v1 ? SISTEMA_V1 : SISTEMA}\n\n${llmJson.REGRAS_DADOS}`, usuario: `${d.bloco}\n${feedback ? `\nA VERSÃO ANTERIOR TEVE ESTES PROBLEMAS. Corrija todos sem perder o que estava bom:\n- ${feedback}\n` : ''}`, maxTokens: 6500, temperatura: i === 1 ? 0.6 : 0.35, budget: deps.budget });
+    const { dados, llm } = await pedir({ sistema: `${v1 ? SISTEMA_V1 : SISTEMA}\n\n${llmJson.REGRAS_DADOS}`, usuario: `${d.bloco}\n${feedback ? `\nA VERSÃO ANTERIOR TEVE ESTES PROBLEMAS. Corrija todos sem perder o que estava bom:\n- ${feedback}\n` : ''}`, maxTokens: 7000, temperatura: i === 1 ? (v1 ? 0.75 : 0.6) : 0.4, budget: deps.budget, ...(v1 ? { esforco: 'medium' } : {}) });
     const r = montarDoc(dados, op, { agora, v1 }); const v = validarDocMin(r, op);
     historico.push({ tentativa: i, bloqueios: v.bloqueios.length, llm });
     ultimo = { ...r, llm, validacao: v };
