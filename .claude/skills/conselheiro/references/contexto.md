@@ -7,6 +7,7 @@
 - **Voz:** autoral, de direita, a favor da liberdade econômica, da responsabilidade fiscal, da família e da iniciativa privada. Opinião clara, sustentada por fatos.
 - **Fechamento fixo dos carrosséis:** "Eu comecei o Pedro Destrava por isso." (arte original aprovada; preservar).
 - **Fala melhor quando:** escreve em primeira pessoa ("Cara…", "Eu quero menos imposto…"), mostra contradição entre discurso e prática e traduz a decisão em conta no bolso de quem empreende.
+- **Origem do perfil (dito pelo Pedro em 28/10/2026): perfil de reciclagem.** A base de 165 mil foi construída repostando vídeos que já tinham viralizado. Consequências: a audiência veio por entretenimento/indignação, não pelo Pedro nem por negócio; conteúdo autoral explicativo engaja pouco; boa parte da base não é lojista (não é o público da Nexo); repost de terceiros tem risco de direitos autorais (houve áudio retirado por pedido de direitos em out/2026) e perde recomendação para o original na política de originalidade do Instagram. Conteúdo autoral de opinião com conflito (ex.: carrossel de 19/10 com 20 envios por mil) engaja; o que não engaja é explicação neutra.
 - **O "porquê" pessoal (história de origem) ainda NÃO está documentado.** É a peça que mais falta para o modelo de fundador. Pergunte e registre aqui.
 - Também apresenta o podcast **Quero+ IEL/GO** (entrevistas com empresários goianos), um ativo de autoridade e de relacionamento com empresários.
 
