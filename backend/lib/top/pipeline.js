@@ -99,6 +99,13 @@ E.roteiro = async (c, ctx) => {
   }
 };
 
+// Campo vazio, "null" ou só códigos internos ("f1,f2") não vai para a arte.
+function limpaCampo(v, n) {
+  const x = String(v ?? '').trim();
+  if (!x || /^(null|none|n\/a|-)$/i.test(x) || /^\s*\[?\s*[a-z]?\d+(\s*[,;]\s*[a-z]?\d+)*\s*\]?\s*$/i.test(x) || /^(f\d+[\s,;]*)+$/i.test(x)) return null;
+  return x.slice(0, n);
+}
+
 function normalizarRoteiro(d) {
   const capas = (Array.isArray(d?.capas) ? d.capas : []).map((k) => ({ texto: String(k?.texto || k || '').replace(/\s+/g, ' ').trim().slice(0, 140), mecanismo: String(k?.mecanismo || '').slice(0, 40) })).filter((k) => k.texto && K.palavras(k.texto) <= 14).slice(0, 10);
   const LAY = ['rep_manchete', 'rep_comparacao', 'rep_numero'];
@@ -106,7 +113,7 @@ function normalizarRoteiro(d) {
     papel: ['gap', 'prova', 'contradicao', 'consequencia', 'leitura'].includes(t?.papel) ? t.papel : 'gap',
     layout: LAY.includes(t?.layout) ? t.layout : 'rep_manchete',
     titulo: t?.titulo ? String(t.titulo).slice(0, 90) : null, texto: t?.texto ? String(t.texto).slice(0, 320) : null,
-    destaque: t?.destaque ? String(t.destaque).slice(0, 80) : null, apoio: t?.apoio ? String(t.apoio).slice(0, 200) : null,
+    destaque: limpaCampo(t?.destaque, 80), apoio: limpaCampo(t?.apoio, 200),
     dados: t?.dados && typeof t.dados === 'object' ? limpaDados(t.dados) : null, fatos: Array.isArray(t?.fatos) ? t.fatos.map(String).slice(0, 6) : [],
   })).filter((t) => t.titulo || t.texto || t.dados).map(repararTela);
   return { capas, telas, legenda: String(d?.legenda || '').slice(0, 900), hashtags: (Array.isArray(d?.hashtags) ? d.hashtags : []).map((h) => `#${String(h).replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => h.length > 2).slice(0, 3), cta_motivo: String(d?.cta_motivo || '').slice(0, 90), fechamento: { titulo: String(d?.fechamento?.titulo || '').slice(0, 70), texto: String(d?.fechamento?.texto || '').slice(0, 200) } };
@@ -131,13 +138,16 @@ function limpaDados(d) {
 
 E.juri = async (c, ctx) => {
   const vs = c.top.versoes;
-  const usuario = vs.map((v, i) => `VERSÃO ${i}${v.checagem.ok ? '' : ' (reprovada na checagem: ' + v.checagem.problemas.slice(0, 2).join(' ') + ')'}\nCAPAS:\n${v.capas.map((k, j) => `  [${j}] ${k.texto}`).join('\n')}\nTELAS:\n${v.telas.map((t, j) => `  ${j + 2}. (${t.papel}) ${[t.titulo, t.texto, t.destaque, t.dados ? JSON.stringify(t.dados) : ''].filter(Boolean).join(' | ')}`).join('\n')}\nLEGENDA: ${v.legenda}`).join('\n\n');
+  const usuario = `FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\n` + vs.map((v, i) => `VERSÃO ${i}${v.checagem.ok ? '' : ' (reprovada na checagem: ' + v.checagem.problemas.slice(0, 2).join(' ') + ')'}\nCAPAS:\n${v.capas.map((k, j) => `  [${j}] ${k.texto}`).join('\n')}\nTELAS:\n${v.telas.map((t, j) => `  ${j + 2}. (${t.papel}) ${[t.titulo, t.texto, t.destaque, t.dados ? JSON.stringify(t.dados) : ''].filter(Boolean).join(' | ')}`).join('\n')}\nLEGENDA: ${v.legenda}`).join('\n\n');
   const { dados } = await ctx.ia({ sistema: P.JURI, usuario, maxTokens: 900, temperatura: 0.1, preferirMelhor: true });
   const notas = Array.isArray(dados?.versoes) ? dados.versoes : [];
   let melhor = -1; let nota = -1;
   vs.forEach((v, i) => {
     const j = notas.find((x) => Number(x.indice) === i) || notas[i] || {};
+    const hon = Number(j.notas?.honestidade);
     v.juri = { notas: j.notas || {}, nota: Math.max(0, Math.min(10, Number(j.nota) || 0)), defeito: String(j.defeito || '').slice(0, 200) };
+    // Veto: afirmação além dos fatos (ex.: chamar de "novo imposto" o que os fatos não dizem que é novo) derruba a versão.
+    if (Number.isFinite(hon) && hon < 7) { v.juri.nota = Math.min(v.juri.nota, hon); v.juri.defeito = `Honestidade ${hon}: ${String(j.honestidade_motivo || v.juri.defeito || 'afirma mais do que os fatos sustentam')}`.slice(0, 220); }
     if (v.checagem.ok && v.capas.length && v.juri.nota > nota) { nota = v.juri.nota; melhor = i; }
   });
   if (melhor < 0) throw Object.assign(erro('Nenhuma versão passou na checagem.', 'CHECAGEM', 422), { terminal: true, fim: 'abaixo_da_regua' });

@@ -11,14 +11,38 @@ const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 const palavras = (s) => String(s || '').replace(/\*\*/g, '').split(/\s+/).filter(Boolean).length;
 
 // Fatos devolvidos pela IA → só os verificáveis no texto. Cada número do fato precisa aparecer no trecho.
+// Frases da matéria (para achar o trecho real quando a IA parafraseia).
+const STOPW = new Set('a o e de da do das dos em no na nos nas um uma uns umas que com por para pelo pela pelos pelas se ao aos as os ou mais menos foi sao ser como sobre entre ate'.split(' '));
+const conteudo = (s) => norm(s).replace(/[^a-z0-9%,. ]/g, ' ').split(/\s+/).map((w) => w.replace(/^[.,]+|[.,]+$/g, '')).filter((w) => w.length > 2 && !STOPW.has(w));
+function frasesDe(texto) { return String(texto || '').replace(/\s+/g, ' ').split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ"“])/).map((x) => x.trim()).filter((x) => x.length >= 20); }
+// Acha a frase (ou par de frases seguidas) da matéria que sustenta o trecho: mesmos números e ≥ 70% das palavras.
+function acharTrecho(trecho, texto, frases) {
+  const alvo = conteudo(trecho); if (alvo.length < 4) return null;
+  const nums = M.extrairNumeros(`${trecho} ${texto}`).filter(M.exigeOrigem).map((n) => n.valor);
+  let melhor = null;
+  for (let i = 0; i < frases.length; i++) {
+    for (const cand of [frases[i], frases[i] + ' ' + (frases[i + 1] || '')]) {
+      const ws = new Set(conteudo(cand));
+      const cobre = alvo.filter((w) => ws.has(w)).length / alvo.length;
+      const vals = M.extrairNumeros(cand).map((n) => n.valor);
+      if (cobre >= 0.7 && nums.every((v) => vals.some((x) => M.igual(x, v))) && (!melhor || cobre > melhor.cobre || (cobre === melhor.cobre && cand.length < melhor.frase.length))) melhor = { frase: cand.trim(), cobre };
+    }
+  }
+  return melhor ? melhor.frase : null;
+}
+
 function verificarFatos(fatos, textoFonte) {
-  const corpo = norm(textoFonte);
+  const corpo = norm(textoFonte); const frases = frasesDe(textoFonte);
   const ok = []; const descartados = [];
   (Array.isArray(fatos) ? fatos : []).slice(0, 14).forEach((f, i) => {
-    const trecho = String(f?.trecho || '').trim();
+    let trecho = String(f?.trecho || '').trim();
     const texto = String(f?.texto || '').trim();
     if (!trecho || !texto) return descartados.push({ id: f?.id, motivo: 'sem trecho ou sem texto' });
-    if (trecho.length < 20 || !corpo.includes(norm(trecho))) return descartados.push({ id: f?.id, motivo: 'o trecho não está no texto da matéria' });
+    if (trecho.length < 20 || !corpo.includes(norm(trecho))) {
+      const real = acharTrecho(trecho, texto, frases);
+      if (!real) return descartados.push({ id: f?.id, motivo: 'o trecho não está no texto da matéria' });
+      trecho = real; // guarda a frase REAL da matéria como prova, não a paráfrase da IA
+    }
     const nTrecho = M.extrairNumeros(trecho).map((n) => n.valor);
     const soltos = M.extrairNumeros(texto).filter(M.exigeOrigem).filter((n) => !nTrecho.some((v) => M.igual(v, n.valor)));
     if (soltos.length) return descartados.push({ id: f?.id, motivo: `número fora do trecho: ${soltos.map((n) => n.raw).join(', ')}` });
