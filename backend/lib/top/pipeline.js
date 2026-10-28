@@ -122,7 +122,13 @@ function normalizarRoteiro(d) {
 // viram manchete (o texto continua; o desenho muda). Assim um detalhe de formato não derruba a versão inteira.
 function repararTela(t) {
   if (t.layout === 'rep_numero' && !t.dados?.numero?.valor) return { ...t, layout: 'rep_manchete', dados: null };
-  if (t.layout === 'rep_comparacao' && !(t.dados?.esquerda?.valor && t.dados?.direita?.valor)) return { ...t, layout: 'rep_manchete', dados: null };
+  if (t.layout === 'rep_comparacao') {
+    const tem = (l) => !!(l?.valor && /\d/.test(l.valor));
+    const e = tem(t.dados?.esquerda); const d = tem(t.dados?.direita);
+    // comparação só vale com número dos dois lados; com um só, vira "número gigante"; sem nenhum, manchete
+    if (!e && !d) return { ...t, layout: 'rep_manchete', dados: null };
+    if (!e || !d) { const l = e ? t.dados.esquerda : t.dados.direita; return { ...t, layout: 'rep_numero', dados: { numero: { valor: String(l.valor).slice(0, 16), rotulo: String(l.rotulo || t.titulo || '').slice(0, 22) } } }; }
+  }
   if (t.layout === 'rep_manchete' && t.dados && !t.dados.numero && !t.dados.esquerda) return { ...t, dados: null };
   return t;
 }

@@ -190,7 +190,7 @@ function lComparacao(s, ctx) {
   const LIMITE = H - 118; // início da faixa do rodapé
   const montar = (sc, extra) => {
     const blocos = []; let fundo = ''; let tx = '';
-    const yTit = Math.round(420 - (1 - sc) * 160 + extra);
+    const yTit = Math.round((ctx.temFoto === false ? 230 : 420) - (1 - sc) * 160 + extra);
     const t = fit({ texto: up(s.titulo || s.texto), k: 'aDisplay', larg: LARG, altVis: 200, max: Math.round(150 * sc), min: 84, ent: 1.02, papel: 'r_titulo' });
     blocos.push({ nome: 'titulo', ...A.resumo(t) });
     tx += colocar(t, { x: MARGEM, ytop: yTit, k: 'aDisplay', tema: T, alinhar: 'centro', larguraBox: LARG });
@@ -250,7 +250,7 @@ function lComparacao(s, ctx) {
     }
     tx += rodape({ tema: T, fonte: fl, y: H - 56 });
     if (!fl) blocos.push({ nome: 'fonte', tam: 0, cabe: false, motivo: 'Comparação sem linha de fonte' });
-    const r = { tema: T, fundoSvg: base(T.fundo, '', grao(0.05) + forma(s.forma || { tipo: 'pincelada', cor: 'amarelo' }, { x: 170, y: 100, w: 640, h: Math.max(200, yTit - 130) }, COR.amarelo) + fundo), recorte: { caixa: { x: 230, y: 30, w: 620, h: yTit - 30 - Math.round(0.2 * 150 * sc) }, ancora: 'centro' }, textoSvg: sobre(tx), blocos, semFonte: !fl };
+    const r = { tema: T, fundoSvg: base(T.fundo, '', grao(0.05) + (ctx.temFoto === false ? '' : forma(s.forma || { tipo: 'pincelada', cor: 'amarelo' }, { x: 170, y: 100, w: 640, h: Math.max(200, yTit - 130) }, COR.amarelo)) + fundo), recorte: { caixa: { x: 230, y: 30, w: 620, h: yTit - 30 - Math.round(0.2 * 150 * sc) }, ancora: 'centro' }, textoSvg: sobre(tx), blocos, semFonte: !fl };
     return { r, y, ok: y <= LIMITE && blocos.every((b) => b.cabe !== false || b.nome === 'fonte') };
   };
   let melhor = null;
