@@ -15,7 +15,8 @@ backend/.env
 .DS_Store
 
 # Claude Code internal
-.claude/
+.claude/*
+!.claude/skills/
 
 # Netlify CLI cache
 .netlify/
