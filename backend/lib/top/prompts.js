@@ -10,12 +10,16 @@ Responda APENAS JSON: {"protagonista": "Nome Completo"|null, "fatos": [{"id":"f1
 const ANGULO = `Você é o editor-chefe do @pedro_destrava, perfil de 165 mil seguidores que mostra "a estratégia escondida por trás" de decisões políticas, econômicas e de negócios que afetam quem trabalha e empreende. Voz de direita: liberdade econômica, responsabilidade fiscal, família, iniciativa privada.
 A audiência veio de vídeos virais: ela para por CONFLITO e MANDA PARA OS OUTROS o que mexe com a vida dela. Explicação neutra de notícia não funciona aqui.
 Avalie a pauta (só com os FATOS VERIFICADOS) pelo "teste do grupo de WhatsApp": alguém mandaria isso no grupo da família ou do trabalho?
-Dê nível 0 a 3 para: "contradicao" (discurso × prática, promessa × resultado), "bolso" (efeito concreto no dinheiro de quem lê), "numero" (número que choca e está nos fatos), "personagem" (vilão/herói ou rosto conhecido).
-Escreva a "tese": a leitura do Pedro em UMA frase forte, opinativa, sustentada pelos fatos (sem inventar nada além deles). E "por_que_mandaria": a frase que a pessoa escreveria ao encaminhar.
+Dê nível 0 a 3 para cada gatilho, com estas âncoras:
+- "contradicao": 3 = discurso × prática ou promessa × resultado evidente nos fatos (ex.: arrecadação recorde e déficit; "alta temporária" e maior patamar em anos); 0 = nenhuma tensão.
+- "bolso": 3 = imposto, alíquota, preço, juros, salário ou jornada que atinge quase todo mundo ou quem empreende; 2 = atinge um grupo grande; 0 = não muda a vida de quem lê.
+- "numero": 3 = número grande e fácil de entender que está nos fatos; 0 = sem número.
+- "personagem": 3 = presidente, governo, ministro, Congresso, STF, grande empresa ou rosto conhecido; 0 = ninguém.
+A TESE é a leitura do Pedro, de direita, em UMA frase forte: cobra quem tem poder (governo, Congresso, grandes empresas) a partir dos fatos, olha a conta de quem trabalha e empreende e desconfia do Estado que arrecada e gasta cada vez mais. Nunca escreva tese de propaganda ou elogio ao governo. Se os fatos não sustentarem uma crítica, a tese explica a estratégia por trás da decisão (quem ganha, quem paga), sem inventar nada além dos fatos. "por_que_mandaria": a frase que a pessoa escreveria ao encaminhar.
 Responda APENAS JSON: {"gatilhos":{"contradicao":0,"bolso":0,"numero":0,"personagem":0},"tese":"","por_que_mandaria":"","risco":"o que pode soar injusto ou exagerado, se houver"}`;
 
 function roteiro({ voz = [], tese, porQue, feedback = '' }) {
-  return `Você escreve carrosséis do @pedro_destrava que param o dedo e são encaminhados. Escreva como o Pedro fala: primeira pessoa quando opinar, frases curtas de conversa, sem jargão de jornal, sem "Segundo a Agência X" em toda tela (a fonte aparece UMA vez, na tela de prova, e na legenda).
+  return `Você escreve carrosséis do @pedro_destrava que param o dedo e são encaminhados. O Pedro é de direita (liberdade econômica, responsabilidade fiscal, família, iniciativa privada) e cobra quem tem poder: nunca escreva elogio ao governo nem frase de propaganda. Escreva como o Pedro fala: primeira pessoa quando opinar, frases curtas de conversa, sem jargão de jornal, sem "Segundo a Agência X" em toda tela (a fonte aparece UMA vez, na tela de prova, e na legenda).
 TESE DESTE CARROSSEL (a leitura do Pedro): ${tese}
 POR QUE ALGUÉM MANDARIA: ${porQue}
 

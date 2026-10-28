@@ -67,7 +67,7 @@ E.fatos = async (c, ctx) => {
 };
 
 E.angulo = async (c, ctx) => {
-  const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3 });
+  const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true });
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
   c.top.angulo = { gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240) };
   c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
@@ -83,6 +83,9 @@ E.roteiro = async (c, ctx) => {
     const feedback = anterior && !anterior.checagem.ok ? anterior.checagem.problemas.slice(0, 8).join('\n') : '';
     const { dados } = await ctx.ia({ sistema: P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback }), usuario: `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
     const v = normalizarRoteiro(dados);
+    const limparFrases = (txt) => String(txt || '').split(/(?<=[.!?])\s+/).filter((f) => !K.numerosSemFonte(f, c.top.fatos).length).join(' ').trim();
+    v.legenda = limparFrases(v.legenda); v.cta_motivo = K.numerosSemFonte(v.cta_motivo, c.top.fatos).length ? '' : v.cta_motivo;
+    v.fechamento = { titulo: K.numerosSemFonte(v.fechamento.titulo, c.top.fatos).length ? '' : v.fechamento.titulo, texto: limparFrases(v.fechamento.texto).replace(/eu comecei o pedro destrava por isso\.?/i, '').trim() };
     v.checagem = K.checarRoteiro({ ...v, capa: v.capas[0]?.texto || '', telas: [...v.telas], legenda: `${v.legenda}\n${v.fechamento.titulo}\n${v.fechamento.texto}\n${v.cta_motivo}` }, c.top.fatos);
     // capas com número fora dos fatos saem da lista (não derrubam a versão inteira)
     v.capas = v.capas.filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')));
@@ -91,7 +94,7 @@ E.roteiro = async (c, ctx) => {
   if (c.top.versoes.length < 2) return { concluida: false };
   if (!c.top.versoes.some((v) => v.checagem.ok && v.capas.length)) {
     c.top.reescritas = (c.top.reescritas || 0) + 1;
-    if (c.top.reescritas > 1) throw Object.assign(erro(`As versões não passaram na checagem: ${c.top.versoes[1].checagem.problemas.slice(0, 2).join(' ')}`, 'CHECAGEM', 422), { terminal: true, fim: 'abaixo_da_regua' });
+    if (c.top.reescritas > 2) throw Object.assign(erro(`As versões não passaram na checagem: ${c.top.versoes[1].checagem.problemas.slice(0, 2).join(' ')}`, 'CHECAGEM', 422), { terminal: true, fim: 'abaixo_da_regua' });
     c.top.versoes = c.top.versoes.slice(-1); return { concluida: false };
   }
 };
@@ -105,13 +108,22 @@ function normalizarRoteiro(d) {
     titulo: t?.titulo ? String(t.titulo).slice(0, 90) : null, texto: t?.texto ? String(t.texto).slice(0, 320) : null,
     destaque: t?.destaque ? String(t.destaque).slice(0, 80) : null, apoio: t?.apoio ? String(t.apoio).slice(0, 200) : null,
     dados: t?.dados && typeof t.dados === 'object' ? limpaDados(t.dados) : null, fatos: Array.isArray(t?.fatos) ? t.fatos.map(String).slice(0, 6) : [],
-  })).filter((t) => t.titulo || t.texto || t.dados);
+  })).filter((t) => t.titulo || t.texto || t.dados).map(repararTela);
   return { capas, telas, legenda: String(d?.legenda || '').slice(0, 900), hashtags: (Array.isArray(d?.hashtags) ? d.hashtags : []).map((h) => `#${String(h).replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => h.length > 2).slice(0, 3), cta_motivo: String(d?.cta_motivo || '').slice(0, 90), fechamento: { titulo: String(d?.fechamento?.titulo || '').slice(0, 70), texto: String(d?.fechamento?.texto || '').slice(0, 200) } };
 }
+// Conserta por código o que dá para consertar sem inventar: tela de número sem número e comparação sem os dois lados
+// viram manchete (o texto continua; o desenho muda). Assim um detalhe de formato não derruba a versão inteira.
+function repararTela(t) {
+  if (t.layout === 'rep_numero' && !t.dados?.numero?.valor) return { ...t, layout: 'rep_manchete', dados: null };
+  if (t.layout === 'rep_comparacao' && !(t.dados?.esquerda?.valor && t.dados?.direita?.valor)) return { ...t, layout: 'rep_manchete', dados: null };
+  if (t.layout === 'rep_manchete' && t.dados && !t.dados.numero && !t.dados.esquerda) return { ...t, dados: null };
+  return t;
+}
+
 function limpaDados(d) {
   const curto = (v, n) => String(v ?? '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
   const lado = (l) => (l && l.valor ? { rotulo: curto(l.rotulo, 18), valor: curto(l.valor, 14), ...(l.unidade ? { unidade: curto(l.unidade, 24) } : {}) } : null);
-  if (d.numero) return { numero: { valor: curto(d.numero.valor, 8), rotulo: curto(d.numero.rotulo, 22) } };
+  if (d.numero) { const n = typeof d.numero === 'object' ? d.numero : { valor: d.numero, rotulo: d.rotulo }; return { numero: { valor: curto(n.valor, 16), rotulo: curto(n.rotulo, 22) } }; }
   const out = { esquerda: lado(d.esquerda), direita: lado(d.direita), tom: d.tom === 'alerta' ? 'alerta' : 'neutro' };
   if (d.faixa?.valor) out.faixa = { valor: curto(d.faixa.valor, 32), ...(d.faixa.texto ? { texto: curto(d.faixa.texto, 30) } : {}) };
   return out;
@@ -120,7 +132,7 @@ function limpaDados(d) {
 E.juri = async (c, ctx) => {
   const vs = c.top.versoes;
   const usuario = vs.map((v, i) => `VERSÃO ${i}${v.checagem.ok ? '' : ' (reprovada na checagem: ' + v.checagem.problemas.slice(0, 2).join(' ') + ')'}\nCAPAS:\n${v.capas.map((k, j) => `  [${j}] ${k.texto}`).join('\n')}\nTELAS:\n${v.telas.map((t, j) => `  ${j + 2}. (${t.papel}) ${[t.titulo, t.texto, t.destaque, t.dados ? JSON.stringify(t.dados) : ''].filter(Boolean).join(' | ')}`).join('\n')}\nLEGENDA: ${v.legenda}`).join('\n\n');
-  const { dados } = await ctx.ia({ sistema: P.JURI, usuario, maxTokens: 900, temperatura: 0.1 });
+  const { dados } = await ctx.ia({ sistema: P.JURI, usuario, maxTokens: 900, temperatura: 0.1, preferirMelhor: true });
   const notas = Array.isArray(dados?.versoes) ? dados.versoes : [];
   let melhor = -1; let nota = -1;
   vs.forEach((v, i) => {
@@ -136,6 +148,7 @@ E.juri = async (c, ctx) => {
     c.top.reprovacoes_juri = (c.top.reprovacoes_juri || 0) + 1;
     if (c.top.reprovacoes_juri > 1) throw Object.assign(erro(`O júri deu ${nota.toFixed(1)} (mínimo ${regua().nota_min}). Defeito: ${v.juri.defeito || 'sem detalhe'}`, 'ABAIXO_DA_REGUA', 422), { terminal: true, fim: 'abaixo_da_regua' });
     // mais uma rodada de roteiro com o defeito apontado
+    c.top.reescritas = 0;
     c.top.versoes = [{ ...v, checagem: { ok: false, problemas: [`O júri deu ${nota.toFixed(1)}: ${v.juri.defeito}`] } }];
     return { voltar: 'roteiro' };
   }
