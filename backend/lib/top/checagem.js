@@ -27,6 +27,16 @@ function verificarFatos(fatos, textoFonte) {
   return { fatos: ok, descartados };
 }
 
+// Datas (27/10/2026, 27/10, out/2026, 27 de outubro de 2026) situam a fonte; não são afirmação numérica.
+const MESES = '(?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)';
+function semDatas(txt) {
+  return String(txt || '')
+    .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, ' ')
+    .replace(new RegExp(`\\b\\d{1,2}\\s+de\\s+${MESES}(?:\\s+de\\s+\\d{4})?`, 'gi'), ' ')
+    .replace(new RegExp(`\\b${MESES}\\.?\\s*(?:\\/|de)\\s*\\d{4}\\b`, 'gi'), ' ')
+    .replace(/#\S+/g, ' ');
+}
+
 function textosDaTela(t) {
   const d = t.dados || {};
   const lado = (l) => (l ? `${l.rotulo || ''} ${l.valor || ''} ${l.unidade || ''}` : '');
@@ -40,16 +50,27 @@ function variacao(d) {
   return Math.abs((b.valor - a.valor) / a.valor * 100);
 }
 
+// Números de um texto que não estão nos fatos (ignora datas).
+// Valores aceitos: os dos fatos e a mesma grandeza escrita abreviada ("R$ 9,293 tri" = 9.293 × 10^12; "239,4 bi").
+function permitidosDe(fatos) {
+  const base = fatos.flatMap((f) => f.valores);
+  return [...base, ...base.flatMap((v) => [1e3, 1e6, 1e9, 1e12].map((m) => v / m).filter((x) => Math.abs(v) >= 1e3 && x >= 1 && x < 1000))];
+}
+function numerosSemFonte(texto, fatos) {
+  const permitidos = permitidosDe(fatos);
+  return M.extrairNumeros(semDatas(texto)).filter(M.exigeOrigem).filter((n) => !permitidos.some((v) => M.igual(v, n.valor)));
+}
+
 // Checa um roteiro (capa + telas + legenda) contra os fatos verificados. Devolve { ok, problemas[] }.
 function checarRoteiro(r, fatos) {
   const problemas = [];
-  const permitidos = fatos.flatMap((f) => f.valores);
+  const permitidos = permitidosDe(fatos);
   const telas = Array.isArray(r?.telas) ? r.telas : [];
   if (!r?.capa || palavras(r.capa) > 14) problemas.push(`Capa ausente ou longa demais (${palavras(r?.capa)} palavras; máximo 14).`);
   if (telas.length < 4 || telas.length > 8) problemas.push(`O carrossel tem ${telas.length} telas de conteúdo; use de 4 a 8 (a capa e o fechamento são à parte).`);
   const todos = [{ onde: 'capa', texto: r?.capa || '' }, ...telas.map((t, i) => ({ onde: `tela ${i + 2}`, texto: textosDaTela(t), t })), { onde: 'legenda', texto: r?.legenda || '' }];
   for (const x of todos) {
-    for (const n of M.extrairNumeros(x.texto).filter(M.exigeOrigem)) {
+    for (const n of M.extrairNumeros(semDatas(x.texto)).filter(M.exigeOrigem)) {
       const ok = permitidos.some((v) => M.igual(v, n.valor)) || (n.tipo === 'percentual' && x.t && variacao(x.t.dados) != null && Math.abs(Math.abs(n.valor) - variacao(x.t.dados)) <= 0.15);
       if (!ok) problemas.push(`${x.onde}: o número “${n.raw}” não está em nenhum fato verificado da matéria.`);
     }
@@ -71,4 +92,4 @@ function checarRoteiro(r, fatos) {
   return { ok: problemas.length === 0, problemas: [...new Set(problemas)] };
 }
 
-module.exports = { verificarFatos, checarRoteiro, textosDaTela, variacao, norm, palavras };
+module.exports = { verificarFatos, checarRoteiro, textosDaTela, variacao, norm, palavras, semDatas, numerosSemFonte };

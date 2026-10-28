@@ -91,10 +91,11 @@ test('a voz vem dos posts reais mais compartilhados do Pedro', async () => {
   assert.doesNotMatch(s, /não deve servir de exemplo/);
 });
 
-test('número inventado no roteiro não passa: reescreve e, se insistir, fica abaixo da régua (não vai para aprovação)', async () => {
+test('número inventado numa tela não passa: reescreve e, se insistir, fica abaixo da régua (não vai para aprovação)', async () => {
   novo();
-  const ruim = roteiro({ legenda: 'O índice chegou a 95% e todo mundo sabe. Segue.' });
-  const ia = iaFalsa({ roteiros: [ruim, ruim, ruim, ruim] });
+  const base = roteiro();
+  const ruim = { ...base, telas: base.telas.map((t, i) => (i === 0 ? { ...t, texto: 'O índice chegou a 95% e o ministro diz que é temporário.' } : t)) };
+  const ia = iaFalsa({ roteiros: [ruim, ruim, ruim, ruim, ruim, ruim, ruim, ruim] });
   const c = await T.criar({ url: 'https://exemplo.test/materia' });
   const r = await T.executarTudo(c.id, { deps: await deps(ia) });
   assert.strictEqual(r.conteudo.top.estado, 'abaixo_da_regua');
@@ -126,4 +127,22 @@ test('"Segundo …" em várias telas é apontado pela checagem', () => {
     { papel: 'contradicao', layout: 'rep_manchete', titulo: 'B', texto: 'texto' },
     { papel: 'leitura', layout: 'rep_manchete', titulo: 'C', texto: 'texto' }], legenda: '' }, []);
   assert.ok(r.problemas.some((p) => /Segundo/.test(p)));
+});
+
+test('na legenda, a frase com número sem fonte sai e o carrossel segue; data não conta como número', async () => {
+  novo();
+  const r0 = roteiro({ legenda: 'O índice chegou a 95% segundo boatos. O índice saiu de 71,7% para 82,9%. Matéria de 27/10/2026.' });
+  const ia = iaFalsa({ roteiros: [r0, r0] });
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: await deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  const v = M.versaoAtiva(await ler(c.id));
+  assert.doesNotMatch(v.legenda, /95%/);
+  assert.match(v.legenda, /71,7% para 82,9%/);
+});
+
+test('tela de número sem o número vira manchete em vez de derrubar a versão', async () => {
+  const v = T.normalizarRoteiro({ capas: [{ texto: 'Capa' }], telas: [{ papel: 'prova', layout: 'rep_numero', titulo: 'Dados', texto: 'Texto', dados: null }, { papel: 'prova', layout: 'rep_numero', texto: 'X', dados: { numero: '239,4 bilhões', rotulo: 'Arrecadação' } }] });
+  assert.strictEqual(v.telas[0].layout, 'rep_manchete');
+  assert.deepStrictEqual(v.telas[1].dados, { numero: { valor: '239,4 bilhões', rotulo: 'Arrecadação' } });
 });
