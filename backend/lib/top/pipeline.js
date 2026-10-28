@@ -106,23 +106,34 @@ function limpaCampo(v, n) {
   return x.slice(0, n);
 }
 
+// Tira referências internas que a IA às vezes escreve no texto: "(f1)", "[f2, f3]", "f1,f2".
+const semIds = (x) => (x == null ? x : String(x).replace(/\s*[\[(]\s*f\d+(?:\s*[,;]\s*f\d+)*\s*[\])]/gi, '').replace(/\s{2,}/g, ' ').trim());
+// "Segue o @pedro_destrava" já é fixo na faixa: o motivo vem sem repetir a chamada.
+const semChamada = (x) => String(x || '').replace(/^\s*(segue|siga)\s+(o\s+)?@?pedro_destrava[\s,:–-]*/i, '').trim();
+
 function normalizarRoteiro(d) {
   const capas = (Array.isArray(d?.capas) ? d.capas : []).map((k) => ({ texto: String(k?.texto || k || '').replace(/\s+/g, ' ').trim().slice(0, 140), mecanismo: String(k?.mecanismo || '').slice(0, 40) })).filter((k) => k.texto && K.palavras(k.texto) <= 14).slice(0, 10);
   const LAY = ['rep_manchete', 'rep_comparacao', 'rep_numero'];
   const telas = (Array.isArray(d?.telas) ? d.telas : []).slice(0, 7).map((t) => ({
     papel: ['gap', 'prova', 'contradicao', 'consequencia', 'leitura'].includes(t?.papel) ? t.papel : 'gap',
     layout: LAY.includes(t?.layout) ? t.layout : 'rep_manchete',
-    titulo: t?.titulo ? String(t.titulo).slice(0, 90) : null, texto: t?.texto ? String(t.texto).slice(0, 320) : null,
+    titulo: t?.titulo ? semIds(String(t.titulo)).slice(0, 90) : null, texto: t?.texto ? semIds(String(t.texto)).slice(0, 320) : null,
     destaque: limpaCampo(t?.destaque, 80), apoio: limpaCampo(t?.apoio, 200),
     dados: t?.dados && typeof t.dados === 'object' ? limpaDados(t.dados) : null, fatos: Array.isArray(t?.fatos) ? t.fatos.map(String).slice(0, 6) : [],
   })).filter((t) => t.titulo || t.texto || t.dados).map(repararTela);
-  return { capas, telas, legenda: String(d?.legenda || '').slice(0, 900), hashtags: (Array.isArray(d?.hashtags) ? d.hashtags : []).map((h) => `#${String(h).replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => h.length > 2).slice(0, 3), cta_motivo: String(d?.cta_motivo || '').slice(0, 90), fechamento: { titulo: String(d?.fechamento?.titulo || '').slice(0, 70), texto: String(d?.fechamento?.texto || '').slice(0, 200) } };
+  return { capas, telas, legenda: semIds(String(d?.legenda || '')).slice(0, 900), hashtags: (Array.isArray(d?.hashtags) ? d.hashtags : []).map((h) => `#${String(h).replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => h.length > 2).slice(0, 3), cta_motivo: semChamada(semIds(d?.cta_motivo)).slice(0, 90), fechamento: { titulo: semIds(String(d?.fechamento?.titulo || '')).slice(0, 70), texto: semIds(String(d?.fechamento?.texto || '')).slice(0, 200) } };
 }
 // Conserta por código o que dá para consertar sem inventar: tela de número sem número e comparação sem os dois lados
 // viram manchete (o texto continua; o desenho muda). Assim um detalhe de formato não derruba a versão inteira.
 function repararTela(t) {
   if (t.layout === 'rep_numero' && !t.dados?.numero?.valor) return { ...t, layout: 'rep_manchete', dados: null };
-  if (t.layout === 'rep_comparacao' && !(t.dados?.esquerda?.valor && t.dados?.direita?.valor)) return { ...t, layout: 'rep_manchete', dados: null };
+  if (t.layout === 'rep_comparacao') {
+    const tem = (l) => !!(l?.valor && /\d/.test(l.valor));
+    const e = tem(t.dados?.esquerda); const d = tem(t.dados?.direita);
+    // comparação só vale com número dos dois lados; com um só, vira "número gigante"; sem nenhum, manchete
+    if (!e && !d) return { ...t, layout: 'rep_manchete', dados: null };
+    if (!e || !d) { const l = e ? t.dados.esquerda : t.dados.direita; return { ...t, layout: 'rep_numero', dados: { numero: { valor: String(l.valor).slice(0, 16), rotulo: String(l.rotulo || t.titulo || '').slice(0, 22) } } }; }
+  }
   if (t.layout === 'rep_manchete' && t.dados && !t.dados.numero && !t.dados.esquerda) return { ...t, dados: null };
   return t;
 }
@@ -130,7 +141,9 @@ function repararTela(t) {
 function limpaDados(d) {
   const curto = (v, n) => String(v ?? '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
   const lado = (l) => (l && l.valor ? { rotulo: curto(l.rotulo, 18), valor: curto(l.valor, 14), ...(l.unidade ? { unidade: curto(l.unidade, 24) } : {}) } : null);
-  if (d.numero) { const n = typeof d.numero === 'object' ? d.numero : { valor: d.numero, rotulo: d.rotulo }; return { numero: { valor: curto(n.valor, 16), rotulo: curto(n.rotulo, 22) } }; }
+  // rótulo cortado em palavra inteira, sem parêntese aberto pela metade
+  const rotulo = (v) => { let r = curto(v, 60); if (r.length > 22) { r = r.slice(0, 23).replace(/\s+\S*$/, ''); } return r.replace(/\s*\([^)]*$/, '').trim(); };
+  if (d.numero) { const n = typeof d.numero === 'object' ? d.numero : { valor: d.numero, rotulo: d.rotulo }; return { numero: { valor: curto(n.valor, 16), rotulo: rotulo(n.rotulo) } }; }
   const out = { esquerda: lado(d.esquerda), direita: lado(d.direita), tom: d.tom === 'alerta' ? 'alerta' : 'neutro' };
   if (d.faixa?.valor) out.faixa = { valor: curto(d.faixa.valor, 32), ...(d.faixa.texto ? { texto: curto(d.faixa.texto, 30) } : {}) };
   return out;

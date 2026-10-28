@@ -155,3 +155,19 @@ test('paráfrase da IA é trocada pela frase real da matéria; número que não 
   assert.deepStrictEqual(r.fatos.map((f) => f.id_ia), ['p']);
   assert.strictEqual(r.fatos[0].trecho, 'Em dezembro de 2022, o mesmo índice era de 71,7%.');
 });
+
+test('comparação com um lado sem número vira número gigante; sem número dos dois lados, manchete', () => {
+  const v = T.normalizarRoteiro({ capas: [{ texto: 'Capa' }], telas: [
+    { papel: 'prova', layout: 'rep_comparacao', titulo: 'Caixa', texto: 'x', dados: { esquerda: { rotulo: '2025', valor: 'Base' }, direita: { rotulo: '2026', valor: '+6,97%' } } },
+    { papel: 'prova', layout: 'rep_comparacao', titulo: 'Caixa', texto: 'x', dados: { esquerda: { rotulo: 'a', valor: 'antes' }, direita: { rotulo: 'b', valor: 'depois' } } }] });
+  assert.strictEqual(v.telas[0].layout, 'rep_numero');
+  assert.strictEqual(v.telas[0].dados.numero.valor, '+6,97%');
+  assert.strictEqual(v.telas[1].layout, 'rep_manchete');
+});
+
+test('referências internas e chamada repetida saem do texto', () => {
+  const v = T.normalizarRoteiro({ capas: [{ texto: 'Capa' }], telas: [{ papel: 'prova', layout: 'rep_manchete', titulo: 'A', texto: 'O TCU definiu 11,3% (f1). Arredondado (f2, f3).' }], legenda: 'Texto [f1].', cta_motivo: 'Segue o @pedro_destrava se você cobra resultado' });
+  assert.strictEqual(v.telas[0].texto, 'O TCU definiu 11,3%. Arredondado.');
+  assert.strictEqual(v.legenda, 'Texto.');
+  assert.strictEqual(v.cta_motivo, 'se você cobra resultado');
+});
