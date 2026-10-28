@@ -164,3 +164,10 @@ test('comparação com um lado sem número vira número gigante; sem número dos
   assert.strictEqual(v.telas[0].dados.numero.valor, '+6,97%');
   assert.strictEqual(v.telas[1].layout, 'rep_manchete');
 });
+
+test('referências internas e chamada repetida saem do texto', () => {
+  const v = T.normalizarRoteiro({ capas: [{ texto: 'Capa' }], telas: [{ papel: 'prova', layout: 'rep_manchete', titulo: 'A', texto: 'O TCU definiu 11,3% (f1). Arredondado (f2, f3).' }], legenda: 'Texto [f1].', cta_motivo: 'Segue o @pedro_destrava se você cobra resultado' });
+  assert.strictEqual(v.telas[0].texto, 'O TCU definiu 11,3%. Arredondado.');
+  assert.strictEqual(v.legenda, 'Texto.');
+  assert.strictEqual(v.cta_motivo, 'se você cobra resultado');
+});

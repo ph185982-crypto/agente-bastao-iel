@@ -277,7 +277,7 @@ function lNumero(s, ctx) {
       const blocos = []; let tx = topo({ ...ctx, tema: T });
       const c = chip({ x: MARGEM - 20, y: 120, texto: n.rotulo || s.titulo || '', fundo: COR.amarelo, cor: COR.marinho, tam: 96 });
       tx += c.svg;
-      const num = fit({ texto: up(n.valor || ''), k: 'aDisplay', larg: 640, altVis: capK('aDisplay') * numMax + 4, max: numMax, min: 240, ent: 1.0, papel: 'r_numero', passo: 10 });
+      const num = fit({ texto: up(n.valor || ''), k: 'aDisplay', larg: ctx.temFoto === false ? 600 : 640, altVis: capK('aDisplay') * numMax + 4, max: numMax, min: 240, ent: 1.0, papel: 'r_numero', passo: 10 });
       const yNum = 120 + 96 * 1.45 + 34;
       tx += colocar(num, { x: MARGEM - 20, ytop: yNum, k: 'aDisplay', tema: { ...T, texto: COR.vermelho } });
       blocos.push({ nome: 'numero', ...A.resumo(num, capK('aDisplay') * numMax) });
@@ -297,7 +297,8 @@ function lNumero(s, ctx) {
       if (fl) tx += `<text x="${MARGEM - 20}" y="${H - 120}" font-family="${ARQ.iSemi.familia}" font-weight="600" font-size="26" fill="#B9C0CD">${esc(fl)}</text>`;
       else blocos.push({ nome: 'fonte', tam: 0, cabe: false, motivo: 'Número sem linha de fonte' });
       tx += rodape({ tema: T, alinharHandle: 'centro', y: H - 56 });
-      const fundo = grao(0.05) + forma(s.forma || { tipo: 'seta', cor: 'vermelho' }, { x: 560, y: 70, w: 480, h: 600 }, COR.vermelho);
+      // sem foto a seta fica menor, no canto, e não passa por cima do número
+      const fundo = grao(0.05) + forma(s.forma || { tipo: 'seta', cor: 'vermelho' }, ctx.temFoto === false ? { x: 720, y: 110, w: 300, h: 330 } : { x: 560, y: 70, w: 480, h: 600 }, COR.vermelho);
       melhor = { tema: T, fundoSvg: base(T.fundo, '', fundo), recorte: { caixa: { x: 520, y: 240, w: 560, h: 900 }, ancora: 'direita' }, textoSvg: sobre(tx), blocos, semFonte: !fl };
       if (y <= LIMITE && blocos.every((b) => b.cabe !== false || b.nome === 'fonte')) return melhor;
     }
