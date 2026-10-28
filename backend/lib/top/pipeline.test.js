@@ -1,0 +1,129 @@
+// Carrossel "top": do link ao "Para aprovar", com IA simulada. Confere fatos pelo trecho, números, júri e portões.
+// node --test backend/lib/top/pipeline.test.js
+const test = require('node:test');
+const assert = require('node:assert');
+const sharp = require('sharp');
+const arm = require('../armazem');
+const T = require('./pipeline');
+const K = require('./checagem');
+const M = require('../../../static/contentModel');
+const { ACCOUNT } = require('../account');
+
+// Matéria FICTÍCIA de teste (números inventados para o teste, não são dados reais).
+const MATERIA = 'O índice de exemplo do Órgão Fictício chegou a 82,9% em agosto de 2026, segundo o relatório divulgado nesta segunda-feira. Em dezembro de 2022, o mesmo índice era de 71,7%. O ministro Fulano de Tal afirmou que a alta é temporária e que o governo vai cumprir a meta. Analistas ouvidos pela reportagem dizem que o patamar é o maior em cinco anos e que a conta recai sobre quem empreende, com juros mais altos para pequenas empresas.';
+const FATOS = { protagonista: 'Fulano de Tal', fatos: [
+  { id: 'a', texto: 'O índice chegou a 82,9% em agosto de 2026.', trecho: 'O índice de exemplo do Órgão Fictício chegou a 82,9% em agosto de 2026', tipo: 'fato' },
+  { id: 'b', texto: 'Em dezembro de 2022 o índice era de 71,7%.', trecho: 'Em dezembro de 2022, o mesmo índice era de 71,7%.', tipo: 'fato' },
+  { id: 'c', texto: 'O ministro afirmou que a alta é temporária.', trecho: 'O ministro Fulano de Tal afirmou que a alta é temporária e que o governo vai cumprir a meta.', tipo: 'declaracao', quem: 'Fulano de Tal' },
+  { id: 'd', texto: 'Inventado: o índice era 50% em 2010.', trecho: 'em 2010 o índice era de 50%', tipo: 'fato' },
+] };
+const ANGULO = { gatilhos: { contradicao: 3, bolso: 2, numero: 3, personagem: 2 }, tese: 'Quem promete meta e entrega o maior patamar em cinco anos deve explicação a quem paga juros.', por_que_mandaria: 'Olha a diferença entre o discurso e o número.' };
+const roteiro = (extra = {}) => ({
+  capas: [{ texto: 'Prometeu meta. Entregou o **maior patamar** em cinco anos.', mecanismo: 'contradicao' }, { texto: 'De 71,7% para 82,9%: quem paga essa conta?', mecanismo: 'antes_depois' }, { texto: 'O número que o discurso não mostra', mecanismo: 'ninguem_contou' }],
+  telas: [
+    { papel: 'gap', layout: 'rep_manchete', titulo: 'O discurso é de controle', texto: 'O ministro diz que a alta é temporária. Os números contam outra história.', fatos: ['c'] },
+    { papel: 'prova', layout: 'rep_comparacao', titulo: 'Índice de exemplo', texto: 'Comparação entre dezembro de 2022 e agosto de 2026.', dados: { esquerda: { rotulo: 'DEZ/2022', valor: '71,7%', unidade: 'do total' }, direita: { rotulo: 'AGO/2026', valor: '82,9%', unidade: 'do total' }, faixa: { valor: 'O maior patamar em cinco anos.' }, tom: 'alerta' }, fatos: ['a', 'b'] },
+    { papel: 'contradicao', layout: 'rep_manchete', titulo: 'Quem paga é o pequeno', texto: 'Segundo os analistas, os juros sobem primeiro para as pequenas empresas.', fatos: [] },
+    { papel: 'leitura', layout: 'rep_manchete', titulo: 'Minha leitura', texto: 'Meta sem resultado é promessa. E promessa não paga boleto de ninguém.', destaque: 'Cobrar resultado não é torcida.', fatos: ['a'] },
+  ],
+  legenda: 'O índice saiu de 71,7% para 82,9%. O discurso fala em alta temporária; quem empreende sente nos juros. Segue para acompanhar os números do mandato.',
+  hashtags: ['economia', 'juros', 'empreendedorismo'], cta_motivo: 'se você também cobra resultado', fechamento: { titulo: 'O resultado está nos números.', texto: 'Quem pede confiança precisa mostrar entrega, não discurso.' }, ...extra,
+});
+const JURI = { versoes: [{ indice: 0, notas: {}, nota: 8.6, defeito: 'capa 2 longa' }, { indice: 1, notas: {}, nota: 8.1, defeito: '' }], vencedora: 0, capas_escolhidas: [0, 1] };
+
+function iaFalsa({ roteiros = [roteiro(), roteiro()], juri = JURI, angulo = ANGULO } = {}) {
+  let r = 0; const chamadas = [];
+  const pedirJson = async ({ sistema }) => {
+    const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : 'roteiro';
+    chamadas.push({ tipo, sistema });
+    const dados = tipo === 'fatos' ? FATOS : tipo === 'angulo' ? angulo : tipo === 'juri' ? juri : roteiros[Math.min(r++, roteiros.length - 1)];
+    return { dados: JSON.parse(JSON.stringify(dados)), llm: { provider: 'simulado' } };
+  };
+  return { pedirJson, chamadas };
+}
+const deps = async (ia) => ({
+  ...ia, lerFonte: async () => ({ tipo: 'artigo', url: 'https://exemplo.test/materia', url_final: 'https://exemplo.test/materia', titulo: 'Índice de exemplo bate 82,9%', veiculo: 'Jornal Exemplo', publicada_em: '2026-10-27T12:00:00Z', texto: MATERIA, legivel: true }),
+  fotoDe: async () => ({ dados: await sharp({ create: { width: 900, height: 1100, channels: 3, background: '#a77' } }).jpeg().toBuffer(), meta: { id: 'commons_teste', tipo: 'foto_real', autor: 'Fotógrafo Exemplo', licenca: 'CC BY 2.0', exige_credito: true, origem: 'https://commons.wikimedia.org/x' } }),
+});
+const novo = () => arm._definir(Object.assign(arm.memoria(), { duravel: true }));
+const ler = async (id) => (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, id)).doc;
+
+test('fato só vale com trecho literal da matéria e números dentro do trecho', () => {
+  const r = K.verificarFatos(FATOS.fatos, MATERIA);
+  assert.deepStrictEqual(r.fatos.map((f) => f.id_ia), ['a', 'b', 'c']);
+  assert.match(r.descartados[0].motivo, /não está no texto/);
+  const solto = K.verificarFatos([{ id: 'x', texto: 'Chegou a 90%.', trecho: 'O índice de exemplo do Órgão Fictício chegou a 82,9% em agosto de 2026' }], MATERIA);
+  assert.match(solto.descartados[0].motivo, /número fora do trecho/);
+});
+
+test('do link ao "Para aprovar": versão vencedora, foto com crédito, arte de todos os slides e portões liberados', async () => {
+  novo(); const ia = iaFalsa();
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: await deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  const doc = await ler(c.id);
+  assert.strictEqual(doc.status, 'em_revisao');
+  const v = M.versaoAtiva(doc);
+  assert.strictEqual(v.slides[0].layout, 'rep_capa');
+  assert.match(v.slides[0].texto, /maior patamar/);
+  assert.strictEqual(v.slides.length, 6);
+  assert.ok(v.slides.every((s) => s.tema_visual === 'reportagem'));
+  assert.strictEqual(doc.arte.renders.filter((x) => x.versao === v.id).length, v.slides.length);
+  assert.ok(doc.arte.renders.find((x) => x.slide_id === 's1').elementos.includes('foto_bloco'));
+  assert.match(v.legenda, /Foto: Fotógrafo Exemplo \(CC BY 2\.0\)/);
+  assert.match(v.legenda, /Fonte: Jornal Exemplo/);
+  assert.deepStrictEqual(ia.chamadas.map((x) => x.tipo), ['fatos', 'angulo', 'roteiro', 'roteiro', 'juri']);
+  if (process.env.TOP_DUMP) for (const x of doc.arte.renders.filter((y) => y.versao === v.id)) require('fs').writeFileSync(`${process.env.TOP_DUMP}/${x.slide_id}.png`, (await arm.armazem().arquivos.obter(ACCOUNT.ig_id, x.blob_key)).dados);
+  const g = require('../studio').prepararRevisao(doc);
+  assert.deepStrictEqual(g.bloqueios.map((b) => `${b.id}: ${b.detalhe}`), []);
+});
+
+test('a voz vem dos posts reais mais compartilhados do Pedro', async () => {
+  novo();
+  await arm.armazem().config.salvar(ACCOUNT.ig_id, { meu_instagram: { posts: [
+    { legenda: 'Cara, quem tem CNPJ sabe: boleto não espera discurso virar realidade. Eu quero menos imposto e mais liberdade pra trabalhar.', alcance: 1000, compartilhamentos: 90, da_ferramenta: false },
+    { legenda: 'Post da ferramenta que não deve servir de exemplo de voz, com texto longo o bastante para entrar.', alcance: 1000, compartilhamentos: 999, da_ferramenta: true },
+  ] } });
+  const ia = iaFalsa(); const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  await T.executarTudo(c.id, { deps: await deps(ia) });
+  const s = ia.chamadas.find((x) => x.tipo === 'roteiro').sistema;
+  assert.match(s, /boleto não espera discurso/);
+  assert.doesNotMatch(s, /não deve servir de exemplo/);
+});
+
+test('número inventado no roteiro não passa: reescreve e, se insistir, fica abaixo da régua (não vai para aprovação)', async () => {
+  novo();
+  const ruim = roteiro({ legenda: 'O índice chegou a 95% e todo mundo sabe. Segue.' });
+  const ia = iaFalsa({ roteiros: [ruim, ruim, ruim, ruim] });
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: await deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'abaixo_da_regua');
+  assert.strictEqual((await ler(c.id)).status, 'arquivado');
+  assert.match(r.conteudo.top.motivo, /95%/);
+});
+
+test('pauta que não passa no teste do grupo é descartada sem gastar roteiro', async () => {
+  novo(); const ia = iaFalsa({ angulo: { ...ANGULO, gatilhos: { contradicao: 0, bolso: 1, numero: 1, personagem: 0 } } });
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: await deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'descartada');
+  assert.ok(!ia.chamadas.some((x) => x.tipo === 'roteiro'));
+});
+
+test('júri abaixo da nota mínima pede mais uma rodada e depois desiste', async () => {
+  novo(); const ia = iaFalsa({ juri: { versoes: [{ indice: 0, nota: 6, defeito: 'capa fraca' }, { indice: 1, nota: 5.5, defeito: '' }], capas_escolhidas: [0] } });
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: await deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'abaixo_da_regua');
+  assert.match(r.conteudo.top.motivo, /júri deu \d/);
+  assert.strictEqual(ia.chamadas.filter((x) => x.tipo === 'juri').length, 2);
+});
+
+test('"Segundo …" em várias telas é apontado pela checagem', () => {
+  const r = K.checarRoteiro({ capa: 'Capa curta', telas: [
+    { papel: 'gap', layout: 'rep_manchete', titulo: 'A', texto: 'Segundo a Agência X, algo.' },
+    { papel: 'prova', layout: 'rep_numero', texto: 'Segundo a Agência X, outra coisa.', dados: { numero: { valor: '3' } }, fatos: ['f1'] },
+    { papel: 'contradicao', layout: 'rep_manchete', titulo: 'B', texto: 'texto' },
+    { papel: 'leitura', layout: 'rep_manchete', titulo: 'C', texto: 'texto' }], legenda: '' }, []);
+  assert.ok(r.problemas.some((p) => /Segundo/.test(p)));
+});

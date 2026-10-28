@@ -71,13 +71,27 @@ const grao = (op = 0.07) => `<defs><filter id="gr${++_n}" x="0" y="0" width="100
 async function prepararRecorte(buf, caixa, ancora = 'centro') {
   if (!buf) return null;
   const meta = await sharp(buf).metadata();
-  if (!meta.hasAlpha) return { erro: 'recorte_sem_transparencia' };
+  // Foto comum (sem fundo transparente): entra INTEIRA num bloco em preto e branco com borda de papel rasgado.
+  // O rosto não é recortado nem alterado; só cor, contraste e enquadramento (cobrir, foco automático no rosto).
+  if (!meta.hasAlpha) return fotoEmBloco(buf, caixa, ancora);
   const esc_ = Math.min(caixa.w / meta.width, caixa.h / meta.height);
   const w = Math.round(meta.width * esc_); const h = Math.round(meta.height * esc_);
   const png = await sharp(buf).ensureAlpha().resize(w, h, { fit: 'fill' }).greyscale().linear(1.12, -10).png().toBuffer();
   const left = Math.round(ancora === 'direita' ? caixa.x + caixa.w - w : ancora === 'esquerda' ? caixa.x : caixa.x + (caixa.w - w) / 2);
   const top = Math.round(caixa.y + caixa.h - h); // sempre apoiado na base da caixa
   return { input: png, left: Math.max(0, left), top: Math.max(0, top), w, h };
+}
+
+
+async function fotoEmBloco(buf, caixa, ancora) {
+  const w = Math.round(Math.min(caixa.w, caixa.h * 0.86)); const h = Math.round(Math.min(caixa.h, w * 1.18));
+  const foto = await sharp(buf).rotate().resize(w, h, { fit: 'cover', position: 'attention' }).greyscale().linear(1.18, -14).png().toBuffer();
+  const f = roughen(18, '0.035 0.09', 21);
+  const mascara = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs>${f.def}</defs><g filter="url(#${f.id})"><rect x="16" y="16" width="${w - 32}" height="${h - 32}" fill="#fff"/></g></svg>`);
+  const png = await sharp(foto).ensureAlpha().composite([{ input: await sharp(mascara).png().toBuffer(), blend: 'dest-in' }]).png().toBuffer();
+  const left = Math.round(ancora === 'direita' ? caixa.x + caixa.w - w : ancora === 'esquerda' ? caixa.x : caixa.x + (caixa.w - w) / 2);
+  const top = Math.round(caixa.y + caixa.h - h);
+  return { input: png, left: Math.max(0, left), top: Math.max(0, top), w, h, bloco: true };
 }
 
 // ── Peças comuns ───────────────────────────────────────────────────────────────────────────
@@ -276,15 +290,17 @@ function lNumero(s, ctx) {
 
 function lManchete(s, ctx) {
   const escuro = s.fundo === 'marinho';
+  const comFoto = ctx.temFoto !== false; // sem foto: texto na largura toda e sem bloco de cor solto
+  const LT = comFoto ? 640 : LARG; const LC = comFoto ? 560 : LARG - 40;
   const T = escuro ? TEMA.marinho : TEMA.creme;
   const temBanda = !!s.cta;
   const yBanda = temBanda ? H - 210 : H - 110;
   const corTexto = escuro ? COR.creme : COR.marinho;
   let melhor = null;
-  for (const tMax of [128, 112, 96, 84]) {
+  const montar = (tMax, y0) => {
     const blocos = []; let tx = topo({ ...ctx, tema: T }); let fundo = grao(0.05);
-    const t = fit({ texto: up(s.titulo || s.texto), k: 'aDisplay', larg: 640, altVis: 420, max: tMax, min: 80, ent: 1.0, papel: 'r_titulo' });
-    let y = 180;
+    const t = fit({ texto: up(s.titulo || s.texto), k: 'aDisplay', larg: LT, altVis: 420, max: comFoto ? tMax : tMax + 16, min: 80, ent: 1.0, papel: 'r_titulo' });
+    let y = y0;
     tx += colocar(t, { x: MARGEM - 10, ytop: y, k: 'aDisplay', tema: T });
     blocos.push({ nome: 'titulo', ...A.resumo(t) });
     y += t.altura + 22;
@@ -292,13 +308,13 @@ function lManchete(s, ctx) {
     fundo += `<defs>${f.def}</defs><g filter="url(#${f.id})"><rect x="${MARGEM - 10}" y="${y}" width="560" height="12" fill="${escuro ? COR.amarelo : COR.vermelho}"/></g>`;
     y += 56;
     if (s.titulo && s.texto) {
-      const c = fit({ texto: s.texto, k: 'iNegrito', larg: 560, altVis: 220, max: 42, min: 34, ent: 1.3, papel: 'r_corpo' });
+      const c = fit({ texto: s.texto, k: 'iNegrito', larg: LC, altVis: 220, max: comFoto ? 42 : 46, min: 34, ent: 1.3, papel: 'r_corpo' });
       tx += colocar(c, { x: MARGEM - 10, ytop: y, k: 'iNegrito', tema: { ...T, texto: corTexto } });
       blocos.push({ nome: 'corpo', ...A.resumo(c) });
       y += c.altura + 46;
     }
     if (s.destaque) {
-      const d = fit({ texto: up(s.destaque), k: 'aDisplay', larg: 560, altVis: 300, max: 84, min: 52, ent: 1.2, papel: 'r_titulo' });
+      const d = fit({ texto: up(s.destaque), k: 'aDisplay', larg: LC, altVis: 300, max: 84, min: 52, ent: 1.2, papel: 'r_titulo' });
       d.linhas.forEach((ln, i) => {
         const yl = y + i * d.tam * d.entrelinha;
         fundo += `<rect x="${MARGEM - 26}" y="${yl - 12}" width="${larguraLinha(ln) + 32}" height="${capK('aDisplay') * d.tam + 26}" fill="${COR.amarelo}"/>`;
@@ -319,9 +335,15 @@ function lManchete(s, ctx) {
         blocos.push({ nome: 'cta_apoio', ...A.resumo(ca) });
       }
     } else tx += rodape({ tema: T, fonte: fl, y: H - 56 });
-    fundo += forma(s.forma || { tipo: 'pincelada', cor: 'vermelho' }, { x: 640, y: 300, w: 440, h: Math.max(240, Math.min(560, yBanda - 460)) }, COR.vermelho);
-    melhor = { tema: T, fundoSvg: base(T.fundo, '', fundo), recorte: { caixa: { x: 560, y: 250, w: 520, h: yBanda - 250 }, ancora: 'direita' }, textoSvg: sobre(tx), blocos };
-    if (y <= yBanda - 24 && blocos.every((b) => b.cabe !== false)) break;
+    if (comFoto) fundo += forma(s.forma || { tipo: 'pincelada', cor: 'vermelho' }, { x: 640, y: 300, w: 440, h: Math.max(240, Math.min(560, yBanda - 460)) }, COR.vermelho);
+    return { r: { tema: T, fundoSvg: base(T.fundo, '', fundo), recorte: { caixa: { x: 560, y: 250, w: 520, h: yBanda - 250 }, ancora: 'direita' }, textoSvg: sobre(tx), blocos }, y, ok: y <= yBanda - 24 && blocos.every((b) => b.cabe !== false) };
+  };
+  for (const tMax of [128, 112, 96, 84]) {
+    let t = montar(tMax, 180);
+    // Sem foto: o bloco de texto fica centralizado na altura útil (não sobra um vazio embaixo).
+    if (t.ok && !comFoto) { const sobra = (yBanda - 24) - t.y; if (sobra > 80) { const t2 = montar(tMax, 180 + Math.round(sobra * 0.45)); if (t2.ok) t = t2; } }
+    melhor = t.r;
+    if (t.ok) break;
   }
   return melhor;
 }
@@ -339,8 +361,8 @@ const LAYOUTS = { rep_capa: lCapa, rep_comparacao: lComparacao, rep_numero: lNum
 
 async function renderizar(slide, ctx, imagem, arquivoEncerramento, fundo) {
   const nome = escolher(slide);
-  const s = nome === 'rep_manchete' && slide.layout === 'encerramento' ? { ...slide, cta: slide.texto, titulo: 'Fica a pergunta', texto: null, fundo: slide.fundo || 'creme' } : slide;
-  const r = LAYOUTS[nome](s, ctx);
+  const s = nome === 'rep_manchete' && slide.layout === 'encerramento' ? (slide.cta ? { ...slide, fundo: slide.fundo || 'creme' } : { ...slide, cta: slide.texto, cta_apoio: null, titulo: 'Fica a pergunta', texto: null, destaque: null, fundo: slide.fundo || 'creme' }) : slide;
+  const r = LAYOUTS[nome](s, { ...ctx, temFoto: !!imagem });
   const camadas = [];
   const elementos = [`tema_reportagem`, nome];
   let recorte = null;
@@ -348,7 +370,7 @@ async function renderizar(slide, ctx, imagem, arquivoEncerramento, fundo) {
     recorte = await prepararRecorte(imagem, r.recorte.caixa, r.recorte.ancora);
     if (recorte && recorte.erro) { elementos.push(recorte.erro); recorte = null; }
   }
-  if (!recorte) elementos.push('sem_recorte');
+  if (!recorte) elementos.push('sem_recorte'); else if (recorte.bloco) elementos.push('foto_bloco');
   let png = await sharp(Buffer.from(r.fundoSvg)).png().toBuffer();
   if (fundo) {
     // Textura do fundo por IA: só mistura de luz, bem sutil, com um recorte diferente a cada slide. Texto e rosto ficam por cima.

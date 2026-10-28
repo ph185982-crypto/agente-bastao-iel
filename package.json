@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node backend/server.js",
-    "test": "node --test backend/lib/*.test.js",
+    "test": "node --test backend/lib/*.test.js backend/lib/top/*.test.js",
     "test:e2e": "node tests/e2e/executar.js"
   },
   "dependencies": {

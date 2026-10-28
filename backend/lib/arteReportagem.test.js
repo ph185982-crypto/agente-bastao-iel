@@ -36,11 +36,14 @@ test('sem recorte a arte sai só com a forma e avisa; nunca inventa rosto', asyn
   assert.strictEqual(r.metrics.cabe, true);
 });
 
-test('recorte sem transparência é recusado (não vira retângulo de foto)', async () => {
-  const semAlpha = await sharp({ create: { width: 400, height: 500, channels: 3, background: '#888' } }).jpeg().toBuffer();
+test('foto comum (sem transparência) entra inteira num bloco P&B de borda rasgada, sem recortar o rosto', async () => {
+  const semAlpha = await sharp({ create: { width: 800, height: 1000, channels: 3, background: '#c33' } }).jpeg().toBuffer();
   const r = await A.renderizarSlide(CASOS[0], { indice: 1, total: 7, imagem: semAlpha });
-  assert.ok(r.metrics.elementos.includes('recorte_sem_transparencia'));
-  assert.ok(r.metrics.elementos.includes('sem_recorte'));
+  assert.ok(r.metrics.elementos.includes('foto_bloco'));
+  assert.ok(!r.metrics.elementos.includes('sem_recorte'));
+  const p = await R.prepararRecorte(semAlpha, { x: 0, y: 0, w: 600, h: 700 });
+  const { data, info } = await sharp(p.input).raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0; i < data.length; i += info.channels) if (data[i + 3] > 0) assert.ok(Math.abs(data[i] - data[i + 1]) <= 2 && Math.abs(data[i + 1] - data[i + 2]) <= 2, 'pixel colorido no bloco');
 });
 
 test('o recorte entra em preto e branco', async () => {
