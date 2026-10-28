@@ -146,6 +146,7 @@ const larguraLinha = (ln) => ln.reduce((m, w) => Math.max(m, w.x + w.larg), 0);
 
 // Cada layout devolve { tema, fundoSvg, recorte:{caixa,ancora,degrade?}, textoSvg, blocos, semFonte? }.
 function lCapa(s, ctx) {
+  if (ctx.temFoto === false) return lCapaTipografica(s, ctx);
   const T = TEMA.marinho;
   const yRodape = H - 56; const fimSub = yRodape - 66;
   const sub = (s.subtitulo || s.rotulo) ? fit({ texto: s.subtitulo || s.rotulo, k: 'iSemi', larg: LARG, altVis: 120, max: 46, min: 34, ent: 1.25, papel: 'r_corpo' }) : null;
@@ -160,6 +161,22 @@ function lCapa(s, ctx) {
   if (sub) { tx += `<rect x="${MARGEM}" y="${fimTitulo + 26}" width="110" height="7" fill="${COR.amarelo}"/>`; tx += colocar(sub, { x: MARGEM, ytop: topoSub, k: 'iSemi', tema: T }); }
   tx += rodape({ tema: T, alinharHandle: 'centro', y: yRodape });
   return { tema: T, fundoSvg: base(T.fundo, '', fundo), recorte: { caixa, ancora: 'centro', degrade: { de: topoTitulo - 200, ate: topoTitulo + 40 } }, textoSvg: sobre(tx), blocos: [{ nome: 'titulo', ...A.resumo(titulo) }, ...(sub ? [{ nome: 'subtitulo', ...A.resumo(sub) }] : [])] };
+}
+
+// Capa sem foto: só a manchete, grande e centralizada, com a pincelada vermelha embaixo (sem círculo vazio).
+function lCapaTipografica(s, ctx) {
+  const T = TEMA.marinho;
+  const titulo = fit({ texto: up(s.texto), k: 'aDisplay', larg: LARG, altVis: 760, max: 200, min: 96, ent: 1.0, papel: 'r_titulo', passo: 4 });
+  const sub = (s.subtitulo || s.rotulo) ? fit({ texto: s.subtitulo || s.rotulo, k: 'iSemi', larg: LARG, altVis: 120, max: 46, min: 34, ent: 1.25, papel: 'r_corpo' }) : null;
+  const bloco = titulo.altura + 70 + (sub ? 40 + sub.altura : 0);
+  const y0 = Math.round(150 + Math.max(0, (H - 150 - 150 - bloco) / 2));
+  const f = roughen(14, '0.03 0.18', 7);
+  let fundo = grao(0.05) + `<defs>${f.def}</defs><g filter="url(#${f.id})"><rect x="${MARGEM - 14}" y="${y0 + titulo.altura + 34}" width="${Math.min(LARG, 620)}" height="22" fill="${COR.vermelho}"/></g>`;
+  let tx = topo({ ...ctx, tema: T });
+  tx += colocar(titulo, { x: MARGEM, ytop: y0, k: 'aDisplay', tema: T });
+  if (sub) tx += colocar(sub, { x: MARGEM, ytop: y0 + titulo.altura + 96, k: 'iSemi', tema: T });
+  tx += rodape({ tema: T, alinharHandle: 'centro', y: H - 56 });
+  return { tema: T, fundoSvg: base(T.fundo, '', fundo), recorte: { caixa: { x: 90, y: 40, w: 900, h: 300 }, ancora: 'centro' }, textoSvg: sobre(tx), blocos: [{ nome: 'titulo', ...A.resumo(titulo) }, ...(sub ? [{ nome: 'subtitulo', ...A.resumo(sub) }] : [])] };
 }
 
 function lComparacao(s, ctx) {
@@ -330,7 +347,7 @@ function lManchete(s, ctx) {
       tx += colocar(cta, { x: MARGEM - 10, ytop: yBanda + 36, k: 'aDisplay', tema: TEMA.marinho });
       blocos.push({ nome: 'cta', ...A.resumo(cta) });
       if (s.cta_apoio) {
-        const ca = fit({ texto: up(s.cta_apoio), k: 'aDisplay', larg: LARG, altVis: 60, max: 52, min: 36, ent: 1.0, papel: 'r_cta' });
+        const ca = fit({ texto: up(s.cta_apoio), k: 'aDisplay', larg: LARG, altVis: 60, max: 52, min: 30, ent: 1.0, papel: 'r_corpo' }); // uma linha: encolhe a letra em vez de estourar a faixa
         tx += colocar(ca, { x: MARGEM - 10, ytop: yBanda + 36 + cta.altura + 22, k: 'aDisplay', tema: { ...TEMA.marinho, texto: COR.creme } });
         blocos.push({ nome: 'cta_apoio', ...A.resumo(ca) });
       }

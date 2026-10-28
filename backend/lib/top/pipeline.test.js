@@ -146,3 +146,12 @@ test('tela de número sem o número vira manchete em vez de derrubar a versão',
   assert.strictEqual(v.telas[0].layout, 'rep_manchete');
   assert.deepStrictEqual(v.telas[1].dados, { numero: { valor: '239,4 bilhões', rotulo: 'Arrecadação' } });
 });
+
+test('paráfrase da IA é trocada pela frase real da matéria; número que não está na frase continua fora', () => {
+  const r = K.verificarFatos([
+    { id: 'p', texto: 'Em dezembro de 2022 o índice era 71,7%.', trecho: 'Em dezembro de 2022 o mesmo índice ficava em 71,7%' },
+    { id: 'q', texto: 'O índice era 60% em 2022.', trecho: 'Em dezembro de 2022 o mesmo índice ficava em 60%' },
+  ], MATERIA);
+  assert.deepStrictEqual(r.fatos.map((f) => f.id_ia), ['p']);
+  assert.strictEqual(r.fatos[0].trecho, 'Em dezembro de 2022, o mesmo índice era de 71,7%.');
+});
