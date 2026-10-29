@@ -261,4 +261,6 @@ test('foto de lugar: nunca retrato de alguém nem foto histórica', () => {
   assert.ok(F.pontuarLugar(item('Plenário do Senado Federal vista geral.jpg'), 'Plenário do Senado Federal') > 0);
   assert.strictEqual(F.pontuarLugar(item('Senadora Fulana discursa no Plenário do Senado Federal.jpg'), 'Plenário do Senado Federal'), -1);
   assert.strictEqual(F.pontuarLugar(item('Porto de Santos, 1870.jpg'), 'Porto de Santos'), -1);
+  assert.strictEqual(F.pontuarLugar(item('Senado Federal do Brasil Plenário do Senado (14786000717).jpg'), 'Plenário do Senado Federal'), -1);
+  assert.ok(F.pontuarLugar(item('Congresso Nacional, Brasília-DF, Brasil.jpg'), 'Congresso Nacional Brasília') > 0);
 });
