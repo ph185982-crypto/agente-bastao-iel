@@ -286,6 +286,20 @@ test('encerramento provisório e foto ausente impedem publicar, a não ser que o
   void c;
 });
 
+test('encerramento do carrossel top (tema reportagem) publica sem a arte original: é o slide desenhado que o Pedro aprovou', async () => {
+  zera();
+  const rep = conteudoAprovado();
+  M.editarSlide(rep, 's2', {});
+  const dados = JSON.parse(JSON.stringify(M.versaoAtiva(rep))); dados.slides.push({ id: 'enc', layout: 'encerramento', funcao: 'encerramento', tema_visual: 'reportagem', titulo: 'O resultado está nos números.', texto: 'Siga para mais.', claim_ids: [] });
+  M.criarVersao(rep, dados);
+  const v = M.versaoAtiva(rep);
+  rep.arte.renders = v.slides.map((s) => ({ slide_id: s.id, versao: v.id, texto_hash: M.hashRender(s), metrics: { cabe: true }, elementos: [] }));
+  M.aprovar(rep, G.avaliar(rep, { conta: M.ACCOUNT_PIN }));
+  await monta({ conteudo: rep, encerramento: false });
+  const r = await P.iniciar(rep.id, { hash: rep.revisao.hash_aprovado, base: basePublica });
+  assert.strictEqual(r.estado, 'aguardando_processamento');
+});
+
 test('mídia pública: token adulterado, vencido, de outra versão ou sem PUBLISH_SECRET → recusado', async () => {
   zera();
   const c = await monta({ conteudo: conteudoAprovado(), encerramento: true });

@@ -106,7 +106,9 @@ async function conferirMidias(c, v, cfg) {
       throw new ErroPub('FOTO_AUSENTE', 'A foto de um slide não está no servidor. Envie a foto de novo (com a cópia no servidor ligada).', 409);
     }
   }
-  const temEnc = slides.some((s) => s.layout === 'encerramento' && !['foto_editorial','impacto','revista'].includes(s.estilo));
+  // O encerramento do tema "reportagem" (carrossel top) é um slide desenhado completo, o mesmo que o Pedro viu ao aprovar;
+  // a trava vale só para o encerramento de texto que substitui provisoriamente a arte original com a foto.
+  const temEnc = slides.some((s) => s.layout === 'encerramento' && s.tema_visual !== 'reportagem' && !['foto_editorial','impacto','revista'].includes(s.estilo));
   if (temEnc && !(await a.arquivos.obter(conta(), 'upload:encerramento')) && !cfg.permitir_encerramento_provisorio) {
     throw new ErroPub('ENCERRAMENTO_PROVISORIO', 'O encerramento aprovado ainda não foi enviado (Ajustes → Encerramento). Para publicar com o encerramento provisório de texto, permita isso em Ajustes.', 409);
   }
