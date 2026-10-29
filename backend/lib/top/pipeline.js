@@ -18,12 +18,13 @@ const agoraISO = () => new Date().toISOString();
 const erro = (msg, code, status = 400) => Object.assign(new Error(msg), { code, status });
 const ETAPAS = ['ler', 'fatos', 'angulo', 'roteiro', 'juri', 'foto', 'arte', 'fim'];
 const ROTULO = { ler: 'Lendo a matéria', fatos: 'Separando os fatos e conferindo na matéria', angulo: 'Testando se a pauta vale (teste do grupo)', roteiro: 'Escrevendo as versões', juri: 'Júri escolhendo a melhor', foto: 'Buscando foto real com licença', arte: 'Desenhando os slides', fim: 'Pronto para aprovar' };
-const REGUA = { gatilhos_min: 5, nota_min: 7.5 };
+// nucleo_min: bolso OU contradição precisa pesar (número e personagem sozinhos dão post de cotação, não de tese).
+const REGUA = { gatilhos_min: 5, nota_min: 7.5, nucleo_min: 2 };
 const LEASE_MS = 70000; const MAX_TENTATIVAS = 3;
 
 function regua() {
   const n = Number(process.env.TOP_NOTA_MINIMA); const g = Number(process.env.TOP_GATILHOS_MINIMO);
-  return { nota_min: Number.isFinite(n) && n > 0 ? n : REGUA.nota_min, gatilhos_min: Number.isFinite(g) && g >= 0 ? g : REGUA.gatilhos_min };
+  return { nota_min: Number.isFinite(n) && n > 0 ? n : REGUA.nota_min, gatilhos_min: Number.isFinite(g) && g >= 0 ? g : REGUA.gatilhos_min, nucleo_min: REGUA.nucleo_min };
 }
 
 async function vozDoPedro() {
@@ -74,6 +75,8 @@ E.angulo = async (c, ctx) => {
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
   c.top.angulo = { gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240) };
   c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
+  const nucleo = Math.max(c.top.angulo.gatilhos.bolso, c.top.angulo.gatilhos.contradicao);
+  if (c.top.angulo.soma >= regua().gatilhos_min && c.top.angulo.tese && nucleo < regua().nucleo_min) throw Object.assign(erro(`Sem bolso nem contradição (máximo ${nucleo}/3; mínimo ${regua().nucleo_min}): vira post de cotação, não de tese.`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
   if (c.top.angulo.soma < regua().gatilhos_min || !c.top.angulo.tese) throw Object.assign(erro(`Não passou no teste do grupo (${c.top.angulo.soma}/12 nos gatilhos; mínimo ${regua().gatilhos_min}).`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
 };
 

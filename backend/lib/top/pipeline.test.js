@@ -182,3 +182,11 @@ test('número da manchete conta como fato do veículo (não descarta a pauta por
   assert.ok(m && m.valores.some((v) => M.igual(v, 11.3)));
   assert.deepStrictEqual(K.numerosSemFonte('A taxa vai a 11,3%.', fatos), []);
 });
+
+test('pauta só de número e personagem (sem bolso nem contradição) é descartada mesmo somando 5+', async () => {
+  novo(); const ia = iaFalsa({ angulo: { ...ANGULO, gatilhos: { contradicao: 1, bolso: 1, numero: 3, personagem: 3 } } });
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: await deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'descartada');
+  assert.match(r.conteudo.top.erros.at(-1).mensagem, /bolso nem contradição/);
+});

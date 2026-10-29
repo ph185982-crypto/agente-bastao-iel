@@ -129,3 +129,17 @@ test('relógio: 1 min com produção, 10 min parado, e correntes simultâneas ca
   assert.strictEqual(enviados[0].delaySeconds, 55);
   assert.ok(await R.agendarProxima({}, { agora: t, enviar: async () => { throw new Error('fila fora'); } }) === null);
 });
+
+test('pauta de serviço fica fora da fila; descarte do Pedro abre vaga na meta', async () => {
+  assert.ok(Pi.deServico('Saiba quais indicadores e balanços saem nesta 5ª feira'));
+  assert.ok(Pi.deServico('Governo Lula: leia a agenda de ministros do governo nesta 5ª feira'));
+  assert.ok(!Pi.deServico('TCU calcula alíquota da CBS em 11,3% para 2027'));
+  novo(); const criados = [];
+  await Pi.salvarConfig({ meta_dia: 1, reserva: 0 });
+  await arm.armazem().config.salvar(ACCOUNT.ig_id, { piloto_estado: { dia: '2026-10-29', criados: [{ id: 'x1', dia: '2026-10-29', em: new Date(SP('2026-10-29', '05:00')).toISOString(), estado: 'concluida' }] } });
+  const deps = { criar: async (o) => { criados.push(o); return { id: `n${criados.length}` }; }, descobrir: async () => ({ pautas: [{ id: 's', titulo: 'Saiba quais balanços saem hoje', fontes: [{ url: 'https://agenciabrasil.ebc.com.br/s' }] }, { id: 'p', titulo: 'Gasto público sobe 9%', fontes: [{ url: 'https://agenciabrasil.ebc.com.br/p' }] }] }) };
+  assert.strictEqual((await Pi.rodada({ agora: SP('2026-10-29', '07:00'), deps })).criado, null); // meta cheia
+  await Pi.registrarDecisao('x1', 'descartado');
+  const r = await Pi.rodada({ agora: SP('2026-10-29', '07:10'), deps });
+  assert.strictEqual(r.criado.titulo, 'Gasto público sobe 9%');
+});

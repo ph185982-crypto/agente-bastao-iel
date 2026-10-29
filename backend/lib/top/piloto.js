@@ -111,6 +111,9 @@ async function publicarAgora(id, deps = {}) {
 
 // ── Pautas ──────────────────────────────────────────────────────────────────────
 const LEGIVEIS = /(agenciabrasil\.ebc\.com\.br|senado\.leg\.br|camara\.leg\.br|gov\.br|bcb\.gov\.br|ibge\.gov\.br|poder360\.com\.br|cnnbrasil\.com\.br|g1\.globo\.com|infomoney\.com\.br|exame\.com|metropoles\.com)/i;
+// Pauta de serviço (agenda do dia, resumo, "saiba quais") não vira tese: nem gasta uma tentativa do dia.
+const DE_SERVICO = /\b(saiba (quais|o que|como)|leia a agenda|agenda d[eo]s?\b|destaques d|mais destaques|o que (abre|fecha|esperar|muda)|resumo d[aoe]|veja (os|as|o que|quais)|ao vivo|minuto a minuto|hor[oó]scopo|loterias?|mega-sena|quina\b|resultado d[ao] (jogo|sorteio)|indicadores e balan[cç]os)/i;
+const deServico = (titulo) => DE_SERVICO.test(String(titulo || ''));
 function melhorLink(p) {
   const fs = (p.fontes || []).filter((f) => /^https?:\/\//.test(f.url || ''));
   return (fs.find((f) => LEGIVEIS.test(f.url)) || fs[0])?.url || null;
@@ -121,7 +124,7 @@ async function proximaPauta(est, { agora, deps, restante }) {
   const velha = !est.fila_em || agora - Date.parse(est.fila_em) > 2 * 3600000;
   if ((!fila.length || velha) && restante() > 32000) {
     const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 2 });
-    fila = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: p.prioridade ?? null }))
+    fila = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: p.prioridade ?? null }))
       .sort((x, y) => (y.prioridade ?? 0) - (x.prioridade ?? 0)).slice(0, 12);
     est.fila_em = new Date(agora).toISOString();
   }
@@ -174,7 +177,8 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
   }
 
   // 4) Cria o próximo, se ainda cabe hoje.
-  const prontosHoje = est.criados.filter((x) => x.dia === dia && x.estado === 'concluida').length;
+  // Descartado pelo Pedro não conta na meta: abre vaga para outro.
+  const prontosHoje = est.criados.filter((x) => x.dia === dia && x.estado === 'concluida' && x.decidido !== 'descartado').length;
   const emAndamento = est.criados.filter((x) => x.estado === 'em_andamento').length;
   const naJanela = hora >= cfg.inicio_producao && hora <= cfg.fim_producao;
   if (naJanela && !emAndamento && prontosHoje < cfg.meta_dia + cfg.reserva && (est.criados_hoje || 0) < cfg.candidatos_max_dia && restante() > 12000) {
@@ -228,9 +232,10 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   return {
     config: cfg, dia, hora: horaSP(agora),
     hoje: { criados: hoje.length, em_producao: cont((x) => x.estado === 'em_andamento'), prontos: cont((x) => x.estado === 'concluida' && !x.decidido), aprovados: cont((x) => x.decidido === 'aprovado'), descartados_regua: cont((x) => ['descartada', 'abaixo_da_regua', 'erro'].includes(x.estado)) },
+    itens: hoje.map((x) => ({ id: x.id, titulo: x.titulo || '', estado: x.estado, nota: x.nota ?? null, decidido: x.decidido || null })),
     agenda: (est.agenda || []).slice(0, 20), proximo_horario: proximoHorario(cfg, (est.agenda || []).map((x) => x.publicar_em), agora),
     ultima_rodada: est.ultima_rodada || null, guardado: !!armazem()?.duravel,
   };
 }
 
-module.exports = { rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, PADRAO };
+module.exports = { deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, PADRAO };
