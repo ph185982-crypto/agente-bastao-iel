@@ -32,7 +32,7 @@ exigindo o toque do Pedro.
 
 | O quê | Padrão (Perfil → Piloto automático) |
 |---|---|
-| Meta | 8 carrosséis prontos por dia + 2 de reserva; até 18 pautas testadas por dia |
+| Meta | 8 carrosséis prontos por dia + 2 de reserva; até 30 pautas testadas por dia (cerca de 1 em 3 passa na régua) |
 | Produção | das 03:00 às 20:30 (Brasília), uma pauta por vez, a de maior prioridade com link legível |
 | Avisos para aprovar | 08:00 e 14:00 — um aviso por janela, com a contagem de prontos |
 | Horários de publicação | 09:00, 11:00, 12:30, 15:00, 17:00, 18:30, 20:00, 21:30 |
@@ -41,6 +41,9 @@ exigindo o toque do Pedro.
 - No horário, a rodada entrega o item ao fluxo de publicação existente. Publicação pausada ou acesso aberto ao público
   seguram o item na agenda (não publica, não perde). Conteúdo que deixou de estar aprovado sai da agenda e nunca é publicado.
 - Piloto desligado: não cria nada, mas publica o que já foi aprovado e agendado.
-- Quem chama a rodada: `.github/workflows/piloto.yml` (a cada 10 min, a partir da `main`), o app aberto (a cada 5 min) e o botão
-  "Produzir agora". Com o código de acesso ligado, crie o secret `CRON_SECRET` no GitHub (o mesmo da Vercel).
+- Quem chama a rodada: o **relógio próprio** (fila `pedro-piloto` da Vercel, `api/piloto-worker.js`): ao fim de cada rodada a
+  próxima é agendada — em ~1 min com carrossel em produção, a cada 10 min parado. Uma rodada por vez (trava `rodando_ate`);
+  o fim da rodada não apaga aprovações feitas enquanto ela rodava. Também chamam a rodada, e religam o relógio se ele parar:
+  `.github/workflows/piloto.yml` (a cada 10 min no papel; na prática o GitHub atrasa horas), o app aberto (a cada 5 min) e o
+  botão "Produzir agora". Com o código de acesso ligado, crie o secret `CRON_SECRET` no GitHub (o mesmo da Vercel).
 - O monitor de notícias em alta também cria carrossel "top" (antes ia para o Radar, que só aceita ideias de negócio).
