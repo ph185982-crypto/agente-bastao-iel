@@ -59,7 +59,7 @@
   }
 
   // Marcas de atribuição ou condição que mantêm uma ressalva pública.
-  const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|anunciam|anunciado|anunciada|prop[õo]e|prop[ôo]s|proposta|projeto|prev[êe]|previsto|prevista|estima|estimativa|pretende|planeja|promete|prometeu|deve|pode|poder[áa]|depende|aponta|apontam|apontou|avalia|avaliam|alerta|alertam|alertou|calcula|calculam|projeta|projetam|recomenda|recomendam|v[êe]|veem|se (for )?aprovad[ao]|em discuss[ãa]o|em an[áa]lise|estuda|estudo|quer)(?!\p{L})/iu;
+  const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|anunciam|anunciado|anunciada|prop[õo]e|prop[ôo]s|proposta|projeto|prev[êe]|previsto|prevista|estima|estimativa|pretende|planeja|promete|prometeu|deve|pode|poder[áa]|depende|aponta|apontam|apontou|avalia|avaliam|alerta|alertam|alertou|calcula|calculam|projeta|projetam|recomenda|recomendam|v[êe]|veem|criticou|critica|criticam|lembrou|lembra|defendeu|defende|defendem|cobrou|cobra|cobram|classificou|classifica|chamou|falou|ressaltou|destacou|explicou|reconheceu|reconhece|argumenta|argumentou|avaliou|se (for )?aprovad[ao]|em discuss[ãa]o|em an[áa]lise|estuda|estudo|quer)(?!\p{L})/iu;
   const ondeUsa = (textos, id) => textos.filter((t) => (t.claim_ids || []).includes(id)).map(rotuloOnde).join(', ') || 'ao conteúdo';
 
   const bloqueio = (id, eixo, titulo, detalhe, onde, acao) => ({ id, eixo, titulo, detalhe, onde: onde || null, acao: acao || null });
