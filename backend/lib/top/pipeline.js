@@ -61,6 +61,9 @@ E.fatos = async (c, ctx) => {
   const d = llmJson.dado('MATERIA', `${c.fonte_principal.titulo}\n\n${c.fonte_principal.texto}`, 18000);
   const { dados } = await ctx.ia({ sistema: `${P.FATOS}\n\n${llmJson.REGRAS_DADOS}`, usuario: d.bloco, maxTokens: 2600, temperatura: 0.1 });
   const r = K.verificarFatos(dados?.fatos, c.fonte_principal.texto);
+  // A manchete lida da página também é fato do veículo: o número dela (ex.: "CBS em 11,3%") às vezes não volta da extração.
+  const manchete = String(c.fonte_principal.titulo || '').trim(); const nManchete = M.extrairNumeros(manchete).filter(M.exigeOrigem).map((n) => n.valor);
+  if (nManchete.length && !r.fatos.some((f) => f.trecho === manchete)) r.fatos.push({ id: `f${r.fatos.length + 1}`, id_ia: 'manchete', texto: manchete.slice(0, 400), trecho: manchete.slice(0, 600), tipo: 'fato', quem: null, valores: M.extrairNumeros(manchete).map((n) => n.valor), origem: 'manchete' });
   c.top.fatos = r.fatos; c.top.fatos_descartados = r.descartados.slice(0, 12);
   c.top.protagonista = dados?.protagonista ? String(dados.protagonista).slice(0, 80) : null;
   if (r.fatos.length < 2) throw Object.assign(erro('A matéria não tem fatos suficientes que deu para conferir palavra por palavra.', 'SEM_FATOS', 422), { terminal: true, fim: 'descartada' });

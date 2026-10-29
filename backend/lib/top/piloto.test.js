@@ -103,3 +103,29 @@ test('piloto desligado: não cria nada, mas publica o que já foi aprovado e age
   const r = await Pi.rodada({ agora: SP('2026-10-29', '11:02'), deps: { criar: async (o) => { criados.push(o); return { id: 'n' }; }, enfileirar: async (x) => enviados.push(x.id), descobrir: async () => ({ pautas: [{ id: 'p', titulo: 't', fontes: [{ url: 'https://agenciabrasil.ebc.com.br/x' }] }] }) } });
   assert.deepStrictEqual(enviados, [c.id]); assert.strictEqual(criados.length, 0); assert.match(r.motivo, /desligado/);
 });
+
+test('aprovação durante a rodada não some da agenda; rodada simultânea é recusada', async () => {
+  novo(); const c = await aprovado(); let segunda;
+  const deps = { descobrir: async () => {
+    await Pi.agendar(c.id, { agora: SP('2026-10-29', '10:00') }); // Pedro aprova enquanto a rodada roda
+    segunda = await Pi.rodada({ agora: SP('2026-10-29', '10:00'), deps: { descobrir: async () => ({ pautas: [] }) } });
+    return { pautas: [] };
+  } };
+  await Pi.rodada({ agora: SP('2026-10-29', '10:00'), deps });
+  assert.strictEqual(segunda.executou, false);
+  assert.deepStrictEqual((await Pi.resumoDoDia({ agora: SP('2026-10-29', '10:01') })).agenda.map((x) => x.id), [c.id]);
+  const outra = await Pi.rodada({ agora: SP('2026-10-29', '10:05'), deps: { descobrir: async () => ({ pautas: [] }) } });
+  assert.strictEqual(outra.executou, true); // a trava foi liberada no fim
+});
+
+test('relógio: 1 min com produção, 10 min parado, e correntes simultâneas caem na mesma chave', async () => {
+  const R = require('./relogio'); const t = Date.parse('2026-10-29T10:00:05Z');
+  const ativo = R.proximo({ avancados: [{ id: 'x', estado: 'em_andamento' }] }, t);
+  assert.strictEqual(ativo.alvo, Date.parse('2026-10-29T10:01:00Z'));
+  assert.strictEqual(R.proximo({ avancados: [{ id: 'x', estado: 'em_andamento' }] }, t + 20000).chave, ativo.chave);
+  assert.strictEqual(R.proximo({ avancados: [] }, t).alvo, Date.parse('2026-10-29T10:10:00Z'));
+  assert.strictEqual(R.proximo(null, t).alvo, Date.parse('2026-10-29T10:10:00Z'));
+  const enviados = []; await R.agendarProxima({ criado: { id: 'n' } }, { agora: t, enviar: async (m, o) => enviados.push(o) });
+  assert.strictEqual(enviados[0].delaySeconds, 55);
+  assert.ok(await R.agendarProxima({}, { agora: t, enviar: async () => { throw new Error('fila fora'); } }) === null);
+});

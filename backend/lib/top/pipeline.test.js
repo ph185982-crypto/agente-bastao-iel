@@ -171,3 +171,14 @@ test('referências internas e chamada repetida saem do texto', () => {
   assert.strictEqual(v.legenda, 'Texto.');
   assert.strictEqual(v.cta_motivo, 'se você cobra resultado');
 });
+
+test('número da manchete conta como fato do veículo (não descarta a pauta por isso)', async () => {
+  novo(); const ia = iaFalsa(); const d = await deps(ia);
+  d.lerFonte = async () => ({ tipo: 'artigo', url: 'https://exemplo.test/m2', titulo: 'Órgão Fictício calcula taxa de 11,3% para 2027', veiculo: 'Jornal Exemplo', texto: MATERIA, legivel: true });
+  const c = await T.criar({ url: 'https://exemplo.test/m2', titulo: 'x', origem: 'manual' });
+  await T.passo(c.id, { deps: d, orcamentoMs: 15000 });
+  const fatos = (await ler(c.id)).top.fatos;
+  const m = fatos.find((f) => f.origem === 'manchete');
+  assert.ok(m && m.valores.some((v) => M.igual(v, 11.3)));
+  assert.deepStrictEqual(K.numerosSemFonte('A taxa vai a 11,3%.', fatos), []);
+});

@@ -13,7 +13,7 @@ const T = require('./pipeline');
 
 const conta = () => ACCOUNT.ig_id;
 const PADRAO = Object.freeze({
-  ativo: true, meta_dia: 8, reserva: 2, candidatos_max_dia: 18,
+  ativo: true, meta_dia: 8, reserva: 2, candidatos_max_dia: 30,
   inicio_producao: '03:00', fim_producao: '20:30', // começa de madrugada: às 8h já há carrosséis prontos
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
@@ -135,6 +135,10 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
   const a = armazem(); if (!a?.duravel) return { executou: false, motivo: 'O piloto precisa do banco de dados no servidor.' };
   const cfg = await config();
   let est = await lerEstado();
+  // Uma rodada por vez (GitHub, app aberto e relógio da fila podem chegar juntos).
+  if (est.rodando_ate && Date.parse(est.rodando_ate) > Date.now()) return { executou: false, motivo: 'Outra rodada está em andamento.', avancados: [], publicados: [], avisos: [] };
+  await gravarEstado({ ...est, rodando_ate: new Date(Date.now() + orcamentoMs + 15000).toISOString() });
+  const removidos = new Set();
   const dia = diaSP(agora); const hora = horaSP(agora);
   if (est.dia !== dia) est = { ...est, dia, criados_hoje: 0, notificado: {} };
   est.criados = (est.criados || []).filter((x) => Date.parse(x.em) > agora - 3 * 86400000);
@@ -143,13 +147,13 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
 
   // 1) Agenda vencida → publica (vale mesmo com o piloto desligado: foi aprovado pelo Pedro).
   for (const item of [...(est.agenda || [])].filter((x) => Date.parse(x.publicar_em) <= agora)) {
-    try { await publicarAgora(item.id, deps); est.agenda = est.agenda.filter((x) => x.id !== item.id); r.publicados.push(item.id); }
+    try { await publicarAgora(item.id, deps); removidos.add(item.id); r.publicados.push(item.id); }
     catch (e) {
-      if (/não está aprovado|não encontrado/i.test(e.message)) est.agenda = est.agenda.filter((x) => x.id !== item.id);
+      if (/não está aprovado|não encontrado/i.test(e.message)) removidos.add(item.id);
       r.avisos.push(`Publicação de ${item.id} segurada: ${e.message}`);
     }
   }
-  if (!cfg.ativo) { est.ultima_rodada = r; await gravarEstado(est); return { executou: true, ...r, motivo: 'Piloto desligado: só a agenda já aprovada foi conferida.' }; }
+  if (!cfg.ativo) { est.ultima_rodada = r; await gravarRodada(est, removidos); return { executou: true, ...r, motivo: 'Piloto desligado: só a agenda já aprovada foi conferida.' }; }
 
   // 2) Avança o que está em produção.
   for (const x of est.criados.filter((y) => y.estado === 'em_andamento')) {
@@ -189,8 +193,18 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
     } catch (e) { r.avisos.push(`Criação falhou: ${String(e.message).slice(0, 160)}`); }
   }
   est.ultima_rodada = { ...r, avisos: r.avisos.slice(0, 6) };
-  await gravarEstado(est);
+  await gravarRodada(est, removidos);
   return { executou: true, ...r };
+}
+
+// Grava o fim da rodada sem apagar o que mudou enquanto ela rodava: aprovação que agendou um post, decisão do Pedro,
+// carrossel registrado pelo monitor. A agenda vem do estado atual (menos o que a rodada publicou ou descartou).
+async function gravarRodada(est, removidos) {
+  const atual = await lerEstado();
+  const deAgora = new Map((atual.criados || []).map((x) => [x.id, x]));
+  const criados = est.criados.map((x) => (deAgora.get(x.id)?.decidido ? { ...x, decidido: deAgora.get(x.id).decidido } : x));
+  for (const x of atual.criados || []) if (!criados.some((y) => y.id === x.id) && Date.parse(x.em) > Date.now() - 3 * 86400000) criados.push(x);
+  await gravarEstado({ ...est, criados, agenda: (atual.agenda || []).filter((x) => !removidos.has(x.id)), rodando_ate: null });
 }
 
 // Carrossel criado fora do piloto (ex.: monitor de notícias em alta) entra no índice para ser avançado nas rodadas.

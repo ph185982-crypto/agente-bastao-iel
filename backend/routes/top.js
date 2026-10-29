@@ -20,8 +20,11 @@ router.get('/carrosseis/:id', async (req, res) => {
 const Piloto = require('../lib/top/piloto');
 router.get('/piloto', async (req, res) => { try { res.json(await Piloto.resumoDoDia()); } catch (e) { erro(res, e); } });
 router.put('/piloto', async (req, res) => { try { await Piloto.salvarConfig(req.body || {}); res.json(await Piloto.resumoDoDia()); } catch (e) { erro(res, e); } });
-router.post('/piloto/rodada', limita({ max: 6, janelaMs: 60000, nome: 'top-piloto' }), async (req, res) => { try { res.json(await Piloto.rodada()); } catch (e) { erro(res, e); } });
-router.get('/piloto/rodada', async (req, res) => { try { res.json(await Piloto.rodada()); } catch (e) { erro(res, e); } }); // rotina diária da Vercel usa GET
+const Relogio = require('../lib/top/relogio');
+// Toda rodada vinda de fora (GitHub, app aberto) também religa o relógio da fila, se a corrente tiver parado.
+const rodar = async (req, res) => { try { const r = await Piloto.rodada(); await Relogio.agendarProxima(r); res.json(r); } catch (e) { erro(res, e); } };
+router.post('/piloto/rodada', limita({ max: 6, janelaMs: 60000, nome: 'top-piloto' }), rodar);
+router.get('/piloto/rodada', rodar); // rotina diária da Vercel usa GET
 router.post('/carrosseis/:id/desagendar', async (req, res) => { try { const c = await Piloto.desagendar(String(req.params.id).slice(0, 80)); res.json({ id: c?.id, agenda: c?.agenda || null }); } catch (e) { erro(res, e); } });
 router.get('/regua', (req, res) => res.json({ ...T.regua(), etapas: T.ETAPAS.map((e) => ({ id: e, rotulo: T.ROTULO[e] })) }));
 module.exports = router;
