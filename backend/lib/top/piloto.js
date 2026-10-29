@@ -164,6 +164,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
     try {
       const p = await T.passo(x.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) });
       x.estado = p.conteudo.top.estado; x.nota = p.conteudo.top.escolha?.nota ?? null; r.avancados.push({ id: x.id, estado: x.estado });
+      if (p.conteudo.top.cota_dia && p.conteudo.top.adiar_ate) est.ia_pausa_ate = p.conteudo.top.adiar_ate;
     } catch (e) { if (/não encontrado/i.test(e.message)) x.estado = 'erro'; r.avisos.push(`${x.id}: ${String(e.message).slice(0, 120)}`); }
   }
 
@@ -181,7 +182,9 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
   const prontosHoje = est.criados.filter((x) => x.dia === dia && x.estado === 'concluida' && x.decidido !== 'descartado').length;
   const emAndamento = est.criados.filter((x) => x.estado === 'em_andamento').length;
   const naJanela = hora >= cfg.inicio_producao && hora <= cfg.fim_producao;
-  if (naJanela && !emAndamento && prontosHoje < cfg.meta_dia + cfg.reserva && (est.criados_hoje || 0) < cfg.candidatos_max_dia && restante() > 12000) {
+  const iaPausada = est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora;
+  if (iaPausada) r.avisos.push(`IA gratuita sem cota até ${horaSP(Date.parse(est.ia_pausa_ate))}: nenhuma pauta nova até lá.`);
+  if (naJanela && !iaPausada && !emAndamento && prontosHoje < cfg.meta_dia + cfg.reserva && (est.criados_hoje || 0) < cfg.candidatos_max_dia && restante() > 12000) {
     try {
       const pauta = await proximaPauta(est, { agora, deps, restante });
       if (pauta) {

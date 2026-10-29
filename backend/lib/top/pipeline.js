@@ -196,12 +196,14 @@ E.foto = async (c, ctx) => {
   } catch (e) { c.top.aviso_foto = `A busca de foto falhou (${String(e.message).slice(0, 80)}): o carrossel sai só com as formas.`; }
 };
 
+const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|prev[êe]|estima|promete|prometeu|deve|pode|poder[áa])(?!\p{L})/iu;
 // Monta a versão no modelo de conteúdo (claims, evidências, auditoria) a partir da versão vencedora.
 function montarVersao(c) {
   const v = c.top.versoes[c.top.escolha.versao];
   const fonte = c.fonte_principal;
   const data = fonte.publicada_em ? new Date(fonte.publicada_em).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : null;
-  const linhaFonte = `Fonte: ${fonte.veiculo || 'matéria'}${data ? ` • ${data}` : ''}`;
+  // Sem data na linha de fonte: o portão de publicação trata "29/10/2026" como número sem fonte.
+  const linhaFonte = `Fonte: ${fonte.veiculo || 'matéria'}`; void data;
   const porIa = new Map(c.top.fatos.map((f) => [f.id_ia, f.id])); const ids = new Set(c.top.fatos.map((f) => f.id));
   const mapa = (arr) => [...new Set((arr || []).map((x) => (ids.has(x) ? x : porIa.get(x))).filter(Boolean))];
   const numsDe = (txt) => M.extrairNumeros(txt).filter(M.exigeOrigem);
@@ -218,12 +220,18 @@ function montarVersao(c) {
     let claim_ids = mapa(t.fatos); for (const id of fatosComNumeros(`${t.titulo || ''} ${texto} ${K.textosDaTela({ dados: t.dados })}`)) if (!claim_ids.includes(id)) claim_ids.push(id);
     if (t.papel === 'leitura') { const oid = `o${opinioes.length + 1}`; opinioes.push({ id: oid, texto: [t.titulo, t.texto, t.destaque].filter(Boolean).join(' ').slice(0, 400), tipo: 'opiniao', natureza: 'opiniao', central: false, estado: 'nao_verificada', premissas: claim_ids, evidencias: [], risco: 'baixo', origem: 'top', revisao: {} }); claim_ids = [oid]; }
     const prova = ['rep_comparacao', 'rep_numero'].includes(t.layout);
+    // Declaração/previsão apresentada na tela precisa dizer quem disse (portão "Falta a atribuição").
+    const aAtribuir = c.top.fatos.find((f) => claim_ids.includes(f.id) && ['declaracao', 'previsao'].includes(f.tipo));
+    if (aAtribuir && !MARCA_ATRIBUICAO.test(`${t.titulo || ''} ${texto}`)) t.texto = `Segundo ${aAtribuir.quem || fonte.veiculo || 'a reportagem'}: ${t.texto || ''}`.trim();
     slides.push({ id: `s${i + 2}`, funcao, layout: t.layout, tema_visual: 'reportagem', titulo: t.titulo, texto: t.texto || '', destaque: t.destaque, apoio: t.apoio, dados: t.dados ? { ...t.dados, ...(t.destaque || t.apoio ? { extra: { destaque: t.destaque, apoio: t.apoio } } : {}) } : (t.destaque || t.apoio ? { extra: { destaque: t.destaque, apoio: t.apoio } } : null), fonte_linha: prova ? linhaFonte : null, fundo: t.papel === 'contradicao' ? 'marinho' : null, claim_ids, ...(foto && t.papel !== 'leitura' && i % 2 === 1 ? { imagem_id: foto } : {}) });
   });
   c.claims.push(...opinioes);
   const creditos = (c.imagens || []).filter((i) => i.id === foto && i.exige_credito).map((i) => `Foto: ${i.autor} (${i.licenca}), via Wikimedia Commons.`);
   // A data fica na tela de prova; na legenda só o veículo (data solta na legenda vira "número sem fonte" nos portões).
-  const legenda = [v.legenda, `Fonte: ${fonte.veiculo || 'matéria'}.`, ...creditos].filter(Boolean).join('\n\n').slice(0, 2000);
+  // Legenda: só frases cujos números estão nos fatos (com a mesma régua do portão, que não perdoa data solta).
+  const fraseOk = (f) => numsDe(f).every((n) => c.top.fatos.some((x) => x.valores.some((y) => M.igual(y, n.valor))));
+  const corpo = String(v.legenda || '').split(/(?<=[.!?])\s+/).filter(fraseOk).join(' ').trim();
+  const legenda = [corpo, `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`, ...creditos].filter(Boolean).join('\n\n').slice(0, 2000);
   const motivo = (v.cta_motivo || 'se você também cobra resultado').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
   // Fechamento no desenho da peça de referência: frase de impacto, posição, "Eu comecei o Pedro Destrava por isso." e a faixa de chamada.
@@ -253,6 +261,7 @@ E.arte = async (c, ctx) => {
   const enc = (await armazem().arquivos.obter(conta(), 'upload:encerramento'))?.dados || null;
   while (c.top.arte_indice < v.slides.length && ctx.restante() > 9000) {
     const s = v.slides[c.top.arte_indice];
+    if (c.arte.renders.some((q) => q.versao === v.id && q.slide_id === s.id && q.texto_hash === M.hashRender(s))) { c.top.arte_indice += 1; continue; }
     const imagem = s.imagem_id ? (await armazem().arquivos.obter(conta(), `img:${s.imagem_id}`))?.dados : null;
     const r = await arte.renderizarSlide(s, { indice: c.top.arte_indice + 1, total: v.slides.length, imagem, arquivoEncerramento: s.layout === 'encerramento' ? enc : null });
     const key = `render:${c.id}:${v.id}:${s.id}:${M.hashRender(s)}`;
@@ -262,6 +271,23 @@ E.arte = async (c, ctx) => {
   }
   if (c.top.arte_indice < v.slides.length) return { concluida: false };
   const naoCabe = c.arte.renders.filter((r) => r.versao === v.id && r.metrics?.cabe === false);
+  // Texto que não cabe: uma tentativa de encurtar sem IA (fica a 1ª frase, sai o apoio) e desenhar de novo esses slides.
+  if (naoCabe.length && !c.top.encurtado) {
+    c.top.encurtado = true;
+    const dados = JSON.parse(JSON.stringify(v)); const ids = new Set(naoCabe.map((r) => r.slide_id));
+    for (const s of dados.slides) {
+      if (!ids.has(s.id)) continue;
+      const primeira = String(s.texto || '').split(/(?<=[.!?])\s+/)[0] || '';
+      s.texto = primeira; s.apoio = null; if (s.dados?.extra) s.dados.extra.apoio = null;
+      if (s.layout === 'encerramento') { s.texto = ''; }
+    }
+    M.criarVersao(c, dados, { quem: 'sistema', rotulo: 'top: texto encurtado para caber' });
+    auditar(c); const nova = M.versaoAtiva(c);
+    // os slides que já cabiam aproveitam o desenho (mesmo texto → mesma chave de render)
+    c.arte.renders = [...c.arte.renders, ...c.arte.renders.filter((r) => r.versao === v.id && !ids.has(r.slide_id)).map((r) => ({ ...r, versao: nova.id }))];
+    c.top.versao_montada = nova.id; c.top.arte_indice = 0;
+    return { concluida: false };
+  }
   if (naoCabe.length) c.top.aviso_arte = `${naoCabe.length} slide(s) com texto acima do tamanho legível: encurte antes de aprovar.`;
 };
 
@@ -290,6 +316,7 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
   let reg = await a.conteudos.obter(conta(), id); if (!reg || !reg.doc.top) throw erro('Carrossel não encontrado.', 'NAO_ENCONTRADO', 404);
   let c = reg.doc; let rev = reg.rev;
   if (c.top.estado !== 'em_andamento') return { conteudo: c, concluido: true };
+  if (c.top.adiar_ate && Date.parse(c.top.adiar_ate) > Date.now()) return { conteudo: c, ocupado: true, adiado: true, concluido: false };
   if (c.top.lease_ate && Date.parse(c.top.lease_ate) > Date.now()) return { conteudo: c, ocupado: true, concluido: false };
   c.top.lease_ate = new Date(Date.now() + LEASE_MS).toISOString();
   try { rev = (await a.conteudos.salvar(conta(), id, c, rev)).rev; } catch (e) { if (e.code === 'CONFLITO') return { conteudo: c, ocupado: true, concluido: false }; throw e; }
@@ -311,6 +338,13 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
       await gravar();
     } catch (e) {
       if (e.code === 'CONFLITO') return { conteudo: c, ocupado: true, concluido: false };
+      // Cota da IA esgotada (429): não é defeito do carrossel. Espera a cota voltar em vez de descartar.
+      if (e.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(e.message))) {
+        const dia = /per day|\bTPD\b/i.test(String(e.message));
+        c.top.adiar_ate = new Date(Date.now() + (dia ? 60 : 2) * 60000).toISOString(); c.top.cota_dia = dia;
+        c.top.erros.push({ etapa, em: agoraISO(), mensagem: String(e.message).slice(0, 240), codigo: 'COTA_IA', tentativa: 0 });
+        await gravar(); break;
+      }
       const n = (c.top.tentativas[etapa] = (c.top.tentativas[etapa] || 0) + 1);
       c.top.erros.push({ etapa, em: agoraISO(), mensagem: String(e.message).slice(0, 240), codigo: e.code || null, tentativa: n });
       if (e.terminal || e.code === 'SEM_IA' || n >= MAX_TENTATIVAS) {
