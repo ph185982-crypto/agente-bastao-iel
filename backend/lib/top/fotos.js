@@ -71,7 +71,7 @@ async function fotoDe(nome, { fetcher = fetch, modo = 'pessoa' } = {}) {
   for (const f of lista.slice(0, 3)) {
     try {
       const u = new URL(f.url);
-      if (u.hostname !== 'upload.wikimedia.org') continue;
+      if (!['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(u.hostname)) continue; // o Commons passou a servir miniaturas por thumb.
       const r = await fetcher(f.url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
       if (!r.ok) continue;
       const dados = Buffer.from(await r.arrayBuffer());
