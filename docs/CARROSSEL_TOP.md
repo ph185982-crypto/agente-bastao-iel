@@ -43,7 +43,9 @@ exigindo o toque do Pedro.
 - Piloto desligado: não cria nada, mas publica o que já foi aprovado e agendado.
 - Quem chama a rodada: o **relógio próprio** (fila `pedro-piloto` da Vercel, `api/piloto-worker.js`): ao fim de cada rodada a
   próxima é agendada — em ~1 min com carrossel em produção, a cada 10 min parado. Uma rodada por vez (trava `rodando_ate`);
-  o fim da rodada não apaga aprovações feitas enquanto ela rodava. Também chamam a rodada, e religam o relógio se ele parar:
+  o fim da rodada não apaga aprovações feitas enquanto ela rodava. A fila entrega o tique para a mesma versão (deployment) que o
+  enviou; por isso, em produção, o tique chama a rodada no endereço público com `CRON_SECRET` e quem roda é sempre a versão
+  atual (a corrente migra sozinha a cada deploy). Duas rotinas diárias da Vercel (03:05 e 13:40 de Brasília) religam o relógio. Também chamam a rodada, e religam o relógio se ele parar:
   `.github/workflows/piloto.yml` (a cada 10 min no papel; na prática o GitHub atrasa horas), o app aberto (a cada 5 min) e o
   botão "Produzir agora". Com o código de acesso ligado, crie o secret `CRON_SECRET` no GitHub (o mesmo da Vercel).
 - O monitor de notícias em alta também cria carrossel "top" (antes ia para o Radar, que só aceita ideias de negócio).
