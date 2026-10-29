@@ -20,11 +20,14 @@ async function limpar({ simular = false, orcamentoMs = 40000 } = {}) {
   for (const x of lista) if (!MORTO.has(x.resumo?.status)) ativa.set(x.id, x.resumo?.versao || null);
 
   // fotos em uso: lê só os conteúdos vivos
-  const fotosEmUso = new Set(); let lidos = 0; let incompleto = false;
+  const fotosEmUso = new Set(); const previasEmUso = new Set(); const lidosIds = new Set(); let lidos = 0; let incompleto = false;
   for (const id of ativa.keys()) {
     if (Date.now() - inicio > orcamentoMs * 0.6) { incompleto = true; break; }
     const c = (await a.conteudos.obter(conta, id))?.doc; lidos++;
     if (!c) continue;
+    lidosIds.add(id);
+    // a prévia vale pelo que a versão ativa REFERENCIA (slide que não mudou reaproveita a imagem da versão anterior)
+    const va = M.versaoAtiva(c)?.id; (c.arte?.renders || []).forEach((r) => r.versao === va && r.blob_key && previasEmUso.add(r.blob_key));
     (c.imagens || []).forEach((i) => i?.id && fotosEmUso.add(`img:${i.id}`));
     (M.versaoAtiva(c)?.slides || []).forEach((s) => s.imagem_id && fotosEmUso.add(`img:${s.imagem_id}`));
   }
@@ -34,7 +37,7 @@ async function limpar({ simular = false, orcamentoMs = 40000 } = {}) {
   for (const f of arquivos) {
     const p = String(f.chave).split(':');
     let fora = false;
-    if (p[0] === 'render' && p.length >= 3) fora = !ativa.has(p[1]) || (ativa.get(p[1]) && ativa.get(p[1]) !== p[2]);
+    if (p[0] === 'render' && p.length >= 3) fora = !ativa.has(p[1]) || (lidosIds.has(p[1]) && !previasEmUso.has(f.chave));
     else if (p[0] === 'img' && !incompleto) fora = !fotosEmUso.has(f.chave); // sem a lista completa de fotos em uso, não apaga foto
     if (fora) { apagar.push(f.chave); bytes += Number(f.tamanho) || 0; }
   }

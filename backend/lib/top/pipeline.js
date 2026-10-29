@@ -434,6 +434,27 @@ async function reparar(id) {
   return c;
 }
 
+// Redesenha as prévias que sumiram do armazém (a versão não muda; a publicação já redesenha sozinha).
+async function refazerPrevias(id, { deps = {} } = {}) {
+  const a = armazem(); const reg = await a.conteudos.obter(conta(), id);
+  if (!reg?.doc) throw erro('Conteúdo não encontrado.', 'NAO_ENCONTRADO', 404);
+  const c = reg.doc; const v = M.versaoAtiva(c); const arte = deps.arte || require('../arte'); let refeitas = 0;
+  const enc = (await a.arquivos.obter(conta(), 'upload:encerramento'))?.dados || null;
+  for (const [i, s] of v.slides.entries()) {
+    const r0 = (c.arte?.renders || []).find((r) => r.versao === v.id && r.slide_id === s.id);
+    if (r0?.blob_key && await a.arquivos.obter(conta(), r0.blob_key)) continue;
+    const imagem = s.imagem_id ? (await a.arquivos.obter(conta(), `img:${s.imagem_id}`))?.dados : null;
+    const r = await arte.renderizarSlide(s, { indice: i + 1, total: v.slides.length, imagem: imagem ? Buffer.from(imagem) : null, arquivoEncerramento: s.layout === 'encerramento' && enc ? Buffer.from(enc) : null });
+    const key = `render:${c.id}:${v.id}:${s.id}:${M.hashRender(s)}`;
+    const previa = await require('sharp')(r.png).flatten({ background: '#FAF7F0' }).jpeg({ quality: 84 }).toBuffer().catch(() => null);
+    await a.arquivos.salvar(conta(), key, previa || r.png, previa ? 'image/jpeg' : 'image/png');
+    c.arte.renders = [...(c.arte.renders || []).filter((q) => !(q.versao === v.id && q.slide_id === s.id)), { slide_id: s.id, versao: v.id, texto_hash: M.hashRender(s), blob_key: key, indice: i + 1, total: v.slides.length, metrics: r.metrics, elementos: r.metrics.elementos || [] }];
+    refeitas++;
+  }
+  if (refeitas) await a.conteudos.salvar(conta(), id, c, reg.rev);
+  return { id, refeitas };
+}
+
 // Confere de novo um carrossel já pronto: se não passa nos portões, sai de "Para aprovar" (arquivado, abaixo da régua).
 async function revalidar(id) {
   const a = armazem(); const reg = await a.conteudos.obter(conta(), id);
@@ -446,4 +467,4 @@ async function revalidar(id) {
   return { conteudo: c, bloqueios: bl };
 }
 
-module.exports = { revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };
+module.exports = { refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };
