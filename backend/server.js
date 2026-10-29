@@ -62,6 +62,9 @@ app.use('/api/instagram', require('./routes/instagram'));
 app.use('/api/monitor', require('./routes/monitor'));
 app.use('/api/recortes', require('./routes/recortes'));
 app.use('/api/top', require('./routes/top'));
+// Manutenção do banco (limite de 512 MB do Postgres gratuito): ver espaço e limpar prévias/fotos/revisões sem uso.
+app.get('/api/manutencao/espaco', async (req, res) => { try { const a = require('./lib/armazem').armazem(); res.json(a?.arquivos?.espaco ? await a.arquivos.espaco() : {}); } catch (e) { res.status(500).json({ error: e.message }); } });
+app.post('/api/manutencao/limpar', async (req, res) => { try { res.json(await require('./lib/manutencao').limpar({ simular: req.body?.simular === true })); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.use('/api/radar', require('./routes/radar'));
 app.use('/api/publico', require('./routes/publish').publico);
 app.use('/api/jobs', require('./routes/sync').jobs);

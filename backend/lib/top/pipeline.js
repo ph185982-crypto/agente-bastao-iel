@@ -307,7 +307,9 @@ E.arte = async (c, ctx) => {
     const imagem = s.imagem_id ? (await armazem().arquivos.obter(conta(), `img:${s.imagem_id}`))?.dados : null;
     const r = await arte.renderizarSlide(s, { indice: c.top.arte_indice + 1, total: v.slides.length, imagem, arquivoEncerramento: s.layout === 'encerramento' ? enc : null });
     const key = `render:${c.id}:${v.id}:${s.id}:${M.hashRender(s)}`;
-    await armazem().arquivos.salvar(conta(), key, r.png, 'image/png');
+    // Prévia em JPEG (~5× menor que PNG): a publicação redesenha o slide a partir do texto, a prévia é só para ver no app.
+    const previa = await require('sharp')(r.png).flatten({ background: '#FAF7F0' }).jpeg({ quality: 84 }).toBuffer().catch(() => null);
+    await armazem().arquivos.salvar(conta(), key, previa || r.png, previa ? 'image/jpeg' : 'image/png');
     c.arte.renders = [...c.arte.renders.filter((q) => q.versao !== v.id || q.slide_id !== s.id), { slide_id: s.id, versao: v.id, texto_hash: M.hashRender(s), blob_key: key, indice: c.top.arte_indice + 1, total: v.slides.length, metrics: r.metrics, elementos: r.metrics.elementos || [] }];
     c.top.arte_indice += 1;
   }
@@ -395,6 +397,9 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
       if (e.terminal || e.code === 'SEM_IA' || n >= MAX_TENTATIVAS) {
         c.top.estado = e.fim || 'erro'; c.top.motivo = String(e.message).slice(0, 300);
         c.status = 'arquivado'; M.registrar(c, 'sistema', 'top_' + c.top.estado, c.top.motivo);
+        // descartado: as prévias não servem para nada e ocupam o banco
+        const chaves = (c.arte?.renders || []).map((r) => r.blob_key).filter(Boolean);
+        if (chaves.length && a.arquivos.apagar) { await a.arquivos.apagar(conta(), chaves).catch(() => {}); c.arte.renders = []; }
       }
       await gravar(); break;
     }
