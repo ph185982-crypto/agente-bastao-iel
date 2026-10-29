@@ -54,4 +54,31 @@ router.post('/atualizar', limita({ max: 2, janelaMs: 60000, nome: 'instagram-atu
   }
 });
 
+// Referências: carrosséis públicos de OUTRAS contas profissionais (business discovery da Graph API), para estudar o que
+// viraliza. Só leitura. Visualização de carrossel não é pública: a Graph devolve curtidas e comentários.
+router.get('/referencias', limita({ max: 10, janelaMs: 60000, nome: 'ig-referencias' }), async (req, res) => {
+  try {
+    const usuarios = String(req.query.usuarios || '').split(',').map((u) => u.trim().replace(/^@/, '')).filter((u) => /^[\w.]{2,30}$/.test(u)).slice(0, 8);
+    const paginas = Math.min(4, Math.max(1, Number(req.query.paginas) || 2));
+    const c = meta.config(); const saida = [];
+    for (const u of usuarios) {
+      const conta = { usuario: u, seguidores: null, carrosseis: [], lidos: 0, erro: null };
+      let depois = null;
+      try {
+        for (let p = 0; p < paginas; p++) {
+          const media = `media${depois ? `.after(${depois})` : ''}.limit(50){media_type,like_count,comments_count,permalink,timestamp,caption,media_url,children{media_url}}`;
+          const d = await meta.graph('GET', c.igId, { fields: `business_discovery.username(${u}){username,followers_count,${media}}` });
+          const bd = d.business_discovery || {}; conta.seguidores = bd.followers_count ?? conta.seguidores;
+          const itens = bd.media?.data || []; conta.lidos += itens.length;
+          for (const m of itens) if (m.media_type === 'CAROUSEL_ALBUM') conta.carrosseis.push({ link: m.permalink, data: m.timestamp, curtidas: m.like_count ?? null, comentarios: m.comments_count ?? null, legenda: String(m.caption || '').slice(0, 600), capa: m.media_url || null, slides: (m.children?.data || []).map((x) => x.media_url).filter(Boolean).slice(0, 10) });
+          depois = bd.media?.paging?.cursors?.after; if (!depois || !itens.length) break;
+        }
+      } catch (e) { conta.erro = String(e.message).slice(0, 200); }
+      conta.carrosseis.sort((x, y) => (y.curtidas || 0) - (x.curtidas || 0)); conta.carrosseis = conta.carrosseis.slice(0, 15);
+      saida.push(conta);
+    }
+    res.json({ contas: saida, aviso: 'Curtidas e comentários públicos; o Instagram não expõe visualizações de carrossel de outras contas.' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;
