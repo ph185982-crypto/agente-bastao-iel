@@ -44,8 +44,8 @@ const PROVIDERS = [
     name: 'openai',
     envKey: 'OPENAI_API_KEY',
     baseURL: undefined, // default da SDK
-    large: ['gpt-4o-mini'],
-    small: ['gpt-4o-mini'],
+    large: ['gpt-5.4-mini', 'gpt-4o-mini'],
+    small: ['gpt-5.4-mini', 'gpt-4o-mini'],
     paid: true,
     discover: false,
   },
@@ -179,8 +179,16 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
   // Modelos gpt-oss "pensam" antes de responder e isso pode passar de 30 s:
   // pedimos raciocínio curto (reasoning_effort, documentado pela Groq) e sem o
   // texto do raciocínio na resposta. Se o provedor recusar o parâmetro, repete sem.
-  const { esforco, preferirMelhor, ...base } = opts || {};
+  const { esforco, preferirMelhor, ...base0 } = opts || {};
+  let base = base0;
   const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : {};
+  // Modelos de raciocínio da OpenAI (gpt-5.x, o*): sem temperature e com max_completion_tokens (o raciocínio também
+  // consome tokens de saída, por isso a folga).
+  if (provider.name === 'openai' && /^(gpt-5|o\d)/i.test(model)) {
+    const { max_tokens, temperature, ...r } = base0; void temperature;
+    base = { ...r, max_completion_tokens: (max_tokens || 2000) + 2500 };
+    extra.reasoning_effort = esforco === 'alto' ? 'medium' : 'low';
+  }
   let res;
   try {
     res = await client.chat.completions.create({ ...base, ...extra, model }, requestOptions);
@@ -214,6 +222,14 @@ async function cascade(opts, requestOptions) {
     console.warn(`[llm] ${provider.name}/${model} falhou:`, JSON.stringify(errorInfo(err, scope)));
     return scope;
   };
+
+  // Etapas criativas (preferirMelhor: ângulo, roteiro, júri) vão primeiro ao modelo premium da OpenAI quando ela está
+  // ligada (OPENAI_API_KEY e IA_PREMIUM diferente de "0"). Se falhar, segue a cascata normal (gratuitos primeiro).
+  const premium = opts.preferirMelhor && process.env.IA_PREMIUM !== '0' ? providers.find((p) => p.name === 'openai') : null;
+  if (premium) {
+    const modelo = process.env.IA_PREMIUM_MODELO || 'gpt-5.4';
+    try { return await attempt(premium, modelo); } catch (err) { remember(premium, modelo, err); } // nunca derruba: cai na cascata
+  }
 
   // Atalho: tenta primeiro a combinação que funcionou na chamada anterior.
   // Só pula direto para ele se for o MELHOR modelo daquele provedor no nível; senão a ordem normal tenta o melhor de novo.

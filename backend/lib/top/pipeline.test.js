@@ -254,3 +254,11 @@ test('cota da IA esgotada (429) não descarta o carrossel: espera e retoma depoi
   const r = await T.executarTudo(c.id, { deps: d });
   assert.strictEqual(r.conteudo.top.estado, 'concluida');
 });
+
+test('foto de lugar: nunca retrato de alguém nem foto histórica', () => {
+  const F = require('./fotos');
+  const item = (title, w = 1600, h = 1000) => ({ title: `File:${title}`, imageinfo: [{ width: w, height: h }] });
+  assert.ok(F.pontuarLugar(item('Plenário do Senado Federal vista geral.jpg'), 'Plenário do Senado Federal') > 0);
+  assert.strictEqual(F.pontuarLugar(item('Senadora Fulana discursa no Plenário do Senado Federal.jpg'), 'Plenário do Senado Federal'), -1);
+  assert.strictEqual(F.pontuarLugar(item('Porto de Santos, 1870.jpg'), 'Porto de Santos'), -1);
+});
