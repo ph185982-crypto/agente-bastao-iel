@@ -9,7 +9,7 @@ const router = express.Router();
 const erro = (res, e) => res.status(e.status || 500).json({ error: e.message || 'Erro no carrossel.', code: e.code || 'TOP' });
 
 router.post('/carrosseis', limita({ max: 12, janelaMs: 60000, nome: 'top-criar' }), async (req, res) => {
-  try { const c = await T.criar({ url: req.body?.url, texto: req.body?.texto, titulo: req.body?.titulo, origem: req.body?.origem || 'manual' }); res.status(201).json(T.resumo(c)); } catch (e) { erro(res, e); }
+  try { const c = await T.criar({ url: req.body?.url, texto: req.body?.texto, titulo: req.body?.titulo, origem: req.body?.origem || 'manual', formato: req.body?.formato || null }); res.status(201).json(T.resumo(c)); } catch (e) { erro(res, e); }
 });
 router.post('/carrosseis/:id/passo', limita({ max: 30, janelaMs: 60000, nome: 'top-passo' }), async (req, res) => {
   try { const r = await T.passo(String(req.params.id).slice(0, 80)); res.json({ ...T.resumo(r.conteudo), concluido: r.concluido, ocupado: !!r.ocupado }); } catch (e) { erro(res, e); }
