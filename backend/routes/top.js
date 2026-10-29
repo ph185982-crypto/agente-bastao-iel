@@ -25,6 +25,16 @@ const Relogio = require('../lib/top/relogio');
 const rodar = async (req, res) => { try { const r = await Piloto.rodada(); await Relogio.agendarProxima(r); res.json(r); } catch (e) { erro(res, e); } };
 router.post('/piloto/rodada', limita({ max: 6, janelaMs: 60000, nome: 'top-piloto' }), rodar);
 router.get('/piloto/rodada', rodar); // rotina diária da Vercel usa GET
+// Publicação que falhou (ex.: trava corrigida depois): volta para a agenda no próximo horário livre, sem nova aprovação —
+// só aceita conteúdo que continua aprovado na mesma versão.
+router.post('/carrosseis/:id/reagendar', async (req, res) => {
+  try {
+    const id = String(req.params.id).slice(0, 80); const reg = await armazem().conteudos.obter(ACCOUNT.ig_id, id);
+    if (!reg) return res.status(404).json({ error: 'Conteúdo não encontrado.' });
+    if (reg.doc.status !== 'aprovado' || !reg.doc.revisao?.aprovada_versao) return res.status(409).json({ error: 'O conteúdo não está aprovado.', code: 'NAO_APROVADO' });
+    const c = await Piloto.agendar(id); res.json({ id: c.id, agenda: c.agenda });
+  } catch (e) { erro(res, e); }
+});
 router.post('/carrosseis/:id/desagendar', async (req, res) => { try { const c = await Piloto.desagendar(String(req.params.id).slice(0, 80)); res.json({ id: c?.id, agenda: c?.agenda || null }); } catch (e) { erro(res, e); } });
 router.get('/regua', (req, res) => res.json({ ...T.regua(), etapas: T.ETAPAS.map((e) => ({ id: e, rotulo: T.ROTULO[e] })) }));
 module.exports = router;
