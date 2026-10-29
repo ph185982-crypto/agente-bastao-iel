@@ -36,9 +36,12 @@ function pontuarLugar(item, nome) {
   const partes = sem(nome).split(/\s+/).filter((p) => p.length >= 4);
   if (!partes.length || partes.filter((p) => titulo.includes(p)).length < Math.min(2, partes.length)) return -1;
   if (PESSOA.test(titulo)) return -1;
+  // séries numeradas do Flickr (Agência Senado/Câmara, "(14786000717)") são fotos de sessão: quase sempre alguém discursando
+  if (/\(\d{8,}\)/.test(titulo) || /\b(sessao|plenario)\b/.test(titulo) && !/(vista|panorama|vazio|empty)/.test(titulo)) return -1;
   const ii = item.imageinfo?.[0] || {};
   if (!/\.(jpe?g|png)$/i.test(item.title) || (ii.width || 0) < 1000 || (ii.height || 0) < 700) return -1;
   let p = 10;
+  if (/(fachada|predio|edificio|exterior|vista|panorama|cupula|congresso nacional)/.test(titulo)) p += 5;
   if (/(plenario|vista|fachada|predio|panorama|interior|exterior|sessao|cupula|edificio|sede|congresso)/.test(titulo)) p += 5;
   const ano = Number((titulo.match(/\b(1[89]\d\d|20[0-2]\d)\b/) || [])[1] || 0);
   if (ano && ano < 1990) return -1; // foto histórica não serve de capa de notícia
