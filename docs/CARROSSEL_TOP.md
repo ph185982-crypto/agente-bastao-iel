@@ -32,7 +32,7 @@ exigindo o toque do Pedro.
 
 | O quê | Padrão (Perfil → Piloto automático) |
 |---|---|
-| Meta | 8 carrosséis prontos por dia + 2 de reserva; até 30 pautas testadas por dia (cerca de 1 em 3 passa na régua) |
+| Meta | 8 carrosséis prontos por dia + 2 de reserva (descartar um abre vaga para outro); pauta de serviço (agenda do dia, "saiba quais") nem entra; precisa pesar em bolso ou contradição (≥ 2); até 30 pautas testadas por dia (cerca de 1 em 3 passa na régua) |
 | Produção | das 03:00 às 20:30 (Brasília), uma pauta por vez, a de maior prioridade com link legível |
 | Avisos para aprovar | 08:00 e 14:00 — um aviso por janela, com a contagem de prontos |
 | Horários de publicação | 09:00, 11:00, 12:30, 15:00, 17:00, 18:30, 20:00, 21:30 |
