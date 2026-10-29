@@ -17,7 +17,7 @@ const FATOS = { protagonista: 'Fulano de Tal', fatos: [
   { id: 'c', texto: 'O ministro afirmou que a alta é temporária.', trecho: 'O ministro Fulano de Tal afirmou que a alta é temporária e que o governo vai cumprir a meta.', tipo: 'declaracao', quem: 'Fulano de Tal' },
   { id: 'd', texto: 'Inventado: o índice era 50% em 2010.', trecho: 'em 2010 o índice era de 50%', tipo: 'fato' },
 ] };
-const ANGULO = { gatilhos: { contradicao: 3, bolso: 2, numero: 3, personagem: 2 }, tese: 'Quem promete meta e entrega o maior patamar em cinco anos deve explicação a quem paga juros.', por_que_mandaria: 'Olha a diferença entre o discurso e o número.' };
+const ANGULO = { gatilhos: { contradicao: 3, bolso: 2, numero: 3, personagem: 2 }, tese: 'Quem promete meta e entrega o maior patamar em cinco anos deve explicação a quem paga juros.', por_que_mandaria: 'Olha a diferença entre o discurso e o número.', imagem: { pessoa_central: true } };
 const roteiro = (extra = {}) => ({
   capas: [{ texto: 'Prometeu meta. Entregou o **maior patamar** em cinco anos.', mecanismo: 'contradicao' }, { texto: 'De 71,7% para 82,9%: quem paga essa conta?', mecanismo: 'antes_depois' }, { texto: 'O número que o discurso não mostra', mecanismo: 'ninguem_contou' }],
   telas: [

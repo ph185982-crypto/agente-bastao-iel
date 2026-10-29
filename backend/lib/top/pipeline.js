@@ -73,7 +73,7 @@ E.fatos = async (c, ctx) => {
 E.angulo = async (c, ctx) => {
   const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true });
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
-  c.top.angulo = { gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240), imagem: { busca: String(dados?.imagem?.busca || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80), pessoa_central: dados?.imagem?.pessoa_central !== false, lugar_brasil: dados?.imagem?.lugar_brasil ? String(dados.imagem.lugar_brasil).slice(0, 80) : null } };
+  c.top.angulo = { gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240), imagem: { busca: String(dados?.imagem?.busca || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80), pessoa_central: dados?.imagem?.pessoa_central === true, lugar_brasil: dados?.imagem?.lugar_brasil ? String(dados.imagem.lugar_brasil).slice(0, 80) : null } };
   c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
   const nucleo = Math.max(c.top.angulo.gatilhos.bolso, c.top.angulo.gatilhos.contradicao);
   if (c.top.angulo.soma >= regua().gatilhos_min && c.top.angulo.tese && nucleo < regua().nucleo_min) throw Object.assign(erro(`Sem bolso nem contradição (máximo ${nucleo}/3; mínimo ${regua().nucleo_min}): vira post de cotação, não de tese.`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
@@ -191,7 +191,7 @@ E.juri = async (c, ctx) => {
 // (Commons, foto real: plenário do Senado, STF…); a CENA ilustrativa ligada ao assunto (Pexels). Uma foto só, na capa.
 E.foto = async (c, ctx) => {
   const lugar = c.top.angulo?.imagem?.lugar_brasil;
-  if (lugar && !c.top.foto_lugar_id && !(c.top.protagonista && c.top.angulo?.imagem?.pessoa_central !== false)) {
+  if (lugar && !c.top.foto_lugar_id && !(c.top.protagonista && c.top.angulo?.imagem?.pessoa_central === true)) {
     try {
       const f = await (ctx.deps.fotoDe || require('./fotos').fotoDe)(lugar, { modo: 'lugar' });
       if (f) { await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg'); c.imagens = [...(c.imagens || []).filter((i) => i.id !== f.meta.id), f.meta]; c.top.foto_lugar_id = f.meta.id; }
@@ -215,7 +215,9 @@ E.foto = async (c, ctx) => {
       c.top.foto_cena_id = c.top.fotos_cena[0] || null;
     } catch { /* sem foto de cena: segue com as formas */ }
   }
-  if (!c.top.protagonista || c.top.angulo?.imagem?.pessoa_central === false) return;
+  // Foto de pessoa só quando o ângulo confirma que a notícia gira em torno DELA e o nome parece de gente (não "Senado Federal").
+  const INSTITUICAO = /\b(senado|c[âa]mara|congresso|supremo|tribunal|minist[ée]rio|governo|banco|prefeitura|assembleia|partido|federal|nacional|empresa|grupo|companhia|ag[êe]ncia)\b/i;
+  if (!c.top.protagonista || c.top.angulo?.imagem?.pessoa_central !== true || INSTITUICAO.test(c.top.protagonista)) return;
   try {
     const f = await (ctx.deps.fotoDe || require('./fotos').fotoDe)(c.top.protagonista);
     if (!f) { c.top.aviso_foto = `Não achei foto de ${c.top.protagonista} com licença que permita uso: o carrossel sai só com as formas.`; return; }
@@ -225,7 +227,7 @@ E.foto = async (c, ctx) => {
   } catch (e) { c.top.aviso_foto = `A busca de foto falhou (${String(e.message).slice(0, 80)}): o carrossel sai só com as formas.`; }
 };
 
-const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|prev[êe]|estima|promete|prometeu|deve|pode|poder[áa]|aponta|apontam|apontou|avalia|avaliam|alerta|alertam|alertou|calcula|calculam|projeta|projetam|recomenda|recomendam|v[êe]|veem)(?!\p{L})/iu;
+const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|prev[êe]|estima|promete|prometeu|deve|pode|poder[áa]|aponta|apontam|apontou|avalia|avaliam|alerta|alertam|alertou|calcula|calculam|projeta|projetam|recomenda|recomendam|v[êe]|veem|criticou|critica|criticam|lembrou|lembra|defendeu|defende|defendem|cobrou|cobra|cobram|classificou|classifica|chamou|falou|ressaltou|destacou|explicou|reconheceu|reconhece|argumenta|argumentou|avaliou)(?!\p{L})/iu;
 // Monta a versão no modelo de conteúdo (claims, evidências, auditoria) a partir da versão vencedora.
 function montarVersao(c) {
   const v = c.top.versoes[c.top.escolha.versao];
