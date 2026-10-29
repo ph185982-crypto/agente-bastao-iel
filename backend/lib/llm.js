@@ -114,8 +114,11 @@ function errorInfo(err, scope) {
   const header = typeof err?.headers?.get === 'function' ? err.headers.get('retry-after') : err?.headers?.['retry-after'];
   const metric = msg.match(/\b(?:input |output )?(?:tokens|requests) per (?:minute|day)\b/i)?.[0]?.toLowerCase() || null;
   const number = label => { const v = msg.match(new RegExp(`\\b${label}\\s*:?\\s*([\\d.]+)`, 'i'))?.[1]; return v && Number.isFinite(Number(v)) ? Number(v) : null; };
-  return { status: Number(err?.status) || null, scope, metric, limit: number('Limit'), used: number('Used'), requested: number('Requested'), retry_after_seconds: header && Number.isFinite(Number(header)) ? Number(header) : null };
+  return { status: Number(err?.status) || null, scope, metric, code: err?.error?.code || err?.code || null, limit: number('Limit'), used: number('Used'), requested: number('Requested'), retry_after_seconds: header && Number.isFinite(Number(header)) ? Number(header) : null };
 }
+// Último erro por provedor (para o pipeline explicar por que a IA premium não respondeu: sem créditos, limite…).
+const _ultimoErro = {};
+const ultimoErro = (nome) => _ultimoErro[nome] || null;
 
 // ── Descoberta de modelos ─────────────────────────────────────────────────────
 // Quando a lista fixa acaba, perguntamos ao provedor quais modelos ele tem hoje.
@@ -219,7 +222,8 @@ async function cascade(opts, requestOptions) {
     lastErr = err;
     if (err?.status === 429) rateErr = err;
     if (scope === 'provider') down.add(provider.name);
-    console.warn(`[llm] ${provider.name}/${model} falhou:`, JSON.stringify(errorInfo(err, scope)));
+    const info = errorInfo(err, scope); _ultimoErro[provider.name] = { ...info, em: Date.now(), mensagem: String(err?.message || '').slice(0, 160) };
+    console.warn(`[llm] ${provider.name}/${model} falhou:`, JSON.stringify(info));
     return scope;
   };
 
@@ -336,4 +340,5 @@ function friendlyErrorMessage(err) {
   return 'Não foi possível gerar o conteúdo agora. Tente novamente em instantes.';
 }
 
-module.exports = { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE };
+const premiumLigado = () => !!process.env.OPENAI_API_KEY && process.env.IA_PREMIUM !== '0';
+module.exports = { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE, ultimoErro, premiumLigado };

@@ -36,6 +36,14 @@ exigindo o toque do Pedro.
 
 O editor (etapa `angulo`) escolhe o formato; o piloto **alterna** tweet × reportagem a cada pauta para o feed variar; `POST /api/top/carrosseis` aceita `formato` para forçar. O formato tweet é o que mais engaja no nicho (referência: @thiago.nigro, 150–380 mil curtidas por carrossel).
 
+## IA premium (OpenAI) e créditos
+
+Com `OPENAI_API_KEY` na produção, as etapas criativas (ângulo, roteiro, júri) vão primeiro ao modelo `IA_PREMIUM_MODELO`
+(hoje `gpt-5.5`, ~US$ 0,15 por carrossel pronto). Se a OpenAI não responder (sem créditos, limite), o pipeline **não escreve
+com o modelo gratuito**: o carrossel espera (1 h sem créditos; 15 min em outros erros), o piloto não abre pauta nova e o
+Pedro recebe um aviso no celular uma vez por dia. Créditos: platform.openai.com → Settings → Billing. Para desligar a
+regra e aceitar o gratuito: `IA_PREMIUM=0`. Cada carrossel guarda em `top.ia` qual IA escreveu cada etapa.
+
 ## Piloto automático (produção diária; o Pedro só aprova)
 `backend/lib/top/piloto.js` · rotas `GET/PUT /api/top/piloto`, `POST /api/top/piloto/rodada`, `POST /api/top/carrosseis/:id/desagendar`.
 

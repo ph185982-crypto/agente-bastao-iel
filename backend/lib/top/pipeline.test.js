@@ -293,3 +293,15 @@ test('formato tweet: capa = 1º tweet, uma frase por slide, fechamento com chama
   assert.ok(doc.arte.renders.filter((x) => x.versao === v.id).every((x) => x.metrics.cabe && x.metrics.tema === 'tweet'));
   assert.ok(ia.chamadas.some((x) => x.tipo === 'roteiro' && /formato "tweet"/.test(x.sistema)), 'usou o prompt do formato tweet');
 });
+
+test('IA premium ligada mas a chamada caiu no gratuito: espera (não escreve com modelo fraco) e explica se é falta de crédito', async () => {
+  novo(); const ia = iaFalsa();
+  const d = { ...(await deps(ia)), premiumLigado: () => true, ultimoErro: () => ({ status: 429, code: 'credit_balance_exhausted', mensagem: 'You have no credits remaining.' }) };
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.passo(c.id, { deps: d, orcamentoMs: 15000 });
+  assert.strictEqual(r.conteudo.top.estado, 'em_andamento');
+  assert.strictEqual(r.conteudo.top.etapa, 'angulo', 'parou na 1ª etapa criativa');
+  assert.ok(r.conteudo.top.sem_credito && Date.parse(r.conteudo.top.adiar_ate) > Date.now() + 50 * 60000);
+  assert.match(r.conteudo.top.erros.at(-1).mensagem, /sem créditos/);
+  assert.ok(r.conteudo.top.ia.some((x) => x.etapa === 'fatos' && x.provider === 'simulado'), 'registrou qual IA escreveu');
+});

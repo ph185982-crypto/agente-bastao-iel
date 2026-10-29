@@ -423,7 +423,21 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
   try { rev = (await a.conteudos.salvar(conta(), id, c, rev)).rev; } catch (e) { if (e.code === 'CONFLITO') return { conteudo: c, ocupado: true, concluido: false }; throw e; }
   const ctx = {
     deps, restante: () => orcamentoMs - (Date.now() - inicio),
-    ia: (args) => { const pedir = deps.pedirJson || llmJson.pedirJson; if (deps.pedirJson) return pedir(args); return llmJson.comConsumo(() => llmJson.comPrazo(Math.max(12000, ctx.restante() - 2000), () => pedir(args))).then(({ resultado, consumo }) => { c.top.chamadas_ia = (c.top.chamadas_ia || 0) + (consumo?.chamadas?.length || 0); return resultado; }); },
+    ia: async (args) => {
+      const pedir = deps.pedirJson || llmJson.pedirJson;
+      let resultado;
+      if (deps.pedirJson) resultado = await pedir(args);
+      else { const r = await llmJson.comConsumo(() => llmJson.comPrazo(Math.max(12000, ctx.restante() - 2000), () => pedir(args))); c.top.chamadas_ia = (c.top.chamadas_ia || 0) + (r.consumo?.chamadas?.length || 0); resultado = r.resultado; }
+      // Registra qual IA escreveu cada etapa (para o Pedro saber se foi a premium) …
+      c.top.ia = [...(c.top.ia || []).slice(-11), { etapa: c.top.etapa, provider: resultado?.llm?.provider || null, model: resultado?.llm?.model || null }];
+      // … e, com a premium ligada, nunca escreve ângulo/roteiro/júri com modelo gratuito: espera a premium voltar.
+      const LLM = require('../llm');
+      if (args.preferirMelhor && (deps.premiumLigado ? deps.premiumLigado() : LLM.premiumLigado()) && resultado?.llm?.provider !== 'openai') {
+        const ue = (deps.ultimoErro || LLM.ultimoErro)('openai'); const semCredito = /credit|insufficient_quota|billing/i.test(`${ue?.code || ''} ${ue?.mensagem || ''}`);
+        throw Object.assign(new Error(semCredito ? 'A OpenAI está sem créditos: recarregue em platform.openai.com → Billing. O piloto espera para não escrever com modelo fraco.' : `IA premium (OpenAI) indisponível (${ue?.code || ue?.status || 'sem resposta'}); espero em vez de escrever com modelo fraco.`), { status: 429, code: 'IA_PREMIUM', esperar_min: semCredito ? 60 : 15, sem_credito: semCredito });
+      }
+      return resultado;
+    },
   };
   const gravar = async () => { c.updated_at = agoraISO(); c.top.lease_ate = new Date(Date.now() + LEASE_MS).toISOString(); rev = (await a.conteudos.salvar(conta(), id, c, rev)).rev; };
   let notificar = false;
@@ -441,8 +455,8 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
       if (e.code === 'CONFLITO') return { conteudo: c, ocupado: true, concluido: false };
       // Cota da IA esgotada (429): não é defeito do carrossel. Espera a cota voltar em vez de descartar.
       if (e.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(e.message))) {
-        const dia = /per day|\bTPD\b/i.test(String(e.message));
-        c.top.adiar_ate = new Date(Date.now() + (dia ? 60 : 2) * 60000).toISOString(); c.top.cota_dia = dia;
+        const dia = /per day|\bTPD\b/i.test(String(e.message)) || e.code === 'IA_PREMIUM';
+        c.top.adiar_ate = new Date(Date.now() + (e.esperar_min || (dia ? 60 : 2)) * 60000).toISOString(); c.top.cota_dia = dia; c.top.sem_credito = !!e.sem_credito;
         c.top.erros.push({ etapa, em: agoraISO(), mensagem: String(e.message).slice(0, 240), codigo: 'COTA_IA', tentativa: 0 });
         await gravar(); break;
       }
