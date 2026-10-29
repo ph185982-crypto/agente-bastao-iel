@@ -2,8 +2,8 @@ const { spawn } = require('child_process');
 const path = require('path');
 const raiz = path.join(__dirname, '../..');
 const nomes = process.argv.slice(2);
-const suite = nomes.length ? nomes : ['mesaATest', 'mesaBTest', 'centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest', 'recortesTest', 'radarTest', 'radarEditorTest', 'padraoTest'];
-const permitidos = new Set(['mesaATest', 'mesaBTest', 'centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest', 'recortesTest', 'radarTest', 'radarEditorTest', 'padraoTest']);
+const suite = nomes.length ? nomes : ['mesaATest', 'mesaBTest', 'centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest', 'recortesTest', 'radarTest', 'radarEditorTest', 'padraoTest', 'pilotoTest'];
+const permitidos = new Set(['mesaATest', 'mesaBTest', 'centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest', 'recortesTest', 'radarTest', 'radarEditorTest', 'padraoTest', 'pilotoTest']);
 // Os fluxos antigos de criação de carrossel rodam com a REVERSÃO técnica ligada (CARROSSEL_PADRAO=legado): ela precisa continuar funcionando.
 // O padrão novo ("Pedro Destrava — Minimalista") é testado em padraoTest.
 const NOVO_PADRAO = new Set(['padraoTest']);
@@ -31,9 +31,9 @@ process.on('SIGINT', () => { for (const p of filhos) p.kill('SIGTERM'); process.
   for (const nome of suite) {
     if (!permitidos.has(nome)) throw new Error(`Teste desconhecido: ${nome}`);
     console.log(`\n=== ${nome}: servidor real, armazenamento em memória, IA e Meta simuladas ===`);
-    const banco = ['centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest', 'recortesTest', 'radarTest', 'radarEditorTest', 'padraoTest'].includes(nome);
+    const banco = ['centralTest', 'loteTest', 'persistenciaTest', 'resultadosTest', 'pautasTest', 'ganchosTest', 'contaAbertaTest', 'roteiroTest', 'recortesTest', 'radarTest', 'radarEditorTest', 'padraoTest', 'pilotoTest'].includes(nome);
     const atraso = nome === 'persistenciaTest' ? '2500' : '50';
-    const a = iniciar('tests/e2e/servidorTeste.js', { PORT: '3996', TESTE_PORT: '3995', GRAPH_FALSA: '1', GRAPH_PORT: '3999', TESTE_MEMORIA: banco ? '1' : '', TESTE_DURAVEL: ['roteiroTest', 'recortesTest', 'radarTest', 'radarEditorTest', 'padraoTest'].includes(nome) ? '1' : '', TESTE_RADAR: ['radarTest', 'radarEditorTest', 'padraoTest'].includes(nome) ? '1' : '', ATRASO_MS: atraso, CARROSSEL_PADRAO: NOVO_PADRAO.has(nome) ? '' : 'legado' });
+    const a = iniciar('tests/e2e/servidorTeste.js', { PORT: '3996', TESTE_PORT: '3995', GRAPH_FALSA: '1', GRAPH_PORT: '3999', TESTE_MEMORIA: banco ? '1' : '', TESTE_DURAVEL: ['roteiroTest', 'recortesTest', 'radarTest', 'radarEditorTest', 'padraoTest', 'pilotoTest'].includes(nome) ? '1' : '', TESTE_RADAR: ['radarTest', 'radarEditorTest', 'padraoTest', 'pilotoTest'].includes(nome) ? '1' : '', ATRASO_MS: atraso, CARROSSEL_PADRAO: NOVO_PADRAO.has(nome) ? '' : 'legado' });
     let b;
     try {
       await pronto(3995);

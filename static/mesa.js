@@ -493,8 +493,8 @@
   }
 
   function telaAjustes() {
-    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1>${window.StudioMobile.perfil()}<details class="st-advanced" ${state.ajustesAvancado ? 'open' : ''}><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.Recortes ? window.Recortes.secao() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
-    return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.Recortes ? window.Recortes.secao() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
+    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1>${window.StudioMobile.perfil()}<details class="st-advanced" ${state.ajustesAvancado ? 'open' : ''}><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.Piloto ? window.Piloto.secao() : ''}${window.Recortes ? window.Recortes.secao() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
+    return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.Piloto ? window.Piloto.secao() : ''}${window.Recortes ? window.Recortes.secao() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -587,9 +587,10 @@
       if (window.RadarUI?.acao && await window.RadarUI.acao(a, el, ctxEditor())) return;
       if (window.MesaEstrategia?.acao && await window.MesaEstrategia.acao(a, el, ctxEditor())) return;
       if (window.Recortes?.acao && await window.Recortes.acao(a, el, ctxEditor())) return;
+      if (window.Piloto?.acao && await window.Piloto.acao(a, el, ctxEditor())) return;
       if (window.ContaAberta?.acao && await window.ContaAberta.acao(a, el, ctxEditor())) return;
       switch (a) {
-        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'radar') window.RadarUI?.carregar(ctxEditor(), { forcar: true }); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') { window.Recortes?.carregar(ctxEditor()); window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); window.MesaEstrategia?.carregar(ctxEditor()); } if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
+        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'radar') window.RadarUI?.carregar(ctxEditor(), { forcar: true }); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') { window.Piloto?.carregar(ctxEditor()); window.Recortes?.carregar(ctxEditor()); window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); window.MesaEstrategia?.carregar(ctxEditor()); } if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
         case 'criar': state.criarModulo = el.dataset.m; trocarAntigo(state.criarModulo); return render();
         case 'voltar': state.sub = null; state.atual = null; state.novo = null; return render();
         case 'abrir': return abrirConteudo(id);

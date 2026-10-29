@@ -262,3 +262,21 @@ h2 { letter-spacing: -.025em; font-weight: 800; }
 .st-creditos { font-size: 13px; color: var(--pd-cinza); line-height: 1.45; margin-top: 8px; }
 .st-alerta-acesso { border: 2px solid var(--pd-laranja) !important; background: var(--pd-laranja-fundo) !important; }
 .st-alerta-acesso code { background: var(--pd-papel); padding: 1px 6px; border-radius: 4px; }
+
+/* Piloto automático e agenda */
+.pl-hoje { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 6px; }
+.pl-hoje div { background: var(--pd-papel-2); border-radius: 10px; padding: 10px 8px; display: grid; gap: 2px; }
+.pl-hoje b { font-family: var(--pd-titulo) !important; font-weight: 800; font-size: 22px; }
+.pl-hoje span { font-size: 11px; color: var(--pd-cinza); }
+.st-juri { margin: 0 18px 10px; font-size: 13px; color: var(--pd-cinza); line-height: 1.4; }
+.st-juri b { color: var(--pd-tinta); }
+.st-agenda-nota { font-size: 12px; color: var(--pd-cinza); margin-top: 8px; }
+.st-agendados { margin: 12px 0 18px; }
+.st-agendados h2 { font-size: 15px; display: flex; gap: 8px; align-items: center; margin: 0 0 8px; }
+.st-agendados h2 span { background: var(--pd-azul); color: var(--pd-papel); border-radius: 99px; padding: 1px 8px; font-size: 12px; }
+.st-agendados ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.st-agendados li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--pd-linha); border-radius: 12px; background: var(--pd-cartao); }
+.st-agendados .st-hora { grid-column: 1; font-size: 12px; font-weight: 700; color: var(--pd-azul); }
+.st-agendados .st-hora::first-letter { text-transform: uppercase; }
+.st-agendados li b { grid-column: 1; font-size: 14px; }
+.st-agendados li button { grid-column: 2; grid-row: 1 / span 2; }

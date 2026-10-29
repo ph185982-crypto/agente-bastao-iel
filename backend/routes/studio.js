@@ -75,6 +75,9 @@ router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'})
     if(req.body?.acao==='aprovar')try{require('../lib/publicador').exigirAcessoProtegido();}catch(e){return res.status(e.status||403).json({error:e.message,code:e.code||'ACESSO_ABERTO'});}
     if(req.body?.acao==='aprovar' && (await require('../lib/publicador').config()).publish_paused) return res.status(409).json({error:'As publicações estão pausadas. Libere em Perfil para publicar.',code:'PAUSADO'});
     const c=await studio.decidir(req.params.id,req.body||{});
+    // Carrossel "top" (piloto): aprovar AGENDA no próximo horário da grade; "agora:true" publica na hora como antes.
+    if(c.top&&['aprovar','descartar'].includes(req.body.acao))await require('../lib/top/piloto').registrarDecisao(c.id,req.body.acao==='aprovar'?'aprovado':'descartado').catch(()=>{});
+    if(req.body.acao==='aprovar'&&c.top&&!req.body.agora){await require('../lib/top/piloto').agendar(c.id);return res.status(202).json(await studio.ler(c.id));}
     if(req.body.acao==='aprovar'){
       const P=require('../lib/publicador');const cfg=await P.config();if(cfg.publish_paused)return res.status(409).json({error:'As publicações estão pausadas. Libere em Perfil para publicar.',code:'PAUSADO'});
       const reg=await studio.ler(c.id);reg.doc.studio={...(reg.doc.studio||{}),job:require('crypto').randomUUID(),estado:'publicando',etapa:'publicacao',polls:0};
