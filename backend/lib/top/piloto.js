@@ -170,6 +170,12 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
       const p = await T.passo(x.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) });
       x.estado = p.conteudo.top.estado; x.nota = p.conteudo.top.escolha?.nota ?? null; r.avancados.push({ id: x.id, estado: x.estado });
       if (p.conteudo.top.cota_dia && p.conteudo.top.adiar_ate) est.ia_pausa_ate = p.conteudo.top.adiar_ate;
+      // OpenAI sem créditos: avisa o Pedro uma vez por dia (o piloto fica parado até recarregar).
+      if (p.conteudo.top.sem_credito && est.aviso_credito_dia !== dia) {
+        est.aviso_credito_dia = dia;
+        await (deps.notificar || ((o) => require('../push').notificar(o)))({ corpo: 'A OpenAI ficou sem créditos: o piloto parou de escrever. Recarregue em platform.openai.com → Billing.', tag: 'piloto-credito' }).catch(() => {});
+        r.avisos.push('OpenAI sem créditos: produção parada até recarregar.');
+      }
     } catch (e) { if (/não encontrado/i.test(e.message)) x.estado = 'erro'; r.avisos.push(`${x.id}: ${String(e.message).slice(0, 120)}`); }
   }
 
