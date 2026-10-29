@@ -63,7 +63,9 @@ const MINIMO = { titulo_capa: 58, titulo: 44, corpo: 38, corpo_prova: 36, texto_
   // identidade: capa 88–116, títulos 64–84, apoio 36–44, créditos 24–28
   id_titulo_capa: 88, id_titulo: 64, id_corpo: 36, id_corpo_prova: 36, id_texto_comparacao: 32, id_valor: 56, id_fonte_linha: 24, id_cta: 56,
   // tema reportagem (letra condensada: mínimos maiores em altura, textos de apoio em Inter)
-  r_titulo: 64, r_numero: 200, r_valor: 72, r_chip: 34, r_faixa: 60, r_corpo: 30, r_fonte: 22, r_cta: 50 };
+  r_titulo: 64, r_numero: 200, r_valor: 72, r_chip: 34, r_faixa: 60, r_corpo: 30, r_fonte: 22, r_cta: 50,
+  // tema tweet (arteTweet.js): uma frase grande por slide
+  t_corpo: 40, t_cta: 30 };
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 
@@ -440,6 +442,7 @@ async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, ar
     return { png, metrics: { cabe: true, fonte_px: null, blocos: [], layout, elementos: ['arquivo_aprovado', ...(igual ? [] : ['arquivo_aprovado_redimensionado'])], arquivo: { largura: meta.width, altura: meta.height } } };
   }
 
+  if (layout === 'tweet' || slide.tema_visual === 'tweet') return require('./arteTweet').renderizar(slide, ctx, imagem);
   if (String(layout || '').startsWith('rep_') || slide.tema_visual === 'reportagem') return require('./arteReportagem').renderizar(slide, ctx, imagem, arquivoEncerramento, fundo);
   if (slide.design === 'editorial_2026') return require('./editorialStudio').renderizar(slide, ctx, imagem);
   if (['foto_editorial', 'impacto', 'revista'].includes(slide.estilo)) return renderExperimental(slide, ctx, imagem);

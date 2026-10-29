@@ -193,8 +193,11 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
     try {
       const pauta = await proximaPauta(est, { agora, deps, restante });
       if (pauta) {
-        const c = await (deps.criar || T.criar)({ url: pauta.url, titulo: pauta.titulo, origem: 'piloto' });
-        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pauta.id, titulo: pauta.titulo, estado: 'em_andamento' });
+        // Alterna o formato visual (tweet × reportagem) para o feed não ficar igual.
+        const ultimo = [...est.criados].reverse().find((x) => x.formato)?.formato;
+        const formato = ultimo === 'tweet' ? 'reportagem' : 'tweet';
+        const c = await (deps.criar || T.criar)({ url: pauta.url, titulo: pauta.titulo, origem: 'piloto', formato });
+        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pauta.id, titulo: pauta.titulo, estado: 'em_andamento', formato });
         est.usadas.push({ id: pauta.id, em: new Date(agora).toISOString() });
         est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: c.id, titulo: pauta.titulo };
         // aproveita o resto da rodada para já avançar o carrossel recém-criado

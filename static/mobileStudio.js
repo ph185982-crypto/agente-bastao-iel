@@ -40,7 +40,7 @@
     return `<div class="st-carousel-wrap"><div class="st-carousel" data-st-carousel="${esc(c.id)}" role="group" aria-label="Carrossel de ${v.slides.length} slides">${renders.map((r,i)=>`<img src="/api/sync/arquivos/${encodeURIComponent(r.blob_key)}" alt="Slide ${i+1}: ${esc(v.slides[i].texto.replace(/\*\*/g,''))}" loading="${i?'lazy':'eager'}" width="1080" height="1350">`).join('')}</div><div class="st-carousel-toolbar"><button data-action="st-voltar-slide" data-id="${esc(c.id)}" aria-label="Slide anterior">‹</button><span class="st-position" data-st-counter="${esc(c.id)}" aria-live="polite">${n+1}/${renders.length}</span><button data-action="st-avancar-slide" data-id="${esc(c.id)}" aria-label="Próximo slide">›</button></div><div class="st-dots" aria-label="Selecionar slide">${renders.map((_,i)=>`<button data-action="st-slide" data-id="${esc(c.id)}" data-i="${i}" aria-label="Ver slide ${i+1}" aria-current="${n===i?'true':'false'}"><i></i></button>`).join('')}</div></div>`;
   }
   function rotuloEstilo(c){
-    if((versao(c)?.slides||[]).some(s=>s.tema_visual))return '<i>· Reportagem</i>';
+    const tv=(versao(c)?.slides||[]).find(s=>s.tema_visual)?.tema_visual;if(tv)return tv==='tweet'?'<i>· Tweet</i>':'<i>· Reportagem</i>';
     return c.experimento?.estilo&&estilos[c.experimento.estilo]?`<i>· ${esc(estilos[c.experimento.estilo])}</i>`:'';
   }
   function creditos(c){

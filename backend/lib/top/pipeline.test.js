@@ -264,3 +264,32 @@ test('foto de lugar: nunca retrato de alguém nem foto histórica', () => {
   assert.strictEqual(F.pontuarLugar(item('Senado Federal do Brasil Plenário do Senado (14786000717).jpg'), 'Plenário do Senado Federal'), -1);
   assert.ok(F.pontuarLugar(item('Congresso Nacional, Brasília-DF, Brasil.jpg'), 'Congresso Nacional Brasília') > 0);
 });
+
+test('formato tweet: capa = 1º tweet, uma frase por slide, fechamento com chamada; arte no tema tweet e portões liberados', async () => {
+  novo();
+  const rt = () => ({
+    capas: [{ texto: 'Prometeram meta. Entregaram o **maior patamar** em cinco anos.', mecanismo: 'contradicao' }, { texto: 'De 71,7% para 82,9%. Isso é normal?', mecanismo: 'numero' }],
+    telas: [
+      { papel: 'gap', texto: 'Ouvir o ministro dizer que a alta é temporária é normal…', imagem_busca: null, fatos: ['c'] },
+      { papel: 'prova', texto: 'Ver o índice sair de 71,7% para 82,9% também virou normal…', imagem_busca: 'brazilian money inflation', fatos: ['a', 'b'] },
+      { papel: 'consequencia', texto: 'Pagar juros maiores porque o governo não cumpre a meta é normal…', imagem_busca: null, fatos: [] },
+      { papel: 'leitura', texto: 'Na minha leitura, meta sem resultado é promessa. E promessa não paga boleto.', imagem_busca: null, fatos: ['a'] },
+    ],
+    legenda: 'O índice saiu de 71,7% para 82,9%. O discurso fala em alta temporária. Você acha normal?', hashtags: ['economia', 'juros', 'governo'], cta_motivo: 'se você também cobra resultado',
+    fechamento: { titulo: 'Sabe o que não é normal?', texto: 'Cobrar resultado de quem prometeu e entregou o pior patamar em cinco anos.' },
+  });
+  const ia = iaFalsa({ roteiros: [rt(), rt()], angulo: { ...ANGULO, formato: 'tweet' } });
+  const d = await deps(ia); let fotos = 0;
+  d.buscarFoto = async () => { fotos++; return { dados: await sharp({ create: { width: 1200, height: 800, channels: 3, background: '#7a5' } }).jpeg().toBuffer(), meta: { id: `pexels_${fotos}`, tipo: 'ilustrativa', autor: 'x', licenca: 'Pexels License', origem: 'https://www.pexels.com/photo/1' } }; };
+  const c = await T.criar({ url: 'https://exemplo.test/materia', formato: 'tweet' });
+  const r = await T.executarTudo(c.id, { deps: d });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  const doc = await ler(c.id); const v = M.versaoAtiva(doc);
+  assert.strictEqual(doc.top.formato, 'tweet');
+  assert.ok(v.slides.every((s) => s.layout === 'tweet' && s.tema_visual === 'tweet'));
+  assert.strictEqual(v.slides[0].funcao, 'capa'); assert.strictEqual(v.slides.at(-1).funcao, 'encerramento');
+  assert.match(v.slides.at(-1).titulo, /não é normal/);
+  assert.match(v.slides[2].imagem_id, /^pexels_/, 'o tweet que pediu foto recebeu a foto'); assert.ok(!v.slides[1].imagem_id && !v.slides[3].imagem_id, 'os outros ficam só com a frase');
+  assert.ok(doc.arte.renders.filter((x) => x.versao === v.id).every((x) => x.metrics.cabe && x.metrics.tema === 'tweet'));
+  assert.ok(ia.chamadas.some((x) => x.tipo === 'roteiro' && /formato "tweet"/.test(x.sistema)), 'usou o prompt do formato tweet');
+});
