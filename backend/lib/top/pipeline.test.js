@@ -219,3 +219,38 @@ test('carrossel que não passa nos portões de publicação (ex.: texto não cab
   assert.match(r.conteudo.top.motivo || r.conteudo.top.erros.at(-1).mensagem, /portões de publicação/);
   assert.notStrictEqual((await ler(c.id)).status, 'em_revisao');
 });
+
+test('consertos sem IA: declaração ganha "Segundo …", legenda perde número solto, fonte sem data e texto longo é encurtado', async () => {
+  novo();
+  const r0 = roteiro();
+  r0.telas[0] = { papel: 'gap', layout: 'rep_manchete', titulo: 'O discurso é de controle', texto: 'A alta é temporária e a meta será cumprida. Os números contam outra história.', fatos: ['c'] };
+  r0.legenda = 'O índice saiu de 71,7% para 82,9%. A votação será no dia 29. Segue para acompanhar.';
+  const ia = iaFalsa({ roteiros: [r0, r0] }); const d = await deps(ia);
+  const arteReal = require('../arte'); let chamadas = 0;
+  d.arte = { renderizarSlide: async (s, o) => { chamadas++; const r = await arteReal.renderizarSlide(s, o); if (/[.!?]\s+\S/.test(String(s.texto || '')) && s.layout === 'rep_manchete') r.metrics = { ...r.metrics, cabe: false }; return r; } };
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: d });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  const v = M.versaoAtiva(await ler(c.id));
+  assert.match(v.slides[1].texto, /^Segundo Fulano de Tal: /);
+  assert.doesNotMatch(v.legenda, /dia 29/); assert.match(v.legenda, /71,7% para 82,9%/);
+  assert.ok(v.slides.every((s) => !/\d{1,2}\/\d{1,2}\/\d{4}/.test(s.fonte_linha || '')));
+  assert.ok(r.conteudo.top.encurtado, 'encurtou os slides longos');
+  assert.ok(v.slides.filter((s) => s.layout === 'rep_manchete').every((s) => !/[.!?]\s+\S/.test(String(s.texto))), 'ficou uma frase por slide longo');
+});
+
+test('cota da IA esgotada (429) não descarta o carrossel: espera e retoma depois', async () => {
+  novo(); const ia = iaFalsa(); let falhar = true;
+  const pedirJson = async (args) => { if (falhar) throw Object.assign(new Error('429 Rate limit reached for model on tokens per day (TPD): Limit 500000'), { status: 429 }); return ia.pedirJson(args); };
+  const d = { ...(await deps(ia)), pedirJson };
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r1 = await T.passo(c.id, { deps: d, orcamentoMs: 15000 });
+  assert.strictEqual(r1.conteudo.top.estado, 'em_andamento');
+  assert.ok(Date.parse(r1.conteudo.top.adiar_ate) > Date.now() + 50 * 60000, 'cota do dia: espera ~1 h');
+  assert.ok((await T.passo(c.id, { deps: d })).adiado, 'antes do horário não tenta de novo');
+  const doc = await ler(c.id); doc.top.adiar_ate = new Date(Date.now() - 1000).toISOString();
+  const reg = await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id); await arm.armazem().conteudos.salvar(ACCOUNT.ig_id, c.id, doc, reg.rev);
+  falhar = false;
+  const r = await T.executarTudo(c.id, { deps: d });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida');
+});
