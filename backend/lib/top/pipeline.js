@@ -73,7 +73,7 @@ E.fatos = async (c, ctx) => {
 E.angulo = async (c, ctx) => {
   const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true });
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
-  c.top.angulo = { gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240) };
+  c.top.angulo = { gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240), imagem: { busca: String(dados?.imagem?.busca || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80), pessoa_central: dados?.imagem?.pessoa_central !== false, lugar_brasil: dados?.imagem?.lugar_brasil ? String(dados.imagem.lugar_brasil).slice(0, 80) : null } };
   c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
   const nucleo = Math.max(c.top.angulo.gatilhos.bolso, c.top.angulo.gatilhos.contradicao);
   if (c.top.angulo.soma >= regua().gatilhos_min && c.top.angulo.tese && nucleo < regua().nucleo_min) throw Object.assign(erro(`Sem bolso nem contradição (máximo ${nucleo}/3; mínimo ${regua().nucleo_min}): vira post de cotação, não de tese.`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
@@ -148,12 +148,14 @@ function repararTela(t) {
 
 function limpaDados(d) {
   const curto = (v, n) => String(v ?? '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
-  const lado = (l) => (l && l.valor ? { rotulo: curto(l.rotulo, 18), valor: curto(l.valor, 14), ...(l.unidade ? { unidade: curto(l.unidade, 24) } : {}) } : null);
+  // texto de apoio cortado em palavra inteira (nunca "não ligad", "de varej")
+  const palavra = (v, n) => { const t = curto(v, 400); if (t.length <= n) return t; return t.slice(0, n + 1).replace(/\s+\S*$/, '').replace(/[,;:\-–]+$/, '').trim(); };
+  const lado = (l) => (l && l.valor ? { rotulo: palavra(l.rotulo, 18), valor: curto(l.valor, 14), ...(l.unidade ? { unidade: palavra(l.unidade, 26) } : {}) } : null);
   // rótulo cortado em palavra inteira, sem parêntese aberto pela metade
   const rotulo = (v) => { let r = curto(v, 60); if (r.length > 22) { r = r.slice(0, 23).replace(/\s+\S*$/, ''); } return r.replace(/\s*\([^)]*$/, '').trim(); };
   if (d.numero) { const n = typeof d.numero === 'object' ? d.numero : { valor: d.numero, rotulo: d.rotulo }; return { numero: { valor: curto(n.valor, 16), rotulo: rotulo(n.rotulo) } }; }
   const out = { esquerda: lado(d.esquerda), direita: lado(d.direita), tom: d.tom === 'alerta' ? 'alerta' : 'neutro' };
-  if (d.faixa?.valor) out.faixa = { valor: curto(d.faixa.valor, 32), ...(d.faixa.texto ? { texto: curto(d.faixa.texto, 30) } : {}) };
+  if (d.faixa?.valor) out.faixa = { valor: curto(d.faixa.valor, 32), ...(d.faixa.texto ? { texto: palavra(d.faixa.texto, 30) } : {}) };
   return out;
 }
 
@@ -185,8 +187,35 @@ E.juri = async (c, ctx) => {
   }
 };
 
+// Foto da CAPA, nesta ordem: a PESSOA central (Wikimedia Commons, licença aberta); o LUGAR/instituição brasileira
+// (Commons, foto real: plenário do Senado, STF…); a CENA ilustrativa ligada ao assunto (Pexels). Uma foto só, na capa.
 E.foto = async (c, ctx) => {
-  if (!c.top.protagonista) return;
+  const lugar = c.top.angulo?.imagem?.lugar_brasil;
+  if (lugar && !c.top.foto_lugar_id && !(c.top.protagonista && c.top.angulo?.imagem?.pessoa_central !== false)) {
+    try {
+      const f = await (ctx.deps.fotoDe || require('./fotos').fotoDe)(lugar, { modo: 'lugar' });
+      if (f) { await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg'); c.imagens = [...(c.imagens || []).filter((i) => i.id !== f.meta.id), f.meta]; c.top.foto_lugar_id = f.meta.id; }
+    } catch { /* segue para a cena */ }
+  }
+  if (!c.top.foto_lugar_id && !c.top.fotos_cena && (ctx.deps.buscarFoto || process.env.PEXELS_API_KEY)) {
+    c.top.fotos_cena = [];
+    try {
+      const FS = require('../fotosStudio');
+      // a busca específica do ângulo primeiro; a genérica só se ela falhar (nunca foto aleatória de "negócios")
+      const consultas = [c.top.angulo?.imagem?.busca, ...(c.top.angulo?.imagem?.busca ? [] : FS.consultasPara(c.titulo || '').slice(0, 1))].filter(Boolean);
+      for (const q of consultas) {
+        if (c.top.fotos_cena.length >= 1) break;
+        try {
+          const f = await (ctx.deps.buscarFoto || FS.buscarFoto)(q, { excluir: c.top.fotos_cena });
+          await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg');
+          c.imagens = [...(c.imagens || []).filter((i) => i.id !== f.meta.id), { ...f.meta, exige_credito: false }];
+          c.top.fotos_cena.push(f.meta.id);
+        } catch { /* próxima consulta */ }
+      }
+      c.top.foto_cena_id = c.top.fotos_cena[0] || null;
+    } catch { /* sem foto de cena: segue com as formas */ }
+  }
+  if (!c.top.protagonista || c.top.angulo?.imagem?.pessoa_central === false) return;
   try {
     const f = await (ctx.deps.fotoDe || require('./fotos').fotoDe)(c.top.protagonista);
     if (!f) { c.top.aviso_foto = `Não achei foto de ${c.top.protagonista} com licença que permita uso: o carrossel sai só com as formas.`; return; }
@@ -196,7 +225,7 @@ E.foto = async (c, ctx) => {
   } catch (e) { c.top.aviso_foto = `A busca de foto falhou (${String(e.message).slice(0, 80)}): o carrossel sai só com as formas.`; }
 };
 
-const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|prev[êe]|estima|promete|prometeu|deve|pode|poder[áa])(?!\p{L})/iu;
+const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|prev[êe]|estima|promete|prometeu|deve|pode|poder[áa]|aponta|apontam|apontou|avalia|avaliam|alerta|alertam|alertou|calcula|calculam|projeta|projetam|recomenda|recomendam|v[êe]|veem)(?!\p{L})/iu;
 // Monta a versão no modelo de conteúdo (claims, evidências, auditoria) a partir da versão vencedora.
 function montarVersao(c) {
   const v = c.top.versoes[c.top.escolha.versao];
@@ -207,11 +236,22 @@ function montarVersao(c) {
   const porIa = new Map(c.top.fatos.map((f) => [f.id_ia, f.id])); const ids = new Set(c.top.fatos.map((f) => f.id));
   const mapa = (arr) => [...new Set((arr || []).map((x) => (ids.has(x) ? x : porIa.get(x))).filter(Boolean))];
   const numsDe = (txt) => M.extrairNumeros(txt).filter(M.exigeOrigem);
-  const fatosComNumeros = (txt) => c.top.fatos.filter((f) => numsDe(txt).some((n) => f.valores.some((x) => M.igual(x, n.valor)))).map((f) => f.id);
+  // Cada número liga ao FATO que o traz; declaração/previsão só quando nenhum fato puro tem aquele número (senão a tela
+  // passa a exigir "quem disse" à toa).
+  const fatosComNumeros = (txt) => [...new Set(numsDe(txt).flatMap((n) => {
+    const cand = c.top.fatos.filter((f) => f.valores.some((x) => M.igual(x, n.valor)));
+    const puros = cand.filter((f) => !['declaracao', 'previsao'].includes(f.tipo));
+    return (puros.length ? puros : cand).map((f) => f.id);
+  }))];
   c.claims = c.top.fatos.map((f) => ({ id: f.id, texto: f.texto, tipo: 'fato', natureza: f.tipo === 'declaracao' ? 'declaracao' : f.tipo === 'previsao' ? 'previsao' : 'fato', central: true, estado: 'sustentada', evidencias: [`e_${f.id}`], valores: f.valores.map((x) => ({ valor: x })), risco: 'baixo', revisao: {}, origem: 'top' }));
   c.evidencias = c.top.fatos.map((f) => ({ id: `e_${f.id}`, tipo: 'secundaria', autoridade: 'imprensa', correspondencia: 'integral', relacao: 'sustenta', trecho: f.trecho, origem: fonte.veiculo || 'matéria', titulo: fonte.titulo, url: fonte.url, consultada_em: fonte.acessada_em, fonte_principal: true }));
   const capa = v.capas[c.top.escolha.capas[0] ?? 0]?.texto || v.capas[0].texto;
-  const foto = c.top.foto_id || null;
+  const cenas = c.top.fotos_cena || (c.top.foto_cena_id ? [c.top.foto_cena_id] : []);
+  const foto = c.top.foto_id || c.top.foto_lugar_id || cenas[0] || null; // capa: pessoa > lugar > cena
+  const internas = []; // telas internas sem foto: o layout de texto fica limpo (foto espremida piorava a leitura)
+  const telasTexto = v.telas.map((t, i) => (!['leitura', 'prova'].includes(t.papel) && !['rep_comparacao', 'rep_numero'].includes(t.layout) ? i : -1)).filter((i) => i >= 0);
+  const fotoDaTela = new Map(internas.map((id, j) => [telasTexto[j], id]).filter(([i]) => i !== undefined));
+  const cena = internas[0] || null;
   const slides = [{ id: 's1', funcao: 'capa', layout: 'rep_capa', tema_visual: 'reportagem', texto: capa, titulo: null, subtitulo: null, claim_ids: fatosComNumeros(capa), ...(foto ? { imagem_id: foto } : {}), dados: null }];
   const opinioes = [];
   v.telas.forEach((t, i) => {
@@ -223,10 +263,10 @@ function montarVersao(c) {
     // Declaração/previsão apresentada na tela precisa dizer quem disse (portão "Falta a atribuição").
     const aAtribuir = c.top.fatos.find((f) => claim_ids.includes(f.id) && ['declaracao', 'previsao'].includes(f.tipo));
     if (aAtribuir && !MARCA_ATRIBUICAO.test(`${t.titulo || ''} ${texto}`)) t.texto = `Segundo ${aAtribuir.quem || fonte.veiculo || 'a reportagem'}: ${t.texto || ''}`.trim();
-    slides.push({ id: `s${i + 2}`, funcao, layout: t.layout, tema_visual: 'reportagem', titulo: t.titulo, texto: t.texto || '', destaque: t.destaque, apoio: t.apoio, dados: t.dados ? { ...t.dados, ...(t.destaque || t.apoio ? { extra: { destaque: t.destaque, apoio: t.apoio } } : {}) } : (t.destaque || t.apoio ? { extra: { destaque: t.destaque, apoio: t.apoio } } : null), fonte_linha: prova ? linhaFonte : null, fundo: t.papel === 'contradicao' ? 'marinho' : null, claim_ids, ...(foto && t.papel !== 'leitura' && i % 2 === 1 ? { imagem_id: foto } : {}) });
+    slides.push({ id: `s${i + 2}`, funcao, layout: t.layout, tema_visual: 'reportagem', titulo: t.titulo, texto: t.texto || '', destaque: t.destaque, apoio: t.apoio, dados: t.dados ? { ...t.dados, ...(t.destaque || t.apoio ? { extra: { destaque: t.destaque, apoio: t.apoio } } : {}) } : (t.destaque || t.apoio ? { extra: { destaque: t.destaque, apoio: t.apoio } } : null), fonte_linha: prova ? linhaFonte : null, fundo: t.papel === 'contradicao' ? 'marinho' : null, claim_ids, ...(fotoDaTela.has(i) ? { imagem_id: fotoDaTela.get(i) } : {}) });
   });
   c.claims.push(...opinioes);
-  const creditos = (c.imagens || []).filter((i) => i.id === foto && i.exige_credito).map((i) => `Foto: ${i.autor} (${i.licenca}), via Wikimedia Commons.`);
+  void cena; const creditos = (c.imagens || []).filter((i) => [foto, ...internas].includes(i.id) && i.exige_credito).map((i) => `Foto: ${i.autor} (${i.licenca}), via Wikimedia Commons.`);
   // A data fica na tela de prova; na legenda só o veículo (data solta na legenda vira "número sem fonte" nos portões).
   // Legenda: só frases cujos números estão nos fatos (com a mesma régua do portão, que não perdoa data solta).
   const fraseOk = (f) => numsDe(f).every((n) => c.top.fatos.some((x) => x.valores.some((y) => M.igual(y, n.valor))));
@@ -236,7 +276,7 @@ function montarVersao(c) {
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
   // Fechamento no desenho da peça de referência: frase de impacto, posição, "Eu comecei o Pedro Destrava por isso." e a faixa de chamada.
   // Se houver a arte original aprovada (upload:encerramento), ela substitui este slide no desenho (renderizarSlide).
-  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'encerramento', tema_visual: 'reportagem', titulo: v.fechamento?.titulo || 'O resultado está nos números.', texto: v.fechamento?.texto || '', destaque: 'Eu comecei o Pedro Destrava por isso.', cta: 'Segue o @pedro_destrava', cta_apoio: motivo, claim_ids: [], dados: { extra: { destaque: 'Eu comecei o Pedro Destrava por isso.', cta_apoio: motivo } } });
+  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'encerramento', tema_visual: 'reportagem', titulo: v.fechamento?.titulo || 'O resultado está nos números.', texto: v.fechamento?.texto || '', destaque: 'Eu comecei o Pedro Destrava por isso.', cta: 'Segue o @pedro_destrava', cta_apoio: motivo, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: { extra: { destaque: 'Eu comecei o Pedro Destrava por isso.', cta_apoio: motivo } } });
   return { capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'acontecimento', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
 }
 
@@ -277,6 +317,9 @@ E.arte = async (c, ctx) => {
     const dados = JSON.parse(JSON.stringify(v)); const ids = new Set(naoCabe.map((r) => r.slide_id));
     for (const s of dados.slides) {
       if (!ids.has(s.id)) continue;
+      // Número/comparação grande demais para o desenho: vira manchete (o número vai para o título).
+      if (s.layout === 'rep_numero' && s.dados?.numero) { s.titulo = `${s.dados.numero.valor} ${s.dados.numero.rotulo || ''}`.trim(); s.layout = 'rep_manchete'; s.dados = null; s.texto = [s.texto, s.apoio].filter(Boolean).join(' ').split(/(?<=[.!?])\s+/).slice(0, 2).join(' '); s.apoio = null; continue; }
+      else if (s.layout === 'rep_comparacao' && s.dados?.esquerda && s.dados?.direita) { const e = s.dados.esquerda; const d = s.dados.direita; s.texto = `${e.rotulo}: ${e.valor} ${e.unidade || ''}. ${d.rotulo}: ${d.valor} ${d.unidade || ''}.`.replace(/\s+/g, ' ').trim(); s.layout = 'rep_manchete'; s.dados = null; continue; }
       const primeira = String(s.texto || '').split(/(?<=[.!?])\s+/)[0] || '';
       s.texto = primeira; s.apoio = null; if (s.dados?.extra) s.dados.extra.apoio = null;
       if (s.layout === 'encerramento') { s.texto = ''; }

@@ -29,14 +29,30 @@ function pontuar(item, nome) {
   return p;
 }
 
-async function buscar(nome, { fetcher = fetch, limite = 25 } = {}) {
+// Lugar/instituição: foto do ambiente, nunca retrato de alguém (uma senadora qualquer na capa sugere que ela está na notícia).
+const PESSOA = /(senador|deputad|ministr|president|governador|prefeit|discurs|pronunciament|entrevista|retrato|portrait|posse|cerimonia|homenage|reuniao|audiencia|depoiment)/;
+function pontuarLugar(item, nome) {
+  const titulo = sem(item.title);
+  const partes = sem(nome).split(/\s+/).filter((p) => p.length >= 4);
+  if (!partes.length || partes.filter((p) => titulo.includes(p)).length < Math.min(2, partes.length)) return -1;
+  if (PESSOA.test(titulo)) return -1;
+  const ii = item.imageinfo?.[0] || {};
+  if (!/\.(jpe?g|png)$/i.test(item.title) || (ii.width || 0) < 1000 || (ii.height || 0) < 700) return -1;
+  let p = 10;
+  if (/(plenario|vista|fachada|predio|panorama|interior|exterior|sessao|cupula|edificio|sede|congresso)/.test(titulo)) p += 5;
+  const ano = Number((titulo.match(/\b(1[89]\d\d|20[0-2]\d)\b/) || [])[1] || 0);
+  if (ano && ano < 1990) return -1; // foto histórica não serve de capa de notícia
+  return p;
+}
+
+async function buscar(nome, { fetcher = fetch, limite = 25, modo = 'pessoa' } = {}) {
   const q = new URLSearchParams({ action: 'query', format: 'json', generator: 'search', gsrsearch: `${nome} filetype:bitmap`, gsrnamespace: '6', gsrlimit: String(limite), prop: 'imageinfo', iiprop: 'url|size|extmetadata', iiurlwidth: '1400', origin: '*' });
   const r = await fetcher(`${BASE}?${q}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
   if (!r.ok) throw new Error(`Commons respondeu ${r.status}`);
   const d = await r.json();
   const itens = Object.values(d?.query?.pages || {});
   return itens
-    .map((it) => ({ it, lic: licencaAceita(it.imageinfo?.[0]?.extmetadata), p: pontuar(it, nome) }))
+    .map((it) => ({ it, lic: licencaAceita(it.imageinfo?.[0]?.extmetadata), p: modo === 'lugar' ? pontuarLugar(it, nome) : pontuar(it, nome) }))
     .filter((x) => x.lic && x.p >= 0)
     .sort((a, b) => b.p - a.p)
     .map(({ it, lic }) => {
@@ -46,9 +62,9 @@ async function buscar(nome, { fetcher = fetch, limite = 25 } = {}) {
 }
 
 // Baixa a melhor foto. Devolve { dados: Buffer, meta } ou null (sem foto com licença aceita).
-async function fotoDe(nome, { fetcher = fetch } = {}) {
+async function fotoDe(nome, { fetcher = fetch, modo = 'pessoa' } = {}) {
   if (!nome || sem(nome).length < 4) return null;
-  const lista = await buscar(nome, { fetcher });
+  const lista = await buscar(nome, { fetcher, modo });
   for (const f of lista.slice(0, 3)) {
     try {
       const u = new URL(f.url);
@@ -63,4 +79,4 @@ async function fotoDe(nome, { fetcher = fetch } = {}) {
   return null;
 }
 
-module.exports = { fotoDe, buscar, licencaAceita, pontuar, LICENCA_OK };
+module.exports = { fotoDe, buscar, licencaAceita, pontuar, pontuarLugar, LICENCA_OK };
