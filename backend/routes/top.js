@@ -17,5 +17,11 @@ router.post('/carrosseis/:id/passo', limita({ max: 30, janelaMs: 60000, nome: 't
 router.get('/carrosseis/:id', async (req, res) => {
   try { const r = await armazem().conteudos.obter(ACCOUNT.ig_id, String(req.params.id).slice(0, 80)); if (!r?.doc?.top) return res.status(404).json({ error: 'Carrossel não encontrado.' }); res.json(T.resumo(r.doc)); } catch (e) { erro(res, e); }
 });
+const Piloto = require('../lib/top/piloto');
+router.get('/piloto', async (req, res) => { try { res.json(await Piloto.resumoDoDia()); } catch (e) { erro(res, e); } });
+router.put('/piloto', async (req, res) => { try { await Piloto.salvarConfig(req.body || {}); res.json(await Piloto.resumoDoDia()); } catch (e) { erro(res, e); } });
+router.post('/piloto/rodada', limita({ max: 6, janelaMs: 60000, nome: 'top-piloto' }), async (req, res) => { try { res.json(await Piloto.rodada()); } catch (e) { erro(res, e); } });
+router.get('/piloto/rodada', async (req, res) => { try { res.json(await Piloto.rodada()); } catch (e) { erro(res, e); } }); // rotina diária da Vercel usa GET
+router.post('/carrosseis/:id/desagendar', async (req, res) => { try { const c = await Piloto.desagendar(String(req.params.id).slice(0, 80)); res.json({ id: c?.id, agenda: c?.agenda || null }); } catch (e) { erro(res, e); } });
 router.get('/regua', (req, res) => res.json({ ...T.regua(), etapas: T.ETAPAS.map((e) => ({ id: e, rotulo: T.ROTULO[e] })) }));
 module.exports = router;

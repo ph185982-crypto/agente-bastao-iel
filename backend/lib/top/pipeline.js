@@ -261,7 +261,8 @@ E.fim = async (c) => {
   c.status = 'em_revisao'; c.studio = { estado: 'pronto', concluido_em: agoraISO(), origem: 'top' };
   c.top.estado = 'concluida'; c.top.concluido_em = agoraISO();
   M.registrar(c, 'sistema', 'pronto', `Carrossel pronto (nota do júri ${c.top.escolha.nota.toFixed(1)}): confira e aprove.`);
-  return { notificar: true };
+  // No piloto/monitor o aviso é um só por janela de aprovação (piloto.js); só a criação manual avisa na hora.
+  return { notificar: !['piloto', 'monitor'].includes(c.top.origem) };
 };
 
 // ── Motor ───────────────────────────────────────────────────────────────────────

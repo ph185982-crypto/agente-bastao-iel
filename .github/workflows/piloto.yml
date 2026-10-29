@@ -1,0 +1,24 @@
+# Piloto automático do carrossel "top": a cada 10 minutos chama uma rodada no servidor.
+# Cada rodada avança a produção (pauta → fatos → roteiro → júri → arte), manda o aviso nas janelas de aprovação e
+# publica o que o Pedro JÁ APROVOU quando chega o horário agendado. Nada é publicado sem aprovação.
+# Endereço: variável MONITOR_URL (Settings → Secrets and variables → Actions) ou, sem ela, o endereço de produção.
+# Com o código de acesso ligado no app, crie também o secret CRON_SECRET (o mesmo da Vercel).
+name: Piloto automático
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+permissions: {}
+concurrency: { group: piloto, cancel-in-progress: false }
+jobs:
+  rodada:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Chamar a rodada do piloto
+        env:
+          URL: ${{ vars.MONITOR_URL || 'https://agente-bastao-iel.vercel.app' }}
+          SEGREDO: ${{ secrets.CRON_SECRET }}
+        run: |
+          AUTH=(); [ -n "$SEGREDO" ] && AUTH=(-H "Authorization: Bearer $SEGREDO")
+          curl --silent --show-error --max-time 100 -X POST "${AUTH[@]}" -H "Content-Type: application/json" -d '{}' "$URL/api/top/piloto/rodada" | head -c 600; echo

@@ -68,9 +68,10 @@ async function tick({ forcar = false, deps = {} } = {}) {
 
     const temIA = deps.temIA ? deps.temIA() : require('./llmJson').hasLlmKey();
     // Padrão novo: a matéria em alta vira pauta no Radar e segue o fluxo do "Pedro Destrava — Minimalista".
-    const v1 = !deps.criar && !!require('./padraoCarrossel').atual();
-    const criar = deps.criar || (v1 ? async (o) => { const p = await require('./radar/pauta').criar({ url: o.url, titulo: o.titulo }, { origem: 'monitor' }); await require('./radar/fila').continuar(p.id).catch(() => {}); return { id: p.id, pauta: true }; } : (o) => require('./studio').criar(o));
-    const kick = deps.kick || (v1 ? async () => {} : async (c) => require('../routes/studio')._internos.kick(c));
+    // Notícia em alta vira carrossel "top" (notícia com tese; o Radar é só para ideias de negócio). As rodadas do piloto
+    // avançam o pipeline; pronto, ele entra em "Para aprovar" e é avisado na janela de aprovação.
+    const criar = deps.criar || (async (o) => { const c = await require('./top/pipeline').criar({ url: o.url, titulo: o.titulo, origem: 'monitor' }); await require('./top/piloto').registrar(c.id, { titulo: o.titulo }); return c; });
+    const kick = deps.kick || (async () => {});
     for (const { p, alta } of novas) {
       const alerta = { id: p.id, titulo: p.titulo, veiculos: alta.veiculos, horas: alta.horas, prioridade: p.prioridade, roteiro: false, motivo_sem_roteiro: null };
       const link = (p.fontes || []).find((f) => f.url)?.url;

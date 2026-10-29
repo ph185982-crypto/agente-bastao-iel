@@ -26,3 +26,21 @@ exigindo o toque do Pedro.
 ## Limites honestos
 - Os fatos vêm de UMA matéria (o veículo citado). O código garante que o número está na matéria, não que a matéria está certa.
 - A qualidade do texto depende do modelo de IA configurado no servidor. Com modelos gratuitos a nota do júri tende a cair.
+
+## Piloto automático (produção diária; o Pedro só aprova)
+`backend/lib/top/piloto.js` · rotas `GET/PUT /api/top/piloto`, `POST /api/top/piloto/rodada`, `POST /api/top/carrosseis/:id/desagendar`.
+
+| O quê | Padrão (Perfil → Piloto automático) |
+|---|---|
+| Meta | 8 carrosséis prontos por dia + 2 de reserva; até 18 pautas testadas por dia |
+| Produção | das 05:00 às 20:30 (Brasília), uma pauta por vez, a de maior prioridade com link legível |
+| Avisos para aprovar | 08:00 e 14:00 — um aviso por janela, com a contagem de prontos |
+| Horários de publicação | 09:00, 11:00, 12:30, 15:00, 17:00, 18:30, 20:00, 21:30 |
+
+- **Aprovar = agendar** no próximo horário livre da grade (lista "Agendados" na tela Aprovar, com "Desagendar").
+- No horário, a rodada entrega o item ao fluxo de publicação existente. Publicação pausada ou acesso aberto ao público
+  seguram o item na agenda (não publica, não perde). Conteúdo que deixou de estar aprovado sai da agenda e nunca é publicado.
+- Piloto desligado: não cria nada, mas publica o que já foi aprovado e agendado.
+- Quem chama a rodada: `.github/workflows/piloto.yml` (a cada 10 min, a partir da `main`), o app aberto (a cada 5 min) e o botão
+  "Produzir agora". Com o código de acesso ligado, crie o secret `CRON_SECRET` no GitHub (o mesmo da Vercel).
+- O monitor de notícias em alta também cria carrossel "top" (antes ia para o Radar, que só aceita ideias de negócio).

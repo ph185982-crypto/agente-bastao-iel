@@ -12,7 +12,10 @@
   const versao=c=>M.versaoAtiva(c);
   const emProducao=c=>['gerando','publicando'].includes(c.studio?.estado);
   const emRoteiro=c=>c.studio?.estado==='aguardando_roteiro'&&c.status!=='arquivado';
-  function prontos(){return x().state.contents.filter(c=>!c.legado&&!['publicado','arquivado'].includes(c.status)&&!emProducao(c)&&!emRoteiro(c)&&versao(c));}
+  function prontos(){return x().state.contents.filter(c=>!c.legado&&!['publicado','arquivado'].includes(c.status)&&!emProducao(c)&&!emRoteiro(c)&&!agendado(c)&&versao(c));}
+  function agendado(c){return !!c.agenda?.publicar_em&&c.status==='aprovado'&&c.studio?.estado==='agendado';}
+  function agendados(){return x().state.contents.filter(c=>!c.legado&&agendado(c)).sort((a,b)=>a.agenda.publicar_em.localeCompare(b.agenda.publicar_em));}
+  const horaDe=iso=>{const d=new Date(iso);const hoje=new Date();const mesmoDia=d.toDateString()===hoje.toDateString();return `${mesmoDia?'hoje':d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit'})} às ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'})}`;};
   function roteiros(){return x().state.contents.filter(c=>!c.legado&&emRoteiro(c)&&versao(c));}
   function revisar(c){const clone=M.clone(c);clone.claims.forEach(k=>k.revisao={...(k.revisao||{}),confirmada_por_pedro:true});return window.QualityGates.avaliar(clone,{conta:M.ACCOUNT_PIN});}
   async function adotar(reg){await window.Sync.adotar(reg);const i=x().state.contents.findIndex(c=>c.id===reg.doc.id);if(i<0)x().state.contents.unshift(reg.doc);else x().state.contents[i]=reg.doc;x().state.syncMeta[reg.doc.id]=await window.Sync.meta(reg.doc.id);}
@@ -52,9 +55,10 @@
     const pausado=original._st.config?.publish_paused;
     return `<article class="st-review-card" data-st-card="${esc(c.id)}"><div class="st-card-heading"><span class="st-format">${c.formato==='reels'?'Reel motion':c.formato==='estatico'?'Post único':'Carrossel'} ${rotuloEstilo(c)}</span><h2>${esc(c.titulo)}</h2></div>
       ${preview(c)}${diagnostico(c)}
+      ${c.top?`<p class="st-juri"><b>Júri ${esc(Number(c.top.escolha?.nota||0).toFixed(1).replace('.',','))}</b> · ${esc(c.top.angulo?.tese||'')}</p>`:''}
       <div class="st-review-body">${c.studio?.erro?`<p class="st-inline-error" role="status">${esc(c.studio.erro)}</p>`:''}
       ${!pronto?'<p class="st-preparing-note">Vou resolver as pendências e montar uma prévia completa. Você aprova uma única vez, no final.</p>':''}
-      <div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Refazer</button><button class="st-approve" data-action="${pronto?'st-aprovar':'st-preparar'}" data-id="${esc(c.id)}" ${ui.ocupado||pausado?'disabled':''}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':pausado?'Publicações pausadas':pronto?'✓ Aprovar e publicar':'Preparar automaticamente'}</button></div>
+      <div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Refazer</button><button class="st-approve" data-action="${pronto?'st-aprovar':'st-preparar'}" data-id="${esc(c.id)}" ${ui.ocupado||pausado?'disabled':''}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':pausado?'Publicações pausadas':pronto?(c.top?'✓ Aprovar e agendar':'✓ Aprovar e publicar'):'Preparar automaticamente'}</button></div>${c.top&&pronto?'<p class="st-agenda-nota">Aprovado, entra no próximo horário livre da grade. Nada sai antes.</p>':''}
       <details class="st-caption"><summary>Ver legenda e detalhes</summary><p>${esc([v.legenda,v.cta,(v.hashtags||[]).join(' ')].filter(Boolean).join('\n\n'))}</p>${creditos(c)}<button class="st-text-button" data-action="cn-revisar" data-id="${esc(c.id)}">Ajustar manualmente</button></details></div></article>`;
   }
   function cartaoRoteiro(c){
@@ -71,6 +75,11 @@
       <p class="st-preparing-note">O carrossel só é gerado depois que você aprovar este roteiro. Nada vai ao Instagram sem o seu toque em “Aprovar e publicar”.</p>
       <div class="st-decisionbar"><button class="st-reject" data-action="st-roteiro-refazer" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Outro roteiro</button><button class="st-approve" data-action="st-roteiro-aprovar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>${ocupado?'<span class="es-spin"></span> Enviando…':'✓ Aprovar roteiro e gerar carrossel'}</button></div>
       <button class="st-text-button" data-action="st-roteiro-descartar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>Descartar este assunto</button></article>`;
+  }
+  // Com o app aberto, também dá uma rodada do piloto a cada 5 min (o agendador do GitHub às vezes atrasa).
+  async function rodarPiloto(){
+    if(ui.pilotoEmCurso||document.hidden)return;const agora=Date.now();if(ui.pilotoChecado&&agora-ui.pilotoChecado<300000)return;ui.pilotoChecado=agora;
+    ui.pilotoEmCurso=true;try{const r=await x().api('/api/top/piloto/rodada',{method:'POST',body:{}});if(r.publicados?.length||r.avancados?.some(a=>a.estado==='concluida'))await atualizar({silencioso:true});}catch(e){/* sem acesso ou sem banco: tenta na próxima */}finally{ui.pilotoEmCurso=false;}
   }
   async function monitorar(){
     if(ui.monitorEmCurso||document.hidden)return;
@@ -117,7 +126,7 @@
       ${trilho(lista.length,listaRoteiros.length,publicados.length)}${linhaMonitor()}${!pushAtivo?`<button class="st-push-banner" data-action="${original._st.push?.permissao==='denied'?'st-perfil':'st-notificacoes'}"><span>♧</span><span><b>Receba um aviso no iPhone</b><small>${original._st.push?.permissao==='denied'?'Veja como liberar as notificações.':'Ative para saber quando o conteúdo ficar pronto.'}</small></span><i>›</i></button>`:''}
       ${ui.erro?`<div class="es-warn" role="status">${esc(ui.erro)}</div>`:''}
       <div class="st-feed-tabs" role="group" aria-label="Conteúdos"><button data-action="st-aba" data-aba="prontos" aria-pressed="${ui.aba==='prontos'}">Para aprovar <span>${lista.length+listaRoteiros.length}</span></button><button data-action="st-aba" data-aba="publicados" aria-pressed="${ui.aba==='publicados'}">Publicados <span>${publicados.length}</span></button></div>
-      ${ui.aba==='prontos'&&listaRoteiros.length?`<section class="st-roteiros"><h2>Roteiros para aprovar <span>${listaRoteiros.length}</span></h2>${listaRoteiros.map(cartaoRoteiro).join('')}</section>`:''}${ui.aba==='prontos'?`${lista.length>1?`<div class="st-card-pagination"><span>Conteúdo ${i+1} de ${lista.length}</span><div><button data-action="st-anterior" aria-label="Conteúdo anterior" ${i<=0?'disabled':''}>‹</button><button data-action="st-proximo" aria-label="Próximo conteúdo" ${i>=lista.length-1?'disabled':''}>›</button></div></div>`:''}${c?cartao(c):`<div class="st-empty-feed"><img src="/logo-app.svg" alt="Pedro Destrava" width="58" height="58"><h2>${x().state.contents.some(emProducao)?'Seu próximo conteúdo está a caminho':'Vamos preparar seu próximo post?'}</h2><p>${x().state.contents.some(emProducao)?'Você verá a prévia completa aqui assim que estiver pronta.':'Comece com uma matéria ou texto. Eu cuido do formato, da capa e da preparação.'}</p><button class="st-approve" data-action="st-criar">Criar conteúdo</button></div>`}${filaProduzindo()}`:`<div class="st-published">${publicados.map(c=>`<article><span>✓ Publicado · ${esc(c.formato==='reels'?'Reel':'Carrossel')}</span><h2>${esc(c.titulo)}</h2>${c.publicacao?.url?`<a href="${esc(c.publicacao.url)}" target="_blank" rel="noopener noreferrer">Ver no Instagram ↗</a>`:'<p>O link ainda não está disponível.</p>'}</article>`).join('')||'<div class="st-empty-feed"><h2>Os próximos resultados começam aqui</h2><p>Quando você aprovar e o Instagram confirmar, o post aparece nesta lista.</p></div>'}</div>`}
+      ${ui.aba==='prontos'&&agendados().length?`<section class="st-agendados"><h2>Agendados <span>${agendados().length}</span></h2><ul>${agendados().map(c=>`<li><span class="st-hora">${esc(horaDe(c.agenda.publicar_em))}</span><b>${esc(c.titulo)}</b><button class="st-text-button" data-action="st-desagendar" data-id="${esc(c.id)}">Desagendar</button></li>`).join('')}</ul></section>`:''}${ui.aba==='prontos'&&listaRoteiros.length?`<section class="st-roteiros"><h2>Roteiros para aprovar <span>${listaRoteiros.length}</span></h2>${listaRoteiros.map(cartaoRoteiro).join('')}</section>`:''}${ui.aba==='prontos'?`${lista.length>1?`<div class="st-card-pagination"><span>Conteúdo ${i+1} de ${lista.length}</span><div><button data-action="st-anterior" aria-label="Conteúdo anterior" ${i<=0?'disabled':''}>‹</button><button data-action="st-proximo" aria-label="Próximo conteúdo" ${i>=lista.length-1?'disabled':''}>›</button></div></div>`:''}${c?cartao(c):`<div class="st-empty-feed"><img src="/logo-app.svg" alt="Pedro Destrava" width="58" height="58"><h2>${x().state.contents.some(emProducao)?'Seu próximo conteúdo está a caminho':'Vamos preparar seu próximo post?'}</h2><p>${x().state.contents.some(emProducao)?'Você verá a prévia completa aqui assim que estiver pronta.':'Comece com uma matéria ou texto. Eu cuido do formato, da capa e da preparação.'}</p><button class="st-approve" data-action="st-criar">Criar conteúdo</button></div>`}${filaProduzindo()}`:`<div class="st-published">${publicados.map(c=>`<article><span>✓ Publicado · ${esc(c.formato==='reels'?'Reel':'Carrossel')}</span><h2>${esc(c.titulo)}</h2>${c.publicacao?.url?`<a href="${esc(c.publicacao.url)}" target="_blank" rel="noopener noreferrer">Ver no Instagram ↗</a>`:'<p>O link ainda não está disponível.</p>'}</article>`).join('')||'<div class="st-empty-feed"><h2>Os próximos resultados começam aqui</h2><p>Quando você aprovar e o Instagram confirmar, o post aparece nesta lista.</p></div>'}</div>`}
       </div>${modal()}`;
   }
   function modeloCriacao(){
@@ -167,8 +176,9 @@
         case 'st-aprovar':case 'st-preparar':{
           if(ui.ocupado)return true;ui.ocupado=id;ctx.render();
           const r=await window.Sync.enviar(c);if(!['igual','enviado'].includes(r.estado))throw new Error('Este conteúdo mudou em outro aparelho. Atualize a lista antes de continuar.');
-          const reg=await ctx.api(`/api/studio/${encodeURIComponent(id)}/${a==='st-aprovar'?'decidir':'retomar'}`,{method:'POST',body:{acao:'aprovar',hash:versao(c)?.hash}});await adotar(reg);ui.selecionado=null;ctx.toast(a==='st-aprovar'?'Aprovado! Enviando ao Instagram.':'Vou preparar a versão completa para você conferir.');break;
+          const reg=await ctx.api(`/api/studio/${encodeURIComponent(id)}/${a==='st-aprovar'?'decidir':'retomar'}`,{method:'POST',body:{acao:'aprovar',hash:versao(c)?.hash}});await adotar(reg);ui.selecionado=null;ctx.toast(a==='st-aprovar'?(reg.doc?.agenda?.publicar_em?`Aprovado! Vai ao ar ${horaDe(reg.doc.agenda.publicar_em)}.`:'Aprovado! Enviando ao Instagram.'):'Vou preparar a versão completa para você conferir.');break;
         }
+        case 'st-desagendar':{if(ui.ocupado)return true;ui.ocupado=id;ctx.render();try{await ctx.api(`/api/top/carrosseis/${encodeURIComponent(id)}/desagendar`,{method:'POST',body:{}});await atualizar({silencioso:true});ctx.toast('Desagendado. Ele volta para "Para aprovar".');}finally{ui.ocupado=null;ctx.render();}return true;}
         case 'st-roteiro-aprovar':case 'st-roteiro-refazer':case 'st-roteiro-descartar':{
           if(ui.ocupado)return true;
           if(a==='st-roteiro-descartar'&&!confirm('Descartar este assunto?'))return true;
@@ -214,6 +224,6 @@
   window.Mesa.state.tab='central';
   setTimeout(()=>{original.carregar(x()).catch(()=>{});atualizar({silencioso:true});x().api('/api/studio/experimentos').then(d=>{ui.experimentos=d;}).catch(()=>{});},1200);
   setTimeout(()=>monitorar(),4000);
-  setInterval(()=>{if(!document.hidden&&!ui.reprovar&&!ui.ocupado){atualizar({silencioso:true});monitorar();}},10000);
+  setInterval(()=>{if(!document.hidden&&!ui.reprovar&&!ui.ocupado){atualizar({silencioso:true});monitorar();rodarPiloto();}},10000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)atualizar({silencioso:true});});
 })();
