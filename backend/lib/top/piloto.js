@@ -97,7 +97,7 @@ async function desagendar(id) {
 // No horário: entrega para o fluxo de publicação existente (o mesmo do "Aprovar e publicar").
 async function publicarAgora(id, deps = {}) {
   const P = require('../publicador');
-  P.exigirAcessoProtegido();
+  await P.exigirAcessoProtegido();
   if ((await P.config()).publish_paused) throw Object.assign(erro('As publicações estão pausadas.', 409), { code: 'PAUSADO' });
   const a = armazem(); const reg = await a.conteudos.obter(conta(), id); if (!reg) throw erro('Conteúdo não encontrado.', 404);
   const c = reg.doc;
