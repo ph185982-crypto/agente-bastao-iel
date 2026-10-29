@@ -69,6 +69,14 @@
     {
       "path": "/api/radar/cron",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/top/piloto/rodada",
+      "schedule": "5 6 * * *"
+    },
+    {
+      "path": "/api/top/piloto/rodada",
+      "schedule": "40 16 * * *"
     }
   ]
 }
