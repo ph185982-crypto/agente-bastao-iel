@@ -9,6 +9,9 @@
 // IA, leia URLs ou guarde dados roda aberto. Só no computador de quem
 // desenvolve (sem VERCEL) a ausência do código deixa a API aberta.
 // APP_ACCESS_MODE=public permite acesso sem código por escolha explícita do dono.
+// Com o app aberto ao público, o dono pode criar o código pelo próprio app (POST /api/auth/definir): o código vira
+// hash scrypt no banco e, a partir daí, o app fica protegido (sem precisar mexer na Vercel). APP_ACCESS_CODE da Vercel,
+// se existir, continua valendo junto (é o caminho de recuperação se o código do app for esquecido).
 //
 // Limites e dedupe são em memória por instância da função: protegem de
 // loop/duplo clique, não são uma cota global.
@@ -19,9 +22,32 @@ const TOKEN_TTL_S = 14 * 24 * 3600;
 const MIN_CODIGO = 10;
 const code = () => process.env.APP_ACCESS_CODE || '';
 const publicado = () => !!process.env.VERCEL || process.env.NODE_ENV === 'production';
-const codigoValido = () => code().length >= MIN_CODIGO;
-const acessoPublico = () => process.env.APP_ACCESS_MODE === 'public';
-const secret = () => crypto.createHash('sha256').update(`pico|${code()}|${process.env.APP_TOKEN_SALT || ''}`).digest();
+
+// ── Código criado no app (fica no banco, separado da configuração da conta) ──
+const CONTA_ACESSO = '__acesso';
+let dono = null; let donoEm = 0;
+// Sem banco durável (computador local, testes) não há o que ler: decide na hora, sem esperar.
+function donoEmDia(forcar = false) {
+  if (!forcar && Date.now() - donoEm < 30000) return true;
+  let a = null; try { a = require('./armazem').armazem(); } catch { /* sem armazém */ }
+  if (!a?.duravel) { donoEm = Date.now(); return true; }
+  return false;
+}
+async function carregarDono(forcar = false) {
+  if (donoEmDia(forcar)) return dono;
+  try {
+    const a = require('./armazem').armazem();
+    if (a?.duravel) { const c = await a.config.obter(CONTA_ACESSO); dono = c?.dono?.hash ? c.dono : null; }
+    donoEm = Date.now();
+  } catch (e) { console.error('[acesso] não leu o código do app:', String(e.message).slice(0, 100)); }
+  return dono;
+}
+const hashCodigo = (codigo, sal) => crypto.scryptSync(String(codigo), Buffer.from(sal, 'hex'), 32).toString('hex');
+
+const envValido = () => code().length >= MIN_CODIGO;
+const codigoValido = () => envValido() || !!dono;
+const acessoPublico = () => process.env.APP_ACCESS_MODE === 'public' && !dono;
+const secret = () => crypto.createHash('sha256').update(`pico|${envValido() ? code() : dono?.hash || ''}|${process.env.APP_TOKEN_SALT || ''}`).digest();
 const protegido = () => !acessoPublico() && codigoValido();
 
 const b64 = (b) => Buffer.from(b).toString('base64url');
@@ -48,7 +74,10 @@ function verify(token) {
 function codigoConfere(tentativa) {
   const a = crypto.createHash('sha256').update(String(tentativa || '')).digest();
   const b = crypto.createHash('sha256').update(code()).digest();
-  return crypto.timingSafeEqual(a, b);
+  if (envValido() && crypto.timingSafeEqual(a, b)) return true;
+  if (!dono) return false;
+  const h = Buffer.from(hashCodigo(String(tentativa || '').slice(0, 200), dono.sal), 'hex');
+  return crypto.timingSafeEqual(h, Buffer.from(dono.hash, 'hex'));
 }
 
 const tokenDe = (req) => {
@@ -82,6 +111,10 @@ const estadoAcesso = () => (acessoPublico() ? 'aberto_publico' : codigoValido() 
 const aberto = (estado) => estado === 'aberto_local' || estado === 'aberto_publico';
 
 function exigeAcesso(req, res, next) {
+  if (!donoEmDia()) return carregarDono().then(() => decidirAcesso(req, res, next), () => decidirAcesso(req, res, next));
+  return decidirAcesso(req, res, next);
+}
+function decidirAcesso(req, res, next) {
   const path = (req.originalUrl || req.path || req.url || '').split('?')[0];
   if (ROTAS_LIVRES.some((r) => r.test(path))) return next();
   const est = estadoAcesso();
@@ -130,11 +163,13 @@ function unica(id, fn, ttlMs = 120000) {
 function registrarRotas(app) {
   const express = require('express');
   const r = express.Router();
-  r.get('/status', (req, res) => {
+  r.get('/status', async (req, res) => {
+    await carregarDono();
     const est = estadoAcesso();
     res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : aberto(est) });
   });
-  r.post('/login', (req, res) => {
+  r.post('/login', async (req, res) => {
+    await carregarDono();
     const est = estadoAcesso();
     if (est === 'nao_configurado') return res.status(503).json({ error: 'Configuração necessária: defina APP_ACCESS_CODE no servidor.', code: 'ACCESS_NOT_CONFIGURED' });
     if (aberto(est)) return res.json({ protected: false });
@@ -148,7 +183,24 @@ function registrarRotas(app) {
     const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_S;
     res.json({ protected: true, token: sign({ sub: 'pedro', exp }), expires_at: exp });
   });
+  // Fecha o app pelo próprio app: só enquanto ele está aberto ao público (depois disso, só com o código).
+  r.post('/definir', async (req, res) => {
+    try {
+      const a = require('./armazem').armazem();
+      if (!a?.duravel) return res.status(503).json({ error: 'Sem banco de dados no servidor para guardar o código.', code: 'SEM_ARMAZEM' });
+      await carregarDono(true);
+      if (estadoAcesso() !== 'aberto_publico') return res.status(409).json({ error: 'O app já tem código de acesso. Entre com ele.', code: 'JA_PROTEGIDO' });
+      const codigo = String(req.body?.code || '');
+      if (codigo.trim().length < MIN_CODIGO || codigo.length > 128) return res.status(400).json({ error: `O código precisa ter de ${MIN_CODIGO} a 128 caracteres.`, code: 'CODIGO_CURTO' });
+      const sal = crypto.randomBytes(16).toString('hex');
+      const novo = { hash: hashCodigo(codigo, sal), sal, criado_em: new Date().toISOString() };
+      await a.config.salvar(CONTA_ACESSO, { dono: novo });
+      dono = novo; donoEm = Date.now();
+      const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_S;
+      res.json({ protected: true, token: sign({ sub: 'pedro', exp }), expires_at: exp });
+    } catch (e) { res.status(500).json({ error: 'Não foi possível guardar o código.', code: 'ACESSO' }); }
+  });
   app.use('/api/auth', r);
 }
 
-module.exports = { exigeAcesso, limita, unica, registrarRotas, protegido, estadoAcesso, sign, verify, codigoConfere, MIN_CODIGO };
+module.exports = { exigeAcesso, limita, unica, registrarRotas, protegido, estadoAcesso, carregarDono, sign, verify, codigoConfere, MIN_CODIGO, _zerarDono: () => { dono = null; donoEm = 0; } };

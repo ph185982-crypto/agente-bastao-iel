@@ -185,15 +185,16 @@ async function criarContainers({ id, hash, slides, legenda, base, c }) {
 
 // Em produção SEM código de acesso (APP_ACCESS_MODE=public), qualquer pessoa com o endereço poderia aprovar e publicar no
 // Instagram do Pedro. Publicar exige código; ler, criar e revisar continuam como o dono escolheu.
-function exigirAcessoProtegido() {
+async function exigirAcessoProtegido() {
   const A = require('./access');
+  await A.carregarDono();
   if ((process.env.VERCEL || process.env.NODE_ENV === 'production') && A.estadoAcesso() === 'aberto_publico') {
-    throw new ErroPub('ACESSO_ABERTO', 'Publicar exige código de acesso: o app está aberto ao público. Defina APP_ACCESS_CODE (10+ caracteres) e remova APP_ACCESS_MODE=public na Vercel. Veja docs/ATIVACAO.md.', 403);
+    throw new ErroPub('ACESSO_ABERTO', 'Publicar exige código de acesso: o app está aberto ao público. Crie o seu código em Perfil → "Criar meu código" (10+ caracteres) e aprove de novo.', 403);
   }
 }
 
 async function iniciar(id, { hash, base } = {}) {
-  exigirAcessoProtegido();
+  await exigirAcessoProtegido();
   if (meta.faltando().length) throw new ErroPub('SEM_CONFIG', `Configuração da Meta incompleta no servidor: falta ${meta.faltando().join(', ')}.`, 503);
   const a = armazem();
   const cfg = await config();
