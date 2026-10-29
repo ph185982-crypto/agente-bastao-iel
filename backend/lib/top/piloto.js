@@ -148,6 +148,11 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
   est.usadas = (est.usadas || []).filter((x) => Date.parse(x.em) > agora - 14 * 86400000);
   const r = { em: new Date(agora).toISOString(), dia, hora, ativo: cfg.ativo, publicados: [], avisos: [], avancados: [], criado: null };
 
+  // 0) Uma vez por dia, de madrugada: limpa o banco (prévias e fotos sem uso, revisões antigas).
+  if (hora < '04:00' && est.limpeza_dia !== dia && !deps.semLimpeza) {
+    est.limpeza_dia = dia;
+    try { const l = await require('../manutencao').limpar({ orcamentoMs: Math.min(30000, restante() - 10000) }); r.limpeza = { apagados: l.apagados, mb: l.mb_liberados, revisoes: l.revisoes_podadas }; } catch (e) { r.avisos.push(`Limpeza do banco falhou: ${String(e.message).slice(0, 100)}`); }
+  }
   // 1) Agenda vencida → publica (vale mesmo com o piloto desligado: foi aprovado pelo Pedro).
   for (const item of [...(est.agenda || [])].filter((x) => Date.parse(x.publicar_em) <= agora)) {
     try { await publicarAgora(item.id, deps); removidos.add(item.id); r.publicados.push(item.id); }

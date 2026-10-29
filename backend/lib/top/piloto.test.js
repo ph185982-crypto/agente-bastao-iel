@@ -143,3 +143,17 @@ test('pauta de serviço fica fora da fila; descarte do Pedro abre vaga na meta',
   const r = await Pi.rodada({ agora: SP('2026-10-29', '07:10'), deps });
   assert.strictEqual(r.criado.titulo, 'Gasto público sobe 9%');
 });
+
+test('limpeza do banco: apaga prévias de descartados e de versões antigas e fotos sem uso; mantém o que está vivo', async () => {
+  novo(); const a = arm.armazem(); const conta = ACCOUNT.ig_id; const L = require('../manutencao');
+  const vivo = M.novoConteudo({ titulo: 'vivo' }); M.criarVersao(vivo, { slides: [{ id: 's1', funcao: 'capa', layout: 'rep_capa', texto: 'x', imagem_id: 'f1', claim_ids: [] }], legenda: '', cta: '', hashtags: [] }, { quem: 'sistema' });
+  M.criarVersao(vivo, { slides: [{ id: 's1', funcao: 'capa', layout: 'rep_capa', texto: 'y', imagem_id: 'f1', claim_ids: [] }], legenda: '', cta: '', hashtags: [] }, { quem: 'sistema' });
+  vivo.imagens = [{ id: 'f1' }]; await a.conteudos.salvar(conta, vivo.id, vivo, 0);
+  const morto = M.novoConteudo({ titulo: 'morto' }); morto.status = 'arquivado'; await a.conteudos.salvar(conta, morto.id, morto, 0);
+  const ativa = M.versaoAtiva(vivo).id;
+  for (const ch of [`render:${vivo.id}:${ativa}:s1:h`, `render:${vivo.id}:v_antiga:s1:h`, `render:${morto.id}:v1:s1:h`, `render:c_sumiu:v1:s1:h`, 'img:f1', 'img:f_orfa', 'upload:encerramento']) await a.arquivos.salvar(conta, ch, Buffer.from('x'.repeat(10)), 'image/png');
+  const r = await L.limpar();
+  const resta = (await a.arquivos.listar(conta)).map((f) => f.chave).sort();
+  assert.deepStrictEqual(resta, [`render:${vivo.id}:${ativa}:s1:h`, 'img:f1', 'upload:encerramento'].sort());
+  assert.strictEqual(r.apagados, 4);
+});

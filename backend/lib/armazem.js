@@ -2,7 +2,7 @@
 //
 // Três coisas diferentes, guardadas de jeitos diferentes:
 //  - conteúdo estruturado e versões  → banco Postgres (Neon pela Vercel);
-//    cada gravação guarda a revisão anterior (histórico de 30 revisões);
+//    cada gravação guarda a revisão anterior (histórico de 5 revisões);
 //  - arquivos (fotos, encerramento aprovado, exportações) → por enquanto no
 //    mesmo banco, com limite de tamanho; o recomendado para volume é um
 //    armazenamento de arquivos (Cloudflare R2), ainda NÃO contratado;
@@ -15,7 +15,7 @@
 const crypto = require('crypto');
 
 const LIMITE_ARQUIVO = 8 * 1024 * 1024;
-const HISTORICO = 30;
+const HISTORICO = 5; // documentos do carrossel são grandes: 30 cópias por conteúdo enchiam o banco gratuito (512 MB)
 
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const canon = (v) => {
@@ -125,6 +125,11 @@ function memoria() {
         return { rev: v.rev, hash: v.hash };
       },
       async historico(conta, id) { return hist.filter((h) => h.conta === conta && h.id === id).map(({ rev, hash }) => ({ rev, hash })); },
+      async podarHistorico(conta, manter = HISTORICO) {
+        const max = new Map(); hist.filter((h) => h.conta === conta).forEach((h) => max.set(h.id, Math.max(max.get(h.id) || 0, h.rev)));
+        const antes = hist.length; for (let i = hist.length - 1; i >= 0; i--) { const h = hist[i]; if (h.conta === conta && h.rev <= max.get(h.id) - manter) hist.splice(i, 1); }
+        return antes - hist.length;
+      },
     },
     arquivos: {
       async salvar(conta, chave, dados, tipo) {
@@ -134,6 +139,7 @@ function memoria() {
       },
       async obter(conta, chave) { return arqs.get(k(conta, chave)) || null; },
       async listar(conta) { return [...arqs.entries()].filter(([key]) => key.startsWith(`${conta}|`)).map(([key, v]) => ({ chave: key.split('|').slice(1).join('|'), tipo: v.tipo, tamanho: v.dados.length, sha256: v.sha256 })); },
+      async apagar(conta, chaves) { let n = 0; for (const ch of chaves || []) if (arqs.delete(k(conta, ch))) n++; return n; },
     },
     publicacoes: publicacoesMemoria(),
     config: configMemoria(),
@@ -228,6 +234,12 @@ function postgres({ url, pool }) {
         await iniciar();
         return (await q('select rev, hash, gravado_em from pico_conteudos_hist where conta = $1 and id = $2 order by rev desc', [conta, id])).rows;
       },
+      async podarHistorico(conta, manter = HISTORICO) {
+        await iniciar();
+        const r = await q(`delete from pico_conteudos_hist h using (select id, max(rev) m from pico_conteudos_hist where conta = $1 group by id) x
+          where h.conta = $1 and h.id = x.id and h.rev <= x.m - $2`, [conta, manter]);
+        return r.rowCount || 0;
+      },
     },
     arquivos: {
       async salvar(conta, chave, dados, tipo) {
@@ -248,6 +260,18 @@ function postgres({ url, pool }) {
         await iniciar();
         return (await q('select chave, tipo, tamanho, sha256 from pico_arquivos where conta = $1 order by criado_em desc', [conta])).rows;
       },
+      async apagar(conta, chaves) {
+        if (!chaves?.length) return 0; await iniciar();
+        let n = 0; for (let i = 0; i < chaves.length; i += 200) n += (await q('delete from pico_arquivos where conta = $1 and chave = any($2)', [conta, chaves.slice(i, i + 200)])).rowCount || 0;
+        return n;
+      },
+      async espaco() {
+        await iniciar();
+        const r = await q(`select pg_database_size(current_database()) banco, (select coalesce(sum(tamanho), 0) from pico_arquivos) arquivos,
+          (select count(*) from pico_conteudos_hist) revisoes`);
+        return { banco: Number(r.rows[0].banco), arquivos: Number(r.rows[0].arquivos), revisoes: Number(r.rows[0].revisoes) };
+      },
+      async compactar() { await iniciar(); for (const t of ['pico_arquivos', 'pico_conteudos_hist', 'pico_conteudos']) { try { await q(`vacuum ${t}`); } catch { /* sem permissão: o autovacuum cuida */ } } },
     },
     publicacoes: {
       async obter(conta, id, rede) {
