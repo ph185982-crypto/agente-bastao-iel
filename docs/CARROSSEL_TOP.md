@@ -27,6 +27,15 @@ exigindo o toque do Pedro.
 - Os fatos vêm de UMA matéria (o veículo citado). O código garante que o número está na matéria, não que a matéria está certa.
 - A qualidade do texto depende do modelo de IA configurado no servidor. Com modelos gratuitos a nota do júri tende a cair.
 
+## Formatos visuais
+
+| Formato | Quando | Desenho |
+|---|---|---|
+| `reportagem` (`arteReportagem.js`) | comparação numérica forte (antes × depois) ou foto de pessoa/lugar | marinho/creme/amarelo/vermelho, Anton, capa com foto recortada, telas de prova com número gigante |
+| `tweet` (`arteTweet.js`) | sequência de frases (padrão + quebra: "é normal… sabe o que não é normal?") ou linha do tempo com número | fundo branco, avatar do Pedro (`backend/assets/pedro-perfil.png`), nome e @, UMA frase por slide em Inter, foto colorida arredondada em até metade dos tweets, seta → |
+
+O editor (etapa `angulo`) escolhe o formato; o piloto **alterna** tweet × reportagem a cada pauta para o feed variar; `POST /api/top/carrosseis` aceita `formato` para forçar. O formato tweet é o que mais engaja no nicho (referência: @thiago.nigro, 150–380 mil curtidas por carrossel).
+
 ## Piloto automático (produção diária; o Pedro só aprova)
 `backend/lib/top/piloto.js` · rotas `GET/PUT /api/top/piloto`, `POST /api/top/piloto/rodada`, `POST /api/top/carrosseis/:id/desagendar`.
 

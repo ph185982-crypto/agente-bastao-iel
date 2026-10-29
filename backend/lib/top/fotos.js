@@ -30,7 +30,7 @@ function pontuar(item, nome) {
 }
 
 // Lugar/instituição: foto do ambiente, nunca retrato de alguém (uma senadora qualquer na capa sugere que ela está na notícia).
-const PESSOA = /(senador|deputad|ministr|president|governador|prefeit|discurs|pronunciament|entrevista|retrato|portrait|posse|cerimonia|homenage|reuniao|audiencia|depoiment)/;
+const PESSOA = /(senador|deputad|ministr|president|governador|prefeit|discurs|pronunciament|entrevista|retrato|portrait|posse|cerimonia|homenage|reuniao|audiencia|depoiment|protest|manifest|greenpeace|\bato\b|faixa|cartaz|banner|ocupa)/;
 function pontuarLugar(item, nome) {
   const titulo = sem(item.title);
   const partes = sem(nome).split(/\s+/).filter((p) => p.length >= 4);

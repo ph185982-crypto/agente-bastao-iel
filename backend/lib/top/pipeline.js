@@ -38,13 +38,13 @@ async function vozDoPedro() {
 }
 
 // ── Criação ─────────────────────────────────────────────────────────────────────
-async function criar({ url = null, texto = null, titulo = '', origem = 'manual' } = {}) {
+async function criar({ url = null, texto = null, titulo = '', origem = 'manual', formato = null } = {}) {
   const a = armazem(); if (!a?.duravel) throw erro('O carrossel precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
   const u = url ? require('../radar/pauta').urlValida(url) : null;
   if (url && !u) throw erro('Link inválido.', 'LINK_INVALIDO');
   if (!u && String(texto || '').trim().length < 300) throw erro('Envie o link da matéria ou cole um texto com pelo menos 300 caracteres.', 'ENTRADA');
   const c = M.novoConteudo({ titulo: String(titulo || '').slice(0, 140) || 'Carrossel em preparação', origem: u ? { tipo: 'link', url: u } : { tipo: 'texto' } });
-  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000) }, tentativas: {}, erros: [], criado_em: agoraISO() };
+  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: ['tweet', 'reportagem'].includes(formato) ? formato : null }, tentativas: {}, erros: [], criado_em: agoraISO() };
   await a.conteudos.salvar(conta(), c.id, c, 0);
   return c;
 }
@@ -75,6 +75,8 @@ E.angulo = async (c, ctx) => {
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
   c.top.angulo = { gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240), imagem: { busca: String(dados?.imagem?.busca || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80), pessoa_central: dados?.imagem?.pessoa_central === true, lugar_brasil: dados?.imagem?.lugar_brasil ? String(dados.imagem.lugar_brasil).slice(0, 80) : null } };
   c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
+  // Formato visual: o pedido de quem criou (piloto alterna para variar o feed) vence; senão a escolha do editor.
+  c.top.formato = c.top.entrada?.formato || (dados?.formato === 'tweet' ? 'tweet' : 'reportagem');
   const nucleo = Math.max(c.top.angulo.gatilhos.bolso, c.top.angulo.gatilhos.contradicao);
   if (c.top.angulo.soma >= regua().gatilhos_min && c.top.angulo.tese && nucleo < regua().nucleo_min) throw Object.assign(erro(`Sem bolso nem contradição (máximo ${nucleo}/3; mínimo ${regua().nucleo_min}): vira post de cotação, não de tese.`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
   if (c.top.angulo.soma < regua().gatilhos_min || !c.top.angulo.tese) throw Object.assign(erro(`Não passou no teste do grupo (${c.top.angulo.soma}/12 nos gatilhos; mínimo ${regua().gatilhos_min}).`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
@@ -87,8 +89,8 @@ E.roteiro = async (c, ctx) => {
   while (c.top.versoes.length < 2 && ctx.restante() > 22000) {
     const anterior = c.top.versoes[c.top.versoes.length - 1];
     const feedback = anterior && !anterior.checagem.ok ? anterior.checagem.problemas.slice(0, 8).join('\n') : '';
-    const { dados } = await ctx.ia({ sistema: P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback }), usuario: `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
-    const v = normalizarRoteiro(dados);
+    const { dados } = await ctx.ia({ sistema: P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato }), usuario: `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
+    const v = normalizarRoteiro(dados, c.top.formato);
     // Data também sai: o portão de publicação trata "27/10/2026" como número que precisa de fonte.
     const DATA = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b\d{1,2} de (?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/i;
     const limparFrases = (txt) => String(txt || '').split(/(?<=[.!?])\s+/).filter((f) => !K.numerosSemFonte(f, c.top.fatos).length && !DATA.test(f)).join(' ').trim();
@@ -119,9 +121,20 @@ const semIds = (x) => (x == null ? x : String(x).replace(/\s*[\[(]\s*f\d+(?:\s*[
 // "Segue o @pedro_destrava" já é fixo na faixa: o motivo vem sem repetir a chamada.
 const semChamada = (x) => String(x || '').replace(/^\s*(segue|siga)\s+(o\s+)?@?pedro_destrava[\s,:–-]*/i, '').trim();
 
-function normalizarRoteiro(d) {
-  const capas = (Array.isArray(d?.capas) ? d.capas : []).map((k) => ({ texto: String(k?.texto || k || '').replace(/\s+/g, ' ').trim().slice(0, 140), mecanismo: String(k?.mecanismo || '').slice(0, 40) })).filter((k) => k.texto && K.palavras(k.texto) <= 14).slice(0, 10);
+function normalizarRoteiro(d, formato = 'reportagem') {
+  const tweet = formato === 'tweet';
+  const capas = (Array.isArray(d?.capas) ? d.capas : []).map((k) => ({ texto: String(k?.texto || k || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: String(k?.mecanismo || '').slice(0, 40) })).filter((k) => k.texto && K.palavras(k.texto) <= (tweet ? 18 : 14)).slice(0, 10);
   const LAY = ['rep_manchete', 'rep_comparacao', 'rep_numero'];
+  if (tweet) {
+    // tweet: só texto, uma frase por tela; a foto do tweet vem da busca sugerida (ilustrativa, Pexels)
+    const telasT = (Array.isArray(d?.telas) ? d.telas : []).slice(0, 8).map((t) => ({
+      papel: ['gap', 'prova', 'contradicao', 'consequencia', 'leitura'].includes(t?.papel) ? t.papel : 'gap', layout: 'tweet',
+      titulo: null, texto: t?.texto ? semIds(String(t.texto)).replace(/\s+/g, ' ').trim().slice(0, 260) : null, destaque: null, apoio: null, dados: null,
+      imagem_busca: t?.imagem_busca ? String(t.imagem_busca).replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 60) : null,
+      fatos: Array.isArray(t?.fatos) ? t.fatos.map(String).slice(0, 6) : [],
+    })).filter((t) => t.texto);
+    return { formato: 'tweet', capas, telas: telasT, legenda: semIds(String(d?.legenda || '')).slice(0, 900), hashtags: (Array.isArray(d?.hashtags) ? d.hashtags : []).map((h) => `#${String(h).replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => h.length > 2).slice(0, 3), cta_motivo: semChamada(semIds(d?.cta_motivo)).slice(0, 90), fechamento: { titulo: semIds(String(d?.fechamento?.titulo || '')).slice(0, 80), texto: semIds(String(d?.fechamento?.texto || '')).slice(0, 240) } };
+  }
   const telas = (Array.isArray(d?.telas) ? d.telas : []).slice(0, 7).map((t) => ({
     papel: ['gap', 'prova', 'contradicao', 'consequencia', 'leitura'].includes(t?.papel) ? t.papel : 'gap',
     layout: LAY.includes(t?.layout) ? t.layout : 'rep_manchete',
@@ -218,6 +231,20 @@ E.foto = async (c, ctx) => {
   }
   // Foto de pessoa só quando o ângulo confirma que a notícia gira em torno DELA e o nome parece de gente (não "Senado Federal").
   const INSTITUICAO = /\b(senado|c[âa]mara|congresso|supremo|tribunal|minist[ée]rio|governo|banco|prefeitura|assembleia|partido|federal|nacional|empresa|grupo|companhia|ag[êe]ncia)\b/i;
+  // Formato tweet: até 3 fotos ilustrativas, uma por tweet que pediu (a frase sozinha costuma ser mais forte).
+  if (c.top.formato === 'tweet' && !c.top.fotos_tweet && (ctx.deps.buscarFoto || process.env.PEXELS_API_KEY)) {
+    c.top.fotos_tweet = {};
+    const v = c.top.versoes?.[c.top.escolha?.versao]; const FS = require('../fotosStudio'); const usadas = [];
+    for (const [i, t] of (v?.telas || []).entries()) {
+      if (!t.imagem_busca || Object.keys(c.top.fotos_tweet).length >= 3 || ctx.restante() < 12000) continue;
+      try {
+        const f = await (ctx.deps.buscarFoto || FS.buscarFoto)(t.imagem_busca, { excluir: usadas });
+        await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg');
+        c.imagens = [...(c.imagens || []).filter((x) => x.id !== f.meta.id), { ...f.meta, exige_credito: false }];
+        c.top.fotos_tweet[i] = f.meta.id; usadas.push(f.meta.id);
+      } catch { /* este tweet fica só com a frase */ }
+    }
+  }
   if (!c.top.protagonista || c.top.angulo?.imagem?.pessoa_central !== true || INSTITUICAO.test(c.top.protagonista)) return;
   try {
     const f = await (ctx.deps.fotoDe || require('./fotos').fotoDe)(c.top.protagonista);
@@ -249,6 +276,7 @@ function montarVersao(c) {
   c.claims = c.top.fatos.map((f) => ({ id: f.id, texto: f.texto, tipo: 'fato', natureza: f.tipo === 'declaracao' ? 'declaracao' : f.tipo === 'previsao' ? 'previsao' : 'fato', central: true, estado: 'sustentada', evidencias: [`e_${f.id}`], valores: f.valores.map((x) => ({ valor: x })), risco: 'baixo', revisao: {}, origem: 'top' }));
   c.evidencias = c.top.fatos.map((f) => ({ id: `e_${f.id}`, tipo: 'secundaria', autoridade: 'imprensa', correspondencia: 'integral', relacao: 'sustenta', trecho: f.trecho, origem: fonte.veiculo || 'matéria', titulo: fonte.titulo, url: fonte.url, consultada_em: fonte.acessada_em, fonte_principal: true }));
   const capa = v.capas[c.top.escolha.capas[0] ?? 0]?.texto || v.capas[0].texto;
+  if (c.top.formato === 'tweet') return montarVersaoTweet(c, v, { capa, fatosComNumeros, mapa, fonte });
   const cenas = c.top.fotos_cena || (c.top.foto_cena_id ? [c.top.foto_cena_id] : []);
   const foto = c.top.foto_id || c.top.foto_lugar_id || cenas[0] || null; // capa: pessoa > lugar > cena
   const internas = []; // telas internas sem foto: o layout de texto fica limpo (foto espremida piorava a leitura)
@@ -281,6 +309,31 @@ function montarVersao(c) {
   // Se houver a arte original aprovada (upload:encerramento), ela substitui este slide no desenho (renderizarSlide).
   slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'encerramento', tema_visual: 'reportagem', titulo: v.fechamento?.titulo || 'O resultado está nos números.', texto: v.fechamento?.texto || '', destaque: 'Eu comecei o Pedro Destrava por isso.', cta: 'Segue o @pedro_destrava', cta_apoio: motivo, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: { extra: { destaque: 'Eu comecei o Pedro Destrava por isso.', cta_apoio: motivo } } });
   return { capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'acontecimento', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
+}
+
+// Formato tweet: cada tela vira um "tweet" (texto só), capa = 1º tweet (com a foto da capa, se houver), último = fechamento.
+function montarVersaoTweet(c, v, { capa, fatosComNumeros, mapa, fonte }) {
+  const fotoCapa = c.top.foto_id || c.top.foto_lugar_id || (c.top.fotos_cena || [])[0] || null;
+  const slides = [{ id: 's1', funcao: 'capa', layout: 'tweet', tema_visual: 'tweet', texto: capa, titulo: null, claim_ids: fatosComNumeros(capa), ...(fotoCapa ? { imagem_id: fotoCapa } : {}), dados: null }];
+  const opinioes = [];
+  v.telas.forEach((t, i) => {
+    const funcao = { gap: 'contexto', prova: 'prova', contradicao: 'consequencia', consequencia: 'consequencia', leitura: 'opiniao' }[t.papel] || 'explicacao';
+    let claim_ids = mapa(t.fatos); for (const id of fatosComNumeros(t.texto || '')) if (!claim_ids.includes(id)) claim_ids.push(id);
+    if (t.papel === 'leitura') { const oid = `o${opinioes.length + 1}`; opinioes.push({ id: oid, texto: String(t.texto || '').slice(0, 400), tipo: 'opiniao', natureza: 'opiniao', central: false, estado: 'nao_verificada', premissas: claim_ids, evidencias: [], risco: 'baixo', origem: 'top', revisao: {} }); claim_ids = [oid]; }
+    const aAtribuir = c.top.fatos.find((f) => claim_ids.includes(f.id) && ['declaracao', 'previsao'].includes(f.tipo));
+    if (aAtribuir && !MARCA_ATRIBUICAO.test(t.texto || '')) t.texto = `${aAtribuir.quem || fonte.veiculo || 'A reportagem'} disse que ${String(t.texto || '').replace(/^\p{Lu}/u, (m) => m.toLowerCase())}`;
+    const foto = c.top.fotos_tweet?.[i] || null;
+    slides.push({ id: `s${i + 2}`, funcao, layout: 'tweet', tema_visual: 'tweet', titulo: null, texto: t.texto || '', claim_ids, ...(foto ? { imagem_id: foto } : {}), dados: null });
+  });
+  c.claims.push(...opinioes);
+  const numsDe = (txt) => M.extrairNumeros(txt).filter(M.exigeOrigem);
+  const fraseOk = (f) => numsDe(f).every((n) => c.top.fatos.some((x) => x.valores.some((y) => M.igual(y, n.valor))));
+  const corpo = String(v.legenda || '').split(/(?<=[.!?])\s+/).filter(fraseOk).join(' ').trim();
+  const legenda = [corpo, `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`].filter(Boolean).join('\n\n').slice(0, 2000);
+  const motivo = (v.cta_motivo || 'se você também cobra resultado').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
+  const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
+  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'tweet', tema_visual: 'tweet', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: 'Segue o @pedro_destrava', cta_apoio: motivo, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
+  return { capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'sequencia', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
 }
 
 function auditar(c) {
@@ -418,7 +471,7 @@ async function executarTudo(id, { deps = {}, maxMs = 10 * 60000 } = {}) {
 
 function resumo(c) {
   const t = c.top || {};
-  return { id: c.id, titulo: c.titulo, estado: t.estado, etapa: t.etapa, rotulo: ROTULO[t.etapa] || t.etapa, motivo: t.motivo || null, nota: t.escolha?.nota ?? null, gatilhos: t.angulo?.gatilhos || null, tese: t.angulo?.tese || null, fatos: (t.fatos || []).length, fatos_descartados: (t.fatos_descartados || []).length, protagonista: t.protagonista || null, aviso_foto: t.aviso_foto || null, aviso_arte: t.aviso_arte || null, chamadas_ia: t.chamadas_ia || 0, erros: (t.erros || []).slice(-3) };
+  return { id: c.id, titulo: c.titulo, formato: t.formato || null, estado: t.estado, etapa: t.etapa, rotulo: ROTULO[t.etapa] || t.etapa, motivo: t.motivo || null, nota: t.escolha?.nota ?? null, gatilhos: t.angulo?.gatilhos || null, tese: t.angulo?.tese || null, fatos: (t.fatos || []).length, fatos_descartados: (t.fatos_descartados || []).length, protagonista: t.protagonista || null, aviso_foto: t.aviso_foto || null, aviso_arte: t.aviso_arte || null, chamadas_ia: t.chamadas_ia || 0, erros: (t.erros || []).slice(-3) };
 }
 
 // Conserta um carrossel pronto cujas afirmações foram trocadas por fora (ex.: a preparação antiga rodou nele): recompõe
