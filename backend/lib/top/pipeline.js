@@ -89,7 +89,9 @@ E.roteiro = async (c, ctx) => {
     const feedback = anterior && !anterior.checagem.ok ? anterior.checagem.problemas.slice(0, 8).join('\n') : '';
     const { dados } = await ctx.ia({ sistema: P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback }), usuario: `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
     const v = normalizarRoteiro(dados);
-    const limparFrases = (txt) => String(txt || '').split(/(?<=[.!?])\s+/).filter((f) => !K.numerosSemFonte(f, c.top.fatos).length).join(' ').trim();
+    // Data também sai: o portão de publicação trata "27/10/2026" como número que precisa de fonte.
+    const DATA = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b\d{1,2} de (?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/i;
+    const limparFrases = (txt) => String(txt || '').split(/(?<=[.!?])\s+/).filter((f) => !K.numerosSemFonte(f, c.top.fatos).length && !DATA.test(f)).join(' ').trim();
     v.legenda = limparFrases(v.legenda); v.cta_motivo = K.numerosSemFonte(v.cta_motivo, c.top.fatos).length ? '' : v.cta_motivo;
     v.fechamento = { titulo: K.numerosSemFonte(v.fechamento.titulo, c.top.fatos).length ? '' : v.fechamento.titulo, texto: limparFrases(v.fechamento.texto).replace(/eu comecei o pedro destrava por isso\.?/i, '').trim() };
     v.checagem = K.checarRoteiro({ ...v, capa: v.capas[0]?.texto || '', telas: [...v.telas], legenda: `${v.legenda}\n${v.fechamento.titulo}\n${v.fechamento.texto}\n${v.cta_motivo}` }, c.top.fatos);
@@ -263,7 +265,18 @@ E.arte = async (c, ctx) => {
   if (naoCabe.length) c.top.aviso_arte = `${naoCabe.length} slide(s) com texto acima do tamanho legível: encurte antes de aprovar.`;
 };
 
+// Os mesmos portões da tela de aprovação (fatos ligados à fonte, atribuição, texto que cabe…). Carrossel que não passa
+// não vai para "Para aprovar": o Pedro só vê o que dá para publicar com um toque.
+function portoes(c) {
+  const G = require('../../../static/qualityGates');
+  const cl = M.clone(c); (cl.claims || []).forEach((k) => { k.revisao = { ...(k.revisao || {}), confirmada_por_pedro: true }; });
+  return G.avaliar(cl, { conta: M.ACCOUNT_PIN }).bloqueios;
+}
+const motivoPortoes = (bl) => `Não passou nos portões de publicação: ${bl.slice(0, 2).map((b) => `${b.titulo}${b.detalhe ? ` (${String(b.detalhe).slice(0, 140)})` : ''}`).join(' · ')}`;
+
 E.fim = async (c) => {
+  const bl = portoes(c);
+  if (bl.length) throw Object.assign(erro(motivoPortoes(bl), 'PORTOES', 422), { terminal: true, fim: 'abaixo_da_regua' });
   c.status = 'em_revisao'; c.studio = { estado: 'pronto', concluido_em: agoraISO(), origem: 'top' };
   c.top.estado = 'concluida'; c.top.concluido_em = agoraISO();
   M.registrar(c, 'sistema', 'pronto', `Carrossel pronto (nota do júri ${c.top.escolha.nota.toFixed(1)}): confira e aprove.`);
@@ -336,4 +349,16 @@ async function reparar(id) {
   return c;
 }
 
-module.exports = { reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };
+// Confere de novo um carrossel já pronto: se não passa nos portões, sai de "Para aprovar" (arquivado, abaixo da régua).
+async function revalidar(id) {
+  const a = armazem(); const reg = await a.conteudos.obter(conta(), id);
+  if (!reg?.doc?.top) throw erro('Carrossel não encontrado.', 'NAO_ENCONTRADO', 404);
+  const c = reg.doc; if (c.top.estado !== 'concluida' || ['aprovado', 'publicado'].includes(c.status)) return { conteudo: c, bloqueios: [] };
+  const bl = portoes(c); if (!bl.length) return { conteudo: c, bloqueios: [] };
+  c.top.estado = 'abaixo_da_regua'; c.top.motivo = motivoPortoes(bl); c.status = 'arquivado'; c.studio = { ...(c.studio || {}), estado: 'descartado', job: null }; delete c.studio.erro;
+  M.registrar(c, 'sistema', 'top_abaixo_da_regua', c.top.motivo);
+  await a.conteudos.salvar(conta(), id, c, reg.rev);
+  return { conteudo: c, bloqueios: bl };
+}
+
+module.exports = { revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };

@@ -129,7 +129,7 @@ test('"Segundo …" em várias telas é apontado pela checagem', () => {
   assert.ok(r.problemas.some((p) => /Segundo/.test(p)));
 });
 
-test('na legenda, a frase com número sem fonte sai e o carrossel segue; data não conta como número', async () => {
+test('na legenda, a frase com número sem fonte (ou com data) sai e o carrossel segue', async () => {
   novo();
   const r0 = roteiro({ legenda: 'O índice chegou a 95% segundo boatos. O índice saiu de 71,7% para 82,9%. Matéria de 27/10/2026.' });
   const ia = iaFalsa({ roteiros: [r0, r0] });
@@ -139,6 +139,7 @@ test('na legenda, a frase com número sem fonte sai e o carrossel segue; data n�
   const v = M.versaoAtiva(await ler(c.id));
   assert.doesNotMatch(v.legenda, /95%/);
   assert.match(v.legenda, /71,7% para 82,9%/);
+  assert.doesNotMatch(v.legenda, /27\/10/);
 });
 
 test('tela de número sem o número vira manchete em vez de derrubar a versão', async () => {
@@ -207,4 +208,14 @@ test('reparar: carrossel pronto com afirmações trocadas por fora volta a passa
   assert.deepStrictEqual(gate(depois).filter((b) => b === 'numero_sem_origem'), []);
   assert.strictEqual(M.versaoAtiva(depois).hash, versao);
   assert.deepStrictEqual([depois.status, depois.studio.estado], ['em_revisao', 'pronto']);
+});
+
+test('carrossel que não passa nos portões de publicação (ex.: texto não cabe) não vai para "Para aprovar"', async () => {
+  novo(); const ia = iaFalsa(); const d = await deps(ia);
+  d.arte = { renderizarSlide: async () => ({ png: Buffer.from('png'), metrics: { cabe: false, elementos: [] } }) };
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: d });
+  assert.strictEqual(r.conteudo.top.estado, 'abaixo_da_regua');
+  assert.match(r.conteudo.top.motivo || r.conteudo.top.erros.at(-1).mensagem, /portões de publicação/);
+  assert.notStrictEqual((await ler(c.id)).status, 'em_revisao');
 });

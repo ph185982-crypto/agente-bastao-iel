@@ -218,6 +218,12 @@ async function registrar(id, { titulo = '', agora = Date.now() } = {}) {
   await gravarEstado(est);
 }
 
+// Atualiza o estado de um item no índice (ex.: carrossel revalidado que saiu de "Para aprovar").
+async function marcarEstado(id, estado) {
+  const est = await lerEstado(); const x = (est.criados || []).find((y) => y.id === id);
+  if (x) { x.estado = estado; await gravarEstado(est); }
+}
+
 // Marca no índice que o Pedro decidiu (aprovou ou descartou): deixa de contar como "pronto para aprovar".
 async function registrarDecisao(id, decisao) {
   const est = await lerEstado();
@@ -238,4 +244,4 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   };
 }
 
-module.exports = { deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, PADRAO };
+module.exports = { marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, PADRAO };
