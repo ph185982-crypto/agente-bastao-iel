@@ -22,7 +22,10 @@ async function executar(id,job){
       if(e.code==='CONFLITO')return;
       const reg=await studio.ler(id);if(reg.doc.studio?.job!==job)return;
       reg.doc.studio.estado='erro';reg.doc.studio.erro=e.message;
-      await armazem().conteudos.salvar(ACCOUNT.ig_id,id,reg.doc,reg.rev);return;
+      await armazem().conteudos.salvar(ACCOUNT.ig_id,id,reg.doc,reg.rev);
+      // Falha antes de chegar ao Instagram (ex.: trava de publicação): avisa o Pedro em vez de falhar em silêncio.
+      await require('../lib/push').notificar({corpo:`A publicação não saiu: ${String(e.message).slice(0,140)}`,tag:`publicacao-${id}`}).catch(()=>{});
+      return;
     }
   }
   const atual=await studio.processar(id,job);
