@@ -271,7 +271,17 @@ function postgres({ url, pool }) {
           (select count(*) from pico_conteudos_hist) revisoes`);
         return { banco: Number(r.rows[0].banco), arquivos: Number(r.rows[0].arquivos), revisoes: Number(r.rows[0].revisoes) };
       },
-      async compactar() { await iniciar(); for (const t of ['pico_arquivos', 'pico_conteudos_hist', 'pico_conteudos']) { try { await q(`vacuum ${t}`); } catch { /* sem permissão: o autovacuum cuida */ } } },
+      async compactar({ full = false } = {}) {
+        // VACUUM comum só marca o espaço como reaproveitável; o FULL reescreve a tabela e devolve o espaço (precisa de folga
+        // para a cópia: por isso vai da menor tabela viva para a maior).
+        await iniciar(); const out = [];
+        for (const t of ['pico_conteudos_hist', 'pico_jobs', 'pico_conteudos', 'pico_radar', 'pico_arquivos']) {
+          const antes = Number((await q('select pg_total_relation_size($1) b', [t]).catch(() => ({ rows: [{ b: 0 }] }))).rows[0].b);
+          try { await q(`vacuum ${full ? '(full) ' : ''}${t}`); out.push({ t, antes, depois: Number((await q('select pg_total_relation_size($1) b', [t])).rows[0].b) }); }
+          catch (e) { out.push({ t, antes, erro: String(e.message).slice(0, 120) }); }
+        }
+        return out;
+      },
     },
     publicacoes: {
       async obter(conta, id, rede) {
