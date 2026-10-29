@@ -14,7 +14,7 @@ const T = require('./pipeline');
 const conta = () => ACCOUNT.ig_id;
 const PADRAO = Object.freeze({
   ativo: true, meta_dia: 8, reserva: 2, candidatos_max_dia: 18,
-  inicio_producao: '05:00', fim_producao: '20:30',
+  inicio_producao: '03:00', fim_producao: '20:30', // começa de madrugada: às 8h já há carrosséis prontos
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
 });
@@ -181,6 +181,10 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
         est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pauta.id, titulo: pauta.titulo, estado: 'em_andamento' });
         est.usadas.push({ id: pauta.id, em: new Date(agora).toISOString() });
         est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: c.id, titulo: pauta.titulo };
+        // aproveita o resto da rodada para já avançar o carrossel recém-criado
+        if (restante() > 20000 && !deps.criar) {
+          try { const p2 = await T.passo(c.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) }); const x = est.criados[est.criados.length - 1]; x.estado = p2.conteudo.top.estado; r.avancados.push({ id: c.id, estado: x.estado }); } catch (e) { r.avisos.push(`${c.id}: ${String(e.message).slice(0, 120)}`); }
+        }
       } else r.avisos.push('Sem pauta nova agora (fila vazia ou descoberta adiada).');
     } catch (e) { r.avisos.push(`Criação falhou: ${String(e.message).slice(0, 160)}`); }
   }
