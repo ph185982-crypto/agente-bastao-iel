@@ -38,6 +38,8 @@ ESTRUTURA OBRIGATÓRIA (cada tela termina puxando a próxima — amarra de curio
 - Toda tela de prova lista "fatos": ["f1", ...] com os ids dos FATOS VERIFICADOS que usa. Toda tela: "titulo" até 8 palavras, "texto" até 35 palavras.
 - OPINIÃO COM FATO: a leitura pode ser dura, mas não afirma o que os fatos não dizem (ex.: não chame de "novo imposto" o que substitui outros; não diga "sem transparência" se não houver fato sobre isso). Diga "na minha leitura" quando for interpretação.
 - NÚMEROS: só os que estão nos FATOS VERIFICADOS, escritos do mesmo jeito (mesma unidade e período). Nenhum número a mais. Previsão é previsão: diga "projeção", "pode", "prevê".
+- SEM DATAS nas telas e na capa ("em 29/10", "nesta quinta"): fale "agora", "depois da eleição", "este ano" só se os fatos disserem.
+- SEM ASPAS: não coloque frase de ninguém entre aspas, a não ser copiada palavra por palavra de um FATO. Prefira "Fulano disse que…".
 - "fechamento": {"titulo": "frase de impacto de até 6 palavras que resume a tese (ex.: \"O resultado está nos números.\")", "texto": "1 frase de até 22 palavras com a posição do Pedro"}. A última tela também leva, fixos, "Eu comecei o Pedro Destrava por isso." e a chamada para seguir.
 - "cta_motivo": complete a frase "Segue o @pedro_destrava …" com 4 a 8 palavras ligadas à pauta, começando por "se você" (ex.: "se você também cobra resultado").
 - CONTEXTO DE FORA: o que não está nos FATOS (histórico de alguém, o que um partido "sempre disse") só entra como leitura do Pedro, marcado ("na minha leitura", "pra mim"), nunca como fato.
@@ -49,7 +51,8 @@ Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"
 const JURI = `Você é o júri editorial do @pedro_destrava. A audiência é de Instagram, veio de vídeos virais e só para por conflito. Seja duro: nota 9 é carrossel que você mandaria no seu grupo.
 Você recebe também os FATOS VERIFICADOS. Capa com erro de fato (ator errado, número que não está nos fatos, sentido invertido) vale 0 em "capa". Tese que critica o que a linha liberal defende (concessão, privatização, corte de gasto) perde pontos em "leitura".
 Para cada VERSÃO, dê notas de 0 a 10 em: "honestidade" (10 = toda afirmação, inclusive dentro da opinião, é sustentada pelos fatos; abaixo de 7 = afirma algo que os fatos não dizem, exagera ou distorce — explique em "honestidade_motivo"), "capa" (para o dedo de quem não segue?), "tela2" (entrega o que a capa prometeu e puxa a próxima?), "prova" (número claro e crível?), "leitura" (opinião clara do Pedro, sem panfleto vazio?), "envio" (alguém mandaria por DM?), "clareza" (dá para ler no celular, uma ideia por tela?). "nota" = média ponderada (capa ×2, envio ×2, demais ×1) / 8.
-Escolha as 2 melhores capas da versão vencedora (índices em "capas") e diga em 1 frase o principal defeito a corrigir.
+A nota de "capa" é a da MELHOR capa da versão (as capas fracas são descartadas, não derrubam a nota); só zere se TODAS tiverem erro de fato.
+Escolha as 2 melhores capas da versão vencedora (índices em "capas"), nunca uma capa com erro de fato, e diga em 1 frase o principal defeito a corrigir.
 Responda APENAS JSON: {"versoes":[{"indice":0,"notas":{"honestidade":0,"capa":0,"tela2":0,"prova":0,"leitura":0,"envio":0,"clareza":0},"nota":0,"defeito":"","honestidade_motivo":""}],"vencedora":0,"capas_escolhidas":[0,1]}`;
 
 module.exports = { FATOS, ANGULO, roteiro, JURI };
