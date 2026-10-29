@@ -47,3 +47,28 @@ test('app aberto: o dono cria o código no app, o app fecha, o login vale e publ
     for (const [k, v] of [['VERCEL', antes.v], ['APP_ACCESS_MODE', antes.m], ['APP_ACCESS_CODE', antes.c]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   }
 });
+
+test('cookie de leitura: imagem (GET) passa com o cookie; escrita (POST) só com o cabeçalho', async () => {
+  const antes = { v: process.env.VERCEL, m: process.env.APP_ACCESS_MODE, c: process.env.APP_ACCESS_CODE };
+  arm._definir(arm.memoria()); A._zerarDono();
+  delete process.env.VERCEL; delete process.env.APP_ACCESS_MODE; process.env.APP_ACCESS_CODE = 'codigo-do-teste-123';
+  const app = express(); app.use(express.json());
+  A.registrarRotas(app); app.use('/api', A.exigeAcesso);
+  app.get('/api/img', (req, res) => res.json({ ok: true })); app.post('/api/mudar', (req, res) => res.json({ ok: true }));
+  const s = app.listen(0); await new Promise((r) => s.once('listening', r)); const base = `http://127.0.0.1:${s.address().port}`;
+  try {
+    const login = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: 'codigo-do-teste-123' }) });
+    const ck = login.headers.get('set-cookie'); assert.match(ck, /pico_t=.+HttpOnly; SameSite=Strict/);
+    const cookie = ck.split(';')[0];
+    assert.strictEqual((await fetch(`${base}/api/img`)).status, 401);
+    assert.strictEqual((await fetch(`${base}/api/img`, { headers: { cookie } })).status, 200);
+    assert.strictEqual((await fetch(`${base}/api/mudar`, { method: 'POST', headers: { cookie } })).status, 401);
+    const { token } = await login.json();
+    const c2 = await fetch(`${base}/api/auth/cookie`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    assert.ok(c2.headers.get('set-cookie')?.startsWith('pico_t='));
+    assert.strictEqual((await fetch(`${base}/api/auth/cookie`, { method: 'POST' })).status, 401);
+  } finally {
+    s.close();
+    for (const [k, v] of [['VERCEL', antes.v], ['APP_ACCESS_MODE', antes.m], ['APP_ACCESS_CODE', antes.c]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});

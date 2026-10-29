@@ -323,4 +323,17 @@ function resumo(c) {
   return { id: c.id, titulo: c.titulo, estado: t.estado, etapa: t.etapa, rotulo: ROTULO[t.etapa] || t.etapa, motivo: t.motivo || null, nota: t.escolha?.nota ?? null, gatilhos: t.angulo?.gatilhos || null, tese: t.angulo?.tese || null, fatos: (t.fatos || []).length, fatos_descartados: (t.fatos_descartados || []).length, protagonista: t.protagonista || null, aviso_foto: t.aviso_foto || null, aviso_arte: t.aviso_arte || null, chamadas_ia: t.chamadas_ia || 0, erros: (t.erros || []).slice(-3) };
 }
 
-module.exports = { criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };
+// Conserta um carrossel pronto cujas afirmações foram trocadas por fora (ex.: a preparação antiga rodou nele): recompõe
+// afirmações, evidências e auditoria a partir dos fatos verificados. A versão (slides, textos, arte) não muda.
+async function reparar(id) {
+  const a = armazem(); const reg = await a.conteudos.obter(conta(), id);
+  if (!reg?.doc?.top) throw erro('Carrossel não encontrado.', 'NAO_ENCONTRADO', 404);
+  const c = reg.doc; if (c.top.estado !== 'concluida') throw erro('Só dá para consertar carrossel pronto.', 'TOP', 409);
+  montarVersao(c); auditar(c);
+  if (!['aprovado', 'publicado', 'arquivado'].includes(c.status)) { c.status = 'em_revisao'; c.studio = { estado: 'pronto', concluido_em: c.top.concluido_em || agoraISO(), origem: 'top' }; }
+  M.registrar(c, 'sistema', 'reparo', 'Afirmações e fontes recompostas a partir dos fatos verificados.');
+  await a.conteudos.salvar(conta(), id, c, reg.rev);
+  return c;
+}
+
+module.exports = { reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };

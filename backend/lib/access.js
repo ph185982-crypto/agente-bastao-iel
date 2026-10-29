@@ -80,10 +80,19 @@ function codigoConfere(tentativa) {
   return crypto.timingSafeEqual(h, Buffer.from(dono.hash, 'hex'));
 }
 
+// Imagens (<img src="/api/...">) não levam o cabeçalho Authorization: para leitura (GET/HEAD) o token também vale
+// num cookie HttpOnly, SameSite=Strict e restrito a /api. Escrita continua exigindo o cabeçalho (sem risco de CSRF).
+const COOKIE = 'pico_t';
+const cookieDe = (req) => { const m = String(req.headers?.cookie || '').match(/(?:^|;\s*)pico_t=([^;]+)/); return m ? decodeURIComponent(m[1]) : null; };
 const tokenDe = (req) => {
   const h = req.headers?.authorization || '';
-  return h.startsWith('Bearer ') ? h.slice(7) : null;
+  if (h.startsWith('Bearer ')) return h.slice(7);
+  return ['GET', 'HEAD'].includes(req.method) ? cookieDe(req) : null;
 };
+function gravarCookie(req, res, token, exp) {
+  const seguro = publicado() || req.secure || req.headers?.['x-forwarded-proto'] === 'https';
+  res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(token)}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, exp - Math.floor(Date.now() / 1000))}${seguro ? '; Secure' : ''}`);
+}
 
 const ipDe = (req) => String(req.headers?.['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || '?').split(',')[0].trim();
 
@@ -181,7 +190,15 @@ function registrarRotas(app) {
     }
     falhas.delete(ip);
     const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_S;
-    res.json({ protected: true, token: sign({ sub: 'pedro', exp }), expires_at: exp });
+    const token = sign({ sub: 'pedro', exp }); gravarCookie(req, res, token, exp);
+    res.json({ protected: true, token, expires_at: exp });
+  });
+  r.post('/sair', (req, res) => { res.setHeader('Set-Cookie', `${COOKIE}=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0`); res.json({ ok: true }); });
+  // Sessão já aberta (token só no navegador): grava o cookie de leitura para as imagens carregarem.
+  r.post('/cookie', (req, res) => {
+    const h = req.headers?.authorization || ''; const p = h.startsWith('Bearer ') ? verify(h.slice(7)) : null;
+    if (!p) return res.status(401).json({ error: 'Entre com o código de acesso.', code: 'AUTH_REQUIRED' });
+    gravarCookie(req, res, h.slice(7), p.exp); res.json({ ok: true });
   });
   // Fecha o app pelo próprio app: só enquanto ele está aberto ao público (depois disso, só com o código).
   r.post('/definir', async (req, res) => {
@@ -197,7 +214,8 @@ function registrarRotas(app) {
       await a.config.salvar(CONTA_ACESSO, { dono: novo });
       dono = novo; donoEm = Date.now();
       const exp = Math.floor(Date.now() / 1000) + TOKEN_TTL_S;
-      res.json({ protected: true, token: sign({ sub: 'pedro', exp }), expires_at: exp });
+      const token = sign({ sub: 'pedro', exp }); gravarCookie(req, res, token, exp);
+      res.json({ protected: true, token, expires_at: exp });
     } catch (e) { res.status(500).json({ error: 'Não foi possível guardar o código.', code: 'ACESSO' }); }
   });
   app.use('/api/auth', r);

@@ -190,3 +190,21 @@ test('pauta só de número e personagem (sem bolso nem contradição) é descart
   assert.strictEqual(r.conteudo.top.estado, 'descartada');
   assert.match(r.conteudo.top.erros.at(-1).mensagem, /bolso nem contradição/);
 });
+
+test('reparar: carrossel pronto com afirmações trocadas por fora volta a passar nos portões, sem mudar a versão', async () => {
+  novo(); const ia = iaFalsa();
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  await T.executarTudo(c.id, { deps: await deps(ia) });
+  const antes = await ler(c.id); const versao = M.versaoAtiva(antes).hash;
+  // simula a preparação antiga: troca as afirmações e deixa o estúdio em erro
+  antes.claims = antes.claims.map((k, i) => ({ ...k, id: `a${i + 1}` })); antes.status = 'rascunho'; antes.studio = { estado: 'erro', erro: 'IA indisponível' };
+  const reg = await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id); await arm.armazem().conteudos.salvar(ACCOUNT.ig_id, c.id, antes, reg.rev);
+  global.window = global.window || {}; const G = require('../../../static/qualityGates');
+  const gate = (d) => { const cl = M.clone(d); cl.claims.forEach((k) => { k.revisao = { ...(k.revisao || {}), confirmada_por_pedro: true }; }); return G.avaliar(cl, { conta: M.ACCOUNT_PIN }).bloqueios.map((b) => b.id); };
+  assert.ok(gate(await ler(c.id)).includes('numero_sem_origem'));
+  await T.reparar(c.id);
+  const depois = await ler(c.id);
+  assert.deepStrictEqual(gate(depois).filter((b) => b === 'numero_sem_origem'), []);
+  assert.strictEqual(M.versaoAtiva(depois).hash, versao);
+  assert.deepStrictEqual([depois.status, depois.studio.estado], ['em_revisao', 'pronto']);
+});

@@ -60,7 +60,10 @@ router.post('/criar',limita({max:8,janelaMs:60000,nome:'studio-criar'}),async(re
   try{const c=await studio.criar(req.body||{});await kick(c);const reg=await studio.ler(c.id);res.status(202).json(reg);}catch(e){erro(res,e);}
 });
 router.post('/:id/retomar',limita({max:8,janelaMs:60000,nome:'studio-retomar'}),async(req,res)=>{
-  try{let c=(await studio.ler(req.params.id)).doc;if(!['gerando','publicando'].includes(c.studio?.estado))c=await studio.reagendar(c.id,{acao:'retomar'});await kick(c);res.status(202).json(await studio.ler(c.id));}catch(e){erro(res,e);}
+  try{let c=(await studio.ler(req.params.id)).doc;
+    // Carrossel do piloto ("top") não passa pela preparação antiga: ela troca as afirmações e quebra a ligação número → fonte.
+    if(c.top)return res.status(409).json({error:'Este carrossel é do piloto automático e já vem pronto. Use "Refazer" para descartar e o piloto faz outro.',code:'TOP'});
+    if(!['gerando','publicando'].includes(c.studio?.estado))c=await studio.reagendar(c.id,{acao:'retomar'});await kick(c);res.status(202).json(await studio.ler(c.id));}catch(e){erro(res,e);}
 });
 // Aprovação do ROTEIRO (fluxo do monitor de notícias): aprovar libera a geração do carrossel; refazer escreve outro roteiro;
 // descartar arquiva. Nada aqui publica: publicar continua exigindo "Aprovar e publicar" no carrossel pronto.
@@ -77,6 +80,11 @@ router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'})
   try{
     if(req.body?.acao==='aprovar')try{await require('../lib/publicador').exigirAcessoProtegido();}catch(e){return res.status(e.status||403).json({error:e.message,code:e.code||'ACESSO_ABERTO'});}
     if(req.body?.acao==='aprovar' && (await require('../lib/publicador').config()).publish_paused) return res.status(409).json({error:'As publicações estão pausadas. Libere em Perfil para publicar.',code:'PAUSADO'});
+    if(req.body?.acao==='refazer'){const a=(await studio.ler(req.params.id)).doc;if(a.top){
+      // "Refazer" no carrossel do piloto = descartar este e liberar a vaga: o piloto produz outro na próxima rodada.
+      const reg=await armazem().conteudos.obter(ACCOUNT.ig_id,a.id);const d=reg.doc;d.status='arquivado';d.studio={...(d.studio||{}),estado:'descartado',job:null};delete d.studio.erro;
+      M.registrar(d,'pedro','descartado','Pediu outro carrossel no lugar deste.');await armazem().conteudos.salvar(ACCOUNT.ig_id,d.id,d,reg.rev);
+      await require('../lib/top/piloto').registrarDecisao(d.id,'descartado').catch(()=>{});return res.json(await studio.ler(d.id));}}
     const c=await studio.decidir(req.params.id,req.body||{});
     // Carrossel "top" (piloto): aprovar AGENDA no próximo horário da grade; "agora:true" publica na hora como antes.
     if(c.top&&['aprovar','descartar'].includes(req.body.acao))await require('../lib/top/piloto').registrarDecisao(c.id,req.body.acao==='aprovar'?'aprovado':'descartado').catch(()=>{});

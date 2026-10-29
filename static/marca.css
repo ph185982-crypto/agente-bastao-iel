@@ -280,3 +280,10 @@ h2 { letter-spacing: -.025em; font-weight: 800; }
 .st-agendados .st-hora::first-letter { text-transform: uppercase; }
 .st-agendados li b { grid-column: 1; font-size: 14px; }
 .st-agendados li button { grid-column: 2; grid-row: 1 / span 2; }
+
+/* Carrossel do piloto: Publicar agora (principal) · Agendar · Refazer */
+.st-decisionbar-top { grid-template-columns: 1fr 1fr; }
+.st-decisionbar-top .st-approve { grid-column: 1 / -1; order: -1; }
+.st-agendar { min-height: 52px; border-radius: 14px; border: 2px solid var(--pd-azul); background: var(--pd-cartao, #fff); color: var(--pd-azul); font-weight: 700; font-size: 16px; }
+.st-agendar:disabled { opacity: .5; }
+@media (max-width: 720px) { .st-decisionbar.st-decisionbar-top { grid-template-columns: 1fr 1fr; } }

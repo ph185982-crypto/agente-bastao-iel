@@ -120,6 +120,11 @@
     document.body.appendChild(el);
   }
 
+  // Imagens da prévia não levam o cabeçalho: com o token em mãos, pede o cookie de leitura (HttpOnly) ao servidor.
+  if (lerToken()) originalFetch('/api/auth/cookie', { method: 'POST', headers: { Authorization: `Bearer ${lerToken()}` } })
+    .then(() => document.querySelectorAll('img[src^="/api/"]').forEach((i) => { if (i.complete && !i.naturalWidth) i.src = i.src; }))
+    .catch(() => {});
+
   // Descobre no carregamento se precisa de código.
   originalFetch('/api/auth/status', { headers: lerToken() ? { Authorization: `Bearer ${lerToken()}` } : {} })
     .then((r) => r.json())
@@ -132,5 +137,5 @@
     })
     .catch(() => { window.__picoAuth = { protected: null }; });
 
-  window.PicoAuth = { sair: () => { gravaToken(''); location.reload(); }, pedirCodigo, criarCodigo };
+  window.PicoAuth = { sair: () => { gravaToken(''); originalFetch('/api/auth/sair', { method: 'POST' }).finally(() => location.reload()); }, pedirCodigo, criarCodigo };
 })();
