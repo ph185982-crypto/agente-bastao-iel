@@ -39,6 +39,7 @@ router.post('/carrosseis/:id/reparar', async (req, res) => { try { const c = awa
 router.post('/carrosseis/:id/revalidar', async (req, res) => {
   try { const r = await T.revalidar(String(req.params.id).slice(0, 80)); if (r.bloqueios.length) await Piloto.marcarEstado(r.conteudo.id, 'abaixo_da_regua'); res.json({ ...T.resumo(r.conteudo), bloqueios: r.bloqueios.map((b) => b.titulo) }); } catch (e) { erro(res, e); }
 });
+router.post('/carrosseis/:id/previas', async (req, res) => { try { res.json(await T.refazerPrevias(String(req.params.id).slice(0, 80))); } catch (e) { erro(res, e); } });
 router.post('/carrosseis/:id/desagendar', async (req, res) => { try { const c = await Piloto.desagendar(String(req.params.id).slice(0, 80)); res.json({ id: c?.id, agenda: c?.agenda || null }); } catch (e) { erro(res, e); } });
 router.get('/regua', (req, res) => res.json({ ...T.regua(), etapas: T.ETAPAS.map((e) => ({ id: e, rotulo: T.ROTULO[e] })) }));
 module.exports = router;

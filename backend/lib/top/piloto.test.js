@@ -152,8 +152,12 @@ test('limpeza do banco: apaga prévias de descartados e de versões antigas e fo
   const morto = M.novoConteudo({ titulo: 'morto' }); morto.status = 'arquivado'; await a.conteudos.salvar(conta, morto.id, morto, 0);
   const ativa = M.versaoAtiva(vivo).id;
   for (const ch of [`render:${vivo.id}:${ativa}:s1:h`, `render:${vivo.id}:v_antiga:s1:h`, `render:${morto.id}:v1:s1:h`, `render:c_sumiu:v1:s1:h`, 'img:f1', 'img:f_orfa', 'upload:encerramento']) await a.arquivos.salvar(conta, ch, Buffer.from('x'.repeat(10)), 'image/png');
+  // prévia reaproveitada: a versão ativa referencia a imagem gravada com o id da versão anterior
+  vivo.arte = { renders: [{ slide_id: 's1', versao: ativa, blob_key: `render:${vivo.id}:v_antiga:s1:reusa` }, { slide_id: 's1', versao: ativa, blob_key: `render:${vivo.id}:${ativa}:s1:h` }] };
+  const regV = await a.conteudos.obter(conta, vivo.id); await a.conteudos.salvar(conta, vivo.id, vivo, regV.rev);
+  await a.arquivos.salvar(conta, `render:${vivo.id}:v_antiga:s1:reusa`, Buffer.from('x'), 'image/jpeg');
   const r = await L.limpar();
   const resta = (await a.arquivos.listar(conta)).map((f) => f.chave).sort();
-  assert.deepStrictEqual(resta, [`render:${vivo.id}:${ativa}:s1:h`, 'img:f1', 'upload:encerramento'].sort());
+  assert.deepStrictEqual(resta, [`render:${vivo.id}:${ativa}:s1:h`, `render:${vivo.id}:v_antiga:s1:reusa`, 'img:f1', 'upload:encerramento'].sort());
   assert.strictEqual(r.apagados, 4);
 });
