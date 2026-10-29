@@ -57,9 +57,16 @@
       ${preview(c)}${diagnostico(c)}
       ${c.top?`<p class="st-juri"><b>Júri ${esc(Number(c.top.escolha?.nota||0).toFixed(1).replace('.',','))}</b> · ${esc(c.top.angulo?.tese||'')}</p>`:''}
       <div class="st-review-body">${c.studio?.erro?`<p class="st-inline-error" role="status">${esc(c.studio.erro)}</p>`:''}
-      ${!pronto?'<p class="st-preparing-note">Vou resolver as pendências e montar uma prévia completa. Você aprova uma única vez, no final.</p>':''}
-      <div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Refazer</button><button class="st-approve" data-action="${pronto?'st-aprovar':'st-preparar'}" data-id="${esc(c.id)}" ${ui.ocupado||pausado?'disabled':''}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':pausado?'Publicações pausadas':pronto?(c.top?'✓ Aprovar e agendar':'✓ Aprovar e publicar'):'Preparar automaticamente'}</button></div>${c.top&&pronto?'<p class="st-agenda-nota">Aprovado, entra no próximo horário livre da grade. Nada sai antes.</p>':''}
+      ${c.top?barraTop(c,pronto,g,pausado):`${!pronto?'<p class="st-preparing-note">Vou resolver as pendências e montar uma prévia completa. Você aprova uma única vez, no final.</p>':''}
+      <div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Refazer</button><button class="st-approve" data-action="${pronto?'st-aprovar':'st-preparar'}" data-id="${esc(c.id)}" ${ui.ocupado||pausado?'disabled':''}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':pausado?'Publicações pausadas':pronto?(c.top?'✓ Aprovar e agendar':'✓ Aprovar e publicar'):'Preparar automaticamente'}</button></div>${c.top&&pronto?'<p class="st-agenda-nota">Aprovado, entra no próximo horário livre da grade. Nada sai antes.</p>':''}`}
       <details class="st-caption"><summary>Ver legenda e detalhes</summary><p>${esc([v.legenda,v.cta,(v.hashtags||[]).join(' ')].filter(Boolean).join('\n\n'))}</p>${creditos(c)}<button class="st-text-button" data-action="cn-revisar" data-id="${esc(c.id)}">Ajustar manualmente</button></details></div></article>`;
+  }
+  // Carrossel do piloto: publicar agora ou agendar no próximo horário livre. Nunca passa pela preparação antiga.
+  function barraTop(c,pronto,g,pausado){
+    const oc=ui.ocupado?'disabled':'';
+    if(!pronto){const b=g.bloqueios[0]||{};return `<p class="st-inline-error" role="status"><b>${esc(b.titulo||'Falta um ajuste')}</b>${b.detalhe?` · ${esc(b.detalhe)}`:''}</p><div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${oc}>↻ Refazer</button><button class="st-approve" data-action="st-reparar" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span> Consertando…':'Consertar'}</button></div>`;}
+    if(pausado)return `<div class="st-decisionbar"><button class="st-approve" disabled>Publicações pausadas</button></div>`;
+    return `<div class="st-decisionbar st-decisionbar-top"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${oc}>↻ Refazer</button><button class="st-agendar" data-action="st-aprovar" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span>':'🕒 Agendar'}</button><button class="st-approve" data-action="st-publicar-agora" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':'✓ Publicar agora'}</button></div><p class="st-agenda-nota">Agendar: entra no próximo horário livre da grade (${esc((original._st.piloto?.config?.horarios||[]).join(' · ')||'09:00 · 11:00 · 12:30 · 15:00 · 17:00 · 18:30 · 20:00 · 21:30')}).</p>`;
   }
   function cartaoRoteiro(c){
     const v=versao(c),m=c.monitor||{};
@@ -172,6 +179,15 @@
           // Carrossel novo: padrão único "Pedro Destrava — Minimalista" (pauta no Radar). Reels e post único seguem pelo estúdio.
           if(s.formato==='carrossel'){const pd=await ctx.api('/api/radar/padrao').catch(()=>null);if(!pd||pd.ativo!==false){try{const r=await ctx.api('/api/radar/pautas',{method:'POST',body:{...(s.modo==='link'?{url:s.url.trim()}:{texto:s.texto.trim()}),origem:'estudio'}});ui.source.url='';ui.source.texto='';ctx.state.tab='radar';if(window.RadarUI){window.RadarUI._st.pautas.unshift(r.pauta);await window.RadarUI.carregar(ctx,{forcar:true});}ctx.toast('Pauta enviada ao Radar: pesquisa, texto e imagens no padrão Pedro Destrava — Minimalista.');}finally{ui.ocupado=null;ctx.render();}break;}}
           const reg=await ctx.api('/api/studio/criar',{method:'POST',body:{...(s.modo==='link'?{url:s.url.trim()}:{texto:s.texto.trim()}),formato:s.formato,estilo:s.estilo,objetivo:s.objetivo,voz:ctx.state.config.voice_profile,request_id:crypto.randomUUID()}});await adotar(reg);ui.source.url='';ui.source.texto='';ctx.state.tab='central';ui.aba='prontos';ctx.toast('Preparação iniciada. Pode acompanhar por aqui.');break;
+        }
+        case 'st-publicar-agora':{
+          if(ui.ocupado)return true;ui.ocupado=id;ctx.render();
+          const r=await window.Sync.enviar(c);if(!['igual','enviado'].includes(r.estado))throw new Error('Este conteúdo mudou em outro aparelho. Atualize a lista antes de continuar.');
+          const reg=await ctx.api(`/api/studio/${encodeURIComponent(id)}/decidir`,{method:'POST',body:{acao:'aprovar',hash:versao(c)?.hash,agora:true}});await adotar(reg);ui.selecionado=null;ctx.toast('Aprovado! Publicando no Instagram agora.');break;
+        }
+        case 'st-reparar':{
+          if(ui.ocupado)return true;ui.ocupado=id;ctx.render();
+          try{await ctx.api(`/api/top/carrosseis/${encodeURIComponent(id)}/reparar`,{method:'POST',body:{}});await atualizar({silencioso:true});ctx.toast('Consertado. Confira e aprove.');}finally{ui.ocupado=null;ctx.render();}return true;
         }
         case 'st-aprovar':case 'st-preparar':{
           if(ui.ocupado)return true;ui.ocupado=id;ctx.render();

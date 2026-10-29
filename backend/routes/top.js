@@ -35,6 +35,7 @@ router.post('/carrosseis/:id/reagendar', async (req, res) => {
     const c = await Piloto.agendar(id); res.json({ id: c.id, agenda: c.agenda });
   } catch (e) { erro(res, e); }
 });
+router.post('/carrosseis/:id/reparar', async (req, res) => { try { const c = await T.reparar(String(req.params.id).slice(0, 80)); res.json(T.resumo(c)); } catch (e) { erro(res, e); } });
 router.post('/carrosseis/:id/desagendar', async (req, res) => { try { const c = await Piloto.desagendar(String(req.params.id).slice(0, 80)); res.json({ id: c?.id, agenda: c?.agenda || null }); } catch (e) { erro(res, e); } });
 router.get('/regua', (req, res) => res.json({ ...T.regua(), etapas: T.ETAPAS.map((e) => ({ id: e, rotulo: T.ROTULO[e] })) }));
 module.exports = router;
