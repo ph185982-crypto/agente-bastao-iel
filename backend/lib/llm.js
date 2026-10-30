@@ -21,8 +21,10 @@ const PROVIDERS = [
     name: 'gemini',
     envKey: 'GEMINI_API_KEY',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    large: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'],
-    small: ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest'],
+    // Gemini 2.5 saiu do ar para contas novas (404). Medido em 30/10/2026: 3.5-flash responde em ~12 s com texto bom;
+    // 3.8-flash leva 100 s+ (não cabe nos 45 s da etapa); 3.1-pro é pago (429); 3.1-flash-lite em 4 s, mais raso.
+    large: ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.1-flash-lite'],
+    small: ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'],
   },
   {
     name: 'cerebras',
@@ -184,7 +186,7 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
   // texto do raciocínio na resposta. Se o provedor recusar o parâmetro, repete sem.
   const { esforco, preferirMelhor, ...base0 } = opts || {};
   let base = base0;
-  const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : {};
+  const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : /^gemini-3/i.test(model) ? { reasoning_effort: 'low' } : {};
   // Modelos de raciocínio da OpenAI (gpt-5.x, o*): sem temperature e com max_completion_tokens (o raciocínio também
   // consome tokens de saída, por isso a folga).
   if (provider.name === 'openai' && /^(gpt-5|o\d)/i.test(model)) {
@@ -343,7 +345,7 @@ function friendlyErrorMessage(err) {
 
 // Modelos FORTES o bastante para escrever o carrossel (ângulo, roteiro, júri). Os demais (qwen 27B, llama 8B, gemma 12B…)
 // servem para tarefas simples; para texto do Pedro, melhor esperar a cota voltar do que publicar texto raso.
-const FORTES = [/^gpt-5/, /^gpt-4\.1$/, /^gpt-4o$/, /^o\d/, /gemini-2\.5-(pro|flash)$/, /gemini-3/, /gpt-oss-120b/, /llama-3\.3-70b/, /llama-4-(maverick|scout)/, /deepseek-(chat|r1)/, /qwen3-235b/, /kimi-k2/];
+const FORTES = [/^gpt-5/, /^gpt-4\.1$/, /^gpt-4o$/, /^o\d/, /gemini-2\.5-(pro|flash)$/, /^gemini-3\.\d+-(flash|pro)(-preview)?$/, /gpt-oss-120b/, /llama-3\.3-70b/, /llama-4-(maverick|scout)/, /deepseek-(chat|r1)/, /qwen3-235b/, /kimi-k2/];
 const modeloForte = (model) => FORTES.some((r) => r.test(String(model || '')));
 // "Premium ligada" = existe algum provedor com modelo forte configurado (OpenAI com crédito, Gemini, Groq, Cerebras…).
 // IA_PREMIUM=0 desliga a exigência e aceita qualquer modelo.
