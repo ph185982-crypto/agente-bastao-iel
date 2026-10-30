@@ -432,9 +432,10 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
       c.top.ia = [...(c.top.ia || []).slice(-11), { etapa: c.top.etapa, provider: resultado?.llm?.provider || null, model: resultado?.llm?.model || null }];
       // … e, com a premium ligada, nunca escreve ângulo/roteiro/júri com modelo gratuito: espera a premium voltar.
       const LLM = require('../llm');
-      if (args.preferirMelhor && (deps.premiumLigado ? deps.premiumLigado() : LLM.premiumLigado()) && resultado?.llm?.provider !== 'openai') {
-        const ue = (deps.ultimoErro || LLM.ultimoErro)('openai'); const semCredito = /credit|insufficient_quota|billing/i.test(`${ue?.code || ''} ${ue?.mensagem || ''}`);
-        throw Object.assign(new Error(semCredito ? 'A OpenAI está sem créditos: recarregue em platform.openai.com → Billing. O piloto espera para não escrever com modelo fraco.' : `IA premium (OpenAI) indisponível (${ue?.code || ue?.status || 'sem resposta'}); espero em vez de escrever com modelo fraco.`), { status: 429, code: 'IA_PREMIUM', esperar_min: semCredito ? 60 : 15, sem_credito: semCredito });
+      const forte = deps.modeloForte || LLM.modeloForte;
+      if (args.preferirMelhor && (deps.premiumLigado ? deps.premiumLigado() : LLM.premiumLigado()) && !forte(resultado?.llm?.model)) {
+        const ue = (deps.ultimoErro || LLM.ultimoErro)('openai'); const semCredito = !!process.env.OPENAI_API_KEY && /credit|insufficient_quota|billing/i.test(`${ue?.code || ''} ${ue?.mensagem || ''}`);
+        throw Object.assign(new Error(semCredito ? 'A OpenAI está sem créditos e nenhum outro modelo forte respondeu. O piloto espera para não escrever com modelo fraco.' : `Nenhum modelo forte disponível agora (${resultado?.llm?.provider || '?'}/${resultado?.llm?.model || '?'} é fraco); espero em vez de escrever raso.`), { status: 429, code: 'IA_PREMIUM', esperar_min: semCredito ? 60 : 15, sem_credito: semCredito });
       }
       return resultado;
     },
