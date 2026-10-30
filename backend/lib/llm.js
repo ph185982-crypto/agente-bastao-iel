@@ -100,6 +100,8 @@ function errorScope(err, provider) {
     return 'fatal'; // 400 de verdade (payload malformado) — não adianta insistir
   }
   if (status === 401 || status === 403) return 'provider'; // chave inválida/sem acesso
+  // Gemini devolve 503 "model is overloaded" por MODELO: o próximo modelo do mesmo provedor costuma responder.
+  if (status === 503 && provider?.name === 'gemini') return 'model';
   // Groq reports quotas per model. A full quota on 120B does not mean the
   // configured 20B model is unavailable. Account/billing/global limits still
   // stop the provider, and exhausting all models preserves the 429 for backoff.
@@ -264,6 +266,11 @@ async function cascade(opts, requestOptions) {
       try {
         return await attempt(provider, model);
       } catch (err) {
+        // 503 (sobrecarga momentânea): uma segunda tentativa 2 s depois antes de desistir do modelo.
+        if (err?.status === 503) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try { return await tryModel(provider, model, opts, requestOptions, cont); } catch (e2) { err = e2; }
+        }
         const scope = remember(provider, model, err);
         if (scope === 'fatal') throw err;
         if (scope === 'provider') { providerDown = true; break; }
@@ -349,5 +356,6 @@ const FORTES = [/^gpt-5/, /^gpt-4\.1$/, /^gpt-4o$/, /^o\d/, /gemini-2\.5-(pro|fl
 const modeloForte = (model) => FORTES.some((r) => r.test(String(model || '')));
 // "Premium ligada" = existe algum provedor com modelo forte configurado (OpenAI com crédito, Gemini, Groq, Cerebras…).
 // IA_PREMIUM=0 desliga a exigência e aceita qualquer modelo.
-const premiumLigado = () => process.env.IA_PREMIUM !== '0' && availableProviders().some((p) => [...(p.large || [])].some(modeloForte));
-module.exports = { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE, ultimoErro, premiumLigado, modeloForte, FORTES };
+const provedoresFortes = () => availableProviders().filter((p) => [...(p.large || [])].some(modeloForte)).map((p) => p.name);
+const premiumLigado = () => process.env.IA_PREMIUM !== '0' && provedoresFortes().length > 0;
+module.exports = { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE, ultimoErro, premiumLigado, provedoresFortes, modeloForte, FORTES };

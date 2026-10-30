@@ -457,7 +457,13 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
       // Cota da IA esgotada (429): não é defeito do carrossel. Espera a cota voltar em vez de descartar.
       if (e.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(e.message))) {
         const dia = /per day|\bTPD\b/i.test(String(e.message)) || e.code === 'IA_PREMIUM';
-        c.top.adiar_ate = new Date(Date.now() + (e.esperar_min || (dia ? 60 : 2)) * 60000).toISOString(); c.top.cota_dia = dia; c.top.sem_credito = !!e.sem_credito;
+        // Espera longa (1 h) só quando TODOS os provedores fortes estão sem cota/crédito; se algum só oscilou (503, timeout),
+        // volta em 10 min.
+        const LLMx = require('../llm'); const fortes = (deps.provedoresFortes || LLMx.provedoresFortes)();
+        const semCota = (n) => { const u = (deps.ultimoErro || LLMx.ultimoErro)(n); return u && u.status === 429; };
+        const todosSemCota = fortes.length === 0 || fortes.every(semCota);
+        const minutos = e.esperar_min && e.sem_credito ? (todosSemCota ? 60 : 10) : dia ? (todosSemCota ? 60 : 10) : 2;
+        c.top.adiar_ate = new Date(Date.now() + minutos * 60000).toISOString(); c.top.cota_dia = dia && todosSemCota; c.top.sem_credito = !!e.sem_credito && todosSemCota;
         c.top.erros.push({ etapa, em: agoraISO(), mensagem: String(e.message).slice(0, 240), codigo: 'COTA_IA', tentativa: 0 });
         await gravar(); break;
       }
