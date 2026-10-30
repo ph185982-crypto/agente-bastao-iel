@@ -71,10 +71,13 @@ async function renderizar(slide, ctx, imagem) {
   // Texto: ocupa o alto; com foto, a foto fica logo abaixo do texto (como num tweet com imagem).
   const altTexto = temFoto ? yFim - yTexto - foto.h - 40 : yFim - yTexto;
   const texto = String(slide.titulo && ultimo ? `**${slide.titulo}** ${slide.texto || ''}` : slide.texto || '').trim();
-  const b = fit({ texto, k: 'iCorpo', larg: LARG, alt: altTexto, max: temFoto ? 60 : 72, min: 40, papel: 't_corpo' });
-  svg += colocar(b, { x: MARGEM, ytop: yTexto, k: 'iCorpo', cor: COR.texto });
+  const b = fit({ texto, k: 'iCorpo', larg: LARG, alt: altTexto, max: temFoto ? 60 : 76, min: 40, papel: 't_corpo' });
+  // Sem foto, o texto fica centralizado na área livre (em cima do rodapé); com foto, logo abaixo do cabeçalho, como num tweet.
+  const altLivre = ultimo ? altTexto - 190 : altTexto; // no último, o espaço da chamada fica reservado embaixo
+  const ytop = temFoto ? yTexto : yTexto + Math.max(0, (altLivre - b.altura) / 2);
+  svg += colocar(b, { x: MARGEM, ytop, k: 'iCorpo', cor: COR.texto });
   blocos.push({ nome: 'texto', ...A.resumo(b, altTexto) });
-  let y = yTexto + b.altura;
+  let y = ytop + b.altura;
   if (temFoto) { camadas.push({ input: foto.input, left: MARGEM, top: Math.round(y + 40) }); y += 40 + foto.h; }
 
   if (ultimo) {
