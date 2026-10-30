@@ -66,7 +66,7 @@
     const oc=ui.ocupado?'disabled':'';
     if(!pronto){const b=g.bloqueios[0]||{};return `<p class="st-inline-error" role="status"><b>${esc(b.titulo||'Falta um ajuste')}</b>${b.detalhe?` · ${esc(b.detalhe)}`:''}</p><div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${oc}>↻ Refazer</button><button class="st-approve" data-action="st-reparar" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span> Consertando…':'Consertar'}</button></div>`;}
     if(pausado)return `<div class="st-decisionbar"><button class="st-approve" disabled>Publicações pausadas</button></div>`;
-    return `<div class="st-decisionbar st-decisionbar-top"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${oc}>↻ Refazer</button><button class="st-agendar" data-action="st-aprovar" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span>':'🕒 Agendar'}</button><button class="st-approve" data-action="st-publicar-agora" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':'✓ Publicar agora'}</button></div><p class="st-agenda-nota">Agendar: entra no próximo horário livre da grade (${esc((original._st.piloto?.config?.horarios||[]).join(' · ')||'09:00 · 11:00 · 12:30 · 15:00 · 17:00 · 18:30 · 20:00 · 21:30')}).</p>`;
+    return `<div class="st-decisionbar st-decisionbar-top"><button class="st-approve" data-action="st-publicar-agora" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':'✓ Publicar agora'}</button><button class="st-agendar" data-action="st-aprovar" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span>':'🕒 Agendar'}</button><button class="st-reject st-descartar-btn" data-action="st-descartar-direto" data-id="${esc(c.id)}" ${oc}>${ui.ocupado===c.id?'<span class="es-spin"></span>':'✕ Descartar'}</button></div><p class="st-agenda-nota">Agendar: entra no próximo horário livre da grade (${esc((original._st.piloto?.config?.horarios||[]).join(' · ')||'09:00 · 11:00 · 12:30 · 15:00 · 17:00 · 18:30 · 20:00 · 21:30')}).</p><button class="st-text-button" data-action="st-rejeitar" data-id="${esc(c.id)}" ${oc}>↻ Refazer com um ajuste</button>`;
   }
   function cartaoRoteiro(c){
     const v=versao(c),m=c.monitor||{};
@@ -188,6 +188,11 @@
         case 'st-reparar':{
           if(ui.ocupado)return true;ui.ocupado=id;ctx.render();
           try{await ctx.api(`/api/top/carrosseis/${encodeURIComponent(id)}/reparar`,{method:'POST',body:{}});await atualizar({silencioso:true});ctx.toast('Consertado. Confira e aprove.');}finally{ui.ocupado=null;ctx.render();}return true;
+        }
+        case 'st-descartar-direto':{
+          if(ui.ocupado)return true;ui.ocupado=id;ctx.render();
+          const r=await window.Sync.enviar(c);if(!['igual','enviado'].includes(r.estado))throw new Error('Atualize a lista antes de descartar.');
+          const reg=await ctx.api(`/api/studio/${encodeURIComponent(id)}/decidir`,{method:'POST',body:{acao:'descartar',motivos:[],detalhe:'',hash:versao(c)?.hash}});await adotar(reg);ui.selecionado=null;ctx.toast(c.top?'Descartado. O piloto faz outro no lugar.':'Conteúdo descartado.');break;
         }
         case 'st-aprovar':case 'st-preparar':{
           if(ui.ocupado)return true;ui.ocupado=id;ctx.render();
