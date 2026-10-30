@@ -74,3 +74,9 @@ test('discovery never sends a text draft to speech or guard models', async () =>
   assert.equal(r.__llm.model, 'text-chat-fixture');
   assert(!f.calls.some(model => /orpheus|whisper|safeguard|allam/.test(model)));
 });
+
+test('modelo forte: a lista reconhece os fortes dos gratuitos e rejeita os fracos', () => {
+  const L = require('./llm');
+  for (const m of ['gpt-5.5', 'gemini-2.5-flash', 'gemini-2.5-pro', 'openai/gpt-oss-120b', 'llama-3.3-70b', 'deepseek/deepseek-chat-v3-0324:free']) require('node:assert').ok(L.modeloForte(m), m);
+  for (const m of ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b', 'llama3.1-8b', 'google/gemma-3-12b-it:free', 'gpt-4o-mini', 'gemini-2.0-flash-lite']) require('node:assert').ok(!L.modeloForte(m), m);
+});

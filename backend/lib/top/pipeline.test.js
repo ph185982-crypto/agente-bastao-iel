@@ -296,7 +296,8 @@ test('formato tweet: capa = 1º tweet, uma frase por slide, fechamento com chama
 
 test('IA premium ligada mas a chamada caiu no gratuito: espera (não escreve com modelo fraco) e explica se é falta de crédito', async () => {
   novo(); const ia = iaFalsa();
-  const d = { ...(await deps(ia)), premiumLigado: () => true, ultimoErro: () => ({ status: 429, code: 'credit_balance_exhausted', mensagem: 'You have no credits remaining.' }) };
+  const d = { ...(await deps(ia)), premiumLigado: () => true, modeloForte: () => false, ultimoErro: () => ({ status: 429, code: 'credit_balance_exhausted', mensagem: 'You have no credits remaining.' }) };
+  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'sk-teste';
   const c = await T.criar({ url: 'https://exemplo.test/materia' });
   const r = await T.passo(c.id, { deps: d, orcamentoMs: 15000 });
   assert.strictEqual(r.conteudo.top.estado, 'em_andamento');

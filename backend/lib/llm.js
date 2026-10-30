@@ -21,8 +21,8 @@ const PROVIDERS = [
     name: 'gemini',
     envKey: 'GEMINI_API_KEY',
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    large: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'],
-    small: ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest'],
+    large: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-flash-latest'],
+    small: ['gemini-2.5-flash-lite', 'gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-flash-latest'],
   },
   {
     name: 'cerebras',
@@ -258,6 +258,7 @@ async function cascade(opts, requestOptions) {
     let providerDown = false;
     for (const model of fixed) {
       if (attempted.has(`${provider.name}/${model}`)) continue;
+      if (opts.preferirMelhor && process.env.IA_PREMIUM !== '0' && !modeloForte(model)) continue; // texto do Pedro só com modelo forte
       try {
         return await attempt(provider, model);
       } catch (err) {
@@ -277,7 +278,7 @@ async function cascade(opts, requestOptions) {
     if (providerDown) continue;
 
     // Lista fixa esgotada — pergunta ao provedor o que ele tem hoje.
-    const discovered = (await discoverModels(provider)).filter(id => !attempted.has(`${provider.name}/${id}`));
+    const discovered = (await discoverModels(provider)).filter(id => !attempted.has(`${provider.name}/${id}`) && !(opts.preferirMelhor && process.env.IA_PREMIUM !== '0' && !modeloForte(id)));
     for (const model of discovered.slice(0, 6)) {
       try {
         return await attempt(provider, model);
@@ -340,5 +341,11 @@ function friendlyErrorMessage(err) {
   return 'Não foi possível gerar o conteúdo agora. Tente novamente em instantes.';
 }
 
-const premiumLigado = () => !!process.env.OPENAI_API_KEY && process.env.IA_PREMIUM !== '0';
-module.exports = { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE, ultimoErro, premiumLigado };
+// Modelos FORTES o bastante para escrever o carrossel (ângulo, roteiro, júri). Os demais (qwen 27B, llama 8B, gemma 12B…)
+// servem para tarefas simples; para texto do Pedro, melhor esperar a cota voltar do que publicar texto raso.
+const FORTES = [/^gpt-5/, /^gpt-4\.1$/, /^gpt-4o$/, /^o\d/, /gemini-2\.5-(pro|flash)$/, /gemini-3/, /gpt-oss-120b/, /llama-3\.3-70b/, /llama-4-(maverick|scout)/, /deepseek-(chat|r1)/, /qwen3-235b/, /kimi-k2/];
+const modeloForte = (model) => FORTES.some((r) => r.test(String(model || '')));
+// "Premium ligada" = existe algum provedor com modelo forte configurado (OpenAI com crédito, Gemini, Groq, Cerebras…).
+// IA_PREMIUM=0 desliga a exigência e aceita qualquer modelo.
+const premiumLigado = () => process.env.IA_PREMIUM !== '0' && availableProviders().some((p) => [...(p.large || [])].some(modeloForte));
+module.exports = { createCompatClient, friendlyErrorMessage, hasLlmKey, NO_LLM_KEY_MESSAGE, ultimoErro, premiumLigado, modeloForte, FORTES };

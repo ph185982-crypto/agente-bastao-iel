@@ -36,13 +36,15 @@ exigindo o toque do Pedro.
 
 O editor (etapa `angulo`) escolhe o formato; o piloto **alterna** tweet × reportagem a cada pauta para o feed variar; `POST /api/top/carrosseis` aceita `formato` para forçar. O formato tweet é o que mais engaja no nicho (referência: @thiago.nigro, 150–380 mil curtidas por carrossel).
 
-## IA premium (OpenAI) e créditos
+## Modelos fortes (com ou sem OpenAI)
 
-Com `OPENAI_API_KEY` na produção, as etapas criativas (ângulo, roteiro, júri) vão primeiro ao modelo `IA_PREMIUM_MODELO`
-(hoje `gpt-5.5`, ~US$ 0,15 por carrossel pronto). Se a OpenAI não responder (sem créditos, limite), o pipeline **não escreve
-com o modelo gratuito**: o carrossel espera (1 h sem créditos; 15 min em outros erros), o piloto não abre pauta nova e o
-Pedro recebe um aviso no celular uma vez por dia. Créditos: platform.openai.com → Settings → Billing. Para desligar a
-regra e aceitar o gratuito: `IA_PREMIUM=0`. Cada carrossel guarda em `top.ia` qual IA escreveu cada etapa.
+As etapas criativas (ângulo, roteiro, júri) só rodam em **modelo forte** (`llm.FORTES`): gpt-5.x (OpenAI, pago, ~US$ 0,15
+por carrossel), Gemini 2.5 Pro/Flash (Google AI Studio, gratuito), gpt-oss-120b (Groq, gratuito, 200 mil tokens/dia),
+Llama 3.3 70B (Cerebras, gratuito, 1 milhão de tokens/dia), DeepSeek (OpenRouter, gratuito). A cascata pula os fracos
+(qwen 27B, llama 8B, gemma 12B, gpt-4o-mini) nessas etapas. Se nenhum forte responder (cotas esgotadas, OpenAI sem
+créditos), o carrossel **espera** (1 h sem créditos; 15 min em outros casos), o piloto não abre pauta nova e o Pedro recebe
+aviso. Para aceitar qualquer modelo: `IA_PREMIUM=0`. Cada carrossel guarda em `top.ia` qual IA escreveu cada etapa.
+Chaves gratuitas: `GEMINI_API_KEY` (aistudio.google.com), `CEREBRAS_API_KEY` (cloud.cerebras.ai), `OPENROUTER_API_KEY`.
 
 ## Piloto automático (produção diária; o Pedro só aprova)
 `backend/lib/top/piloto.js` · rotas `GET/PUT /api/top/piloto`, `POST /api/top/piloto/rodada`, `POST /api/top/carrosseis/:id/desagendar`.
