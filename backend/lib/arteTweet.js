@@ -12,7 +12,7 @@ const { W, H, esc, ARQ } = A;
 const MARGEM = 72; const LARG = W - 2 * MARGEM;
 const COR = { fundo: '#FFFFFF', texto: '#0F1419', mudo: '#536471', linha: '#E6E8EB', marca: '#2448FF' };
 const AVATAR = path.join(__dirname, '..', 'assets', 'pedro-perfil.png');
-const NOME = 'Pedro Destrava';
+const NOME = ACCOUNT.nome || 'Pedro Martins';
 const D_AVATAR = 108; const Y_TOPO = 84;
 
 let _avatar;
