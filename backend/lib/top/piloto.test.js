@@ -37,7 +37,7 @@ test('rodada na janela de produção: escolhe a pauta de maior prioridade com li
   };
   const r = await Pi.rodada({ agora: SP('2026-10-29', '06:00'), deps });
   assert.strictEqual(r.criado.titulo, 'Alta');
-  assert.deepStrictEqual(criados[0], { url: 'https://agenciabrasil.ebc.com.br/b', titulo: 'Alta', origem: 'piloto', formato: 'tweet' });
+  assert.deepStrictEqual(criados[0], { url: 'https://agenciabrasil.ebc.com.br/b', titulo: 'Alta', origem: 'piloto', formato: 'reportagem' });
   // fora da janela de produção não cria
   const r2 = await Pi.rodada({ agora: SP('2026-10-29', '23:30'), deps });
   assert.strictEqual(r2.criado, null);

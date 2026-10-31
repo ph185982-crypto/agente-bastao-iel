@@ -17,6 +17,7 @@ const PADRAO = Object.freeze({
   inicio_producao: '03:00', fim_producao: '20:30', // começa de madrugada: às 8h já há carrosséis prontos
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
+  formato_padrao: 'reportagem', // 'reportagem' (visual da marca) | 'tweet' | 'alterna'
 });
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 const erro = (msg, status = 400) => Object.assign(new Error(msg), { status, code: 'PILOTO' });
@@ -34,6 +35,7 @@ function validar(patch = {}) {
   const inteiro = (k, min, max) => { if (!(k in patch)) return; const n = Number(patch[k]); if (!Number.isInteger(n) || n < min || n > max) throw erro(`${k} deve ser um inteiro de ${min} a ${max}.`); out[k] = n; };
   inteiro('meta_dia', 1, 15); inteiro('reserva', 0, 5); inteiro('candidatos_max_dia', 1, 30);
   for (const k of ['inicio_producao', 'fim_producao']) if (k in patch) { if (!HORA.test(patch[k])) throw erro(`${k} deve estar no formato HH:MM.`); out[k] = patch[k]; }
+  if ('formato_padrao' in patch) { if (!['reportagem', 'tweet', 'alterna'].includes(patch.formato_padrao)) throw erro('formato_padrao deve ser reportagem, tweet ou alterna.'); out.formato_padrao = patch.formato_padrao; }
   for (const k of ['horarios', 'janelas_aprovacao']) if (k in patch) {
     const l = Array.isArray(patch[k]) ? [...new Set(patch[k].map(String).map((x) => x.trim()))].sort() : null;
     if (!l || !l.length || l.length > 15 || !l.every((x) => HORA.test(x))) throw erro(`${k} deve ser uma lista de horários HH:MM (até 15).`);
@@ -199,11 +201,11 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
     try {
       const pauta = await proximaPauta(est, { agora, deps, restante });
       if (pauta) {
-        // Alterna o formato visual (tweet × reportagem) para o feed não ficar igual.
-        const ultimo = [...est.criados].reverse().find((x) => x.formato)?.formato;
-        const formato = ultimo === 'tweet' ? 'reportagem' : 'tweet';
-        const c = await (deps.criar || T.criar)({ url: pauta.url, titulo: pauta.titulo, origem: 'piloto', formato });
-        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pauta.id, titulo: pauta.titulo, estado: 'em_andamento', formato });
+        // Formato padrão do feed: "reportagem" (o visual da marca). Dá para mudar em config.piloto (formato_padrao).
+        const formato = ['tweet', 'reportagem', 'alterna'].includes(cfg.formato_padrao) ? cfg.formato_padrao : 'reportagem';
+        const fmt = formato === 'alterna' ? ([...est.criados].reverse().find((x) => x.formato)?.formato === 'tweet' ? 'reportagem' : 'tweet') : formato;
+        const c = await (deps.criar || T.criar)({ url: pauta.url, titulo: pauta.titulo, origem: 'piloto', formato: fmt });
+        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pauta.id, titulo: pauta.titulo, estado: 'em_andamento', formato: fmt });
         est.usadas.push({ id: pauta.id, em: new Date(agora).toISOString() });
         est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: c.id, titulo: pauta.titulo };
         // aproveita o resto da rodada para já avançar o carrossel recém-criado
