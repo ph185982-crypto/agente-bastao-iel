@@ -297,7 +297,7 @@ test('formato tweet: capa = 1º tweet, uma frase por slide, fechamento com chama
 test('IA premium ligada mas a chamada caiu no gratuito: espera (não escreve com modelo fraco) e explica se é falta de crédito', async () => {
   novo(); const ia = iaFalsa();
   const d = { ...(await deps(ia)), premiumLigado: () => true, modeloForte: () => false, ultimoErro: () => ({ status: 429, code: 'credit_balance_exhausted', mensagem: 'You have no credits remaining.' }) };
-  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'sk-teste';
+  const antesKey = process.env.OPENAI_API_KEY; process.env.OPENAI_API_KEY = antesKey || 'sk-teste';
   const c = await T.criar({ url: 'https://exemplo.test/materia' });
   const r = await T.passo(c.id, { deps: d, orcamentoMs: 15000 });
   assert.strictEqual(r.conteudo.top.estado, 'em_andamento');
@@ -305,4 +305,32 @@ test('IA premium ligada mas a chamada caiu no gratuito: espera (não escreve com
   assert.ok(r.conteudo.top.sem_credito && Date.parse(r.conteudo.top.adiar_ate) > Date.now() + 50 * 60000);
   assert.match(r.conteudo.top.erros.at(-1).mensagem, /sem créditos/);
   assert.ok(r.conteudo.top.ia.some((x) => x.etapa === 'fatos' && x.provider === 'simulado'), 'registrou qual IA escreveu');
+  if (antesKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = antesKey;
+});
+
+test('empreendedor: pauta sem relação com quem empreende é descartada; o fechamento pede "Manda pra…" antes de seguir', async () => {
+  novo();
+  const fora = iaFalsa({ angulo: { ...ANGULO, formato: 'tweet', gatilhos: { ...ANGULO.gatilhos, empreendedor: 0 } } });
+  const c0 = await T.criar({ url: 'https://exemplo.test/materia', formato: 'tweet' });
+  const r0 = await T.executarTudo(c0.id, { deps: await deps(fora) });
+  assert.strictEqual(r0.conteudo.top.estado, 'descartada');
+  assert.match(r0.conteudo.top.motivo, /quem empreende/);
+
+  novo();
+  const rt = { capas: [{ texto: 'Prometeram meta. Entregaram o **maior patamar**.', mecanismo: 'contradicao' }], telas: [
+    { papel: 'gap', texto: 'Quem tem CNPJ sente primeiro quando o juro sobe.', imagem_busca: null, fatos: ['a'] },
+    { papel: 'prova', texto: 'O índice saiu de 71,7% para 82,9%.', imagem_busca: null, fatos: ['a', 'b'] },
+    { papel: 'consequencia', texto: 'Crédito mais caro é venda a menos no fim do mês.', imagem_busca: null, fatos: [] },
+    { papel: 'consequencia', texto: 'E o prazo do fornecedor não espera a sua meta.', imagem_busca: null, fatos: [] },
+    { papel: 'leitura', texto: 'Na minha leitura, meta sem resultado é promessa.', imagem_busca: null, fatos: ['a'] }],
+    legenda: 'O índice saiu de 71,7% para 82,9%. Marca o sócio que precisa ler isso.', hashtags: ['economia', 'juros', 'empresa'], cta_motivo: 'se você paga imposto antes de vender',
+    fechamento: { titulo: 'Sabe o que ninguém te conta?', texto: 'Quem produz paga a conta primeiro.' } };
+  const ia = iaFalsa({ roteiros: [rt, rt], angulo: { ...ANGULO, formato: 'tweet', enviar_para: 'seu contador', gatilhos: { ...ANGULO.gatilhos, empreendedor: 3 } } });
+  const c = await T.criar({ url: 'https://exemplo.test/materia', formato: 'tweet' });
+  const r = await T.executarTudo(c.id, { deps: await deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  const v = M.versaoAtiva(await ler(c.id)); const ult = v.slides.at(-1);
+  assert.strictEqual(ult.cta, 'Manda pra seu contador.');
+  assert.match(ult.cta_apoio, /^Segue o @pedro_destrava se você paga imposto/);
+  assert.ok(ia.chamadas.some((x) => x.tipo === 'roteiro' && /PARA QUEM VOCÊ ESCREVE/.test(x.sistema)));
 });
