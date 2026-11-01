@@ -16,8 +16,8 @@ const K = require('./checagem');
 const conta = () => ACCOUNT.ig_id;
 const agoraISO = () => new Date().toISOString();
 const erro = (msg, code, status = 400) => Object.assign(new Error(msg), { code, status });
-const ETAPAS = ['ler', 'fatos', 'angulo', 'roteiro', 'juri', 'foto', 'arte', 'fim'];
-const ROTULO = { ler: 'Lendo a matéria', fatos: 'Separando os fatos e conferindo na matéria', angulo: 'Testando se a pauta vale (teste do grupo)', roteiro: 'Escrevendo as versões', juri: 'Júri escolhendo a melhor', foto: 'Buscando foto real com licença', arte: 'Desenhando os slides', fim: 'Pronto para aprovar' };
+const ETAPAS = ['ler', 'fatos', 'angulo', 'roteiro', 'juri', 'painel', 'foto', 'arte', 'fim'];
+const ROTULO = { ler: 'Lendo a matéria', fatos: 'Separando os fatos e conferindo na matéria', angulo: 'Testando se a pauta vale (teste do grupo)', roteiro: 'Escrevendo as versões', juri: 'Júri escolhendo a melhor', painel: 'Painel de 1.000 pessoas avaliando a copy', foto: 'Buscando foto real com licença', arte: 'Desenhando os slides', fim: 'Pronto para aprovar' };
 // nucleo_min: bolso OU contradição precisa pesar (número e personagem sozinhos dão post de cotação, não de tese).
 const REGUA = { gatilhos_min: 5, nota_min: 7.5, nucleo_min: 2 };
 const LEASE_MS = 70000; const MAX_TENTATIVAS = 3;
@@ -199,6 +199,31 @@ E.juri = async (c, ctx) => {
     // mais uma rodada de roteiro com o defeito apontado
     c.top.reescritas = 0;
     c.top.versoes = [{ ...v, checagem: { ok: false, problemas: [`O júri deu ${nota.toFixed(1)}: ${v.juri.defeito}`] } }];
+    return { voltar: 'roteiro' };
+  }
+};
+
+// Painel de audiência (backend/lib/painel): 12 vozes que representam 1.000 pessoas avaliam a copy ANTES de virar arte.
+// Escolhe a melhor capa; nota baixa manda reescrever uma vez com as objeções e, se continuar baixa, descarta.
+// Falha ou painel ainda não montado = segue sem painel (nunca trava a produção).
+E.painel = async (c, ctx) => {
+  const PN = ctx.deps.painel || require('../painel');
+  const cfg = await PN.config();
+  if (!cfg.ativo) { c.top.painel = { ativo: false }; return; }
+  const personas = await PN.personasAtuais();
+  if (!personas?.personas?.length) { c.top.painel = { ativo: false, motivo: 'Painel ainda não montado.' }; return; }
+  const v = c.top.versoes[c.top.escolha.versao];
+  const ordem = [...new Set([...(c.top.escolha.capas || []), 0, 1, 2])].filter((n) => n < v.capas.length).slice(0, 3);
+  const r = await PN.avaliar({ capas: ordem.map((i) => v.capas[i].texto), slides: v.telas.map((t) => [t.titulo, t.texto].filter(Boolean).join(' — ')), legenda: v.legenda, tese: c.top.angulo?.tese || '' }, { ia: ctx.ia, personas });
+  if (!r.ok) { c.top.painel = { ativo: true, falhou: r.motivo }; return; }
+  c.top.painel = { ativo: true, ...r, capa_indices: ordem };
+  if (r.melhor_capa > 0) c.top.escolha.capas = [ordem[r.melhor_capa], ...ordem.filter((_, i) => i !== r.melhor_capa)].slice(0, 2);
+  if (r.nota < cfg.minimo) {
+    const motivo = `O painel de audiência deu ${r.nota.toFixed(1)} (mínimo ${cfg.minimo}). ${r.objecoes.map((o) => `${o.quem}: "${o.texto}"`).join(' · ')}`.slice(0, 380);
+    c.top.reprovacoes_painel = (c.top.reprovacoes_painel || 0) + 1;
+    if (c.top.reprovacoes_painel > 1) throw Object.assign(erro(motivo, 'ABAIXO_DA_REGUA', 422), { terminal: true, fim: 'abaixo_da_regua' });
+    c.top.reescritas = 0;
+    c.top.versoes = [{ ...v, checagem: { ok: false, problemas: [motivo] } }];
     return { voltar: 'roteiro' };
   }
 };

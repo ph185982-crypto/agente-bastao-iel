@@ -290,3 +290,6 @@ h2 { letter-spacing: -.025em; font-weight: 800; }
 
 /* Descartar no cartão do piloto: botão ao lado do Agendar */
 .st-descartar-btn { min-height: 52px; }
+
+.st-painel { opacity: .9; }
+.st-painel b { color: var(--pd-azul); }

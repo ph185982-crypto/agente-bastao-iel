@@ -158,6 +158,18 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
     est.limpeza_dia = dia;
     try { const l = await require('../manutencao').limpar({ orcamentoMs: Math.min(30000, restante() - 10000) }); r.limpeza = { apagados: l.apagados, mb: l.mb_liberados, revisoes: l.revisoes_podadas }; } catch (e) { r.avisos.push(`Limpeza do banco falhou: ${String(e.message).slice(0, 100)}`); }
   }
+  // 0b) Painel de audiência: refaz as personas a cada 14 dias (a base e os comentários mudam) — falha não derruba a rodada.
+  if (hora < '04:00' && est.painel_dia !== dia && !deps.semLimpeza && !deps.painel) {
+    est.painel_dia = dia;
+    try {
+      const PN = require('../painel'); const doc = await PN.personasAtuais();
+      if (!doc || Date.now() - Date.parse(doc.criado_em) > 14 * 86400000) {
+        const llmJson = require('../llmJson');
+        await PN.montar({ ia: (args) => llmJson.comConsumo(() => llmJson.comPrazo(30000, () => llmJson.pedirJson(args))).then((x) => x.resultado) });
+        r.avisos.push('Painel de audiência atualizado.');
+      }
+    } catch (e) { r.avisos.push(`Painel não atualizou: ${String(e.message).slice(0, 100)}`); }
+  }
   // 1) Agenda vencida → publica (vale mesmo com o piloto desligado: foi aprovado pelo Pedro).
   for (const item of [...(est.agenda || [])].filter((x) => Date.parse(x.publicar_em) <= agora)) {
     try { await publicarAgora(item.id, deps); removidos.add(item.id); r.publicados.push(item.id); }
