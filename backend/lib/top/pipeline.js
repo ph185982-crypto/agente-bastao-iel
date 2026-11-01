@@ -136,7 +136,7 @@ function normalizarRoteiro(d, formato = 'reportagem') {
       imagem_busca: t?.imagem_busca ? String(t.imagem_busca).replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 60) : null,
       fatos: Array.isArray(t?.fatos) ? t.fatos.map(String).slice(0, 6) : [],
     })).filter((t) => t.texto);
-    return { formato: 'tweet', capas, telas: telasT, legenda: semIds(String(d?.legenda || '')).slice(0, 900), hashtags: (Array.isArray(d?.hashtags) ? d.hashtags : []).map((h) => `#${String(h).replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => h.length > 2).slice(0, 3), cta_motivo: semChamada(semIds(d?.cta_motivo)).slice(0, 90), fechamento: { titulo: semIds(String(d?.fechamento?.titulo || '')).slice(0, 80), texto: semIds(String(d?.fechamento?.texto || '')).slice(0, 240) } };
+    return { formato: 'tweet', capas, telas: telasT, legenda: semIds(String(d?.legenda || '')).slice(0, 900), hashtags: (Array.isArray(d?.hashtags) ? d.hashtags : []).map((h) => `#${String(h).replace(/^#+/, '').replace(/[^\p{L}\p{N}_]/gu, '')}`).filter((h) => h.length > 2).slice(0, 3), cta_motivo: semChamada(semIds(d?.cta_motivo)).slice(0, 90), fechamento: { titulo: semIds(String(d?.fechamento?.titulo || '')).slice(0, 80), texto: semIds(String(d?.fechamento?.texto || '')).split(/(?<=[.!?])\s+/).filter((f) => !/\b(manda|mande|marca|marque|envia|envie|compartilha|compartilhe|segue|siga|segue o)\b/i.test(f)).join(' ').slice(0, 240) } };
   }
   const telas = (Array.isArray(d?.telas) ? d.telas : []).slice(0, 7).map((t) => ({
     papel: ['gap', 'prova', 'contradicao', 'consequencia', 'leitura'].includes(t?.papel) ? t.papel : 'gap',
@@ -323,6 +323,10 @@ function montarVersaoTweet(c, v, { capa, fatosComNumeros, mapa, fonte }) {
     const funcao = { gap: 'contexto', prova: 'prova', contradicao: 'consequencia', consequencia: 'consequencia', leitura: 'opiniao' }[t.papel] || 'explicacao';
     let claim_ids = mapa(t.fatos); for (const id of fatosComNumeros(t.texto || '')) if (!claim_ids.includes(id)) claim_ids.push(id);
     if (t.papel === 'leitura') { const oid = `o${opinioes.length + 1}`; opinioes.push({ id: oid, texto: String(t.texto || '').slice(0, 400), tipo: 'opiniao', natureza: 'opiniao', central: false, estado: 'nao_verificada', premissas: claim_ids, evidencias: [], risco: 'baixo', origem: 'top', revisao: {} }); claim_ids = [oid]; }
+    // Declaração/previsão só fica ligada ao tweet que de fato a cita (traz o número do fato) ou já atribui quem disse. Tweet de
+    // posição ou de chamada ("manda pra seu sócio…") não vira "Fulano disse que…": o vínculo é solto, sem mexer no texto.
+    const citaNumero = (f) => fatosComNumeros(t.texto || '').includes(f.id);
+    claim_ids = claim_ids.filter((id) => { const f = c.top.fatos.find((x) => x.id === id); return !f || !['declaracao', 'previsao'].includes(f.tipo) || citaNumero(f) || MARCA_ATRIBUICAO.test(t.texto || ''); });
     const aAtribuir = c.top.fatos.find((f) => claim_ids.includes(f.id) && ['declaracao', 'previsao'].includes(f.tipo));
     if (aAtribuir && !MARCA_ATRIBUICAO.test(t.texto || '')) t.texto = `${aAtribuir.quem || fonte.veiculo || 'A reportagem'} disse que ${String(t.texto || '').replace(/^\p{Lu}/u, (m) => m.toLowerCase())}`;
     const foto = c.top.fotos_tweet?.[i] || null;

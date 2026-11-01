@@ -334,3 +334,8 @@ test('empreendedor: pauta sem relação com quem empreende é descartada; o fech
   assert.match(ult.cta_apoio, /^Segue o @pedro_destrava se você paga imposto/);
   assert.ok(ia.chamadas.some((x) => x.tipo === 'roteiro' && /PARA QUEM VOCÊ ESCREVE/.test(x.sistema)));
 });
+
+test('tweet: fechamento sem "manda pra/segue" duplicado e declaração não vira "Fulano disse que manda isso…"', () => {
+  const v = T.normalizarRoteiro({ capas: [{ texto: 'Capa curta' }], telas: [{ papel: 'gap', texto: 'Manda isso pro sócio.', fatos: ['c'] }], legenda: 'x', hashtags: [], cta_motivo: 'se você', fechamento: { titulo: 'Sabe onde a conta chega?', texto: 'No caixa de quem vende. Manda pra quem precisa ver. Segue o @pedro_destrava se você vende.' } }, 'tweet');
+  assert.strictEqual(v.fechamento.texto, 'No caixa de quem vende.');
+});
