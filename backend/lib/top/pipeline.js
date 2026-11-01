@@ -237,7 +237,7 @@ E.foto = async (c, ctx) => {
   // Formato tweet: até 3 fotos ilustrativas, uma por tweet que pediu (a frase sozinha costuma ser mais forte).
   if (c.top.formato === 'tweet' && !c.top.fotos_tweet && (ctx.deps.buscarFoto || process.env.PEXELS_API_KEY)) {
     c.top.fotos_tweet = {};
-    const v = c.top.versoes?.[c.top.escolha?.versao]; const FS = require('../fotosStudio'); const usadas = [];
+    const v = c.top.versoes?.[c.top.escolha?.versao]; const FS = require('../fotosStudio'); const usadas = [...(c.top.fotos_cena || []), c.top.foto_lugar_id].filter(Boolean); // não repete a foto da capa
     for (const [i, t] of (v?.telas || []).entries()) {
       if (!t.imagem_busca || Object.keys(c.top.fotos_tweet).length >= 3 || ctx.restante() < 12000) continue;
       try {
