@@ -83,7 +83,7 @@ ESTRUTURA:
 - OPINIÃO COM FATO: dura, mas não afirma o que os fatos não dizem. Diga "na minha leitura" quando for interpretação.
 - NÚMEROS: só os que estão nos FATOS VERIFICADOS, escritos do mesmo jeito. Nenhum a mais. SEM DATAS soltas ("em 29/10"). SEM ASPAS (nada de citação inventada).
 - CONTEXTO DE FORA (histórico, o que alguém "sempre disse") só como leitura do Pedro, marcado como opinião.
-- "fechamento": {"titulo": "pergunta ou frase de virada de até 7 palavras (ex.: 'Sabe o que não é normal?')", "texto": "1 a 2 frases de até 30 palavras com a posição do Pedro, que fecham a sequência"}. É o último slide.
+- "fechamento": {"titulo": "pergunta ou frase de virada de até 7 palavras (ex.: 'Sabe o que não é normal?')", "texto": "1 a 2 frases de até 30 palavras com a posição do Pedro, que fecham a sequência"}. É o último slide. NÃO escreva "Eu comecei o Pedro Destrava por isso", nem peça para seguir, mandar ou marcar alguém: o sistema coloca isso no rodapé.
 - "cta_motivo": complete "Segue o @pedro_destrava …" com 4 a 8 palavras ligadas à pauta, começando por "se você". O fechamento do slide pede primeiro que MANDE para a pessoa certa (o sistema monta "Manda pra {enviar_para}"), depois seguir.
 - "legenda": 2 a 4 frases curtas que complementam (não repetem os tweets). A ÚLTIMA frase é um pedido para marcar ou mandar para uma pessoa específica ("Marca o sócio que ainda acha que isso não é com ele."). Sem fonte nem data (o sistema acrescenta). "hashtags": 3, do assunto.
 ${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele mais compartilhados — imite RITMO e ATITUDE, nunca copie frases):\n${voz.map((v, i) => `${i + 1}. ${v}`).join('\n')}\n` : ''}${feedback ? `\nCORRIJA ESTES PROBLEMAS DA VERSÃO ANTERIOR:\n${feedback}\n` : ''}
