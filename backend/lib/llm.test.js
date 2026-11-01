@@ -80,3 +80,17 @@ test('modelo forte: a lista reconhece os fortes dos gratuitos e rejeita os fraco
   for (const m of ['gpt-5.5', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'openai/gpt-oss-120b', 'llama-3.3-70b', 'deepseek/deepseek-chat-v3-0324:free']) require('node:assert').ok(L.modeloForte(m), m);
   for (const m of ['qwen/qwen3.8-27b', 'openai/gpt-oss-20b', 'llama3.1-8b', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'google/gemma-3-12b-it:free', 'gpt-4o-mini', 'gemini-2.0-flash-lite']) require('node:assert').ok(!L.modeloForte(m), m);
 });
+
+test('OpenAI fora da cascata de texto por padrão; só entra com IA_OPENAI=1', () => {
+  const guardado = { k: process.env.OPENAI_API_KEY, g: process.env.GROQ_API_KEY, f: process.env.IA_OPENAI };
+  process.env.OPENAI_API_KEY = 'sk-teste'; process.env.GROQ_API_KEY = 'gsk-teste'; delete process.env.IA_OPENAI;
+  const L = require('./llm');
+  try {
+    assert.ok(!L.provedoresFortes().includes('openai'), 'desligada por padrão');
+    assert.ok(L.provedoresFortes().includes('groq'));
+    process.env.IA_OPENAI = '1';
+    assert.ok(L.provedoresFortes().includes('openai'), 'liga com IA_OPENAI=1');
+  } finally {
+    for (const [k, v] of [['OPENAI_API_KEY', guardado.k], ['GROQ_API_KEY', guardado.g], ['IA_OPENAI', guardado.f]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+});

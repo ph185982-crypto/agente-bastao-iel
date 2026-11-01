@@ -36,6 +36,12 @@ exigindo o toque do Pedro.
 
 O editor (etapa `angulo`) escolhe o formato; o piloto **alterna** tweet × reportagem a cada pauta para o feed variar; `POST /api/top/carrosseis` aceita `formato` para forçar. O formato tweet é o que mais engaja no nicho (referência: @thiago.nigro, 150–380 mil curtidas por carrossel).
 
+## Só IA gratuita (OpenAI desligada)
+
+Desde 01/11/2026 a OpenAI **não entra** na geração de texto (ângulo, roteiro, júri e demais chamadas): `llm.js` só a inclui na
+cascata com `IA_OPENAI=1`. A chave `OPENAI_API_KEY` continua guardada para os recursos que a usam direto (transcrição, imagens).
+Para religar a OpenAI no texto: variável `IA_OPENAI=1` na Vercel + novo deploy.
+
 ## Modelos fortes (com ou sem OpenAI)
 
 As etapas criativas (ângulo, roteiro, júri) só rodam em **modelo forte** (`llm.FORTES`): gpt-5.x (OpenAI, pago, ~US$ 0,15

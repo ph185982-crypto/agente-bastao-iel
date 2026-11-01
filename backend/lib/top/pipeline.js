@@ -441,7 +441,7 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
       const LLM = require('../llm');
       const forte = deps.modeloForte || LLM.modeloForte;
       if (args.preferirMelhor && (deps.premiumLigado ? deps.premiumLigado() : (!deps.pedirJson && LLM.premiumLigado())) && !forte(resultado?.llm?.model)) {
-        const ue = (deps.ultimoErro || LLM.ultimoErro)('openai'); const semCredito = !!process.env.OPENAI_API_KEY && /credit|insufficient_quota|billing/i.test(`${ue?.code || ''} ${ue?.mensagem || ''}`);
+        const ue = (deps.ultimoErro || LLM.ultimoErro)('openai'); const semCredito = process.env.IA_OPENAI === '1' && !!process.env.OPENAI_API_KEY && /credit|insufficient_quota|billing/i.test(`${ue?.code || ''} ${ue?.mensagem || ''}`);
         throw Object.assign(new Error(semCredito ? 'A OpenAI está sem créditos e nenhum outro modelo forte respondeu. O piloto espera para não escrever com modelo fraco.' : `Nenhum modelo forte disponível agora (${resultado?.llm?.provider || '?'}/${resultado?.llm?.model || '?'} é fraco); espero em vez de escrever raso.`), { status: 429, code: 'IA_PREMIUM', esperar_min: semCredito ? 60 : 15, sem_credito: semCredito });
       }
       return resultado;

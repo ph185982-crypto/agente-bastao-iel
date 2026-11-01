@@ -70,8 +70,12 @@ function clientFor(provider) {
   return client;
 }
 
+// A OpenAI (única paga) só entra na cascata de TEXTO se IA_OPENAI=1. Sem isso, a geração de carrosséis e as demais chamadas de
+// texto usam só os provedores gratuitos (Groq, Gemini, Cerebras, OpenRouter). A chave continua valendo para os recursos que a
+// usam direto (transcrição, imagens), que têm controle próprio.
+const openaiLigada = () => process.env.IA_OPENAI === '1';
 function availableProviders() {
-  return PROVIDERS.filter(p => !!process.env[p.envKey]);
+  return PROVIDERS.filter(p => !!process.env[p.envKey] && (!p.paid || openaiLigada()));
 }
 
 // Usado pelas rotas para checar se dá pra chamar a IA, sem amarrar em um
