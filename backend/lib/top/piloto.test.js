@@ -161,3 +161,16 @@ test('limpeza do banco: apaga prévias de descartados e de versões antigas e fo
   assert.deepStrictEqual(resta, [`render:${vivo.id}:${ativa}:s1:h`, `render:${vivo.id}:v_antiga:s1:reusa`, 'img:f1', 'upload:encerramento'].sort());
   assert.strictEqual(r.apagados, 4);
 });
+
+test('pauta que mexe com quem empreende sobe na fila do piloto', async () => {
+  assert.ok(Pi.paraEmpreendedor('Governo estuda mudar o Simples Nacional para o MEI'));
+  assert.ok(Pi.paraEmpreendedor('Juros altos encarecem o crédito para pequenas empresas'));
+  assert.ok(!Pi.paraEmpreendedor('Cantor lança novo álbum e bate recorde'));
+  novo(); const criados = [];
+  await arm.armazem().config.salvar(ACCOUNT.ig_id, { piloto_estado: { dia: '2026-10-29', criados: [] } });
+  const deps = { criar: async (o) => { criados.push(o); return { id: 'n1' }; }, descobrir: async () => ({ pautas: [
+    { id: 'a', titulo: 'Ministro viaja a Genebra para reunião', prioridade: 70, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/a' }] },
+    { id: 'b', titulo: 'Reforma muda imposto de quem tem CNPJ', prioridade: 60, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/b' }] }] }) };
+  await Pi.rodada({ agora: SP('2026-10-29', '06:00'), deps });
+  assert.strictEqual(criados[0].titulo, 'Reforma muda imposto de quem tem CNPJ');
+});

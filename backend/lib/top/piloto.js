@@ -116,6 +116,9 @@ const LEGIVEIS = /(agenciabrasil\.ebc\.com\.br|senado\.leg\.br|camara\.leg\.br|g
 // Pauta de serviço (agenda do dia, resumo, "saiba quais") não vira tese: nem gasta uma tentativa do dia.
 const DE_SERVICO = /\b(saiba (quais|o que|como)|leia a agenda|agenda d[eo]s?\b|destaques d|mais destaques|o que (abre|fecha|esperar|muda)|resumo d[aoe]|veja (os|as|o que|quais)|ao vivo|minuto a minuto|hor[oó]scopo|loterias?|mega-sena|quina\b|resultado d[ao] (jogo|sorteio)|indicadores e balan[cç]os)/i;
 const deServico = (titulo) => DE_SERVICO.test(String(titulo || ''));
+// Pauta que mexe com quem tem CNPJ (imposto, crédito, custo, venda, marketplace, trabalhista) sobe na fila: é o público do perfil.
+const PARA_EMPREENDEDOR = /(imposto|tribut|simples nacional|\bmei\b|\bcnpj\b|empresa|empres[aá]rio|empreend|pequen[oa]s? neg[oó]cio|\bpme\b|folha|trabalhist|\bfgts\b|\binss\b|cr[eé]dito|juros|selic|financiamento|capital de giro|inadimpl|fal[eê]ncia|recupera[cç][aã]o judicial|varejo|e-?commerce|marketplace|mercado livre|shopee|amazon|frete|log[ií]stica|importa[cç][aã]o|exporta[cç][aã]o|tarifa|c[aâ]mbio|d[oó]lar|reforma tribut|nota fiscal|\bcbs\b|\bibs\b|\bicms\b|\bpix\b|consumo|vendas|faturamento|burocracia|regulament)/i;
+const paraEmpreendedor = (titulo) => PARA_EMPREENDEDOR.test(String(titulo || ''));
 function melhorLink(p) {
   const fs = (p.fontes || []).filter((f) => /^https?:\/\//.test(f.url || ''));
   return (fs.find((f) => LEGIVEIS.test(f.url)) || fs[0])?.url || null;
@@ -126,7 +129,7 @@ async function proximaPauta(est, { agora, deps, restante }) {
   const velha = !est.fila_em || agora - Date.parse(est.fila_em) > 2 * 3600000;
   if ((!fila.length || velha) && restante() > 32000) {
     const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 2 });
-    fila = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: p.prioridade ?? null }))
+    fila = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: (p.prioridade ?? 0) + (paraEmpreendedor(p.titulo) ? 25 : 0) }))
       .sort((x, y) => (y.prioridade ?? 0) - (x.prioridade ?? 0)).slice(0, 12);
     est.fila_em = new Date(agora).toISOString();
   }
@@ -263,4 +266,4 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   };
 }
 
-module.exports = { marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, PADRAO };
+module.exports = { paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, PADRAO };

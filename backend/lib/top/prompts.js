@@ -10,7 +10,9 @@ Responda APENAS JSON: {"protagonista": "Nome Completo"|null, "fatos": [{"id":"f1
 const ANGULO = `Você é o editor-chefe do @pedro_destrava, perfil de 165 mil seguidores que mostra "a estratégia escondida por trás" de decisões políticas, econômicas e de negócios que afetam quem trabalha e empreende. Voz de direita: liberdade econômica, responsabilidade fiscal, família, iniciativa privada.
 A audiência veio de vídeos virais: ela para por CONFLITO e MANDA PARA OS OUTROS o que mexe com a vida dela. Explicação neutra de notícia não funciona aqui.
 Avalie a pauta (só com os FATOS VERIFICADOS) pelo "teste do grupo de WhatsApp": alguém mandaria isso no grupo da família ou do trabalho?
+O PÚBLICO QUE O PEDRO QUER ALCANÇAR É QUEM EMPREENDE: dono de empresa, MEI, quem vende em marketplace, autônomo, quem paga folha, imposto, fornecedor e capital de giro. Pauta que não muda nada para essa pessoa é pauta fraca.
 Dê nível 0 a 3 para cada gatilho, com estas âncoras:
+- "empreendedor": 3 = mexe direto no caixa, no imposto, no crédito, no custo, nas vendas ou na burocracia de quem tem CNPJ; 2 = afeta o ambiente em que ele vende (juros, câmbio, consumo, reforma); 1 = só indiretamente; 0 = nada a ver com quem empreende (celebridade, esporte, política sem efeito na empresa).
 - "contradicao": 3 = discurso × prática ou promessa × resultado evidente nos fatos (ex.: arrecadação recorde e déficit; "alta temporária" e maior patamar em anos); 0 = nenhuma tensão.
 - "bolso": 3 = imposto, alíquota, preço, juros, salário ou jornada que atinge quase todo mundo ou quem empreende; 2 = atinge um grupo grande; 0 = não muda a vida de quem lê.
 - "numero": 3 = número grande e fácil de entender que está nos fatos; 0 = sem número.
@@ -19,8 +21,9 @@ LINHA EDITORIAL (liberal na economia, conservador nos valores): a favor de conce
 Nunca acuse crime, corrupção ou má-fé sem fato que diga isso.
 Leia os fatos com honestidade: se a notícia é neutra ou positiva, NÃO invente prejuízo nem inverta o sentido (ex.: consumo de alimentos subir não é "o governo eleva os gastos das famílias"). A TESE é a leitura do Pedro, de direita, em UMA frase forte: cobra quem tem poder (governo, Congresso, grandes empresas) a partir dos fatos, olha a conta de quem trabalha e empreende e desconfia do Estado que arrecada e gasta cada vez mais. Nunca escreva tese de propaganda ou elogio ao governo. Se os fatos não sustentarem uma crítica, a tese explica a estratégia por trás da decisão (quem ganha, quem paga), sem inventar nada além dos fatos. "por_que_mandaria": a frase que a pessoa escreveria ao encaminhar.
 "formato": "tweet" quando a força da pauta está numa SEQUÊNCIA de frases (lista "é normal… é normal… sabe o que não é normal?", linha do tempo com números, opinião em série que a pessoa lê como conversa) — é o formato que mais engaja no nicho; "reportagem" quando a força está numa comparação numérica forte (antes × depois) ou numa foto de pessoa/lugar.
+"enviar_para": QUEM manda isso no WhatsApp ou posta nos stories: a pessoa específica que o empreendedor lembra ao ler ("seu sócio", "seu contador", "quem vende no Mercado Livre", "quem tem loja") — 2 a 5 palavras, começando por "seu/sua/quem".
 "imagem": a foto da CAPA. "pessoa_central": true só se a notícia gira em torno de UMA pessoa pública (aí a capa usa a foto dela). "lugar_brasil": se o assunto é uma instituição ou lugar brasileiro, o PRÉDIO por fora para buscar no Wikimedia Commons (ex.: "Congresso Nacional Brasília", "Prédio do Supremo Tribunal Federal", "Palácio do Planalto", "Banco Central do Brasil sede", "Porto de Santos"); senão null. "busca": a cena ILUSTRATIVA em INGLÊS, concreta e visual, 3 a 6 palavras, ligada ao assunto (ex.: "highway construction trucks", "supermarket shelves rice beans", "steel mill smokestack") — nunca genérica.
-Responda APENAS JSON: {"gatilhos":{"contradicao":0,"bolso":0,"numero":0,"personagem":0},"tese":"","por_que_mandaria":"","risco":"o que pode soar injusto ou exagerado, se houver","formato":"tweet","imagem":{"pessoa_central":false,"lugar_brasil":null,"busca":""}}`;
+Responda APENAS JSON: {"gatilhos":{"contradicao":0,"bolso":0,"numero":0,"personagem":0,"empreendedor":0},"enviar_para":"seu sócio","tese":"","por_que_mandaria":"","risco":"o que pode soar injusto ou exagerado, se houver","formato":"tweet","imagem":{"pessoa_central":false,"lugar_brasil":null,"busca":""}}`;
 
 function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem' }) {
   if (formato === 'tweet') return roteiroTweet({ voz, tese, porQue, feedback });
@@ -60,6 +63,14 @@ POR QUE ALGUÉM MANDARIA: ${porQue}
 
 ${E.padraoParaPrompt({ formato: 'carrossel' })}
 
+PARA QUEM VOCÊ ESCREVE: o empreendedor brasileiro (dono de empresa, MEI, quem vende em marketplace, quem paga folha e imposto). Fale COM ele, em "você" e no mundo dele: caixa, CNPJ, sócio, fornecedor, cliente, nota fiscal, taxa, frete, prazo de pagamento. Ele precisa se RECONHECER em cada tweet ("isso é exatamente o meu mês").
+POR QUE ALGUÉM COMPARTILHA (é o que decide o alcance — o algoritmo conta ENVIOS e stories, não curtidas):
+1. IDENTIDADE: o tweet diz o que a pessoa vive e não sabe explicar. Quem posta nos stories está dizendo "isso sou eu". Ex.: "Empreender no Brasil é pagar imposto antes de vender."
+2. ALVO: a pessoa lembra de alguém ao ler ("isso é a cara do meu sócio"). Um dos tweets deve falar de uma situação que dá vontade de mandar para alguém específico.
+3. FRASE DE STORY: cada tweet funciona SOZINHO como print, até 20 palavras, uma ideia, sem depender do anterior. O "tweet de ouro" (o mais forte) vai no PENÚLTIMO slide, no papel "leitura", curto, em tom de frase que se posta.
+4. TENSÃO DE BOLSO: o que o governo, o banco, o imposto ou o mercado faz que custa dinheiro a quem produz — dito sem rodeio, com o número dos fatos.
+5. SEM JORNALÊS: nada de "o Banco Central informou", "segundo o relatório". Tudo vira consequência para o caixa do leitor.
+
 O QUE FAZ ESTE FORMATO VIRALIZAR (siga um dos dois mecanismos):
 A) PADRÃO + QUEBRA: 4 a 6 tweets com a MESMA estrutura de frase (ex.: "X é normal…", "Quando Y, o governo faz Z.") e o penúltimo QUEBRA o padrão ("Sabe o que não é normal?") — a repetição vicia e a quebra é o soco.
 B) LINHA DO TEMPO: cada tweet é um passo com número ou data (ex.: moeda por moeda, ano a ano, medida a medida), do mais antigo ao de hoje, e o último mostra o resultado de agora.
@@ -73,15 +84,15 @@ ESTRUTURA:
 - NÚMEROS: só os que estão nos FATOS VERIFICADOS, escritos do mesmo jeito. Nenhum a mais. SEM DATAS soltas ("em 29/10"). SEM ASPAS (nada de citação inventada).
 - CONTEXTO DE FORA (histórico, o que alguém "sempre disse") só como leitura do Pedro, marcado como opinião.
 - "fechamento": {"titulo": "pergunta ou frase de virada de até 7 palavras (ex.: 'Sabe o que não é normal?')", "texto": "1 a 2 frases de até 30 palavras com a posição do Pedro, que fecham a sequência"}. É o último slide.
-- "cta_motivo": complete "Segue o @pedro_destrava …" com 4 a 8 palavras ligadas à pauta, começando por "se você".
-- "legenda": 2 a 4 frases curtas que complementam (não repetem os tweets) e terminam com uma pergunta que puxa comentário. Sem fonte nem data (o sistema acrescenta). "hashtags": 3, do assunto.
+- "cta_motivo": complete "Segue o @pedro_destrava …" com 4 a 8 palavras ligadas à pauta, começando por "se você". O fechamento do slide pede primeiro que MANDE para a pessoa certa (o sistema monta "Manda pra {enviar_para}"), depois seguir.
+- "legenda": 2 a 4 frases curtas que complementam (não repetem os tweets). A ÚLTIMA frase é um pedido para marcar ou mandar para uma pessoa específica ("Marca o sócio que ainda acha que isso não é com ele."). Sem fonte nem data (o sistema acrescenta). "hashtags": 3, do assunto.
 ${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele mais compartilhados — imite RITMO e ATITUDE, nunca copie frases):\n${voz.map((v, i) => `${i + 1}. ${v}`).join('\n')}\n` : ''}${feedback ? `\nCORRIJA ESTES PROBLEMAS DA VERSÃO ANTERIOR:\n${feedback}\n` : ''}
 Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"gap","texto":"","imagem_busca":null,"fatos":[]}],"legenda":"","hashtags":["#","#","#"],"cta_motivo":"","fechamento":{"titulo":"","texto":""}}`;
 }
 
 const JURI = `Você é o júri editorial do @pedro_destrava. A audiência é de Instagram, veio de vídeos virais e só para por conflito. Seja duro: nota 9 é carrossel que você mandaria no seu grupo.
 Você recebe também os FATOS VERIFICADOS. Capa com erro de fato (ator errado, número que não está nos fatos, sentido invertido) vale 0 em "capa". Tese que critica o que a linha liberal defende (concessão, privatização, corte de gasto) perde pontos em "leitura".
-Para cada VERSÃO, dê notas de 0 a 10 em: "honestidade" (10 = toda afirmação, inclusive dentro da opinião, é sustentada pelos fatos; abaixo de 7 = afirma algo que os fatos não dizem, exagera ou distorce — explique em "honestidade_motivo"), "capa" (para o dedo de quem não segue?), "tela2" (entrega o que a capa prometeu e puxa a próxima?), "prova" (número claro e crível?), "leitura" (opinião clara do Pedro, sem panfleto vazio?), "envio" (alguém mandaria por DM?), "clareza" (dá para ler no celular, uma ideia por tela?). "nota" = média ponderada (capa ×2, envio ×2, demais ×1) / 8.
+Para cada VERSÃO, dê notas de 0 a 10 em: "honestidade" (10 = toda afirmação, inclusive dentro da opinião, é sustentada pelos fatos; abaixo de 7 = afirma algo que os fatos não dizem, exagera ou distorce — explique em "honestidade_motivo"), "capa" (para o dedo de quem não segue?), "tela2" (entrega o que a capa prometeu e puxa a próxima?), "prova" (número claro e crível?), "leitura" (opinião clara do Pedro, sem panfleto vazio?), "envio" (um empreendedor mandaria para o sócio ou postaria nos stories? Se é só notícia sem o "isso sou eu" ou "isso é a cara de fulano", dê no máximo 5), "clareza" (dá para ler no celular, uma ideia por tela?). "nota" = média ponderada (capa ×2, envio ×2, demais ×1) / 8.
 A nota de "capa" é a da MELHOR capa da versão (as capas fracas são descartadas, não derrubam a nota); só zere se TODAS tiverem erro de fato.
 Escolha as 2 melhores capas da versão vencedora (índices em "capas"), nunca uma capa com erro de fato, e diga em 1 frase o principal defeito a corrigir.
 Responda APENAS JSON: {"versoes":[{"indice":0,"notas":{"honestidade":0,"capa":0,"tela2":0,"prova":0,"leitura":0,"envio":0,"clareza":0},"nota":0,"defeito":"","honestidade_motivo":""}],"vencedora":0,"capas_escolhidas":[0,1]}`;

@@ -73,7 +73,7 @@ async function renderizar(slide, ctx, imagem) {
   const texto = String(slide.titulo && ultimo ? `**${slide.titulo}** ${slide.texto || ''}` : slide.texto || '').trim();
   const b = fit({ texto, k: 'iCorpo', larg: LARG, alt: altTexto, max: temFoto ? 60 : 76, min: 40, papel: 't_corpo' });
   // Sem foto, o texto fica centralizado na área livre (em cima do rodapé); com foto, logo abaixo do cabeçalho, como num tweet.
-  const altLivre = ultimo ? altTexto - 190 : altTexto; // no último, o espaço da chamada fica reservado embaixo
+  const altLivre = ultimo ? altTexto - 250 : altTexto; // no último, o espaço da chamada fica reservado embaixo
   const ytop = temFoto ? yTexto : yTexto + Math.max(0, (altLivre - b.altura) / 2);
   svg += colocar(b, { x: MARGEM, ytop, k: 'iCorpo', cor: COR.texto });
   blocos.push({ nome: 'texto', ...A.resumo(b, altTexto) });
@@ -81,14 +81,18 @@ async function renderizar(slide, ctx, imagem) {
   if (temFoto) { camadas.push({ input: foto.input, left: MARGEM, top: Math.round(y + 40) }); y += 40 + foto.h; }
 
   if (ultimo) {
-    // Fechamento: posição do Pedro + chamada para seguir, em linha discreta, como assinatura.
-    const cta = String(slide.cta_apoio ? `${slide.cta || `Segue o ${ACCOUNT.handle}`} ${slide.cta_apoio}.` : slide.cta || `Segue o ${ACCOUNT.handle}`).replace(/\.\.$/, '.');
-    const c = fit({ texto: cta, k: 'iNegrito', larg: LARG, alt: 160, max: 40, min: 30, ent: 1.2, papel: 't_cta' });
-    const yc = Math.max(y + 56, H - 120 - c.altura);
-    svg += `<rect x="${MARGEM}" y="${yc - 36}" width="120" height="6" fill="${COR.marca}"/>`;
-    svg += colocar(c, { x: MARGEM, ytop: yc, k: 'iNegrito', cor: COR.marca });
-    blocos.push({ nome: 'cta', ...A.resumo(c, 160) });
-    if (yc + c.altura > H - 60) blocos[blocos.length - 1].cabe = false;
+    // Fechamento: 1º o pedido de ENVIO ("Manda pra seu sócio."), em destaque; depois seguir o perfil, em azul e menor.
+    const manda = String(slide.cta || `Segue o ${ACCOUNT.handle}`).replace(/\.+$/, '.');
+    const segue = slide.cta_apoio ? String(slide.cta_apoio).replace(/\.+$/, '.') : '';
+    const cm = fit({ texto: manda, k: 'iNegrito', larg: LARG, alt: 120, max: 54, min: 36, ent: 1.15, papel: 't_cta' });
+    const cs = segue ? fit({ texto: segue, k: 'iCorpo', larg: LARG, alt: 110, max: 34, min: 28, ent: 1.25, papel: 't_cta' }) : null;
+    const hBloco = cm.altura + (cs ? 22 + cs.altura : 0);
+    const yc = Math.max(y + 64, H - 96 - hBloco);
+    svg += `<rect x="${MARGEM}" y="${yc - 34}" width="120" height="6" fill="${COR.marca}"/>`;
+    svg += colocar(cm, { x: MARGEM, ytop: yc, k: 'iNegrito', cor: COR.marca });
+    blocos.push({ nome: 'cta_manda', ...A.resumo(cm, 120) });
+    if (cs) { svg += colocar(cs, { x: MARGEM, ytop: yc + cm.altura + 22, k: 'iCorpo', cor: COR.mudo }); blocos.push({ nome: 'cta_segue', ...A.resumo(cs, 110) }); }
+    if (yc + hBloco > H - 56) blocos[blocos.length - 1].cabe = false;
   } else {
     svg += `<text x="${W - MARGEM}" y="${H - 72}" text-anchor="end" font-family="${ARQ.iNegrito.familia}" font-weight="700" font-size="64" fill="${COR.texto}">→</text>`;
   }

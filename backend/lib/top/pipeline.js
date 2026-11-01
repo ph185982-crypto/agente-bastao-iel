@@ -73,10 +73,13 @@ E.fatos = async (c, ctx) => {
 E.angulo = async (c, ctx) => {
   const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true });
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
-  c.top.angulo = { gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240), imagem: { busca: String(dados?.imagem?.busca || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80), pessoa_central: dados?.imagem?.pessoa_central === true, lugar_brasil: dados?.imagem?.lugar_brasil ? String(dados.imagem.lugar_brasil).slice(0, 80) : null } };
+  const empreendedor = g.empreendedor === undefined ? null : n('empreendedor'); // fora da soma: é filtro de público, não de viralidade
+  const enviarPara = String(dados?.enviar_para || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  c.top.angulo = { empreendedor, enviar_para: /^(seu|sua|seus|suas|quem)\b/i.test(enviarPara) ? enviarPara : 'seu sócio', gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240), imagem: { busca: String(dados?.imagem?.busca || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80), pessoa_central: dados?.imagem?.pessoa_central === true, lugar_brasil: dados?.imagem?.lugar_brasil ? String(dados.imagem.lugar_brasil).slice(0, 80) : null } };
   c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
   // Formato visual: o pedido de quem criou (piloto alterna para variar o feed) vence; senão a escolha do editor.
   c.top.formato = c.top.entrada?.formato || (dados?.formato === 'tweet' ? 'tweet' : 'reportagem');
+  if (empreendedor === 0) throw Object.assign(erro('A pauta não muda nada para quem empreende (público do perfil): fica de fora.', 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
   const nucleo = Math.max(c.top.angulo.gatilhos.bolso, c.top.angulo.gatilhos.contradicao);
   if (c.top.angulo.soma >= regua().gatilhos_min && c.top.angulo.tese && nucleo < regua().nucleo_min) throw Object.assign(erro(`Sem bolso nem contradição (máximo ${nucleo}/3; mínimo ${regua().nucleo_min}): vira post de cotação, não de tese.`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
   if (c.top.angulo.soma < regua().gatilhos_min || !c.top.angulo.tese) throw Object.assign(erro(`Não passou no teste do grupo (${c.top.angulo.soma}/12 nos gatilhos; mínimo ${regua().gatilhos_min}).`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
@@ -332,7 +335,7 @@ function montarVersaoTweet(c, v, { capa, fatosComNumeros, mapa, fonte }) {
   const legenda = [corpo, `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`].filter(Boolean).join('\n\n').slice(0, 2000);
   const motivo = (v.cta_motivo || 'se você também cobra resultado').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
-  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'tweet', tema_visual: 'tweet', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: 'Segue o @pedro_destrava', cta_apoio: motivo, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
+  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'tweet', tema_visual: 'tweet', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: `Manda pra ${c.top.angulo?.enviar_para || 'seu sócio'}.`, cta_apoio: `Segue o @pedro_destrava ${motivo}.`, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
   return { capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'sequencia', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
 }
 
@@ -433,7 +436,7 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
       // … e, com a premium ligada, nunca escreve ângulo/roteiro/júri com modelo gratuito: espera a premium voltar.
       const LLM = require('../llm');
       const forte = deps.modeloForte || LLM.modeloForte;
-      if (args.preferirMelhor && (deps.premiumLigado ? deps.premiumLigado() : LLM.premiumLigado()) && !forte(resultado?.llm?.model)) {
+      if (args.preferirMelhor && (deps.premiumLigado ? deps.premiumLigado() : (!deps.pedirJson && LLM.premiumLigado())) && !forte(resultado?.llm?.model)) {
         const ue = (deps.ultimoErro || LLM.ultimoErro)('openai'); const semCredito = !!process.env.OPENAI_API_KEY && /credit|insufficient_quota|billing/i.test(`${ue?.code || ''} ${ue?.mensagem || ''}`);
         throw Object.assign(new Error(semCredito ? 'A OpenAI está sem créditos e nenhum outro modelo forte respondeu. O piloto espera para não escrever com modelo fraco.' : `Nenhum modelo forte disponível agora (${resultado?.llm?.provider || '?'}/${resultado?.llm?.model || '?'} é fraco); espero em vez de escrever raso.`), { status: 429, code: 'IA_PREMIUM', esperar_min: semCredito ? 60 : 15, sem_credito: semCredito });
       }
