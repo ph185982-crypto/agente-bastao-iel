@@ -81,4 +81,27 @@ router.get('/referencias', limita({ max: 10, janelaMs: 60000, nome: 'ig-referenc
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Diagnóstico da audiência: o que a Graph API entrega da PRÓPRIA conta (só agregados + comentários), para montar o painel.
+router.get('/audiencia/amostra', limita({ max: 6, janelaMs: 60000, nome: 'ig-audiencia' }), async (req, res) => {
+  const out = { demografia: {}, comentarios: null, erros: {} };
+  const c = meta.config();
+  for (const breakdown of ['age', 'gender', 'city', 'country']) {
+    try {
+      const d = await meta.graph('GET', `${c.igId}/insights`, { metric: 'follower_demographics', period: 'lifetime', metric_type: 'total_value', breakdown, timeframe: 'last_30_days' });
+      const r = d?.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+      out.demografia[breakdown] = r.slice(0, 8).map((x) => ({ k: (x.dimension_values || []).join('/'), v: x.value }));
+    } catch (e) { out.erros[`demografia_${breakdown}`] = String(e.message).slice(0, 160); }
+  }
+  try {
+    const m = await meta.graph('GET', `${c.igId}/media`, { fields: 'id,like_count,comments_count,timestamp', limit: 12 });
+    const ordenados = (m.data || []).sort((a, b) => (b.comments_count || 0) - (a.comments_count || 0));
+    const alvo = ordenados[0];
+    if (alvo) {
+      const cm = await meta.graph('GET', `${alvo.id}/comments`, { fields: 'text,like_count,timestamp', limit: 5 });
+      out.comentarios = { post_comentarios: alvo.comments_count, amostra: (cm.data || []).map((x) => ({ texto: String(x.text || '').slice(0, 80), curtidas: x.like_count })) };
+    }
+  } catch (e) { out.erros.comentarios = String(e.message).slice(0, 160); }
+  res.json(out);
+});
+
 module.exports = router;
