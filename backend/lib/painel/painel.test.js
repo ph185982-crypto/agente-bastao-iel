@@ -14,13 +14,17 @@ const RETRATO = { seguidores: 164000, demografia: {
   comentarios: [{ t: 'Cadê a vitória fácil no dia 25?', c: 0 }], melhores: [{ legenda: 'pense nisso', curtidas: 5779, comentarios: 364 }], piores: [{ legenda: 'x', curtidas: 3, comentarios: 0 }], avisos: [] };
 const novo = () => arm._definir(Object.assign(arm.memoria(), { duravel: true }));
 
-test('quotas: 1.000 membros, base pela demografia real (18+), alvo 30% em 4 perfis de empreendedor', () => {
+test('quotas: 1.000 membros, base pela demografia real (18+), alvo 30% em 14 perfis de empreendedor, base por idade × gênero × região', () => {
   const q = PN.quotas(RETRATO, { alvo_peso: 0.3 });
   assert.strictEqual(q.reduce((s, p) => s + p.membros, 0), 1000);
   assert.strictEqual(q.filter((p) => p.grupo === 'alvo').reduce((s, p) => s + p.membros, 0), 300);
   assert.ok(!q.some((p) => p.id.includes('13-17')), 'menores de 18 ficam de fora');
-  const m2534 = q.find((p) => p.id === 'b_25-34_M').membros; const f18 = q.find((p) => p.id === 'b_18-24_F').membros;
+  const m2534 = q.find((p) => p.id === 'b_25-34_M_SE').membros; const f18 = q.find((p) => p.id === 'b_18-24_F_SE').membros;
   assert.ok(m2534 > f18 * 3, 'homem 25-34 pesa bem mais que mulher 18-24, como nos dados');
+  assert.strictEqual(q.filter((p) => p.grupo === 'alvo').length, 14);
+  const d2 = { ...RETRATO, demografia: { ...RETRATO.demografia, city: [{ k: 'São Paulo, São Paulo (state)', v: 600 }, { k: 'Curitiba, Paraná (state)', v: 400 }] } };
+  const q2 = PN.quotas(d2, { alvo_peso: 0.3 }); assert.strictEqual(q2.length, 30); assert.strictEqual(q2.reduce((s, p) => s + p.membros, 0), 1000);
+  assert.ok(q2.find((p) => p.id === 'b_25-34_M_SE').membros > q2.find((p) => p.id === 'b_25-34_M_RS').membros);
   assert.strictEqual(PN.quotas(RETRATO, { alvo_peso: 0 }).filter((p) => p.grupo === 'alvo').length, 0);
 });
 

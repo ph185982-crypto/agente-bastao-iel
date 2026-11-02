@@ -1,8 +1,8 @@
-// Painel de audiência: 12 vozes que representam 1.000 pessoas avaliam a copy ANTES de virar arte.
+// Painel de audiência: 30 vozes que representam 1.000 pessoas avaliam a copy ANTES de virar arte.
 //
 // O que é e o que não é (importante):
 //  - É um painel SIMULADO por IA, calibrado com dados REAIS e AGREGADOS da conta (demografia pela Graph API) e com o TEXTO de
-//    comentários (sem nome de usuário). Não são 1.000 pessoas reais, nem 1.000 chamadas de IA: são 12 vozes com pesos que somam 1.000.
+//    comentários (sem nome de usuário). Não são 1.000 pessoas reais, nem 1.000 chamadas de IA: são 30 vozes com pesos que somam 1.000.
 //  - A Graph API não entrega a lista de quem mais curte, e perfilar seguidores um a um é invasão de privacidade: não fazemos isso.
 //  - Dois grupos: "base" (quem segue hoje, pesos da demografia real) e "alvo" (empreendedores, o público que o Pedro quer alcançar,
 //    peso configurável). A diferença entre os dois mostra a distância entre a base atual e o público desejado.
@@ -19,11 +19,21 @@ const PADRAO = Object.freeze({
   mix_nota: { base: 0.5, alvo: 0.5 },
 });
 const FAIXAS = ['18-24', '25-34', '35-44', '45+'];
-const ALVO = [
-  { id: 'a_mei', rotulo: 'MEI / autônomo', parte: 0.30 },
-  { id: 'a_pme', rotulo: 'Dono de pequena empresa com funcionários', parte: 0.30 },
-  { id: 'a_mkt', rotulo: 'Quem vende em marketplace (Mercado Livre, Shopee, Amazon)', parte: 0.25 },
-  { id: 'a_lib', rotulo: 'Profissional liberal / prestador de serviço com CNPJ', parte: 0.15 },
+const ALVO = [ // 14 perfis de quem empreende; as partes são hipóteses de composição do público desejado (normalizadas para somar 1)
+  { id: 'a_mei_ini', rotulo: 'MEI iniciante (menos de 1 ano de CNPJ)', parte: 0.07 },
+  { id: 'a_mei_est', rotulo: 'MEI / autônomo estabelecido', parte: 0.10 },
+  { id: 'a_loja', rotulo: 'Dono de loja física / comércio local', parte: 0.08 },
+  { id: 'a_pme_com', rotulo: 'Dono de pequena empresa de comércio com funcionários', parte: 0.09 },
+  { id: 'a_pme_serv', rotulo: 'Dono de pequena empresa de serviços com funcionários', parte: 0.08 },
+  { id: 'a_pme_ind', rotulo: 'Dono de pequena indústria / alimentos', parte: 0.05 },
+  { id: 'a_mkt_ml', rotulo: 'Vendedor de Mercado Livre', parte: 0.10 },
+  { id: 'a_mkt_sh', rotulo: 'Vendedor de Shopee', parte: 0.09 },
+  { id: 'a_mkt_multi', rotulo: 'Vendedor multicanal (Amazon, Magalu, loja própria)', parte: 0.05 },
+  { id: 'a_mkt_ini', rotulo: 'Revendedor iniciante / dropshipping', parte: 0.06 },
+  { id: 'a_lib_jur', rotulo: 'Advogado / contador autônomo com CNPJ', parte: 0.06 },
+  { id: 'a_lib_saude', rotulo: 'Profissional de saúde autônomo com CNPJ', parte: 0.07 },
+  { id: 'a_lib_cri', rotulo: 'Freelancer de marketing, design ou tecnologia com CNPJ', parte: 0.06 },
+  { id: 'a_info', rotulo: 'Criador de conteúdo / infoprodutor', parte: 0.04 },
 ];
 const conta = () => ACCOUNT.ig_id;
 const limita = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -79,16 +89,20 @@ function arredonda(partes, total) { // maior resto
   brutos.map((b, i) => [b - Math.floor(b), i]).sort((x, y) => y[0] - x[0]).forEach(([, i]) => { if (falta > 0) { base[i]++; falta--; } });
   return base;
 }
+const SUDESTE = /(são paulo|rio de janeiro|minas gerais|espírito santo|espirito santo)/i;
 function quotas(retrato, { alvo_peso = PADRAO.alvo_peso, total = 1000 } = {}) {
   const idade = {}; for (const x of retrato?.demografia?.age || []) { if (x.k === '13-17') continue; const f = ['18-24', '25-34', '35-44'].includes(x.k) ? x.k : '45+'; idade[f] = (idade[f] || 0) + x.v; }
   const gen = { M: 0, F: 0 }; for (const x of retrato?.demografia?.gender || []) if (x.k === 'M' || x.k === 'F') gen[x.k] += x.v;
   const somaI = FAIXAS.reduce((s, f) => s + (idade[f] || 0), 0) || 1; const somaG = gen.M + gen.F || 1;
   const pI = FAIXAS.map((f) => (idade[f] || 0) / somaI); const pG = { M: gen.M / somaG, F: gen.F / somaG };
+  // Região: só as cidades que a Graph API devolve (as maiores). Assume idade/gênero independentes da região (aproximação, os dados não cruzam).
+  let se = 0; let tot = 0; for (const x of retrato?.demografia?.city || []) { tot += x.v; if (SUDESTE.test(x.k)) se += x.v; }
+  const pSE = tot ? se / tot : 0.6; const regioes = [{ r: 'SE', rotulo: 'Sudeste (SP, RJ, MG, ES)', p: pSE }, { r: 'RS', rotulo: 'demais regiões', p: 1 - pSE }];
   const nBase = Math.round(total * (1 - alvo_peso));
-  const celulas = []; FAIXAS.forEach((f, i) => ['M', 'F'].forEach((g) => celulas.push({ f, g, p: pI[i] * pG[g] })));
+  const celulas = []; FAIXAS.forEach((f, i) => ['M', 'F'].forEach((g) => regioes.forEach((rg) => celulas.push({ f, g, rg, p: pI[i] * pG[g] * rg.p }))));
   const pesosBase = arredonda(celulas.map((c) => c.p), nBase);
-  const personas = celulas.map((c, i) => ({ id: `b_${c.f}_${c.g}`, grupo: 'base', rotulo: `${c.g === 'M' ? 'Homem' : 'Mulher'} ${c.f} anos`, faixa: c.f, genero: c.g, membros: pesosBase[i] }));
-  const pesosAlvo = arredonda(ALVO.map((a) => a.parte), total - nBase);
+  const personas = celulas.map((c, i) => ({ id: `b_${c.f}_${c.g}_${c.rg.r}`, grupo: 'base', rotulo: `${c.g === 'M' ? 'Homem' : 'Mulher'} ${c.f} anos, ${c.rg.rotulo}`, faixa: c.f, genero: c.g, regiao: c.rg.r, membros: pesosBase[i] }));
+  const soma = ALVO.reduce((s, a) => s + a.parte, 0); const pesosAlvo = arredonda(ALVO.map((a) => a.parte / soma), total - nBase);
   ALVO.forEach((a, i) => personas.push({ id: a.id, grupo: 'alvo', rotulo: a.rotulo, membros: pesosAlvo[i] }));
   return personas.filter((p) => p.membros > 0);
 }
@@ -110,8 +124,13 @@ Responda APENAS JSON: {"personas":[{"id":"","quem":"","dor":"","para_no_feed":""
 async function montar({ ia, retrato, cfg } = {}) {
   const c = cfg || await config(); const r = retrato || await coletar();
   const base = quotas(r, { alvo_peso: c.alvo_peso });
-  const { dados } = await ia({ sistema: SISTEMA_PERSONAS, usuario: `DADOS REAIS DA CONTA:\n${resumoRetrato(r)}\n\nPERFIS:\n${base.map((p) => `${p.id} | ${p.grupo} | ${p.rotulo} | ${p.membros} de 1000`).join('\n')}`, maxTokens: 3200, temperatura: 0.4, preferirMelhor: true });
-  const porId = new Map((Array.isArray(dados?.personas) ? dados.personas : []).map((x) => [String(x.id), x]));
+  // Lotes de até 10 perfis, em paralelo: respostas menores cabem no prazo da função e nos limites das IAs gratuitas.
+  const lotes = []; for (let i = 0; i < base.length; i += 10) lotes.push(base.slice(i, i + 10));
+  const respostas = await Promise.all(lotes.map(async (lote) => {
+    try { return (await ia({ sistema: SISTEMA_PERSONAS, usuario: `DADOS REAIS DA CONTA:\n${resumoRetrato(r)}\n\nPERFIS:\n${lote.map((p) => `${p.id} | ${p.grupo} | ${p.rotulo} | ${p.membros} de 1000`).join('\n')}`, maxTokens: 3600, temperatura: 0.4, preferirMelhor: true })).dados; } catch { return null; }
+  }));
+  if (respostas.every((x) => !x)) throw Object.assign(new Error('Nenhuma IA respondeu para descrever os perfis agora. Tente de novo em alguns minutos.'), { status: 503 });
+  const porId = new Map(respostas.flatMap((d) => (Array.isArray(d?.personas) ? d.personas : [])).map((x) => [String(x.id), x]));
   const campo = (v) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, 170);
   const personas = base.map((p) => { const x = porId.get(p.id) || {}; return { ...p, quem: campo(x.quem) || p.rotulo, dor: campo(x.dor), para_no_feed: campo(x.para_no_feed), compartilha_quando: campo(x.compartilha_quando), ignora_quando: campo(x.ignora_quando) }; });
   const doc = { criado_em: new Date().toISOString(), total: personas.reduce((s, p) => s + p.membros, 0), alvo_peso: c.alvo_peso, descritas: [...porId.keys()].length, retrato: { seguidores: r.seguidores, coletado_em: r.coletado_em, comentarios: (r.comentarios || []).length, avisos: r.avisos }, personas };
@@ -131,7 +150,7 @@ async function avaliar({ capas = [], slides = [], legenda = '', tese = '' } = {}
   if (!doc?.personas?.length) return { ok: false, motivo: 'Painel ainda não montado.' };
   const letras = capas.map((_, i) => String.fromCharCode(65 + i));
   const usuario = `VOZES (id | grupo | perfil | peso de 1000 | dor | o que a faz parar | quando manda | quando ignora):\n${doc.personas.map((p) => `${p.id} | ${p.grupo} | ${p.quem} | ${p.membros} | ${p.dor || '-'} | ${p.para_no_feed || '-'} | ${p.compartilha_quando || '-'} | ${p.ignora_quando || '-'}`).join('\n')}\n\nCAPAS (1º slide, em ordem):\n${capas.map((t, i) => `${letras[i]}: ${t}`).join('\n')}\n\nCARROSSEL (slides em sequência):\n${slides.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nLEGENDA: ${String(legenda).slice(0, 400)}\nTESE: ${tese}`;
-  let dados; try { ({ dados } = await ia({ sistema: SISTEMA_AVALIA, usuario, maxTokens: 2600, temperatura: 0.35, preferirMelhor: true })); } catch (e) { return { ok: false, motivo: `IA indisponível: ${String(e.message).slice(0, 100)}` }; }
+  let dados; try { ({ dados } = await ia({ sistema: SISTEMA_AVALIA, usuario, maxTokens: 4200, temperatura: 0.35, preferirMelhor: true })); } catch (e) { return { ok: false, motivo: `IA indisponível: ${String(e.message).slice(0, 100)}` }; }
   const num = (v) => limita(Number(v) || 0, 0, 10);
   const vozes = []; for (const p of doc.personas) { const x = (Array.isArray(dados?.vozes) ? dados.vozes : []).find((v) => String(v.id) === p.id); if (!x) continue; vozes.push({ p, capa: capas.map((_, i) => num(Array.isArray(x.capa) ? x.capa[i] : x.capa)), interesse: num(x.interesse), envio: num(x.envio), objecao: String(x.objecao || '').replace(/\s+/g, ' ').trim().slice(0, 110) }); }
   const cobertura = vozes.reduce((s, v) => s + v.p.membros, 0);
