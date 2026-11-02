@@ -122,3 +122,17 @@ test('pipeline: sem painel montado ou painel desligado, a produção segue norma
   assert.strictEqual(r.conteudo.top.estado, 'concluida'); assert.strictEqual(r.conteudo.top.painel.ativo, false);
   assert.ok(!ia.chamadas.some((x) => x.tipo === 'painel'));
 });
+
+test('pipeline: cota da IA esgotada no painel espera a cota voltar (não segue sem a nota)', async () => {
+  novo();
+  await PN.montar({ ia: async () => ({ dados: { personas: [] } }), retrato: RETRATO });
+  const doc = await PN.personasAtuais();
+  const base = iaFalsa(() => ({ vozes: doc.personas.map((p) => ({ id: p.id, capa: [6, 6, 6], interesse: 6, envio: 6, objecao: '' })) }));
+  const ia = { pedirJson: async (a) => { if (/simula um painel/.test(a.sistema)) throw Object.assign(new Error('429 status code (no body)'), { status: 429 }); return base.pedirJson(a); } };
+  const c = await T.criar({ url: 'https://exemplo.test/m' });
+  const r = await T.executarTudo(c.id, { deps: { ...deps(ia), provedoresFortes: () => ['gemini'], ultimoErro: () => ({ status: 429 }) }, maxMs: 15000 });
+  const top = r.conteudo.top;
+  assert.strictEqual(top.estado, 'em_andamento', 'não conclui sem passar pelo painel');
+  assert.ok(top.adiar_ate && top.erros.some((e) => e.codigo === 'COTA_IA' && e.etapa === 'painel'));
+  assert.ok(!top.painel || !top.painel.falhou);
+});
