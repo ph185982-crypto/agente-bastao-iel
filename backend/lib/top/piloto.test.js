@@ -174,3 +174,17 @@ test('pauta que mexe com quem empreende sobe na fila do piloto', async () => {
   await Pi.rodada({ agora: SP('2026-10-29', '06:00'), deps });
   assert.strictEqual(criados[0].titulo, 'Reforma muda imposto de quem tem CNPJ');
 });
+
+test('pedido de pautas extras: vale só no dia, ignora o horário e soma ao limite de candidatos', async () => {
+  novo(); const criados = [];
+  const deps = {
+    descobrir: async () => ({ pautas: [{ id: 'p1', titulo: 'Uma', prioridade: 50, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/a' }] }] }),
+    criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
+  };
+  const noite = SP('2026-10-29', '22:00');
+  assert.strictEqual((await Pi.rodada({ agora: noite, deps })).criado, null, 'fora do horário não cria');
+  const r = await Pi.rodada({ agora: noite, deps, extra: 3 });
+  assert.strictEqual(r.criado.titulo, 'Uma', 'com extra cria mesmo fora do horário');
+  const amanha = SP('2026-10-30', '22:00');
+  assert.strictEqual((await Pi.rodada({ agora: amanha, deps })).criado, null, 'o extra não passa para o dia seguinte');
+});
