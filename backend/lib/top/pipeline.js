@@ -215,7 +215,11 @@ E.painel = async (c, ctx) => {
   const v = c.top.versoes[c.top.escolha.versao];
   const ordem = [...new Set([...(c.top.escolha.capas || []), 0, 1, 2])].filter((n) => n < v.capas.length).slice(0, 3);
   const r = await PN.avaliar({ capas: ordem.map((i) => v.capas[i].texto), slides: v.telas.map((t) => [t.titulo, t.texto].filter(Boolean).join(' — ')), legenda: v.legenda, tese: c.top.angulo?.tese || '' }, { ia: ctx.ia, personas });
-  if (!r.ok) { c.top.painel = { ativo: true, falhou: r.motivo }; return; }
+  if (!r.ok) {
+    // Todo roteiro passa pelo painel: cota esgotada (429) espera a cota voltar; outra falha da IA tenta mais uma vez antes de seguir sem a nota.
+    if (r.erro_ia && (r.erro_ia.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(r.erro_ia.message)) || (c.top.tentativas.painel || 0) < 1)) throw r.erro_ia;
+    c.top.painel = { ativo: true, falhou: r.motivo }; return;
+  }
   c.top.painel = { ativo: true, ...r, capa_indices: ordem };
   if (r.melhor_capa > 0) c.top.escolha.capas = [ordem[r.melhor_capa], ...ordem.filter((_, i) => i !== r.melhor_capa)].slice(0, 2);
   if (r.nota < cfg.minimo) {
