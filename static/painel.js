@@ -1,4 +1,4 @@
-// Perfil → Painel de audiência: 1.000 vozes simuladas (12 perfis ponderados) que avaliam cada copy antes da produção.
+// Perfil → Painel de audiência: 1.000 vozes simuladas (30 perfis ponderados) que avaliam cada copy antes da produção.
 // É uma simulação baseada em dados agregados da conta, não pessoas reais; a calibração compara a nota com o resultado real.
 (function () {
   const st = { dados: null, calib: null, carregando: false, jaCarregou: false, ocupado: false, erro: null, abertos: false };

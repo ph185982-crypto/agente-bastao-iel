@@ -203,7 +203,7 @@ E.juri = async (c, ctx) => {
   }
 };
 
-// Painel de audiência (backend/lib/painel): 12 vozes que representam 1.000 pessoas avaliam a copy ANTES de virar arte.
+// Painel de audiência (backend/lib/painel): 30 vozes que representam 1.000 pessoas avaliam a copy ANTES de virar arte.
 // Escolhe a melhor capa; nota baixa manda reescrever uma vez com as objeções e, se continuar baixa, descarta.
 // Falha ou painel ainda não montado = segue sem painel (nunca trava a produção).
 E.painel = async (c, ctx) => {
