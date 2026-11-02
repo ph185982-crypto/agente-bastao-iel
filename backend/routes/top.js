@@ -22,7 +22,7 @@ router.get('/piloto', async (req, res) => { try { res.json(await Piloto.resumoDo
 router.put('/piloto', async (req, res) => { try { await Piloto.salvarConfig(req.body || {}); res.json(await Piloto.resumoDoDia()); } catch (e) { erro(res, e); } });
 const Relogio = require('../lib/top/relogio');
 // Toda rodada vinda de fora (GitHub, app aberto) também religa o relógio da fila, se a corrente tiver parado.
-const rodar = async (req, res) => { try { const r = await Piloto.rodada(); await Relogio.agendarProxima(r); res.json(r); } catch (e) { erro(res, e); } };
+const rodar = async (req, res) => { try { const r = await Piloto.rodada({ extra: req.method === 'POST' ? Number(req.body?.extra) || 0 : 0 }); await Relogio.agendarProxima(r); res.json(r); } catch (e) { erro(res, e); } };
 router.post('/piloto/rodada', limita({ max: 6, janelaMs: 60000, nome: 'top-piloto' }), rodar);
 router.get('/piloto/rodada', rodar); // rotina diária da Vercel usa GET
 // Publicação que falhou (ex.: trava corrigida depois): volta para a agenda no próximo horário livre, sem nova aprovação —

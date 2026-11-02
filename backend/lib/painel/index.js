@@ -97,7 +97,7 @@ function quotas(retrato, { alvo_peso = PADRAO.alvo_peso, total = 1000 } = {}) {
   const pI = FAIXAS.map((f) => (idade[f] || 0) / somaI); const pG = { M: gen.M / somaG, F: gen.F / somaG };
   // Região: só as cidades que a Graph API devolve (as maiores). Assume idade/gênero independentes da região (aproximação, os dados não cruzam).
   let se = 0; let tot = 0; for (const x of retrato?.demografia?.city || []) { tot += x.v; if (SUDESTE.test(x.k)) se += x.v; }
-  const pSE = tot ? se / tot : 0.6; const regioes = [{ r: 'SE', rotulo: 'Sudeste (SP, RJ, MG, ES)', p: pSE }, { r: 'RS', rotulo: 'demais regiões', p: 1 - pSE }];
+  const pSE = tot ? se / tot : 0.6; const regioes = [{ r: 'SE', rotulo: 'Sudeste (SP, RJ, MG, ES)', p: pSE }, { r: 'RS', rotulo: 'fora do Sudeste (Sul, Nordeste, Norte ou Centro-Oeste)', p: 1 - pSE }];
   const nBase = Math.round(total * (1 - alvo_peso));
   const celulas = []; FAIXAS.forEach((f, i) => ['M', 'F'].forEach((g) => regioes.forEach((rg) => celulas.push({ f, g, rg, p: pI[i] * pG[g] * rg.p }))));
   const pesosBase = arredonda(celulas.map((c) => c.p), nBase);

@@ -138,7 +138,7 @@ async function proximaPauta(est, { agora, deps, restante }) {
 }
 
 // ── Rodada ──────────────────────────────────────────────────────────────────────
-async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {}) {
+async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extra = 0 } = {}) {
   const inicio = Date.now(); const restante = () => orcamentoMs - (Date.now() - inicio);
   const a = armazem(); if (!a?.duravel) return { executou: false, motivo: 'O piloto precisa do banco de dados no servidor.' };
   const cfg = await config();
@@ -149,6 +149,9 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
   const removidos = new Set();
   const dia = diaSP(agora); const hora = horaSP(agora);
   if (est.dia !== dia) est = { ...est, dia, criados_hoje: 0, notificado: {} };
+  // Pedido do Pedro de mais pautas hoje ("extra"): vale só para o dia atual, soma ao limite de candidatos e de prontos e ignora o horário.
+  if (extra > 0) est.extra_dia = { dia, n: Math.min(6, Math.floor(extra)) };
+  const folga = est.extra_dia?.dia === dia ? est.extra_dia.n : 0;
   est.criados = (est.criados || []).filter((x) => Date.parse(x.em) > agora - 3 * 86400000);
   est.usadas = (est.usadas || []).filter((x) => Date.parse(x.em) > agora - 14 * 86400000);
   const r = { em: new Date(agora).toISOString(), dia, hora, ativo: cfg.ativo, publicados: [], avisos: [], avancados: [], criado: null };
@@ -209,10 +212,10 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {
   // Descartado pelo Pedro não conta na meta: abre vaga para outro.
   const prontosHoje = est.criados.filter((x) => x.dia === dia && x.estado === 'concluida' && x.decidido !== 'descartado').length;
   const emAndamento = est.criados.filter((x) => x.estado === 'em_andamento').length;
-  const naJanela = hora >= cfg.inicio_producao && hora <= cfg.fim_producao;
+  const naJanela = (hora >= cfg.inicio_producao && hora <= cfg.fim_producao) || folga > 0;
   const iaPausada = est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora;
   if (iaPausada) r.avisos.push(`IA gratuita sem cota até ${horaSP(Date.parse(est.ia_pausa_ate))}: nenhuma pauta nova até lá.`);
-  if (naJanela && !iaPausada && !emAndamento && prontosHoje < cfg.meta_dia + cfg.reserva && (est.criados_hoje || 0) < cfg.candidatos_max_dia && restante() > 12000) {
+  if (naJanela && !iaPausada && !emAndamento && prontosHoje < cfg.meta_dia + cfg.reserva + folga && (est.criados_hoje || 0) < cfg.candidatos_max_dia + folga && restante() > 12000) {
     try {
       const pauta = await proximaPauta(est, { agora, deps, restante });
       if (pauta) {
