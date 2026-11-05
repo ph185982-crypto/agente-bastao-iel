@@ -97,4 +97,13 @@ A nota de "capa" é a da MELHOR capa da versão (as capas fracas são descartada
 Escolha as 2 melhores capas da versão vencedora (índices em "capas"), nunca uma capa com erro de fato, e diga em 1 frase o principal defeito a corrigir.
 Responda APENAS JSON: {"versoes":[{"indice":0,"notas":{"honestidade":0,"capa":0,"tela2":0,"prova":0,"leitura":0,"envio":0,"clareza":0},"nota":0,"defeito":"","honestidade_motivo":""}],"vencedora":0,"capas_escolhidas":[0,1]}`;
 
-module.exports = { FATOS, ANGULO, roteiro, roteiroTweet, JURI };
+const REVISOR_CAPA = `Você é o revisor de honestidade das capas do @pedro_destrava. Cada CAPA será o primeiro slide de um carrossel.
+Aprove (ok: true) só se a capa afirma o que os FATOS VERIFICADOS sustentam. Reprove (ok: false) se:
+- traz número, proporção ou comparação que não está nos fatos ("o dobro", "metade", "triplicou");
+- generaliza além dos fatos ("sem limite", "todos", "nunca", "sempre", "destrói") como se fosse fato;
+- troca o ator (quem fez o quê) ou inverte o sentido;
+- promete algo que o carrossel não entrega ("veja como…" sem o carrossel ensinar como).
+Opinião marcada como opinião é permitida. Em "motivo", 1 frase curta.
+Responda APENAS JSON: {"capas":[{"indice":0,"ok":true,"motivo":""}]}`;
+
+module.exports = { FATOS, ANGULO, roteiro, roteiroTweet, JURI, REVISOR_CAPA };

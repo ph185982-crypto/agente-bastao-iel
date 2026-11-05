@@ -77,8 +77,9 @@ const roteiro = () => ({ capas: [{ texto: 'Prometeu meta. Entregou o **maior pat
 const JURI = { versoes: [{ indice: 0, notas: {}, nota: 8.6, defeito: 'capa 2 longa' }, { indice: 1, notas: {}, nota: 8.1, defeito: '' }], vencedora: 0, capas_escolhidas: [0, 1] };
 function iaFalsa(painelNota) {
   const chamadas = [];
-  const pedirJson = async ({ sistema }) => {
+  const pedirJson = async ({ sistema, usuario }) => {
     const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : /simula um painel/.test(sistema) ? 'painel' : /sala de redação/.test(sistema) ? 'sala' : 'roteiro';
+    if (/revisor de honestidade/.test(sistema)) { chamadas.push({ tipo: 'revisor', sistema }); return { dados: { capas: [...usuario.matchAll(/^\[(\d+)\] (.*)$/gm)].map((m) => ({ indice: Number(m[1]), ok: !/achava/.test(m[2]) || !global.REPROVA_MENTE, motivo: global.REPROVA_MENTE ? 'generaliza' : '' })) }, llm: { provider: 'simulado' } }; }
     if (tipo === 'sala') { chamadas.push({ tipo, sistema }); return { dados: { capas: [{ mente: 'bernbach', texto: 'Eu também achava que **82,9%** era exagero.' }] }, llm: { provider: 'simulado' } }; }
     chamadas.push({ tipo, sistema });
     if (tipo === 'painel') return { dados: painelNota(chamadas.filter((c) => c.tipo === 'painel').length), llm: { provider: 'simulado' } };
@@ -144,4 +145,15 @@ test('pipeline: capa escrita por uma mente vence no painel e fica registrada', a
   assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
   assert.strictEqual(doc.top.mentes.capa, 'bernbach');
   assert.match(M.versaoAtiva(doc).slides[0].texto, /Eu também achava/);
+});
+
+test('pipeline: capa de mente reprovada pelo revisor de honestidade não é usada', async () => {
+  global.REPROVA_MENTE = true;
+  try {
+    const { r, doc, ia } = await comPainel(() => ({ capa: [3, 3, 9], interesse: 7, envio: 6, objecao: '' }));
+    assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+    assert.ok(ia.chamadas.some((x) => x.tipo === 'revisor'));
+    assert.doesNotMatch(M.versaoAtiva(doc).slides[0].texto, /Eu também achava/);
+    assert.notStrictEqual(doc.top.mentes.capa, 'bernbach');
+  } finally { delete global.REPROVA_MENTE; }
 });
