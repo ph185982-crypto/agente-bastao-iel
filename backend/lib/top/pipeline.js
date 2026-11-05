@@ -257,6 +257,27 @@ E.painel = async (c, ctx) => {
     c.top.versoes = [{ ...v, checagem: { ok: false, problemas: [motivo] } }];
     return { voltar: 'roteiro' };
   }
+  // As capas das mentes não passaram pelo júri: antes de usar uma, um revisor confere se ela afirma só o que os fatos
+  // sustentam ("o dobro", "sem limite", ator errado, promessa que o carrossel não entrega). Reprovada, vale a próxima.
+  const notaDe = (i) => r.capas[ordem.indexOf(i)] ?? -1;
+  const ranking = [...ordem].sort((a, b) => notaDe(b) - notaDe(a));
+  const daMente = (i) => String(v.capas[i]?.mecanismo || '').startsWith('mente:');
+  const corte = ranking.findIndex((j) => !daMente(j));   // capas de mente que estão acima da melhor capa do júri
+  const aConferir = ranking.slice(0, corte < 0 ? ranking.length : corte).slice(0, 3);
+  if (aConferir.length) {
+    let reprovadas = new Set(aConferir);
+    try {
+      const { dados } = await ctx.ia({ sistema: P.REVISOR_CAPA, usuario: `FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\nO CARROSSEL:\n${v.telas.map((t, j) => `${j + 2}. ${[t.titulo, t.texto].filter(Boolean).join(' — ')}`).join('\n')}\n\nCAPAS:\n${aConferir.map((i) => `[${i}] ${v.capas[i].texto}`).join('\n')}`, maxTokens: 500, temperatura: 0.1, preferirMelhor: true });
+      const res = Array.isArray(dados?.capas) ? dados.capas : [];
+      reprovadas = new Set(aConferir.filter((i) => { const x = res.find((y) => Number(y.indice) === i); return !x || x.ok !== true; }));
+      c.top.revisao_capas = res.slice(0, 3).map((x) => ({ indice: Number(x.indice), ok: x.ok === true, motivo: String(x.motivo || '').slice(0, 160) }));
+    } catch (e) {
+      if (e.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(e.message))) throw e;
+      c.top.revisao_capas = [{ falhou: String(e.message).slice(0, 120) }]; // sem revisão, nenhuma capa de mente é usada
+    }
+    const ok = ranking.filter((i) => !daMente(i) || (aConferir.includes(i) && !reprovadas.has(i)));
+    if (ok.length) c.top.escolha.capas = [...new Set([ok[0], ...ok.slice(1)])].slice(0, 2);
+  }
 };
 
 // Foto da CAPA, nesta ordem: a PESSOA central (Wikimedia Commons, licença aberta); o LUGAR/instituição brasileira
