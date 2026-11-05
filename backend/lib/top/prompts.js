@@ -25,12 +25,12 @@ Leia os fatos com honestidade: se a notícia é neutra ou positiva, NÃO invente
 "imagem": a foto da CAPA. "pessoa_central": true só se a notícia gira em torno de UMA pessoa pública (aí a capa usa a foto dela). "lugar_brasil": se o assunto é uma instituição ou lugar brasileiro, o PRÉDIO por fora para buscar no Wikimedia Commons (ex.: "Congresso Nacional Brasília", "Prédio do Supremo Tribunal Federal", "Palácio do Planalto", "Banco Central do Brasil sede", "Porto de Santos"); senão null. "busca": a cena ILUSTRATIVA em INGLÊS, concreta e visual, 3 a 6 palavras, ligada ao assunto (ex.: "highway construction trucks", "supermarket shelves rice beans", "steel mill smokestack") — nunca genérica.
 Responda APENAS JSON: {"gatilhos":{"contradicao":0,"bolso":0,"numero":0,"personagem":0,"empreendedor":0},"enviar_para":"seu sócio","tese":"","por_que_mandaria":"","risco":"o que pode soar injusto ou exagerado, se houver","formato":"tweet","imagem":{"pessoa_central":false,"lugar_brasil":null,"busca":""}}`;
 
-function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem' }) {
-  if (formato === 'tweet') return roteiroTweet({ voz, tese, porQue, feedback });
+function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem', mente = '' }) {
+  if (formato === 'tweet') return roteiroTweet({ voz, tese, porQue, feedback, mente });
   return `Você escreve carrosséis do @pedro_destrava que param o dedo e são encaminhados. O Pedro é de direita (liberdade econômica, responsabilidade fiscal, família, iniciativa privada) e cobra quem tem poder: nunca escreva elogio ao governo nem frase de propaganda. Escreva como o Pedro fala: primeira pessoa quando opinar, frases curtas de conversa, sem jargão de jornal, sem "Segundo a Agência X" em toda tela (a fonte aparece UMA vez, na tela de prova, e na legenda).
 TESE DESTE CARROSSEL (a leitura do Pedro): ${tese}
 POR QUE ALGUÉM MANDARIA: ${porQue}
-
+${mente ? `\n${mente}\n` : ''}
 ${E.padraoParaPrompt({ formato: 'carrossel' })}
 
 ESTRUTURA OBRIGATÓRIA (cada tela termina puxando a próxima — amarra de curiosidade):
@@ -56,11 +56,11 @@ Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"
 // Formato "tweet" (referência: @thiago.nigro — 150 a 380 mil curtidas por carrossel): fundo branco, foto de perfil, UMA frase
 // por slide, foto pequena embaixo, seta para o próximo. Parece conversa. Vira viral por SEQUÊNCIA (padrão repetido com
 // quebra no fim, ou linha do tempo com número), não por explicação.
-function roteiroTweet({ voz = [], tese, porQue, feedback = '' }) {
+function roteiroTweet({ voz = [], tese, porQue, feedback = '', mente = '' }) {
   return `Você escreve carrosséis do @pedro_destrava no formato "tweet": cada slide é um tweet do Pedro, UMA frase (ou duas curtas), em primeira pessoa, como ele escreveria no X. O Pedro é liberal na economia e conservador nos valores: cobra quem tem poder, nunca elogia governo nem escreve propaganda. Sem jargão de jornal, sem "segundo a agência" em toda frase (a fonte vai na legenda).
 TESE DESTE CARROSSEL: ${tese}
 POR QUE ALGUÉM MANDARIA: ${porQue}
-
+${mente ? `\n${mente}\n` : ''}
 ${E.padraoParaPrompt({ formato: 'carrossel' })}
 
 PARA QUEM VOCÊ ESCREVE: o empreendedor brasileiro (dono de empresa, MEI, quem vende em marketplace, quem paga folha e imposto). Fale COM ele, em "você" e no mundo dele: caixa, CNPJ, sócio, fornecedor, cliente, nota fiscal, taxa, frete, prazo de pagamento. Ele precisa se RECONHECER em cada tweet ("isso é exatamente o meu mês").

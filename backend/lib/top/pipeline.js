@@ -16,8 +16,8 @@ const K = require('./checagem');
 const conta = () => ACCOUNT.ig_id;
 const agoraISO = () => new Date().toISOString();
 const erro = (msg, code, status = 400) => Object.assign(new Error(msg), { code, status });
-const ETAPAS = ['ler', 'fatos', 'angulo', 'roteiro', 'juri', 'painel', 'foto', 'arte', 'fim'];
-const ROTULO = { ler: 'Lendo a matéria', fatos: 'Separando os fatos e conferindo na matéria', angulo: 'Testando se a pauta vale (teste do grupo)', roteiro: 'Escrevendo as versões', juri: 'Júri escolhendo a melhor', painel: 'Painel de 1.000 pessoas avaliando a copy', foto: 'Buscando foto real com licença', arte: 'Desenhando os slides', fim: 'Pronto para aprovar' };
+const ETAPAS = ['ler', 'fatos', 'angulo', 'roteiro', 'juri', 'capas', 'painel', 'foto', 'arte', 'fim'];
+const ROTULO = { ler: 'Lendo a matéria', fatos: 'Separando os fatos e conferindo na matéria', angulo: 'Testando se a pauta vale (teste do grupo)', roteiro: 'Escrevendo as versões', juri: 'Júri escolhendo a melhor', capas: 'Sala de redação: 10 mentes escrevendo capas', painel: 'Painel de 1.000 pessoas avaliando a copy', foto: 'Buscando foto real com licença', arte: 'Desenhando os slides', fim: 'Pronto para aprovar' };
 // nucleo_min: bolso OU contradição precisa pesar (número e personagem sozinhos dão post de cotação, não de tese).
 const REGUA = { gatilhos_min: 5, nota_min: 7.5, nucleo_min: 2 };
 const LEASE_MS = 70000; const MAX_TENTATIVAS = 3;
@@ -50,6 +50,7 @@ async function criar({ url = null, texto = null, titulo = '', origem = 'manual',
 }
 
 // ── Etapas ──────────────────────────────────────────────────────────────────────
+const Mentes = require('../mentes');
 const E = {};
 E.ler = async (c, ctx) => {
   const f = await (ctx.deps.lerFonte || require('../research').lerFonte)({ url: c.top.entrada.url, texto: c.top.entrada.texto });
@@ -92,7 +93,9 @@ E.roteiro = async (c, ctx) => {
   while (c.top.versoes.length < 2 && ctx.restante() > 22000) {
     const anterior = c.top.versoes[c.top.versoes.length - 1];
     const feedback = anterior && !anterior.checagem.ok ? anterior.checagem.problemas.slice(0, 8).join('\n') : '';
-    const { dados } = await ctx.ia({ sistema: P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato }), usuario: `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
+    // Cada versão é escrita com o método de um copywriter (dupla em rodízio pelo id do carrossel).
+    const mente = (ctx.deps.mentes || Mentes).parPara(c.id)[c.top.versoes.length];
+    const { dados } = await ctx.ia({ sistema: P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente) }), usuario: `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
     const v = normalizarRoteiro(dados, c.top.formato);
     // Data também sai: o portão de publicação trata "27/10/2026" como número que precisa de fonte.
     const DATA = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b\d{1,2} de (?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/i;
@@ -102,6 +105,7 @@ E.roteiro = async (c, ctx) => {
     v.checagem = K.checarRoteiro({ ...v, capa: v.capas[0]?.texto || '', telas: [...v.telas], legenda: `${v.legenda}\n${v.fechamento.titulo}\n${v.fechamento.texto}\n${v.cta_motivo}` }, c.top.fatos);
     // capas com número fora dos fatos saem da lista (não derrubam a versão inteira)
     v.capas = v.capas.filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')));
+    v.mente = mente?.id || null;
     c.top.versoes.push(v);
   }
   if (c.top.versoes.length < 2) return { concluida: false };
@@ -206,6 +210,28 @@ E.juri = async (c, ctx) => {
 // Painel de audiência (backend/lib/painel): 30 vozes que representam 1.000 pessoas avaliam a copy ANTES de virar arte.
 // Escolhe a melhor capa; nota baixa manda reescrever uma vez com as objeções e, se continuar baixa, descarta.
 // Falha ou painel ainda não montado = segue sem painel (nunca trava a produção).
+// Sala de redação: as 10 mentes escrevem 1 capa cada para a versão vencedora (uma chamada só). As capas que passam na
+// checagem de fatos entram na disputa; o painel de audiência escolhe a melhor entre as do júri e as das mentes.
+E.capas = async (c, ctx) => {
+  const v = c.top.versoes[c.top.escolha.versao];
+  if (v.sala_feita) return;
+  const M = ctx.deps.mentes || Mentes;
+  const usuario = `FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\nTESE: ${c.top.angulo?.tese || ''}\nCOM QUEM FALAR: ${c.top.angulo?.enviar_para || 'o empreendedor'}\n\nO CARROSSEL (slides depois da capa):\n${v.telas.map((t, j) => `${j + 2}. ${[t.titulo, t.texto].filter(Boolean).join(' — ')}`).join('\n')}\n\nCAPAS QUE JÁ EXISTEM (não repita):\n${v.capas.map((k) => `- ${k.texto}`).join('\n')}`;
+  let dados;
+  try { ({ dados } = await ctx.ia({ sistema: M.SALA_CAPAS, usuario, maxTokens: 1400, temperatura: 0.8, preferirMelhor: true })); } catch (e) {
+    if (e.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(e.message)) || (c.top.tentativas.capas || 0) < 1) throw e;
+    v.sala_feita = true; c.top.mentes = { ...(c.top.mentes || {}), roteiro: v.mente || null, sala: 0, falhou: String(e.message).slice(0, 120) }; return;
+  }
+  const maxPal = c.top.formato === 'tweet' ? 18 : 14;
+  const ja = new Set(v.capas.map((k) => k.texto.toLowerCase()));
+  const novas = (Array.isArray(dados?.capas) ? dados.capas : []).map((k) => ({ texto: String(k?.texto || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: `mente:${M.porId.has(String(k?.mente)) ? String(k.mente) : 'sala'}` }))
+    .filter((k) => k.texto && K.palavras(k.texto) <= maxPal && !ja.has(k.texto.toLowerCase()) && !/\b\d{1,2}\/\d{1,2}\b/.test(k.texto))
+    .filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')));
+  v.capas = [...v.capas, ...novas].slice(0, 22);
+  v.sala_feita = true;
+  c.top.mentes = { ...(c.top.mentes || {}), roteiro: v.mente || null, sala: novas.length };
+};
+
 E.painel = async (c, ctx) => {
   const PN = ctx.deps.painel || require('../painel');
   const cfg = await PN.config();
@@ -213,7 +239,8 @@ E.painel = async (c, ctx) => {
   const personas = await PN.personasAtuais();
   if (!personas?.personas?.length) { c.top.painel = { ativo: false, motivo: 'Painel ainda não montado.' }; return; }
   const v = c.top.versoes[c.top.escolha.versao];
-  const ordem = [...new Set([...(c.top.escolha.capas || []), 0, 1, 2])].filter((n) => n < v.capas.length).slice(0, 3);
+  const dasMentes = v.capas.map((k, i) => (String(k.mecanismo).startsWith('mente:') ? i : -1)).filter((i) => i >= 0);
+  const ordem = [...new Set([...(c.top.escolha.capas || []), 0, 1, ...dasMentes])].filter((n) => n < v.capas.length).slice(0, 8);
   const r = await PN.avaliar({ capas: ordem.map((i) => v.capas[i].texto), slides: v.telas.map((t) => [t.titulo, t.texto].filter(Boolean).join(' — ')), legenda: v.legenda, tese: c.top.angulo?.tese || '' }, { ia: ctx.ia, personas });
   if (!r.ok) {
     // Todo roteiro passa pelo painel: cota esgotada (429) espera a cota voltar; outra falha da IA tenta mais uma vez antes de seguir sem a nota.
@@ -235,6 +262,9 @@ E.painel = async (c, ctx) => {
 // Foto da CAPA, nesta ordem: a PESSOA central (Wikimedia Commons, licença aberta); o LUGAR/instituição brasileira
 // (Commons, foto real: plenário do Senado, STF…); a CENA ilustrativa ligada ao assunto (Pexels). Uma foto só, na capa.
 E.foto = async (c, ctx) => {
+  // Registra qual mente escreveu a capa escolhida e o roteiro (para comparar com o resultado real depois).
+  { const v = c.top.versoes[c.top.escolha.versao]; const k = v?.capas?.[c.top.escolha.capas?.[0] ?? 0]; const m = String(k?.mecanismo || '');
+    c.top.mentes = { ...(c.top.mentes || {}), roteiro: v?.mente || c.top.mentes?.roteiro || null, capa: m.startsWith('mente:') ? m.slice(6) : (v?.mente ? `${v.mente} (roteiro)` : null) }; }
   const lugar = c.top.angulo?.imagem?.lugar_brasil;
   if (lugar && !c.top.foto_lugar_id && !(c.top.protagonista && c.top.angulo?.imagem?.pessoa_central === true)) {
     try {

@@ -31,12 +31,13 @@ const roteiro = (extra = {}) => ({
 });
 const JURI = { versoes: [{ indice: 0, notas: {}, nota: 8.6, defeito: 'capa 2 longa' }, { indice: 1, notas: {}, nota: 8.1, defeito: '' }], vencedora: 0, capas_escolhidas: [0, 1] };
 
+const SALA = { capas: [{ mente: 'halbert', texto: 'Se você tem empresa, olha esse número: **82,9%**.' }, { mente: 'hopkins', texto: 'Chegou a 99% e ninguém avisou.' }, { mente: 'kennedy', texto: 'Seu caixa sente antes do discurso admitir.' }] };
 function iaFalsa({ roteiros = [roteiro(), roteiro()], juri = JURI, angulo = ANGULO } = {}) {
   let r = 0; const chamadas = [];
   const pedirJson = async ({ sistema }) => {
-    const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : 'roteiro';
+    const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : /sala de redação/.test(sistema) ? 'sala' : 'roteiro';
     chamadas.push({ tipo, sistema });
-    const dados = tipo === 'fatos' ? FATOS : tipo === 'angulo' ? angulo : tipo === 'juri' ? juri : roteiros[Math.min(r++, roteiros.length - 1)];
+    const dados = tipo === 'fatos' ? FATOS : tipo === 'angulo' ? angulo : tipo === 'juri' ? juri : tipo === 'sala' ? SALA : roteiros[Math.min(r++, roteiros.length - 1)];
     return { dados: JSON.parse(JSON.stringify(dados)), llm: { provider: 'simulado' } };
   };
   return { pedirJson, chamadas };
@@ -72,7 +73,14 @@ test('do link ao "Para aprovar": versão vencedora, foto com crédito, arte de t
   assert.ok(doc.arte.renders.find((x) => x.slide_id === 's1').elementos.includes('foto_bloco'));
   assert.match(v.legenda, /Foto: Fotógrafo Exemplo \(CC BY 2\.0\)/);
   assert.match(v.legenda, /Fonte: Jornal Exemplo/);
-  assert.deepStrictEqual(ia.chamadas.map((x) => x.tipo), ['fatos', 'angulo', 'roteiro', 'roteiro', 'juri']);
+  assert.deepStrictEqual(ia.chamadas.map((x) => x.tipo), ['fatos', 'angulo', 'roteiro', 'roteiro', 'juri', 'sala']);
+  // as 2 versões foram escritas por mentes diferentes; a sala de capas acrescentou as capas que passam na checagem
+  const roteiros = ia.chamadas.filter((x) => x.tipo === 'roteiro').map((x) => (x.sistema.match(/MENTE DO REDATOR DESTA VERSÃO: ([^(]+)/) || [])[1]);
+  assert.ok(roteiros[0] && roteiros[1] && roteiros[0] !== roteiros[1], 'cada versão com uma mente');
+  const top = r.conteudo.top; const venc = top.versoes[top.escolha.versao];
+  assert.ok(venc.capas.some((k) => k.mecanismo === 'mente:halbert'), 'capa da sala entrou');
+  assert.ok(!venc.capas.some((k) => /99%/.test(k.texto)), 'capa com número fora dos fatos saiu');
+  assert.strictEqual(top.mentes.sala, 2); assert.ok(top.mentes.roteiro);
   if (process.env.TOP_DUMP) for (const x of doc.arte.renders.filter((y) => y.versao === v.id)) require('fs').writeFileSync(`${process.env.TOP_DUMP}/${x.slide_id}.png`, (await arm.armazem().arquivos.obter(ACCOUNT.ig_id, x.blob_key)).dados);
   const g = require('../studio').prepararRevisao(doc);
   assert.deepStrictEqual(g.bloqueios.map((b) => `${b.id}: ${b.detalhe}`), []);
