@@ -4,6 +4,7 @@
   const M=window.ContentModel;
   const x=()=>window.Mesa.ctx();
   const esc=s=>x().esc(s);
+  const MENTE_NOME={ogilvy:'Ogilvy',hopkins:'Hopkins',caples:'Caples',collier:'Collier',schwartz:'Schwartz',halbert:'Halbert',sugarman:'Sugarman',bencivenga:'Bencivenga',kennedy:'Kennedy',bernbach:'Bernbach'};
   const ui={aba:'prontos',selecionado:null,slides:{},ocupado:null,reprovar:null,motivos:[],detalhe:'',estado:null,experimentos:null,carregando:false,erro:null,source:{modo:'link',url:'',texto:'',formato:'carrossel',estilo:'auto',objetivo:'seguidores'}};
   const ETAPAS={leitura:'Lendo a matéria',afirmacoes:'Organizando as informações',pesquisa:'Conferindo as fontes',briefing:'Preparando a abordagem',copy:'Escrevendo com a sua voz',auditoria:'Conferindo o conteúdo',foto:'Selecionando as fotos',arte:'Desenhando os slides',motion:'Renderizando o Reel',finalizar:'Finalizando a prévia',publicacao:'Publicando no Instagram'};
   const motivos={texto_longo:'Texto demais',sem_foto:'Quero mais fotos',capa_fraca:'Capa sem impacto',visual:'Mudar o visual',voz:'Não parece comigo',cta:'CTA fraco',tema:'Não gostei do tema',fatos:'Corrigir informação'};
@@ -57,6 +58,7 @@
       ${preview(c)}${diagnostico(c)}
       ${c.top?`<p class="st-juri"><b>Júri ${esc(Number(c.top.escolha?.nota||0).toFixed(1).replace('.',','))}</b> · ${esc(c.top.angulo?.tese||'')}</p>`:''}
       ${c.top?.painel?.nota!=null?`<p class="st-juri st-painel"><b>Painel ${esc(String(c.top.painel.nota).replace('.',','))}</b> · base ${esc(String(c.top.painel.nota_base??'–').replace('.',','))} · empreendedores ${esc(String(c.top.painel.nota_alvo??'–').replace('.',','))} · envio ${esc(String(c.top.painel.envio).replace('.',','))}/10${c.top.painel.objecoes?.[0]?` · objeção: “${esc(c.top.painel.objecoes[0].texto)}”`:''}</p>`:''}
+      ${c.top?.mentes?.capa||c.top?.mentes?.roteiro?`<p class="st-juri st-painel">Sala de redação · capa: <b>${esc(MENTE_NOME[String(c.top.mentes.capa||'').replace(/ \(roteiro\)$/,'')]||c.top.mentes.capa||'–')}</b> · roteiro: ${esc(MENTE_NOME[c.top.mentes.roteiro]||c.top.mentes.roteiro||'–')}</p>`:''}
       <div class="st-review-body">${c.studio?.erro?`<p class="st-inline-error" role="status">${esc(c.studio.erro)}</p>`:''}
       ${c.top?barraTop(c,pronto,g,pausado):`${!pronto?'<p class="st-preparing-note">Vou resolver as pendências e montar uma prévia completa. Você aprova uma única vez, no final.</p>':''}
       <div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Refazer</button><button class="st-approve" data-action="${pronto?'st-aprovar':'st-preparar'}" data-id="${esc(c.id)}" ${ui.ocupado||pausado?'disabled':''}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':pausado?'Publicações pausadas':pronto?(c.top?'✓ Aprovar e agendar':'✓ Aprovar e publicar'):'Preparar automaticamente'}</button></div>${c.top&&pronto?'<p class="st-agenda-nota">Aprovado, entra no próximo horário livre da grade. Nada sai antes.</p>':''}<button class="st-text-button" data-action="st-descartar-direto" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>✕ Descartar este conteúdo</button>`}

@@ -78,7 +78,8 @@ const JURI = { versoes: [{ indice: 0, notas: {}, nota: 8.6, defeito: 'capa 2 lon
 function iaFalsa(painelNota) {
   const chamadas = [];
   const pedirJson = async ({ sistema }) => {
-    const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : /simula um painel/.test(sistema) ? 'painel' : 'roteiro';
+    const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : /simula um painel/.test(sistema) ? 'painel' : /sala de redação/.test(sistema) ? 'sala' : 'roteiro';
+    if (tipo === 'sala') { chamadas.push({ tipo, sistema }); return { dados: { capas: [{ mente: 'bernbach', texto: 'Eu também achava que **82,9%** era exagero.' }] }, llm: { provider: 'simulado' } }; }
     chamadas.push({ tipo, sistema });
     if (tipo === 'painel') return { dados: painelNota(chamadas.filter((c) => c.tipo === 'painel').length), llm: { provider: 'simulado' } };
     return { dados: JSON.parse(JSON.stringify(tipo === 'fatos' ? FATOS : tipo === 'angulo' ? ANGULO : tipo === 'juri' ? JURI : roteiro())), llm: { provider: 'simulado' } };
@@ -135,4 +136,12 @@ test('pipeline: cota da IA esgotada no painel espera a cota voltar (não segue s
   assert.strictEqual(top.estado, 'em_andamento', 'não conclui sem passar pelo painel');
   assert.ok(top.adiar_ate && top.erros.some((e) => e.codigo === 'COTA_IA' && e.etapa === 'painel'));
   assert.ok(!top.painel || !top.painel.falhou);
+});
+
+test('pipeline: capa escrita por uma mente vence no painel e fica registrada', async () => {
+  // capas na ordem avaliada: [júri 0, júri 1, capa da mente] -> a última recebe a maior nota
+  const { r, doc } = await comPainel(() => ({ capa: [3, 3, 9], interesse: 7, envio: 6, objecao: '' }));
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  assert.strictEqual(doc.top.mentes.capa, 'bernbach');
+  assert.match(M.versaoAtiva(doc).slides[0].texto, /Eu também achava/);
 });

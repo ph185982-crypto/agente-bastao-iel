@@ -27,4 +27,11 @@ router.post('/avaliar', limita({ max: 10, janelaMs: 60000, nome: 'painel-avaliar
   } catch (e) { erro(res, e); }
 });
 router.get('/calibracao', limita({ max: 3, janelaMs: 60000, nome: 'painel-calibracao' }), async (req, res) => { try { res.json(await PN.calibrar()); } catch (e) { erro(res, e); } });
+// Sala de redação: as 10 mentes e o placar real (engajamento dos posts publicados por mente).
+router.get('/mentes', limita({ max: 3, janelaMs: 60000, nome: 'painel-mentes' }), async (req, res) => {
+  try {
+    const Mn = require('../lib/mentes'); const meta = require('../lib/meta'); const { armazem } = require('../lib/armazem'); const { ACCOUNT } = require('../lib/account');
+    res.json({ mentes: Mn.MENTES.map((m) => ({ id: m.id, nome: m.nome, essencia: m.essencia, capa: m.capa })), placar: await Mn.placar({ grafo: meta.graph, armazem, conta: ACCOUNT.ig_id }) });
+  } catch (e) { erro(res, e); }
+});
 module.exports = router;

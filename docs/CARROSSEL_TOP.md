@@ -74,3 +74,17 @@ Chaves gratuitas: `GEMINI_API_KEY` (aistudio.google.com), `CEREBRAS_API_KEY` (cl
   `.github/workflows/piloto.yml` (a cada 10 min no papel; na prática o GitHub atrasa horas), o app aberto (a cada 5 min) e o
   botão "Produzir agora". Com o código de acesso ligado, crie o secret `CRON_SECRET` no GitHub (o mesmo da Vercel).
 - O monitor de notícias em alta também cria carrossel "top" (antes ia para o Radar, que só aceita ideias de negócio).
+
+## Sala de redação: 10 mentes de copywriters
+
+`backend/lib/mentes` guarda o método de 10 copywriters clássicos (Ogilvy, Hopkins, Caples, Collier, Schwartz, Halbert,
+Sugarman, Bencivenga, Kennedy, Bernbach): essência, técnicas, como escreveriam a capa e o que nunca fariam. Os exemplos
+são originais (os livros não são copiados; a maior parte tem direito autoral e não caberia no contexto das IAs gratuitas).
+
+- **Roteiro:** cada uma das 2 versões é escrita com o método de uma mente; a dupla roda pelo id do carrossel
+  (Sugarman+Kennedy, Halbert+Caples, Schwartz+Bencivenga, Collier+Ogilvy, Bernbach+Hopkins).
+- **Etapa `capas`:** depois do júri, uma chamada só pede 1 capa a cada mente. As que passam na checagem de fatos
+  entram na disputa e o painel de audiência avalia até 8 capas (2 do júri + as das mentes).
+- **Registro:** `c.top.mentes` = { roteiro, capa, sala }. `GET /api/painel/mentes` mostra o placar real (mediana de
+  curtidas + 4 × comentários por mente). Com menos de 3 posts por mente, a diferença pode ser sorte.
+- Custo: 1 chamada de IA a mais por carrossel (capas), nas IAs gratuitas.
