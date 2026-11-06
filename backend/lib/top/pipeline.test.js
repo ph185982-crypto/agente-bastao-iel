@@ -19,15 +19,15 @@ const FATOS = { protagonista: 'Fulano de Tal', fatos: [
 ] };
 const ANGULO = { gatilhos: { contradicao: 3, bolso: 2, numero: 3, personagem: 2 }, tese: 'Quem promete meta e entrega o maior patamar em cinco anos deve explicação a quem paga juros.', por_que_mandaria: 'Olha a diferença entre o discurso e o número.', imagem: { pessoa_central: true } };
 const roteiro = (extra = {}) => ({
-  capas: [{ texto: 'Prometeu meta. Entregou o **maior patamar** em cinco anos.', mecanismo: 'contradicao' }, { texto: 'De 71,7% para 82,9%: quem paga essa conta?', mecanismo: 'antes_depois' }, { texto: 'O número que o discurso não mostra', mecanismo: 'ninguem_contou' }],
+  capas: [{ texto: 'Prometeu meta. Entregou o **maior patamar** em cinco anos.', mecanismo: 'contradicao' }, { texto: 'De 71,7% para 82,9%: e agora?', mecanismo: 'antes_depois' }, { texto: 'O número que o discurso não mostra', mecanismo: 'ninguem_contou' }],
   telas: [
-    { papel: 'gap', layout: 'rep_manchete', titulo: 'O discurso é de controle', texto: 'O ministro diz que a alta é temporária. Os números contam outra história.', fatos: ['c'] },
+    { papel: 'gap', layout: 'rep_manchete', titulo: 'A promessa é de controle', texto: 'O ministro diz que a alta é temporária. Os números contam outra história.', fatos: ['c'] },
     { papel: 'prova', layout: 'rep_comparacao', titulo: 'Índice de exemplo', texto: 'Comparação entre dezembro de 2022 e agosto de 2026.', dados: { esquerda: { rotulo: 'DEZ/2022', valor: '71,7%', unidade: 'do total' }, direita: { rotulo: 'AGO/2026', valor: '82,9%', unidade: 'do total' }, faixa: { valor: 'O maior patamar em cinco anos.' }, tom: 'alerta' }, fatos: ['a', 'b'] },
     { papel: 'contradicao', layout: 'rep_manchete', titulo: 'Quem paga é o pequeno', texto: 'Segundo os analistas, os juros sobem primeiro para as pequenas empresas.', fatos: [] },
     { papel: 'leitura', layout: 'rep_manchete', titulo: 'Minha leitura', texto: 'Meta sem resultado é promessa. E promessa não paga boleto de ninguém.', destaque: 'Cobrar resultado não é torcida.', fatos: ['a'] },
   ],
-  legenda: 'O índice saiu de 71,7% para 82,9%. O discurso fala em alta temporária; quem empreende sente nos juros. Segue para acompanhar os números do mandato.',
-  hashtags: ['economia', 'juros', 'empreendedorismo'], cta_motivo: 'se você também cobra resultado', fechamento: { titulo: 'O resultado está nos números.', texto: 'Quem pede confiança precisa mostrar entrega, não discurso.' }, ...extra,
+  legenda: 'O índice saiu de 71,7% para 82,9%. A fala oficial é de alta temporária; quem empreende sente nos juros. Segue para acompanhar os números do mandato.',
+  hashtags: ['economia', 'juros', 'empreendedorismo'], cta_motivo: 'se você também cobra resultado', fechamento: { titulo: 'O resultado está nos números.', texto: 'Quem pede confiança precisa mostrar entrega.' }, ...extra,
 });
 const JURI = { versoes: [{ indice: 0, notas: {}, nota: 8.6, defeito: 'capa 2 longa' }, { indice: 1, notas: {}, nota: 8.1, defeito: '' }], vencedora: 0, capas_escolhidas: [0, 1] };
 
@@ -80,7 +80,8 @@ test('do link ao "Para aprovar": versão vencedora, foto com crédito, arte de t
   const top = r.conteudo.top; const venc = top.versoes[top.escolha.versao];
   assert.ok(venc.capas.some((k) => k.mecanismo === 'mente:halbert'), 'capa da sala entrou');
   assert.ok(!venc.capas.some((k) => /99%/.test(k.texto)), 'capa com número fora dos fatos saiu');
-  assert.strictEqual(top.mentes.sala, 2); assert.ok(top.mentes.roteiro);
+  assert.ok(!venc.capas.some((k) => /discurso/.test(k.texto)), 'capa com vício de texto de IA saiu');
+  assert.strictEqual(top.mentes.sala, 1); assert.ok(top.mentes.roteiro);
   if (process.env.TOP_DUMP) for (const x of doc.arte.renders.filter((y) => y.versao === v.id)) require('fs').writeFileSync(`${process.env.TOP_DUMP}/${x.slide_id}.png`, (await arm.armazem().arquivos.obter(ACCOUNT.ig_id, x.blob_key)).dados);
   const g = require('../studio').prepararRevisao(doc);
   assert.deepStrictEqual(g.bloqueios.map((b) => `${b.id}: ${b.detalhe}`), []);
@@ -231,7 +232,7 @@ test('carrossel que não passa nos portões de publicação (ex.: texto não cab
 test('consertos sem IA: declaração ganha "Segundo …", legenda perde número solto, fonte sem data e texto longo é encurtado', async () => {
   novo();
   const r0 = roteiro();
-  r0.telas[0] = { papel: 'gap', layout: 'rep_manchete', titulo: 'O discurso é de controle', texto: 'A alta é temporária e a meta será cumprida. Os números contam outra história.', fatos: ['c'] };
+  r0.telas[0] = { papel: 'gap', layout: 'rep_manchete', titulo: 'A promessa é de controle', texto: 'A alta é temporária e a meta será cumprida. Os números contam outra história.', fatos: ['c'] };
   r0.legenda = 'O índice saiu de 71,7% para 82,9%. A votação será no dia 29. Segue para acompanhar.';
   const ia = iaFalsa({ roteiros: [r0, r0] }); const d = await deps(ia);
   const arteReal = require('../arte'); let chamadas = 0;
@@ -283,7 +284,7 @@ test('formato tweet: capa = 1º tweet, uma frase por slide, fechamento com chama
       { papel: 'consequencia', texto: 'Pagar juros maiores porque o governo não cumpre a meta é normal…', imagem_busca: null, fatos: [] },
       { papel: 'leitura', texto: 'Na minha leitura, meta sem resultado é promessa. E promessa não paga boleto.', imagem_busca: null, fatos: ['a'] },
     ],
-    legenda: 'O índice saiu de 71,7% para 82,9%. O discurso fala em alta temporária. Você acha normal?', hashtags: ['economia', 'juros', 'governo'], cta_motivo: 'se você também cobra resultado',
+    legenda: 'O índice saiu de 71,7% para 82,9%. A fala oficial é de alta temporária. Você acha normal?', hashtags: ['economia', 'juros', 'governo'], cta_motivo: 'se você também cobra resultado',
     fechamento: { titulo: 'Sabe o que não é normal?', texto: 'Cobrar resultado de quem prometeu e entregou o pior patamar em cinco anos.' },
   });
   const ia = iaFalsa({ roteiros: [rt(), rt()], angulo: { ...ANGULO, formato: 'tweet' } });
@@ -349,4 +350,24 @@ test('tweet: fechamento sem "manda pra/segue" duplicado e declaração não vira
   assert.strictEqual(v.fechamento.texto, 'No caixa de quem vende.');
   const w = T.normalizarRoteiro({ capas: [{ texto: 'Capa curta' }], telas: [{ papel: 'gap', texto: 'Oi.', fatos: [] }], legenda: 'x', hashtags: [], cta_motivo: 'se você', fechamento: { titulo: 'Fecho', texto: 'Eu comecei o Pedro Destrava por isso: para mostrar onde o poder encosta no caixa. A conta chega no balcão.' } }, 'tweet');
   assert.strictEqual(w.fechamento.texto, 'A conta chega no balcão.');
+});
+
+test('texto com cara de IA: 3 ou mais vícios reprovam a versão e a reescrita recebe as frases apontadas', async () => {
+  novo();
+  const viciado = roteiro();
+  viciado.telas[0].texto = 'O problema não é a taxa. O problema é quem paga a conta no fim do mês.';
+  viciado.telas[2].texto = 'Não é só juro, é o discurso de sempre.';
+  const ia = iaFalsa({ roteiros: [viciado, roteiro(), roteiro()] });
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const r = await T.executarTudo(c.id, { deps: await deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  const v0 = r.conteudo.top.versoes.find((v) => v.vicios >= 3);
+  assert.ok(v0 && !v0.checagem.ok && /cara de IA/.test(v0.checagem.problemas.join(' ')));
+  assert.ok(r.conteudo.top.versoes[r.conteudo.top.escolha.versao].checagem.ok, 'venceu a versão limpa');
+});
+
+test('detector de vícios: pega reversão, "quem paga a conta", jornalês e travessão; deixa texto limpo passar', () => {
+  const AI = require('../mentes/antiIA');
+  assert.deepStrictEqual([...new Set(AI.vicios(['Não é imposto. É gestão.', 'Quem paga a conta?', 'Entenda o caso', 'Juro alto — de novo']).map((x) => x.id))].sort(), ['jornal', 'quem_paga', 'reversao', 'travessao']);
+  assert.strictEqual(AI.vicios(['O frete subiu 7,2% em outubro.', 'Você vendeu mais e o Pix caiu.']).length, 0);
 });
