@@ -103,8 +103,12 @@ E.roteiro = async (c, ctx) => {
     v.legenda = limparFrases(v.legenda); v.cta_motivo = K.numerosSemFonte(v.cta_motivo, c.top.fatos).length ? '' : v.cta_motivo;
     v.fechamento = { titulo: K.numerosSemFonte(v.fechamento.titulo, c.top.fatos).length ? '' : v.fechamento.titulo, texto: limparFrases(v.fechamento.texto).replace(/eu comecei o pedro destrava por isso\.?/i, '').trim() };
     v.checagem = K.checarRoteiro({ ...v, capa: v.capas[0]?.texto || '', telas: [...v.telas], legenda: `${v.legenda}\n${v.fechamento.titulo}\n${v.fechamento.texto}\n${v.cta_motivo}` }, c.top.fatos);
-    // capas com número fora dos fatos saem da lista (não derrubam a versão inteira)
-    v.capas = v.capas.filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')));
+    // capas com número fora dos fatos ou com vício de texto de IA saem da lista (não derrubam a versão inteira)
+    v.capas = v.capas.filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')) && !Mentes.AI.vicios(k.texto).length);
+    // Texto com cara de IA (a mesma fórmula em todo post): 3 ou mais vícios reprovam a versão, com as frases apontadas.
+    const vic = Mentes.AI.vicios([...v.telas.map((t) => [t.titulo, t.texto, t.destaque].filter(Boolean).join(' ')), v.fechamento.titulo, v.fechamento.texto, v.legenda]);
+    v.vicios = vic.length;
+    if (vic.length >= 3) v.checagem = { ...v.checagem, ok: false, problemas: [...v.checagem.problemas, `Texto com cara de IA (${vic.length} vícios). Reescreva sem: ${vic.slice(0, 5).map((x) => `${x.nome} em "${x.trecho}"`).join('; ')}`] };
     v.mente = mente?.id || null;
     c.top.versoes.push(v);
   }
@@ -226,7 +230,8 @@ E.capas = async (c, ctx) => {
   const ja = new Set(v.capas.map((k) => k.texto.toLowerCase()));
   const novas = (Array.isArray(dados?.capas) ? dados.capas : []).map((k) => ({ texto: String(k?.texto || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: `mente:${M.porId.has(String(k?.mente)) ? String(k.mente) : 'sala'}` }))
     .filter((k) => k.texto && K.palavras(k.texto) <= maxPal && !ja.has(k.texto.toLowerCase()) && !/\b\d{1,2}\/\d{1,2}\b/.test(k.texto))
-    .filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')));
+    .filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')))
+    .filter((k) => !M.AI.vicios(k.texto).length);
   v.capas = [...v.capas, ...novas].slice(0, 22);
   v.sala_feita = true;
   c.top.mentes = { ...(c.top.mentes || {}), roteiro: v.mente || null, sala: novas.length };

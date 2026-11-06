@@ -30,7 +30,7 @@ const MENTES = [
       'Conte o processo que ninguém conta (o que acontece nos bastidores).',
       'Cada peça é um teste: uma ideia por carrossel, medível.',
     ],
-    capa: 'Número exato dos fatos + o mecanismo escondido. Ex.: "27,5% não é o imposto. É o que sobra depois da cascata."',
+    capa: 'Número exato dos fatos + o mecanismo escondido. Ex.: "27,5% em cima de 27,5%: a cascata que aparece na sua nota."',
     proibido: 'Superlativo sem prova ("o maior", "absurdo"), afirmação sem porquê.',
   },
   {
@@ -64,7 +64,7 @@ const MENTES = [
       'Mercado sofisticado (já ouviu "imposto é alto" mil vezes) → traga o MECANISMO novo ou a cena concreta, não a promessa de sempre.',
       'Intensificar: tornar a dor visível, com detalhe e consequência, até ficar impossível ignorar.',
     ],
-    capa: 'Desejo/medo que já existe + mecanismo novo. Ex.: "Você não paga imposto alto. Você paga imposto sobre imposto."',
+    capa: 'Desejo/medo que já existe + mecanismo novo, ou identificação pura em mercado saturado. Ex.: "Imposto sobre imposto: a linha da sua nota que ninguém te explicou."',
     proibido: 'Prometer o que o leitor já ouviu cem vezes; começar pela solução para quem nem sabe do problema.',
   },
   {
@@ -119,16 +119,17 @@ const MENTES = [
     id: 'bernbach', nome: 'Bill Bernbach', escola: 'DDB; "Think Small" (Fusca), "Avis — somos o nº 2"',
     essencia: 'Honestidade e simplicidade surpreendem. Uma verdade admitida desarma o leitor; uma ideia original se destaca no meio do barulho.',
     tecnicas: [
-      'Admitir algo inesperado ("Eu também caí nisso").',
+      'Admitir algo inesperado que o próprio público reconhece ("A gente também achou que ia melhorar."), sem inventar história pessoal do Pedro.',
       'Inverter o óbvio: dizer o contrário do que todo mundo diz, com razão.',
       'Uma ideia só, executada com simplicidade e humanidade.',
     ],
-    capa: 'Verdade inesperada e humana. Ex.: "Eu errei o preço por 2 anos. O imposto me mostrou."',
-    proibido: 'Fórmula batida, grito, imitação do que todo mundo posta.',
+    capa: 'Verdade inesperada e humana. Ex.: "A gente comemorou o dólar caindo. A maquininha não percebeu."',
+    proibido: 'Fórmula batida, grito, imitação do que todo mundo posta, confissão pessoal inventada.',
   },
 ];
 
 // Pares para escrever as 2 versões do roteiro: métodos que se complementam no formato de carrossel.
+const AI = require('./antiIA');
 const PARES = [['sugarman', 'kennedy'], ['halbert', 'caples'], ['schwartz', 'bencivenga'], ['collier', 'ogilvy'], ['bernbach', 'hopkins']];
 const porId = new Map(MENTES.map((m) => [m.id, m]));
 
@@ -165,6 +166,10 @@ REGRAS QUE VALEM PARA TODOS:
 - Ator certo (quem faz o quê). Sem clickbait mentiroso: a capa precisa ser verdade segundo os fatos.
 - Não comece pelo nome de órgão ou político; comece pela vida/bolso do leitor ou por uma frase que pare o dedo.
 - Marque com **asteriscos** UMA expressão de destaque.
+
+${AI.GANCHOS}
+
+${AI.REGRAS}
 Responda APENAS JSON: {"capas":[{"mente":"ogilvy","texto":""}]}`;
 
 // Placar real: engajamento (curtidas + 4 × comentários) dos posts publicados, agrupado pela mente que escreveu a capa
@@ -183,4 +188,4 @@ async function placar({ grafo, armazem, conta } = {}) {
   return { n: posts.length, por_capa: agrupa('capa'), por_roteiro: agrupa('roteiro'), leitura: posts.length < 15 ? `Ainda poucos posts com mente registrada (${posts.length}); com menos de 3 posts por mente, a diferença pode ser sorte.` : 'Compare as medianas; uma mente só merece mais espaço se ganhar com 3 ou mais posts.' };
 }
 
-module.exports = { MENTES, PARES, porId, parPara, paraRoteiro, paraCapas, SALA_CAPAS, placar };
+module.exports = { AI, MENTES, PARES, porId, parPara, paraRoteiro, paraCapas, SALA_CAPAS, placar };

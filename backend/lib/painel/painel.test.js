@@ -67,13 +67,13 @@ const FATOS = { protagonista: 'Fulano de Tal', fatos: [
   { id: 'b', texto: 'Em dezembro de 2022 o índice era de 71,7%.', trecho: 'Em dezembro de 2022, o mesmo índice era de 71,7%.', tipo: 'fato' },
   { id: 'c', texto: 'O ministro afirmou que a alta é temporária.', trecho: 'O ministro Fulano de Tal afirmou que a alta é temporária e que o governo vai cumprir a meta.', tipo: 'declaracao', quem: 'Fulano de Tal' }] };
 const ANGULO = { gatilhos: { contradicao: 3, bolso: 2, numero: 3, personagem: 2, empreendedor: 3 }, tese: 'Quem promete meta e entrega o maior patamar em cinco anos deve explicação a quem paga juros.', por_que_mandaria: 'Olha a diferença.', enviar_para: 'seu sócio', imagem: { pessoa_central: false } };
-const roteiro = () => ({ capas: [{ texto: 'Prometeu meta. Entregou o **maior patamar** em cinco anos.', mecanismo: 'contradicao' }, { texto: 'De 71,7% para 82,9%: quem paga essa conta?', mecanismo: 'antes_depois' }, { texto: 'O número que o discurso não mostra', mecanismo: 'ninguem_contou' }],
+const roteiro = () => ({ capas: [{ texto: 'Prometeu meta. Entregou o **maior patamar** em cinco anos.', mecanismo: 'contradicao' }, { texto: 'De 71,7% para 82,9%: e agora?', mecanismo: 'antes_depois' }, { texto: 'O número que o discurso não mostra', mecanismo: 'ninguem_contou' }],
   telas: [
-    { papel: 'gap', layout: 'rep_manchete', titulo: 'O discurso é de controle', texto: 'O ministro diz que a alta é temporária. Os números contam outra história.', fatos: ['c'] },
+    { papel: 'gap', layout: 'rep_manchete', titulo: 'A promessa é de controle', texto: 'O ministro diz que a alta é temporária. Os números contam outra história.', fatos: ['c'] },
     { papel: 'prova', layout: 'rep_comparacao', titulo: 'Índice de exemplo', texto: 'Comparação entre dezembro de 2022 e agosto de 2026.', dados: { esquerda: { rotulo: 'DEZ/2022', valor: '71,7%', unidade: 'do total' }, direita: { rotulo: 'AGO/2026', valor: '82,9%', unidade: 'do total' }, faixa: { valor: 'O maior patamar em cinco anos.' }, tom: 'alerta' }, fatos: ['a', 'b'] },
     { papel: 'contradicao', layout: 'rep_manchete', titulo: 'Quem paga é o pequeno', texto: 'Segundo os analistas, os juros sobem primeiro para as pequenas empresas.', fatos: [] },
     { papel: 'leitura', layout: 'rep_manchete', titulo: 'Minha leitura', texto: 'Meta sem resultado é promessa. E promessa não paga boleto de ninguém.', destaque: 'Cobrar resultado não é torcida.', fatos: ['a'] }],
-  legenda: 'O índice saiu de 71,7% para 82,9%. O discurso fala em alta temporária; quem empreende sente nos juros.', hashtags: ['economia', 'juros', 'empreendedorismo'], cta_motivo: 'se você também cobra resultado', fechamento: { titulo: 'O resultado está nos números.', texto: 'Quem pede confiança precisa mostrar entrega, não discurso.' } });
+  legenda: 'O índice saiu de 71,7% para 82,9%. A fala oficial é de alta temporária; quem empreende sente nos juros.', hashtags: ['economia', 'juros', 'empreendedorismo'], cta_motivo: 'se você também cobra resultado', fechamento: { titulo: 'O resultado está nos números.', texto: 'Quem pede confiança precisa mostrar entrega.' } });
 const JURI = { versoes: [{ indice: 0, notas: {}, nota: 8.6, defeito: 'capa 2 longa' }, { indice: 1, notas: {}, nota: 8.1, defeito: '' }], vencedora: 0, capas_escolhidas: [0, 1] };
 function iaFalsa(painelNota) {
   const chamadas = [];
@@ -105,7 +105,7 @@ test('pipeline: o painel escolhe a melhor capa e a nota fica no carrossel', asyn
   assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
   assert.ok(doc.top.painel.nota >= 6 && doc.top.painel.membros === 1000);
   assert.strictEqual(doc.top.painel.melhor_capa, 1);
-  assert.strictEqual(M.versaoAtiva(doc).slides[0].texto, 'De 71,7% para 82,9%: quem paga essa conta?', 'a capa B venceu no painel');
+  assert.strictEqual(M.versaoAtiva(doc).slides[0].texto, 'De 71,7% para 82,9%: e agora?', 'a capa B venceu no painel');
 });
 
 test('pipeline: nota baixa manda reescrever com as objeções; continuando baixa, descarta', async () => {

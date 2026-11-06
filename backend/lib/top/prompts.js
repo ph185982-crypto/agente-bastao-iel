@@ -31,6 +31,10 @@ function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem'
 TESE DESTE CARROSSEL (a leitura do Pedro): ${tese}
 POR QUE ALGUÉM MANDARIA: ${porQue}
 ${mente ? `\n${mente}\n` : ''}
+${AI.REGRAS}
+
+${AI.GANCHOS}
+
 ${E.padraoParaPrompt({ formato: 'carrossel' })}
 
 ESTRUTURA OBRIGATÓRIA (cada tela termina puxando a próxima — amarra de curiosidade):
@@ -61,6 +65,10 @@ function roteiroTweet({ voz = [], tese, porQue, feedback = '', mente = '' }) {
 TESE DESTE CARROSSEL: ${tese}
 POR QUE ALGUÉM MANDARIA: ${porQue}
 ${mente ? `\n${mente}\n` : ''}
+${AI.REGRAS}
+
+${AI.GANCHOS}
+
 ${E.padraoParaPrompt({ formato: 'carrossel' })}
 
 PARA QUEM VOCÊ ESCREVE: o empreendedor brasileiro (dono de empresa, MEI, quem vende em marketplace, quem paga folha e imposto). Fale COM ele, em "você" e no mundo dele: caixa, CNPJ, sócio, fornecedor, cliente, nota fiscal, taxa, frete, prazo de pagamento. Ele precisa se RECONHECER em cada tweet ("isso é exatamente o meu mês").
@@ -106,4 +114,5 @@ Aprove (ok: true) só se a capa afirma o que os FATOS VERIFICADOS sustentam. Rep
 Opinião marcada como opinião é permitida. Em "motivo", 1 frase curta.
 Responda APENAS JSON: {"capas":[{"indice":0,"ok":true,"motivo":""}]}`;
 
+const AI = require('../mentes/antiIA');
 module.exports = { FATOS, ANGULO, roteiro, roteiroTweet, JURI, REVISOR_CAPA };
