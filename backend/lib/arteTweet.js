@@ -45,8 +45,54 @@ function cabecalho() {
     `<text x="${xT}" y="${Y_TOPO + 88}" font-family="${ARQ.iCorpo.familia}" font-weight="400" font-size="30" fill="${COR.mudo}">${esc(ACCOUNT.handle)}</text>`;
 }
 
+// CAPA (1º slide): é o que para o dedo. Título GRANDE em negrito com a expressão-chave em marca-texto amarelo, e a foto ocupando toda a
+// parte de baixo, de ponta a ponta (sem faixa branca vazia), com a seta num círculo branco por cima da foto.
+async function renderizarCapa(slide, ctx, imagem) {
+  const { total = 1 } = ctx || {};
+  const blocos = []; const elementos = ['tema_tweet', 'capa_tweet'];
+  const yTexto = Y_TOPO + D_AVATAR + 52;
+  let svg = `<rect width="${W}" height="${H}" fill="${COR.fundo}"/>` + cabecalho();
+  if (total > 1) svg += `<text x="${W - MARGEM}" y="${Y_TOPO + 44}" text-anchor="end" font-family="${ARQ.iCorpo.familia}" font-size="26" fill="${COR.mudo}">1/${total}</text>`;
+  const camadas = [{ input: await avatar(), left: MARGEM, top: Y_TOPO }];
+  const texto = String(slide.texto || '').trim();
+  let foto = null;
+  if (imagem) { try { foto = { meta: await sharp(imagem).metadata() }; } catch { elementos.push('foto_invalida'); } }
+  if (foto) {
+    // título até ~40% da altura; a foto pega todo o resto, até a borda de baixo
+    const b = fit({ texto, k: 'iNegrito', larg: LARG, alt: 500, max: 92, min: 54, ent: 1.08, papel: 't_capa' });
+    svg += A.textoSvg(b, { x: MARGEM, y: yTexto - (0.92 - cap('iNegrito')) * b.tam, k: 'iNegrito', cor: COR.texto, marcador: true });
+    blocos.push({ nome: 'titulo', ...A.resumo(b, 500) });
+    const yFoto = Math.round(yTexto + b.altura + 48); const hFoto = H - yFoto;
+    // Recorte que preserva o rosto: foto vertical é cortada a partir de ~12% do topo (rostos ficam no terço de cima);
+    // foto mais larga que a área usa o recorte por atenção.
+    const larga = await sharp(imagem).rotate().resize({ width: W }).toBuffer({ resolveWithObject: true });
+    const corpo = larga.info.height >= hFoto
+      ? await sharp(larga.data).extract({ left: 0, top: Math.round(0.12 * (larga.info.height - hFoto)), width: W, height: hFoto }).png().toBuffer()
+      : await sharp(imagem).rotate().resize(W, hFoto, { fit: 'cover', position: 'attention' }).png().toBuffer();
+    camadas.push({ input: corpo, left: 0, top: yFoto });
+    elementos.push('foto_colorida', 'foto_sangrada'); if ((foto.meta.width || 0) < 700) elementos.push('foto_baixa_resolucao');
+    if (hFoto < 520) elementos.push('foto_pequena');
+    foto = { w: W, h: hFoto };
+  } else {
+    const alt = H - 150 - yTexto;
+    const b = fit({ texto, k: 'iNegrito', larg: LARG, alt, max: 112, min: 60, ent: 1.06, papel: 't_capa' });
+    svg += A.textoSvg(b, { x: MARGEM, y: yTexto + Math.max(0, (alt - b.altura) / 2) - (0.92 - cap('iNegrito')) * b.tam, k: 'iNegrito', cor: COR.texto, marcador: true });
+    blocos.push({ nome: 'titulo', ...A.resumo(b, alt) });
+  }
+  // seta num círculo branco com sombra, por cima da foto (ou do fundo)
+  const seta = `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.35"/></filter></defs><circle cx="75" cy="75" r="54" fill="#fff" filter="url(#s)"/><text x="75" y="96" text-anchor="middle" font-family="${ARQ.iNegrito.familia}" font-weight="700" font-size="60" fill="${COR.texto}">→</text></svg>`;
+  camadas.push({ input: Buffer.from(seta), left: W - MARGEM - 120, top: H - 168 });
+  const base = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${svg}</svg>`;
+  const png = await sharp(Buffer.from(base)).png().composite(camadas).png().toBuffer();
+  const m = A.resumirMetricas(blocos, 'tweet', elementos);
+  m.tema = 'tweet';
+  if (foto) m.foto = { largura: foto.w, altura: foto.h, ampliacao: 1 };
+  return { png, metrics: m };
+}
+
 async function renderizar(slide, ctx, imagem) {
   const { indice = 1, total = 1 } = ctx || {};
+  if (indice === 1 && total > 1 && slide.funcao !== 'encerramento') return renderizarCapa(slide, ctx, imagem);
   const ultimo = slide.funcao === 'encerramento' || indice === total;
   const blocos = []; const elementos = ['tema_tweet'];
   const yTexto = Y_TOPO + D_AVATAR + 56;
