@@ -602,14 +602,14 @@ async function reparar(id) {
 }
 
 // Redesenha as prévias que sumiram do armazém (a versão não muda; a publicação já redesenha sozinha).
-async function refazerPrevias(id, { deps = {} } = {}) {
+async function refazerPrevias(id, { deps = {}, forcar = false } = {}) {
   const a = armazem(); const reg = await a.conteudos.obter(conta(), id);
   if (!reg?.doc) throw erro('Conteúdo não encontrado.', 'NAO_ENCONTRADO', 404);
   const c = reg.doc; const v = M.versaoAtiva(c); const arte = deps.arte || require('../arte'); let refeitas = 0;
   const enc = (await a.arquivos.obter(conta(), 'upload:encerramento'))?.dados || null;
   for (const [i, s] of v.slides.entries()) {
     const r0 = (c.arte?.renders || []).find((r) => r.versao === v.id && r.slide_id === s.id);
-    if (r0?.blob_key && await a.arquivos.obter(conta(), r0.blob_key)) continue;
+    if (!forcar && r0?.blob_key && await a.arquivos.obter(conta(), r0.blob_key)) continue; // forcar: refaz com o desenho atual (ex.: capa nova)
     const imagem = s.imagem_id ? (await a.arquivos.obter(conta(), `img:${s.imagem_id}`))?.dados : null;
     const r = await arte.renderizarSlide(s, { indice: i + 1, total: v.slides.length, imagem: imagem ? Buffer.from(imagem) : null, arquivoEncerramento: s.layout === 'encerramento' && enc ? Buffer.from(enc) : null });
     const key = `render:${c.id}:${v.id}:${s.id}:${M.hashRender(s)}`;

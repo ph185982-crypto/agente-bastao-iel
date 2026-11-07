@@ -47,6 +47,8 @@ function cabecalho() {
 
 // CAPA (1º slide): é o que para o dedo. Título GRANDE em negrito com a expressão-chave em marca-texto amarelo, e a foto ocupando toda a
 // parte de baixo, de ponta a ponta (sem faixa branca vazia), com a seta num círculo branco por cima da foto.
+// A IA às vezes marca o destaque com um asterisco só ("*Impõe*"): vira destaque de verdade, sem asterisco aparecendo.
+const destaque = (t) => String(t || '').replace(/(?<!\*)\*(?![\s*])([^*\n]+?)(?<![\s*])\*(?!\*)/g, '**$1**');
 async function renderizarCapa(slide, ctx, imagem) {
   const { total = 1 } = ctx || {};
   const blocos = []; const elementos = ['tema_tweet', 'capa_tweet'];
@@ -54,7 +56,7 @@ async function renderizarCapa(slide, ctx, imagem) {
   let svg = `<rect width="${W}" height="${H}" fill="${COR.fundo}"/>` + cabecalho();
   if (total > 1) svg += `<text x="${W - MARGEM}" y="${Y_TOPO + 44}" text-anchor="end" font-family="${ARQ.iCorpo.familia}" font-size="26" fill="${COR.mudo}">1/${total}</text>`;
   const camadas = [{ input: await avatar(), left: MARGEM, top: Y_TOPO }];
-  const texto = String(slide.texto || '').trim();
+  const texto = destaque(slide.texto).trim();
   let foto = null;
   if (imagem) { try { foto = { meta: await sharp(imagem).metadata() }; } catch { elementos.push('foto_invalida'); } }
   if (foto) {
@@ -116,7 +118,7 @@ async function renderizar(slide, ctx, imagem) {
 
   // Texto: ocupa o alto; com foto, a foto fica logo abaixo do texto (como num tweet com imagem).
   const altTexto = temFoto ? yFim - yTexto - foto.h - 40 : yFim - yTexto;
-  const texto = String(slide.titulo && ultimo ? `**${slide.titulo}** ${slide.texto || ''}` : slide.texto || '').trim();
+  const texto = destaque(slide.titulo && ultimo ? `**${slide.titulo}** ${slide.texto || ''}` : slide.texto || '').trim();
   const b = fit({ texto, k: 'iCorpo', larg: LARG, alt: altTexto, max: temFoto ? 60 : 76, min: 40, papel: 't_corpo' });
   // Sem foto, o texto fica centralizado na área livre (em cima do rodapé); com foto, logo abaixo do cabeçalho, como num tweet.
   const altLivre = ultimo ? altTexto - 250 : altTexto; // no último, o espaço da chamada fica reservado embaixo
@@ -151,4 +153,4 @@ async function renderizar(slide, ctx, imagem) {
   return { png, metrics: m };
 }
 
-module.exports = { renderizar, COR };
+module.exports = { renderizar, COR, destaque };
