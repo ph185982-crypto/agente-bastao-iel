@@ -40,3 +40,9 @@ test('busca de foto da capa: entre os resultados, prefere pessoa a prédio', asy
   const r2 = await FS.buscarFoto('x', { fetcher, carregar });
   assert.strictEqual(r2.meta.id, 'pexels_1', 'sem a opção, mantém a ordem da busca');
 });
+
+test('destaque com um asterisco só ("*Impõe*") vira destaque; ** e contas com * ficam como estão', () => {
+  assert.strictEqual(T.destaque('*Impõe* R$ 41,9 bi'), '**Impõe** R$ 41,9 bi');
+  assert.strictEqual(T.destaque('**ok** e *x*'), '**ok** e **x**');
+  assert.strictEqual(T.destaque('3 * 4 * 5'), '3 * 4 * 5');
+});
