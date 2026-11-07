@@ -1,12 +1,17 @@
 const { safeFetch } = require('./safeFetch');
 const sharp = require('sharp');
 // Only licensed illustrative photos. Never identify a stock model as a real news subject.
-async function buscarFoto(consulta, { fetcher = fetch, carregar = safeFetch, excluir = [] } = {}) {
+// Capa: foto com PESSOA (rosto, emoção) para o dedo — prédio, paisagem e objeto sozinho ficam por último.
+const PESSOA = /\b(man|woman|person|people|men|women|girl|boy|guy|lady|worker|owner|businessman|businesswoman|entrepreneur|driver|seller|customer|farmer|portrait|face|couple|family|employee|shopkeeper|vendor)\b/i;
+const SEM_GENTE = /\b(building|architecture|skyscraper|facade|tower|landscape|aerial|city skyline|exterior|interior design|empty|still life|flat lay)\b/i;
+const notaPessoa = (p) => (PESSOA.test(p.alt || '') ? 2 : 0) - (SEM_GENTE.test(p.alt || '') ? 2 : 0);
+async function buscarFoto(consulta, { fetcher = fetch, carregar = safeFetch, excluir = [], pessoa = false } = {}) {
   if (!process.env.PEXELS_API_KEY) throw new Error('A busca de fotos não está configurada.');
   const query = String(consulta || 'business city brazil').replace(/[^\p{L}\p{N}\s-]/gu,' ').trim().slice(0,100);
-  const r=await fetcher(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=5`, { headers:{Authorization:process.env.PEXELS_API_KEY},signal:AbortSignal.timeout(12000) });
+  const r=await fetcher(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&orientation=portrait&per_page=${pessoa ? 15 : 5}`, { headers:{Authorization:process.env.PEXELS_API_KEY},signal:AbortSignal.timeout(12000) });
   if (!r.ok) throw new Error(`A busca de fotos não respondeu (${r.status}).`);
-  const d=await r.json(); const p=(d.photos || []).find(p=>!excluir.includes(`pexels_${p.id}`) && (p.src?.large2x || p.src?.large));
+  const d=await r.json(); const livres=(d.photos || []).filter(p=>!excluir.includes(`pexels_${p.id}`) && (p.src?.large2x || p.src?.large));
+  const p=pessoa ? [...livres].sort((a,b)=>notaPessoa(b)-notaPessoa(a))[0] : livres[0];
   if (!p) throw new Error('Não encontrei uma foto adequada. Tente outro assunto ou envie sua foto.');
   const url=p.src.large2x || p.src.large;
   if (new URL(url).hostname !== 'images.pexels.com') throw new Error('A origem da foto não confere.');

@@ -161,7 +161,7 @@ ${paraCapas()}
 
 REGRAS QUE VALEM PARA TODOS:
 - Cada redator escreve 1 capa com o próprio método, diferente das outras.
-- Até 14 palavras. Português falado, sem jornalês. Fale com "você" quando couber.
+- É a HEADLINE da capa (letra grande, em cima de uma foto): até 12 palavras, de preferência 6 a 10. Português falado, sem jornalês. Fale com "você" quando couber.
 - Número só se estiver nos FATOS VERIFICADOS, escrito igual. Nada de data solta, nada de aspas inventadas.
 - Ator certo (quem faz o quê). Sem clickbait mentiroso: a capa precisa ser verdade segundo os fatos.
 - Não comece pelo nome de órgão ou político; comece pela vida/bolso do leitor ou por uma frase que pare o dedo.

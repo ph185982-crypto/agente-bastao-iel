@@ -134,7 +134,7 @@ const semChamada = (x) => String(x || '').replace(/^\s*(segue|siga)\s+(o\s+)?@?p
 
 function normalizarRoteiro(d, formato = 'reportagem') {
   const tweet = formato === 'tweet';
-  const capas = (Array.isArray(d?.capas) ? d.capas : []).map((k) => ({ texto: String(k?.texto || k || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: String(k?.mecanismo || '').slice(0, 40) })).filter((k) => k.texto && K.palavras(k.texto) <= (tweet ? 18 : 14)).slice(0, 10);
+  const capas = (Array.isArray(d?.capas) ? d.capas : []).map((k) => ({ texto: String(k?.texto || k || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: String(k?.mecanismo || '').slice(0, 40) })).filter((k) => k.texto && K.palavras(k.texto) <= (tweet ? 14 : 14)).slice(0, 10);
   const LAY = ['rep_manchete', 'rep_comparacao', 'rep_numero'];
   if (tweet) {
     // tweet: só texto, uma frase por tela; a foto do tweet vem da busca sugerida (ilustrativa, Pexels)
@@ -226,7 +226,7 @@ E.capas = async (c, ctx) => {
     if (e.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(e.message)) || (c.top.tentativas.capas || 0) < 1) throw e;
     v.sala_feita = true; c.top.mentes = { ...(c.top.mentes || {}), roteiro: v.mente || null, sala: 0, falhou: String(e.message).slice(0, 120) }; return;
   }
-  const maxPal = c.top.formato === 'tweet' ? 18 : 14;
+  const maxPal = c.top.formato === 'tweet' ? 14 : 12;
   const ja = new Set(v.capas.map((k) => k.texto.toLowerCase()));
   const novas = (Array.isArray(dados?.capas) ? dados.capas : []).map((k) => ({ texto: String(k?.texto || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: `mente:${M.porId.has(String(k?.mente)) ? String(k.mente) : 'sala'}` }))
     .filter((k) => k.texto && K.palavras(k.texto) <= maxPal && !ja.has(k.texto.toLowerCase()) && !/\b\d{1,2}\/\d{1,2}\b/.test(k.texto))
@@ -291,7 +291,8 @@ E.foto = async (c, ctx) => {
   // Registra qual mente escreveu a capa escolhida e o roteiro (para comparar com o resultado real depois).
   { const v = c.top.versoes[c.top.escolha.versao]; const k = v?.capas?.[c.top.escolha.capas?.[0] ?? 0]; const m = String(k?.mecanismo || '');
     c.top.mentes = { ...(c.top.mentes || {}), roteiro: v?.mente || c.top.mentes?.roteiro || null, capa: m.startsWith('mente:') ? m.slice(6) : (v?.mente ? `${v.mente} (roteiro)` : null) }; }
-  const lugar = c.top.angulo?.imagem?.lugar_brasil;
+  // No formato tweet a capa nunca é prédio (Congresso, sede de estatal): é gente com emoção. Foto de lugar só no formato reportagem.
+  const lugar = c.top.formato === 'tweet' ? null : c.top.angulo?.imagem?.lugar_brasil;
   if (lugar && !c.top.foto_lugar_id && !(c.top.protagonista && c.top.angulo?.imagem?.pessoa_central === true)) {
     try {
       const f = await (ctx.deps.fotoDe || require('./fotos').fotoDe)(lugar, { modo: 'lugar' });
@@ -308,7 +309,7 @@ E.foto = async (c, ctx) => {
       for (const q of consultas) {
         if (c.top.fotos_cena.length >= 1) break;
         try {
-          const f = await (ctx.deps.buscarFoto || FS.buscarFoto)(q, { excluir: c.top.fotos_cena });
+          const f = await (ctx.deps.buscarFoto || FS.buscarFoto)(q, { excluir: c.top.fotos_cena, pessoa: true });
           await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg');
           c.imagens = [...(c.imagens || []).filter((i) => i.id !== f.meta.id), { ...f.meta, exige_credito: false }];
           c.top.fotos_cena.push(f.meta.id);
