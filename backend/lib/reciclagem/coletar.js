@@ -68,14 +68,18 @@ function pontuar(posts, seguidores, { agora = Date.now() } = {}) {
   // Linha de base da conta: mediana só dos posts com engajamento visível (curtidas ocultas dão ER 0 e derrubariam a
   // mediana, inflando o índice para centenas de vezes). Piso de 0,01% de ER e teto de 50× para o índice ficar comparável.
   const PISO_ER = 0.0001; const TETO_VL = 50;
+  // Conta que esconde curtidas em quase tudo (menos de 3 posts visíveis) não tem linha de base própria: usa a base
+  // nominal de 0,3% de ER (típica de contas com mais de 1 milhão de seguidores) e marca `base_estimada`.
+  const BASE_NOMINAL = 0.003;
   const visiveis = comEr.filter((p) => p.er != null && p.er > 0).map((p) => p.er);
-  const medEr = Math.max(PISO_ER, mediana(visiveis.length >= 5 ? visiveis : comEr.map((p) => p.er)) || 0);
+  const baseEstimada = visiveis.length < 3;
+  const medEr = baseEstimada ? BASE_NOMINAL : Math.max(PISO_ER, mediana(visiveis) || 0);
   const medVps = Math.max(0.01, mediana(comEr.map((p) => p.vps).filter((v) => v != null && v > 0)) || 0);
   const limita = (v) => (v == null ? null : Math.min(TETO_VL, v));
   return comEr.map((p) => {
     const vl_er = limita(p.er != null && p.er > 0 ? p.er / medEr : null);
     const vl_views = limita(p.vps != null && p.vps > 0 ? p.vps / medVps : null);
-    return { ...p, seguidores, er: arred(p.er, 6), visualizacoes_por_seguidor: arred(p.vps, 4), vl_er: arred(vl_er), vl_views: arred(vl_views), vl: arred(vl_er ?? vl_views), mediana_er: arred(medEr, 6), n_base: comEr.length };
+    return { ...p, seguidores, er: arred(p.er, 6), visualizacoes_por_seguidor: arred(p.vps, 4), vl_er: arred(vl_er), vl_views: arred(vl_views), vl: arred(vl_er ?? vl_views), mediana_er: arred(medEr, 6), base_estimada: baseEstimada, n_base: comEr.length };
   });
 }
 
