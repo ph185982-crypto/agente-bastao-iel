@@ -270,7 +270,14 @@ async function guardar(itens, { agora = Date.now(), retencaoDias = RETENCAO_DIAS
     };
     await salvarItem(doc); if (ant) atualizados += 1; else novos += 1;
   }
-  for (const d of existentes.values()) if (Date.parse(d.publicado_em || d.coletado_em || 0) < limite) { await db().radar.apagar(conta(), TIPO, d.id); removidos += 1; }
+  // Sai da lista: o que venceu a retenção e, das contas lidas agora, o que já não está no recorte viral atual
+  // (a linha de base da conta mudou ou o post saiu da janela de leitura) — assim um índice antigo não fica inflado.
+  const contasLidas = new Set(itens.map((i) => i.conta?.handle || i.conta?.canal).filter(Boolean));
+  for (const d of existentes.values()) {
+    const vencido = Date.parse(d.publicado_em || d.coletado_em || 0) < limite;
+    const foraDoRecorte = !vistos.has(d.id) && contasLidas.has(d.conta?.handle || d.conta?.canal) && !(d.reciclado || []).length;
+    if (vencido || foraDoRecorte) { await db().radar.apagar(conta(), TIPO, d.id); removidos += 1; }
+  }
   return { novos, atualizados, removidos, guardados: candidatos.length };
 }
 
