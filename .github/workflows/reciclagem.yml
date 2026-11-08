@@ -1,0 +1,27 @@
+# Radar de Reciclagem: coleta diária do que viralizou nas contas vigiadas (09:00 de Brasília = 12:00 UTC).
+# Chama a rota de coleta do app com o CRON_SECRET; a rota lê a Graph da Meta (business_discovery), o YouTube (se houver
+# chave) e o RSS do Google Trends, calcula o índice de viralidade, classifica tema/mecanismo/tese pela IA e avisa no celular.
+# Só roda se este arquivo estiver na branch principal e se as configurações abaixo existirem:
+#   Settings → Secrets and variables → Actions
+#     • Variável  MONITOR_URL  = endereço de PRODUÇÃO do app, sem barra no fim (a mesma do monitor e do Radar)
+#     • Secret    CRON_SECRET  = o mesmo CRON_SECRET definido na Vercel
+# Nunca publica nada: só coleta, mede e guarda; reciclar é decisão do Pedro no app.
+name: Radar de Reciclagem (09:00 Brasília)
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  reciclagem:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: ${{ vars.MONITOR_URL != '' }}
+    steps:
+      - name: Chamar a coleta da Reciclagem
+        env:
+          URL: ${{ vars.MONITOR_URL }}
+          SEGREDO: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$SEGREDO" || { echo "Falta o secret CRON_SECRET."; exit 1; }
+          curl --fail --silent --show-error --max-time 100 -X POST -H "Authorization: Bearer $SEGREDO" "$URL/api/reciclagem/coletar"
