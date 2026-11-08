@@ -4,7 +4,8 @@
 // Contrato: docs/VIDEOS_E_RECICLAGEM_SPEC.md (modelo de dados, rotas e integração).
 (function () {
   'use strict';
-  const CDN_BLOB = 'https://cdn.jsdelivr.net/npm/@vercel/blob@2.8.2/+esm';
+  // SDK do Blob empacotado no próprio app (static/vercelBlobClient.js, esbuild do @vercel/blob/client): não depende de CDN externo.
+  const CDN_BLOB = '/vercelBlobClient.js';
   const ST = {
     lista: [], carregando: false, carregou: false, erro: null, semArmazenamento: null,
     ocupado: {},          // id → 'publicar' | 'agendar' | 'descartar' | 'refazer' | 'apagar'
