@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "start": "node backend/server.js",
-    "test": "node --test backend/lib/*.test.js backend/lib/top/*.test.js backend/lib/painel/*.test.js",
+    "test": "node --test backend/lib/*.test.js backend/lib/top/*.test.js backend/lib/painel/*.test.js backend/lib/videos/*.test.js",
     "test:e2e": "node tests/e2e/executar.js"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
     "@google/generative-ai": "^0.24.1",
+    "@vercel/blob": "^2.8.2",
     "@vercel/functions": "3.10.3",
     "@vercel/queue": "^0.9.0",
     "axios": "^1.7.9",
