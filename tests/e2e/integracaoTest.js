@@ -57,7 +57,7 @@ async function simular(ctx) {
       // Só erros de JavaScript contam; recursos externos bloqueados pelo ambiente de teste (CDN, Blob) viram aviso com a URL.
       const bloqueados = [];
       p.on('pageerror', (e) => erros.push(String(e.message))); p.on('requestfailed', (r) => bloqueados.push(r.url()));
-      p.on('console', (m) => { if (m.type() === 'error' && !/favicon|404|Failed to load resource|failed to load React|failed to load https://unpkg.com/.test(m.text())) erros.push(m.text()); });
+      p.on('console', (m) => { if (m.type() === 'error' && !/favicon|404|Failed to load resource|failed to load React|failed to load https:\/\/unpkg\.com/.test(m.text())) erros.push(m.text()); });
       await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
       await p.waitForSelector('.es-nav', { timeout: 20000 });
       const abas = await p.$$eval('.es-nav button span', (els) => els.map((e) => e.textContent.trim()));
