@@ -182,7 +182,7 @@ test('reciclar como carrossel: chama criar com origem reciclagem, briefing com t
   assert.strictEqual(chamadas.length, 1);
   assert.strictEqual(chamadas[0].origem, 'reciclagem'); assert.strictEqual(chamadas[0].formato, null);
   assert.ok(chamadas[0].texto.length >= 300, 'o pipeline exige 300 caracteres');
-  assert.match(chamadas[0].texto, /TESE \(neutra/); assert.match(chamadas[0].texto, /fatos BRASILEIROS verificáveis/i); assert.match(chamadas[0].texto, /OPINIÃO/);
+  assert.match(chamadas[0].texto, /TESE \(neutra/); assert.match(chamadas[0].texto, /SEM FATOS/); assert.match(chamadas[0].texto, /OPINIÃO/); assert.strictEqual(chamadas[0].modo, 'opiniao');
   assert.ok(!/codiesanchez|Codie/.test(chamadas[0].texto), 'o briefing não cita a conta de origem');
   const doc = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, r.id)).doc;
   assert.strictEqual(doc.top.reciclado_de.permalink, ITEM.permalink); assert.strictEqual(doc.top.reciclado_de.vl, undefined); assert.strictEqual(doc.top.reciclado_de.metricas.vl, 4.2);

@@ -371,3 +371,31 @@ test('detector de vícios: pega reversão, "quem paga a conta", jornalês e trav
   assert.deepStrictEqual([...new Set(AI.vicios(['Não é imposto. É gestão.', 'Quem paga a conta?', 'Entenda o caso', 'Juro alto — de novo']).map((x) => x.id))].sort(), ['jornal', 'quem_paga', 'reversao', 'travessao']);
   assert.strictEqual(AI.vicios(['O frete subiu 7,2% em outubro.', 'Você vendeu mais e o Pix caiu.']).length, 0);
 });
+
+test('modo opinião (reciclagem): sem matéria nem fatos o conteúdo sai como leitura do Pedro, sem número e sem rodapé de fonte', async () => {
+  novo();
+  const opin = roteiro({
+    telas: [
+      { papel: 'gap', layout: 'rep_manchete', titulo: 'A cena que você conhece', texto: 'O fornecedor liga na segunda e o boleto vence na terça. Você paga o que o dia pede.', fatos: [] },
+      { papel: 'contradicao', layout: 'rep_manchete', titulo: 'O pequeno sente primeiro', texto: 'Na minha leitura, o dono de loja carrega o custo e ninguém liga pra ele.', fatos: [] },
+      { papel: 'consequencia', layout: 'rep_manchete', titulo: 'O caixa sente primeiro', texto: 'Pra mim, o preço sobe antes de a explicação chegar.', fatos: [] },
+      { papel: 'leitura', layout: 'rep_manchete', titulo: 'Minha leitura', texto: 'Promessa não paga boleto de ninguém.', destaque: 'Cobrar resultado não é torcida.', fatos: [] },
+    ],
+    capas: [{ texto: 'Ninguém te avisou que o **boleto** vence primeiro.', mecanismo: 'dor' }, { texto: 'Seu sócio precisa ler isso antes de terça.', mecanismo: 'envio' }, { texto: 'A conta chega antes da explicação', mecanismo: 'contradicao' }],
+    legenda: 'Na minha leitura, o dono de loja sente primeiro e é ouvido por último. Manda pro seu sócio.',
+    fechamento: { titulo: 'Dono de loja cobra resultado.', texto: 'Manda pra quem tem CNPJ.' },
+  });
+  const ia = iaFalsa({ roteiros: [opin, opin], angulo: { ...ANGULO, gatilhos: { contradicao: 0, bolso: 0, numero: 0, personagem: 0 } } });
+  const d = await deps(ia);
+  d.lerFonte = async ({ texto }) => ({ tipo: 'texto', url: null, titulo: '', veiculo: '', publicada_em: null, texto, legivel: true, acessada_em: new Date().toISOString() });
+  const texto = `Briefing de reciclagem: atenção e relações. TESE: a rede social alimenta a economia da atenção. PONTE: o empreendedor que vive no celular perde o jantar em família. ${'Escreva do zero na voz do Pedro, sem número. '.repeat(4)}`;
+  const c = await T.criar({ texto, origem: 'reciclagem', modo: 'opiniao' });
+  const r = await T.executarTudo(c.id, { deps: d });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  assert.strictEqual(r.conteudo.top.fatos.length, 0);
+  assert.ok(!ia.chamadas.some((x) => x.tipo === 'fatos'), 'não extrai fatos de briefing');
+  const doc = await ler(c.id);
+  const v = M.versaoAtiva(doc);
+  assert.doesNotMatch(v.legenda, /Fonte:/);
+  assert.ok(ia.chamadas.some((x) => x.tipo === 'roteiro'));
+});

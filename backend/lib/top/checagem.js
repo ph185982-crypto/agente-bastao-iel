@@ -91,7 +91,7 @@ const ENSAIO = { min: 700, max: 1100, folga: 150, telas_min: 4, telas_max: 6 }; 
 const paragrafosDe = (txt) => String(txt || '').split(/\n{2,}|\n/).map((p) => p.trim()).filter(Boolean);
 
 // Checa um roteiro (capa + telas + legenda) contra os fatos verificados. Devolve { ok, problemas[] }.
-function checarRoteiro(r, fatos, { formato = 'reportagem' } = {}) {
+function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false } = {}) {
   const problemas = [];
   const permitidos = permitidosDe(fatos);
   const telas = Array.isArray(r?.telas) ? r.telas : [];
@@ -131,7 +131,7 @@ function checarRoteiro(r, fatos, { formato = 'reportagem' } = {}) {
   });
   if (!estatico) {
     if (!telas.some((t) => t.papel === 'leitura')) problemas.push(ensaio ? 'Falta o bloco com a leitura do Pedro (papel "leitura").' : 'Falta a tela com a leitura do Pedro (papel "leitura").');
-    if (!telas.some((t) => ['rep_comparacao', 'rep_numero'].includes(t.layout) || t.papel === 'prova')) problemas.push(ensaio ? 'Falta um bloco de prova com número dos fatos.' : 'Falta uma tela de prova com número ou dado.');
+    if (!opiniao && !telas.some((t) => ['rep_comparacao', 'rep_numero'].includes(t.layout) || t.papel === 'prova')) problemas.push(ensaio ? 'Falta um bloco de prova com número dos fatos.' : 'Falta uma tela de prova com número ou dado.');
   }
   const cop = HG.verificar(r?.capa || '', { contra: [] });
   if (!cop.ok) problemas.push(`Capa: ${cop.motivo}`);
