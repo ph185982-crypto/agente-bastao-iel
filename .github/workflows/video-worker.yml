@@ -20,7 +20,10 @@ permissions:
   contents: read
   id-token: write   # o editor se identifica ao app com o token OIDC do runner: não precisa de segredo cadastrado
   actions: write    # para se reiniciar ao fim do plantão (o GITHUB_TOKEN pode disparar workflow_dispatch)
-concurrency: { group: video-worker, cancel-in-progress: false }
+# Uma publicação nova (push) substitui o plantão em andamento, que estaria com o código antigo; reinício e agendamento só entram na fila.
+concurrency:
+  group: video-worker
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 jobs:
   editar:
     runs-on: ubuntu-latest
