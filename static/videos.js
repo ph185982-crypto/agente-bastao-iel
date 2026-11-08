@@ -99,7 +99,9 @@
       const id = criado.id || (criado.doc && criado.doc.id); if (!id) throw new Error('O servidor não devolveu o id do vídeo.');
       env.id = id; env.etapa = 'enviando'; redesenhar(); progresso({ etapa: 'enviando', pct: 0, id });
       const upload = await carregarUpload();
-      const tipo = blob.type || (extensao(blob, meta.nome) === 'webm' ? 'video/webm' : 'video/mp4');
+      // O Blob só aceita o tipo SEM parâmetros ("video/mp4;codecs=avc1…" do iPhone é recusado) e em minúsculas.
+      let tipo = String(blob.type || '').split(';')[0].trim().toLowerCase();
+      if (!/^video\//.test(tipo)) tipo = extensao(blob, meta.nome) === 'webm' ? 'video/webm' : extensao(blob, meta.nome) === 'mov' ? 'video/quicktime' : 'video/mp4';
       const r = await upload(`videos/${id}/origem.${extensao(blob, meta.nome)}`, blob, {
         access: 'public', handleUploadUrl: '/api/videos/blob', multipart: true, contentType: tipo,
         clientPayload: JSON.stringify({ id, papel: 'origem' }),
@@ -113,6 +115,8 @@
       await carregar(ctx, true);
       return { id };
     } catch (e) {
+      // Envio que falhou não deixa um vídeo "aguardando o arquivo" para sempre na lista.
+      if (env.id) { try { await ctx.api(`/api/videos/${encodeURIComponent(env.id)}`, { method: 'DELETE' }); } catch { /* segue */ } }
       env.etapa = 'erro'; env.erro = e.status === 503 ? (e.message || 'O armazenamento de vídeos não está ligado.') : (e.message || 'O envio falhou.');
       if (e.status === 503) ST.semArmazenamento = env.erro;
       progresso({ etapa: 'erro', erro: env.erro, id: env.id });
