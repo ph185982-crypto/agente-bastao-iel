@@ -9,18 +9,22 @@
 name: Worker de vídeo (reels)
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/15 * * * *'   # reforço: o agendamento do GitHub atrasa muito; o plantão abaixo é quem atende de verdade
   workflow_dispatch: {}
   repository_dispatch:
     types: [video]
+  push:
+    branches: [main]
+    paths: ['tools/reels/**', '.github/workflows/video-worker.yml']   # ao publicar uma mudança, o plantão recomeça
 permissions:
   contents: read
   id-token: write   # o editor se identifica ao app com o token OIDC do runner: não precisa de segredo cadastrado
+  actions: write    # para se reiniciar ao fim do plantão (o GITHUB_TOKEN pode disparar workflow_dispatch)
 concurrency: { group: video-worker, cancel-in-progress: false }
 jobs:
   editar:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 358
     steps:
       - uses: actions/checkout@v4
 
@@ -61,9 +65,19 @@ jobs:
           npm install --no-audit --no-fund --silent "@vercel/blob@${VERSAO}"
           echo "NODE_PATH=$RUNNER_TEMP/worker/node_modules" >> "$GITHUB_ENV"
 
-      - name: Editar os vídeos da fila
+      - name: Editar os vídeos da fila (plantão de até 5h45)
+        id: editar
         env:
+          WORKER_MINUTOS: '345'
+          WORKER_INTERVALO_S: '30'
           APP_URL: ${{ vars.MONITOR_URL || 'https://agente-bastao-iel.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}        # opcional: sem ele vale o token OIDC do runner
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}  # opcional: sem ele o b-roll vem pelo app
         run: node tools/reels/worker.js
+
+      # Recomeça o plantão (uma nova execução entra na fila do `concurrency` e começa quando esta terminar).
+      - name: Reiniciar o plantão
+        if: ${{ always() && steps.editar.outputs.recorrer == 'sim' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run video-worker.yml --ref main || echo "não consegui reiniciar; o reforço de 15 minutos retoma"
