@@ -40,7 +40,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-reels-${{ runner.os }}-${{ hashFiles('tools/reels/requirements.txt') }}
+          key: pip-reels-${{ runner.os }}-${{ hashFiles('tools/reels/requirements.lock') }}
 
       - name: Cache do modelo do Whisper
         uses: actions/cache@v4
@@ -55,7 +55,7 @@ jobs:
           ffmpeg -version | head -1
 
       - name: Instalar dependências Python
-        run: python3 -m pip install --quiet -r tools/reels/requirements.txt
+        run: python3 -m pip install --quiet -r tools/reels/requirements.lock
 
       - name: Instalar @vercel/blob (isolado; o npm ci do app inteiro é pesado demais para este job)
         run: |
