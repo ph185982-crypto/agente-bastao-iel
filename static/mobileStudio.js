@@ -34,7 +34,7 @@
   }
   function preview(c){
     const v=versao(c);
-    if(c.formato==='reels'&&c.motion?.estado==='pronto')return `<div class="st-video"><video controls playsinline preload="metadata" ${c.motion.poster?`poster="${esc(c.motion.poster)}"`:''} src="${esc(c.motion.url)}" aria-label="Prévia do Reel de ${esc(c.titulo)}"></video><span class="st-media-tag">REEL · ${c.motion.narracao===false?'LEGENDAS · SEM VOZ':'NARRAÇÃO + LEGENDAS'}</span></div>${c.motion.aviso?`<p class="st-inline-error">${esc(c.motion.aviso)}</p>`:''}`;
+    if(c.formato==='reels'&&c.motion?.estado==='pronto')return `<div class="st-video"><video controls playsinline preload="metadata" ${c.motion.poster?`poster="${esc(c.motion.poster)}"`:''} src="${esc(c.motion.url)}" aria-label="Prévia do Reel de ${esc(c.titulo)}"></video><span class="st-media-tag">REEL · ${c.motion.engine==='blob'?'EDITADO · LEGENDA PALAVRA A PALAVRA':c.motion.narracao===false?'LEGENDAS · SEM VOZ':'NARRAÇÃO + LEGENDAS'}</span></div>${c.motion.aviso?`<p class="st-inline-error">${esc(c.motion.aviso)}</p>`:''}`;
     const renders=v.slides.map(s=>c.arte.renders.find(r=>r.slide_id===s.id&&r.versao===v.id));
     if(renders.some(r=>!r))return `<div class="st-no-preview"><b>A prévia está sendo preparada</b><p>O sistema cuida da capa, dos textos e da conferência.</p></div>`;
     const n=ui.slides[c.id]||0;
