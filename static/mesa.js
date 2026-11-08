@@ -541,6 +541,7 @@
     const nCentral = window.MesaCentral ? window.MesaCentral.badge() : 0;
     const nRadar = window.RadarUI ? window.RadarUI.badge() : 0;
     const nVideos = window.Videos?.badge ? window.Videos.badge() : 0;
+    const nRec = window.Reciclagem?.badge ? window.Reciclagem.badge() : 0;
     const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['videos', 'Vídeos'], ['reciclagem', 'Reciclar'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['videos', 'Vídeos'], ['reciclagem', 'Reciclar'], ['radar', 'Radar'], ['criar', 'Criar'], ['resultados', 'Resultados'], ['ajustes', 'Ajustes']];
     const ROTULO_ABA = { radar: 'Radar', resultados: 'Resultados', criar: 'Ferramentas', semana: 'Semana' };;
     const [saveClass, saveText] = estadoSalvamento();
@@ -551,7 +552,7 @@
       <div class="es-top" ${state.tab === 'criar' ? '' : 'hidden'}>${CRIAR.filter((m) => !escondido(m.id)).map((m) => `<button data-action="criar" data-m="${m.id}" aria-pressed="${state.criarModulo === m.id}">${m.label}</button>`).join('')}</div>
       <main id="studio-main" class="es-main" tabindex="-1" ${state.tab === 'criar' ? 'hidden' : ''}><div class="studio-page ${state.tab === 'mesa' && !state.sub ? 'studio-home' : ''}">${corpo}</div></main>
       <div class="es-toast-slot">${state.toast ? `<div class="es-toast" role="status">${esc(state.toast)}</div>` : ''}</div>
-      <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span>${id === 'central' && nCentral ? `<i class="es-badge" aria-label="${nCentral} para aprovar">${nCentral}</i>` : ''}${id === 'videos' && nVideos ? `<i class="es-badge" aria-label="${nVideos} vídeo(s) para aprovar">${nVideos}</i>` : ''}${id === 'radar' && nRadar ? `<i class="es-badge" aria-label="${nRadar} ideia pronta">${nRadar}</i>` : ''}</button>`).join('')}</nav>`;
+      <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span>${id === 'central' && nCentral ? `<i class="es-badge" aria-label="${nCentral} para aprovar">${nCentral}</i>` : ''}${id === 'videos' && nVideos ? `<i class="es-badge" aria-label="${nVideos} vídeo(s) para aprovar">${nVideos}</i>` : ''}${id === 'reciclagem' && nRec ? `<i class="es-badge" aria-label="${nRec} tese(s) em alta">${nRec}</i>` : ''}${id === 'radar' && nRadar ? `<i class="es-badge" aria-label="${nRadar} ideia pronta">${nRadar}</i>` : ''}</button>`).join('')}</nav>`;
     root.insertAdjacentHTML('beforeend', `<div class="studio-rail-footer"><span class="studio-avatar">PD</span><div><b>Pedro Destrava</b><span>${esc(M.ACCOUNT_PIN.handle)}</span></div></div>`);
     const m = root.querySelector('.es-main');
     if (m) { m.scrollTop = mudouTela ? (scrollDasTelas.get(tela) || 0) : scroll; if (mudouTela && !m.hidden) m.focus({ preventScroll: true }); }

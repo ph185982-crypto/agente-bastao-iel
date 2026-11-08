@@ -87,6 +87,14 @@
       <button class="st-text-button" data-action="st-roteiro-descartar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>Descartar este assunto</button></article>`;
   }
   // Com o app aberto, também dá uma rodada do piloto a cada 5 min (o agendador do GitHub às vezes atrasa).
+  // Conduz um conteúdo do pipeline "top" criado pelo app até ficar pronto (ou parar), avisando ao final.
+  async function conduzirTop(ctx,id){
+    for(let i=0;i<60;i++){
+      let r;try{r=await ctx.api(`/api/top/carrosseis/${encodeURIComponent(id)}/passo`,{method:'POST',body:{}});}catch(e){if(e.status===429){await new Promise(x=>setTimeout(x,8000));continue;}ctx.toast(`A produção parou: ${e.message}`);return;}
+      if(r.concluido||r.estado!=='em_andamento'){await atualizar({silencioso:true});ctx.toast(r.estado==='concluida'?'Pronto para aprovar.':`A produção parou: ${r.motivo||r.estado}`);return;}
+      await new Promise(x=>setTimeout(x,r.ocupado?4000:1500));
+    }
+  }
   async function rodarPiloto(){
     if(ui.pilotoEmCurso||document.hidden)return;const agora=Date.now();if(ui.pilotoChecado&&agora-ui.pilotoChecado<300000)return;ui.pilotoChecado=agora;
     ui.pilotoEmCurso=true;try{const r=await x().api('/api/top/piloto/rodada',{method:'POST',body:{}});if(r.publicados?.length||r.avancados?.some(a=>a.estado==='concluida'))await atualizar({silencioso:true});}catch(e){/* sem acesso ou sem banco: tenta na próxima */}finally{ui.pilotoEmCurso=false;}
@@ -182,6 +190,11 @@
           if(ui.ocupado)return true;ui.ocupado='novo';ctx.render();
           // Carrossel novo: padrão único "Pedro Destrava — Minimalista" (pauta no Radar). Reels e post único seguem pelo estúdio.
           if(s.formato==='carrossel'){const pd=await ctx.api('/api/radar/padrao').catch(()=>null);if(!pd||pd.ativo!==false){try{const r=await ctx.api('/api/radar/pautas',{method:'POST',body:{...(s.modo==='link'?{url:s.url.trim()}:{texto:s.texto.trim()}),origem:'estudio'}});ui.source.url='';ui.source.texto='';ctx.state.tab='radar';if(window.RadarUI){window.RadarUI._st.pautas.unshift(r.pauta);await window.RadarUI.carregar(ctx,{forcar:true});}ctx.toast('Pauta enviada ao Radar: pesquisa, texto e imagens no padrão Pedro Destrava — Minimalista.');}finally{ui.ocupado=null;ctx.render();}break;}}
+          // Post único e Ensaio: pipeline "top" (fatos, mentes, júri, painel, capa com foto). O app conduz os passos; o piloto também avança sozinho.
+          if(s.formato==='estatico'||s.formato==='ensaio'){
+            if(s.modo==='texto'&&s.texto.trim().length<300){ctx.toast('Para post único ou ensaio, cole um texto com pelo menos 300 caracteres.');ui.ocupado=null;ctx.render();return true;}
+            try{const c=await ctx.api('/api/top/carrosseis',{method:'POST',body:{...(s.modo==='link'?{url:s.url.trim()}:{texto:s.texto.trim()}),formato:s.formato,origem:'estudio'}});ui.source.url='';ui.source.texto='';ctx.state.tab='central';ui.aba='prontos';ctx.toast(`${s.formato==='ensaio'?'Ensaio':'Post único'} em produção. Aviso quando estiver pronto para aprovar.`);conduzirTop(ctx,c.id);}finally{ui.ocupado=null;ctx.render();}break;
+          }
           const reg=await ctx.api('/api/studio/criar',{method:'POST',body:{...(s.modo==='link'?{url:s.url.trim()}:{texto:s.texto.trim()}),formato:s.formato,estilo:s.estilo,objetivo:s.objetivo,voz:ctx.state.config.voice_profile,request_id:crypto.randomUUID()}});await adotar(reg);ui.source.url='';ui.source.texto='';ctx.state.tab='central';ui.aba='prontos';ctx.toast('Preparação iniciada. Pode acompanhar por aqui.');break;
         }
         case 'st-publicar-agora':{
