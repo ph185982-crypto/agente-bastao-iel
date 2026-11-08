@@ -2,9 +2,8 @@
 // tema, tese neutra, mecanismo, ponte e os números do post; nada do original é citado, traduzido ou imitado.
 //
 //  - carrossel / estatico → entra no pipeline "top" (backend/lib/top/pipeline.js) como texto de briefing. O pipeline
-//    extrai fatos SÓ do texto recebido e derruba qualquer número sem fonte: como o briefing não traz números, o
-//    conteúdo sai como OPINIÃO marcada (sem número) a menos que a etapa de fatos encontre algo verificável. A fonte
-//    fica em c.top.reciclado_de.
+//    com `modo: 'opiniao'`: não há matéria nem fatos a conferir, então o conteúdo sai como OPINIÃO do Pedro, marcada
+//    como leitura dele, sem nenhum número e sem rodapé de "Fonte". A origem fica em c.top.reciclado_de.
 //  - reel → roteiro falado de 45 a 75 s, na voz do Pedro, com uma mente da sala de redação sorteada e as regras
 //    anti-IA. Roteiro com 2 ou mais vícios de texto de IA é reprovado e pedido de novo (até 3 tentativas).
 const M = require('../../../static/contentModel');
@@ -34,7 +33,7 @@ function fonteDe(item) {
   };
 }
 
-// Briefing que entra no pipeline como "texto colado": tese, ponte, mecanismo e a instrução de achar fatos brasileiros.
+// Briefing que entra no pipeline como "texto colado": tese, ponte, mecanismo e a instrução de escrever como opinião, sem número.
 function briefing(item) {
   const mec = item.mecanismo ? `${item.mecanismo}: ${Contas.MECANISMOS[item.mecanismo] || ''}` : 'não identificado';
   return [
@@ -46,8 +45,7 @@ function briefing(item) {
     `SINAL DE VIRALIDADE: índice ${item.vl ?? '?'} vezes a mediana da conta de origem (${item.conta?.pais || '?'}, ${item.conta?.idioma || '?'}); o conteúdo original não é citado nem traduzido.`,
     '',
     'INSTRUÇÕES PARA A REDAÇÃO: escreva do zero, na voz do Pedro (direita assumida, liberdade econômica, responsabilidade fiscal, crítica ao PT e ao governo quando o assunto pede), para quem empreende no Brasil: dono de empresa, MEI, quem vende em marketplace, autônomo. Reaproveite a TESE e o MECANISMO, nunca o texto, o exemplo ou a história do autor original; não cite nem imite a conta de origem.',
-    'FATOS: procure fatos BRASILEIROS verificáveis que sustentem ou contrariem a tese (IBGE, Receita Federal, Banco Central, Sebrae, Diário Oficial, imprensa com data). Só entra número que tenha fonte conferida. Se não houver fato verificável, o conteúdo sai como OPINIÃO do Pedro, marcada como leitura dele, sem nenhum número.',
-    'Este briefing não traz dados numéricos: qualquer número no resultado precisa vir de fonte conferida fora dele.',
+    'SEM FATOS: este conteúdo é OPINIÃO do Pedro sobre a tese, marcada como leitura dele ( "na minha leitura", "pra mim" ), sem nenhum número, porcentagem, data, pesquisa ou estatística. Use cenas do dia a dia do empreendedor brasileiro (maquininha, boleto, fornecedor, nota fiscal, funcionário) no lugar de dados.',
   ].join('\n');
 }
 
@@ -61,7 +59,7 @@ async function salvarConteudo(c) {
 async function reciclarCarrossel(item, { formato = 'carrossel', deps = {} } = {}) {
   const criar = deps.criar || require('../top/pipeline').criar;
   const texto = briefing(item);
-  const c = await criar({ texto, titulo: `Reciclagem: ${item.tema || 'tese em alta'}`.slice(0, 140), origem: 'reciclagem', formato: formato === 'estatico' ? 'estatico' : null });
+  const c = await criar({ texto, titulo: `Reciclagem: ${item.tema || 'tese em alta'}`.slice(0, 140), origem: 'reciclagem', formato: formato === 'estatico' ? 'estatico' : null, modo: 'opiniao' });
   c.top = c.top || {};
   c.top.reciclado_de = fonteDe(item);
   c.top.reciclagem_formato = formato;
