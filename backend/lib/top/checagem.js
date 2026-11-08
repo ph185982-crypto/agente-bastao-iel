@@ -85,13 +85,32 @@ function numerosSemFonte(texto, fatos) {
   return M.extrairNumeros(semDatas(texto)).filter(M.exigeOrigem).filter((n) => !permitidos.some((v) => M.igual(v, n.valor)));
 }
 
+// Régua de forma por formato. estatico: 1 slide (ou 2) e a legenda é o post; ensaio: blocos de texto corrido, sem foto.
+const LEGENDA_ESTATICO = { min: 600, max: 1500, paragrafos_min: 4, paragrafos_max: 7 };
+const ENSAIO = { min: 700, max: 1100, folga: 150, telas_min: 4, telas_max: 6 }; // folga: a IA erra a contagem de caracteres para mais ou para menos
+const paragrafosDe = (txt) => String(txt || '').split(/\n{2,}|\n/).map((p) => p.trim()).filter(Boolean);
+
 // Checa um roteiro (capa + telas + legenda) contra os fatos verificados. Devolve { ok, problemas[] }.
-function checarRoteiro(r, fatos) {
+function checarRoteiro(r, fatos, { formato = 'reportagem' } = {}) {
   const problemas = [];
   const permitidos = permitidosDe(fatos);
   const telas = Array.isArray(r?.telas) ? r.telas : [];
-  if (!r?.capa || palavras(r.capa) > 14) problemas.push(`Capa ausente ou longa demais (${palavras(r?.capa)} palavras; máximo 14).`);
-  if (telas.length < 4 || telas.length > 8) problemas.push(`O carrossel tem ${telas.length} telas de conteúdo; use de 4 a 8 (a capa e o fechamento são à parte).`);
+  const estatico = formato === 'estatico'; const ensaio = formato === 'ensaio';
+  const maxCapa = estatico ? 10 : 14;
+  if (!r?.capa || palavras(r.capa) > maxCapa) problemas.push(`Capa ausente ou longa demais (${palavras(r?.capa)} palavras; máximo ${maxCapa}).`);
+  if (estatico) {
+    if (telas.length > 1) problemas.push(`O post estático tem ${telas.length} telas além da capa; no máximo 1 (o "virar").`);
+    const leg = String(r?.legenda || ''); const n = leg.length; const ps = paragrafosDe(leg).length;
+    if (n < LEGENDA_ESTATICO.min || n > LEGENDA_ESTATICO.max) problemas.push(`A legenda tem ${n} caracteres; o post estático pede de ${LEGENDA_ESTATICO.min} a ${LEGENDA_ESTATICO.max} (é o corpo do post).`);
+    if (ps < LEGENDA_ESTATICO.paragrafos_min || ps > LEGENDA_ESTATICO.paragrafos_max) problemas.push(`A legenda tem ${ps} parágrafos; use de ${LEGENDA_ESTATICO.paragrafos_min} a ${LEGENDA_ESTATICO.paragrafos_max}, curtos.`);
+    if (!/\b(manda|mande|envia|envie|marca|marque|compartilha|compartilhe)\b/i.test(leg)) problemas.push('A legenda não pede para mandar ou marcar alguém no fim.');
+  } else if (ensaio) {
+    if (telas.length < ENSAIO.telas_min || telas.length > ENSAIO.telas_max) problemas.push(`O ensaio tem ${telas.length} blocos; use de ${ENSAIO.telas_min} a ${ENSAIO.telas_max} (a abertura e o fechamento são à parte).`);
+    const total = [r?.capa, ...telas.map((t) => t.texto), r?.fechamento?.titulo, r?.fechamento?.texto].map((x) => String(x || '').replace(/\*\*/g, '')).join(' ').length;
+    if (total < ENSAIO.min - ENSAIO.folga || total > ENSAIO.max + ENSAIO.folga) problemas.push(`O ensaio tem ${total} caracteres no total; escreva de ${ENSAIO.min} a ${ENSAIO.max}.`);
+    telas.forEach((t, i) => { const ps = paragrafosDe(t.texto).length; if (ps < 1 || ps > 3) problemas.push(`bloco ${i + 2}: ${ps} parágrafos (use 2 a 3, curtos).`); });
+    if (!r?.fechamento?.titulo) problemas.push('Falta a frase de ouro do fechamento ("fechamento.titulo").');
+  } else if (telas.length < 4 || telas.length > 8) problemas.push(`O carrossel tem ${telas.length} telas de conteúdo; use de 4 a 8 (a capa e o fechamento são à parte).`);
   const todos = [{ onde: 'capa', texto: r?.capa || '' }, ...telas.map((t, i) => ({ onde: `tela ${i + 2}`, texto: textosDaTela(t), t })), { onde: 'legenda', texto: r?.legenda || '' }];
   for (const x of todos) {
     for (const n of M.extrairNumeros(semDatas(x.texto)).filter(M.exigeOrigem)) {
@@ -104,16 +123,19 @@ function checarRoteiro(r, fatos) {
   if (segundo > 1) problemas.push(`“Segundo …” aparece em ${segundo} telas: cite a fonte só na tela de prova e na legenda.`);
   telas.forEach((t, i) => {
     const n = palavras(`${t.titulo || ''} ${t.texto || ''}`);
-    if (n > 45) problemas.push(`tela ${i + 2}: ${n} palavras (máximo 45). Corte.`);
+    const maxPal = ensaio ? 70 : estatico ? 26 : 45; // ensaio: 2–3 parágrafos curtos por bloco; estático: uma ideia no "virar"
+    if (n > maxPal) problemas.push(`tela ${i + 2}: ${n} palavras (máximo ${maxPal}). Corte.`);
     if (['rep_comparacao', 'rep_numero'].includes(t.layout) && !(t.fatos || []).length) problemas.push(`tela ${i + 2}: prova sem fato ligado (fatos: ["f1"…]).`);
     if (t.layout === 'rep_comparacao' && !(t.dados?.esquerda?.valor && t.dados?.direita?.valor)) problemas.push(`tela ${i + 2}: comparação sem os dois valores.`);
     if (t.layout === 'rep_numero' && !t.dados?.numero?.valor) problemas.push(`tela ${i + 2}: número gigante sem o número.`);
   });
-  if (!telas.some((t) => t.papel === 'leitura')) problemas.push('Falta a tela com a leitura do Pedro (papel "leitura").');
-  if (!telas.some((t) => ['rep_comparacao', 'rep_numero'].includes(t.layout) || t.papel === 'prova')) problemas.push('Falta uma tela de prova com número ou dado.');
+  if (!estatico) {
+    if (!telas.some((t) => t.papel === 'leitura')) problemas.push(ensaio ? 'Falta o bloco com a leitura do Pedro (papel "leitura").' : 'Falta a tela com a leitura do Pedro (papel "leitura").');
+    if (!telas.some((t) => ['rep_comparacao', 'rep_numero'].includes(t.layout) || t.papel === 'prova')) problemas.push(ensaio ? 'Falta um bloco de prova com número dos fatos.' : 'Falta uma tela de prova com número ou dado.');
+  }
   const cop = HG.verificar(r?.capa || '', { contra: [] });
   if (!cop.ok) problemas.push(`Capa: ${cop.motivo}`);
   return { ok: problemas.length === 0, problemas: [...new Set(problemas)] };
 }
 
-module.exports = { verificarFatos, checarRoteiro, textosDaTela, variacao, norm, palavras, semDatas, numerosSemFonte };
+module.exports = { verificarFatos, checarRoteiro, textosDaTela, variacao, norm, palavras, semDatas, numerosSemFonte, paragrafosDe, LEGENDA_ESTATICO, ENSAIO };

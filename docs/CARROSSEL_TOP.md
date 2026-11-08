@@ -33,8 +33,18 @@ exigindo o toque do Pedro.
 |---|---|---|
 | `reportagem` (`arteReportagem.js`) | comparação numérica forte (antes × depois) ou foto de pessoa/lugar | marinho/creme/amarelo/vermelho, Anton, capa com foto recortada, telas de prova com número gigante |
 | `tweet` (`arteTweet.js`) | sequência de frases (padrão + quebra: "é normal… sabe o que não é normal?") ou linha do tempo com número | fundo branco, avatar do Pedro (`backend/assets/pedro-perfil.png`), nome e @, UMA frase por slide em Inter, foto colorida arredondada em até metade dos tweets, seta → |
+| `estatico` (post único; capa do `arteTweet.js`) | uma ideia que se sustenta numa headline e a leitura inteira cabe na legenda | **1 imagem** (headline até 10 palavras com marca-texto + foto de gente de ponta a ponta, sem seta) ou **2** quando a IA pede um "virar" (capa + 1 slide de prova/leitura com "Manda pra…"); **legenda longa** de 600–1.500 caracteres em 4–7 parágrafos (cena concreta → fatos → leitura do Pedro → frase de ouro → pedido de envio). Publica como `IMAGE` (1 slide) ou carrossel de 2 |
+| `ensaio` (variante do tweet; `renderizarEnsaio` em `arteTweet.js`) | texto corrido: identidade, ética de quem produz, história política com nomes, nostalgia de preço | fundo escuro `#0B0B0C`, mesmo cabeçalho do tweet, Inter branca 54–64 px, 2–3 parágrafos por slide, **5–7 slides, sem foto**; 1º slide com a abertura em negrito maior e filete amarelo; último com a **frase de ouro em amarelo** e o pedido de envio; destaques `**assim**` saem em amarelo |
 
-O editor (etapa `angulo`) escolhe o formato; o piloto **alterna** tweet × reportagem a cada pauta para o feed variar; `POST /api/top/carrosseis` aceita `formato` para forçar. O formato tweet é o que mais engaja no nicho (referência: @thiago.nigro, 150–380 mil curtidas por carrossel).
+O editor (etapa `angulo`) escolhe entre tweet e reportagem; `POST /api/top/carrosseis` e `T.criar` aceitam `formato` (`reportagem` · `tweet` · `estatico` · `ensaio`) para forçar. O formato tweet é o que mais engaja no nicho (referência: @thiago.nigro, 150–380 mil curtidas por carrossel).
+
+### Post estático e ensaio (Fase 4)
+- Prompts próprios em `prompts.js`: `roteiroEstatico` (10 headlines, `virar`, legenda em lista de parágrafos, `frase_de_ouro`) e `roteiroEnsaio` (10 aberturas, 4–6 blocos com `paragrafos`, fechamento com a frase de ouro). Os dois carregam `VOZ_PEDRO` (direita assumida, liberdade econômica, crítica dura ao PT e ao governo quando os fatos sustentam, fatos com fonte, opinião marcada) e as regras anti-IA.
+- Mesmos filtros do carrossel: fatos verificados (número fora dos fatos sai da frase; no estático a limpeza preserva os parágrafos), mentes (uma dupla por versão), júri (com `notaJuri` explicando o formato), sala de capas (headline até 10 palavras no estático), painel, revisor de capas e portões de publicação.
+- Régua de forma (`checagem.js`, `checarRoteiro(r, fatos, { formato })`): estático = capa ≤ 10 palavras, no máximo 1 tela, legenda 600–1.500 caracteres em 4–7 parágrafos com pedido de mandar/marcar; ensaio = 4–6 blocos de 1–3 parágrafos, 700–1.100 caracteres no total (folga de 150), frase de ouro obrigatória, um bloco de prova e um de leitura.
+- Anti-IA: 3 vícios reprovam qualquer versão; no estático **2 vícios só na legenda já reprovam** (a legenda é o post) e a reescrita recebe as frases apontadas.
+- Arte: `renderizarEnsaio` escolhe pelo `slide.tema_visual === 'ensaio'` (ou `layout: 'ensaio'`); texto que não cabe em 54 px sai marcado (`cabe:false`) e o encurtamento automático tira o último parágrafo do bloco em vez de cortar na 1ª frase. O post único usa a capa do tweet mesmo com 1 slide (`funcao: 'capa'`), sem seta e sem contador.
+- Conteúdo do estático nasce com `c.formato = 'estatico'` (rótulo "Post único" no app) e a versão leva `formato: 'estatico'` (os portões não exigem estrutura de carrossel). Testes: `backend/lib/top/formatos.test.js` (`TOP_DUMP=/pasta` grava os slides).
 
 ## Só IA gratuita (OpenAI desligada)
 
@@ -61,6 +71,7 @@ Chaves gratuitas: `GEMINI_API_KEY` (aistudio.google.com), `CEREBRAS_API_KEY` (cl
 | Produção | das 03:00 às 20:30 (Brasília), uma pauta por vez, a de maior prioridade com link legível |
 | Avisos para aprovar | 08:00 e 14:00 — um aviso por janela, com a contagem de prontos |
 | Horários de publicação | 09:00, 11:00, 12:30, 15:00, 17:00, 18:30, 20:00, 21:30 |
+| Formato (`formato_padrao`) | `reportagem` (padrão) · `tweet` · `estatico` · `ensaio` · `alterna` (rodízio tweet → ensaio → estatico a cada pauta, para o feed variar) |
 
 - **Aprovar = agendar** no próximo horário livre da grade (lista "Agendados" na tela Aprovar, com "Desagendar").
 - No horário, a rodada entrega o item ao fluxo de publicação existente. Publicação pausada ou acesso aberto ao público

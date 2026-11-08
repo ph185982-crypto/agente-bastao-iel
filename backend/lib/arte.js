@@ -442,7 +442,8 @@ async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, ar
     return { png, metrics: { cabe: true, fonte_px: null, blocos: [], layout, elementos: ['arquivo_aprovado', ...(igual ? [] : ['arquivo_aprovado_redimensionado'])], arquivo: { largura: meta.width, altura: meta.height } } };
   }
 
-  if (layout === 'tweet' || slide.tema_visual === 'tweet') return require('./arteTweet').renderizar(slide, ctx, imagem);
+  // tema tweet e a variante ensaio (texto corrido, fundo escuro) vivem em arteTweet.js
+  if (['tweet', 'ensaio'].includes(layout) || ['tweet', 'ensaio'].includes(slide.tema_visual)) return require('./arteTweet').renderizar(slide, ctx, imagem);
   if (String(layout || '').startsWith('rep_') || slide.tema_visual === 'reportagem') return require('./arteReportagem').renderizar(slide, ctx, imagem, arquivoEncerramento, fundo);
   if (slide.design === 'editorial_2026') return require('./editorialStudio').renderizar(slide, ctx, imagem);
   if (['foto_editorial', 'impacto', 'revista'].includes(slide.estilo)) return renderExperimental(slide, ctx, imagem);

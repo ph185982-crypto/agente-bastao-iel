@@ -22,7 +22,8 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil((async () => {
     const todos = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of todos) {
-      if ('focus' in c) { await c.focus(); c.postMessage(String(alvo).includes('tab=radar') ? { tipo: 'abrir-aba', aba: 'radar' } : { tipo: 'abrir-central' }); return; }
+      if ('focus' in c) { await c.focus(); const ABAS = { 'tab=radar': 'radar', 'tab=videos': 'videos', 'tab=reciclagem': 'reciclagem', 'tab=mesa': 'mesa', 'tab=ajustes': 'ajustes', 'tab=resultados': 'resultados' };
+      const aba = Object.keys(ABAS).find((k) => String(alvo).includes(k)); c.postMessage(aba ? { tipo: 'abrir-aba', aba: ABAS[aba] } : { tipo: 'abrir-central' }); return; }
     }
     if (self.clients.openWindow) await self.clients.openWindow(alvo);
   })());

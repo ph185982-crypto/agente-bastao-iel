@@ -81,9 +81,11 @@ async function renderizarCapa(slide, ctx, imagem) {
     svg += A.textoSvg(b, { x: MARGEM, y: yTexto + Math.max(0, (alt - b.altura) / 2) - (0.92 - cap('iNegrito')) * b.tam, k: 'iNegrito', cor: COR.texto, marcador: true });
     blocos.push({ nome: 'titulo', ...A.resumo(b, alt) });
   }
-  // seta num círculo branco com sombra, por cima da foto (ou do fundo)
-  const seta = `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.35"/></filter></defs><circle cx="75" cy="75" r="54" fill="#fff" filter="url(#s)"/><text x="75" y="96" text-anchor="middle" font-family="${ARQ.iNegrito.familia}" font-weight="700" font-size="60" fill="${COR.texto}">→</text></svg>`;
-  camadas.push({ input: Buffer.from(seta), left: W - MARGEM - 120, top: H - 168 });
+  // seta num círculo branco com sombra, por cima da foto (ou do fundo); post único (1 imagem) não tem para onde deslizar
+  if (total > 1) {
+    const seta = `<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150"><defs><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="4" stdDeviation="8" flood-opacity="0.35"/></filter></defs><circle cx="75" cy="75" r="54" fill="#fff" filter="url(#s)"/><text x="75" y="96" text-anchor="middle" font-family="${ARQ.iNegrito.familia}" font-weight="700" font-size="60" fill="${COR.texto}">→</text></svg>`;
+    camadas.push({ input: Buffer.from(seta), left: W - MARGEM - 120, top: H - 168 });
+  } else elementos.push('post_unico');
   const base = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${svg}</svg>`;
   const png = await sharp(Buffer.from(base)).png().composite(camadas).png().toBuffer();
   const m = A.resumirMetricas(blocos, 'tweet', elementos);
@@ -92,9 +94,106 @@ async function renderizarCapa(slide, ctx, imagem) {
   return { png, metrics: m };
 }
 
+// ── Variante "ensaio": texto corrido em fundo escuro, sem foto ─────────────────────────────────────────────────────────
+// Mesmo cabeçalho do tweet (avatar, nome, @), Inter branca 54–64 px, 2–3 parágrafos por slide. O 1º slide abre com o 1º
+// parágrafo maior (slide.titulo); o último traz a frase de ouro em amarelo e o pedido de envio.
+const COR_E = { fundo: '#0B0B0C', texto: '#FFFFFF', mudo: '#A1A1AA', ouro: '#FDE047', linha: '#2A2B30' };
+const paragrafosDe = (txt) => String(txt || '').split(/\n{2,}|\n/).map((p) => p.trim()).filter(Boolean);
+
+// Maior tamanho em que TODOS os parágrafos cabem juntos (mesmo corpo de letra; `gap` em múltiplos do tamanho).
+function fitParagrafos({ paragrafos, k, larg, alt, max, min, ent = 1.3, gap = 0.75, papel }) {
+  const minimo = Math.max(min, A.MINIMO[papel] || 0);
+  const mede = (tam) => {
+    const qs = paragrafos.map((p) => A.quebrar(p, k, tam, larg, { colchetes: false }));
+    const alturas = qs.map((q) => (q.linhas.length - 1) * tam * ent + cap(k) * tam);
+    const altura = alturas.reduce((a, b) => a + b, 0) + Math.max(0, qs.length - 1) * gap * tam;
+    return { qs, alturas, altura, largaDemais: qs.some((q) => q.largaDemais) };
+  };
+  for (let tam = max; tam >= minimo; tam -= 2) {
+    const r = mede(tam);
+    if (!r.largaDemais && r.altura <= alt) return { tam, entrelinha: ent, gap, cabe: true, minimo, papel, k, ...r, linhas: r.qs.flatMap((q) => q.linhas) };
+  }
+  const r = mede(minimo);
+  return { tam: minimo, entrelinha: ent, gap, cabe: false, sobra: Math.max(0, Math.round(r.altura - alt)), minimo, papel, k, ...r, linhas: r.qs.flatMap((q) => q.linhas) };
+}
+// Desenha os parágrafos medidos, um abaixo do outro; palavras entre ** saem em negrito e na cor de destaque.
+function colocarParagrafos(b, { x, ytop, cor, corDestaque }) {
+  let y = ytop; let out = '';
+  b.qs.forEach((q, i) => {
+    const bloco = { tam: b.tam, entrelinha: b.entrelinha, linhas: q.linhas };
+    out += A.textoSvg(bloco, { x, y: y - (0.92 - cap(b.k)) * b.tam, k: b.k, tema: { texto: cor, destaque: corDestaque || cor, colchete: 'none' } });
+    y += b.alturas[i] + b.gap * b.tam;
+  });
+  return out;
+}
+
+function cabecalhoEscuro() {
+  const xT = MARGEM + D_AVATAR + 24;
+  return `<text x="${xT}" y="${Y_TOPO + 44}" font-family="${ARQ.iNegrito.familia}" font-weight="700" font-size="36" fill="${COR_E.texto}">${esc(NOME)}</text>` +
+    `<text x="${xT}" y="${Y_TOPO + 88}" font-family="${ARQ.iCorpo.familia}" font-weight="400" font-size="30" fill="${COR_E.mudo}">${esc(ACCOUNT.handle)}</text>`;
+}
+
+async function renderizarEnsaio(slide, ctx) {
+  const { indice = 1, total = 1 } = ctx || {};
+  const capa = slide.funcao === 'capa' || (indice === 1 && total > 1 && slide.funcao !== 'encerramento');
+  const ultimo = slide.funcao === 'encerramento' || (indice === total && total > 1);
+  const blocos = []; const elementos = ['tema_tweet', 'ensaio', 'fundo_escuro', ...(capa ? ['capa_ensaio'] : []), ...(ultimo ? ['fechamento_ensaio'] : [])];
+  let svg = `<rect width="${W}" height="${H}" fill="${COR_E.fundo}"/>` + cabecalhoEscuro();
+  if (total > 1) svg += `<text x="${W - MARGEM}" y="${Y_TOPO + 44}" text-anchor="end" font-family="${ARQ.iCorpo.familia}" font-size="26" fill="${COR_E.mudo}">${indice}/${total}</text>`;
+  const camadas = [{ input: await avatar(), left: MARGEM, top: Y_TOPO }];
+  const yTexto = Y_TOPO + D_AVATAR + 72;
+  let y = yTexto;
+  const paragrafos = paragrafosDe(destaque(slide.texto));
+  // Fechamento: a chamada ocupa o rodapé; o texto fica acima dela. Demais: a seta fica no canto de baixo.
+  const manda = ultimo ? String(slide.cta || `Segue o ${ACCOUNT.handle}`).replace(/\.+$/, '.') : '';
+  const segue = ultimo && slide.cta_apoio ? String(slide.cta_apoio).replace(/\.+$/, '.') : '';
+  const cm = ultimo ? fit({ texto: manda, k: 'iNegrito', larg: LARG, alt: 130, max: 52, min: 36, ent: 1.15, papel: 't_cta' }) : null;
+  const cs = segue ? fit({ texto: segue, k: 'iCorpo', larg: LARG, alt: 110, max: 32, min: 28, ent: 1.25, papel: 't_cta' }) : null;
+  const hChamada = ultimo ? 34 + cm.altura + (cs ? 22 + cs.altura : 0) + 64 : 0;
+  const yFim = ultimo ? H - 96 - hChamada : H - 170;
+  // Abertura (capa) ou frase de ouro (fechamento): o título em negrito, maior; no fechamento em amarelo.
+  if (slide.titulo) {
+    const t = destaque(slide.titulo).trim();
+    const alt = Math.max(200, Math.round((yFim - yTexto) * (paragrafos.length ? 0.5 : 0.8)));
+    const b = fit({ texto: t, k: 'iNegrito', larg: LARG, alt, max: ultimo ? 84 : 92, min: 60, ent: 1.12, papel: 't_capa' });
+    svg += colocar(b, { x: MARGEM, ytop: y, k: 'iNegrito', cor: ultimo ? COR_E.ouro : COR_E.texto });
+    // marcador de parágrafo: filete curto amarelo abaixo do título (separa a abertura do corpo)
+    blocos.push({ nome: ultimo ? 'frase_de_ouro' : 'abertura', ...A.resumo(b, alt) });
+    y += b.altura + 36;
+    svg += `<rect x="${MARGEM}" y="${Math.round(y)}" width="96" height="6" fill="${COR_E.ouro}"/>`;
+    y += 6 + 40;
+  }
+  if (paragrafos.length) {
+    const alt = yFim - y;
+    const b = fitParagrafos({ paragrafos, k: 'iCorpo', larg: LARG, alt, max: 64, min: 54, ent: 1.3, gap: 0.8, papel: 'e_corpo' });
+    // Slide do meio (sem abertura nem fechamento): o bloco sobe um pouco do centro da área livre, em vez de colar no topo.
+    if (!slide.titulo && !ultimo && b.cabe) y += Math.max(0, (alt - b.altura) * 0.4);
+    svg += colocarParagrafos(b, { x: MARGEM, ytop: y, cor: COR_E.texto, corDestaque: COR_E.ouro });
+    blocos.push({ nome: 'paragrafos', tam: b.tam, minimo: b.minimo, cabe: b.cabe, linhas: b.linhas.length, paragrafos: paragrafos.length, ...(b.cabe ? {} : { sobra_px: b.sobra, motivo: `Não cabe nem no tamanho mínimo legível (${b.minimo}px)` }), altura_disponivel: Math.round(alt) });
+    y += b.altura;
+  }
+  if (ultimo) {
+    const yc = H - 96 - cm.altura - (cs ? 22 + cs.altura : 0);
+    svg += `<rect x="${MARGEM}" y="${yc - 34}" width="120" height="6" fill="${COR_E.ouro}"/>`;
+    svg += colocar(cm, { x: MARGEM, ytop: yc, k: 'iNegrito', cor: COR_E.texto });
+    blocos.push({ nome: 'cta_manda', ...A.resumo(cm, 130) });
+    if (cs) { svg += colocar(cs, { x: MARGEM, ytop: yc + cm.altura + 22, k: 'iCorpo', cor: COR_E.mudo }); blocos.push({ nome: 'cta_segue', ...A.resumo(cs, 110) }); }
+    if (y > yc - 40) blocos[blocos.length - 1].cabe = false; // texto invadiu a chamada
+  } else if (total > 1) {
+    svg += `<text x="${W - MARGEM}" y="${H - 72}" text-anchor="end" font-family="${ARQ.iNegrito.familia}" font-weight="700" font-size="64" fill="${COR_E.texto}">→</text>`;
+  }
+  const base = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${svg}</svg>`;
+  const png = await sharp(Buffer.from(base)).png().composite(camadas).png().toBuffer();
+  const m = A.resumirMetricas(blocos, 'ensaio', elementos);
+  m.tema = 'ensaio';
+  return { png, metrics: m };
+}
+
 async function renderizar(slide, ctx, imagem) {
   const { indice = 1, total = 1 } = ctx || {};
-  if (indice === 1 && total > 1 && slide.funcao !== 'encerramento') return renderizarCapa(slide, ctx, imagem);
+  if (slide.tema_visual === 'ensaio' || slide.layout === 'ensaio') return renderizarEnsaio(slide, ctx);
+  // Capa: o 1º slide de um carrossel ou o slide único de um post estático (funcao 'capa').
+  if ((indice === 1 && total > 1 && slide.funcao !== 'encerramento') || (slide.funcao === 'capa' && indice === 1)) return renderizarCapa(slide, ctx, imagem);
   const ultimo = slide.funcao === 'encerramento' || indice === total;
   const blocos = []; const elementos = ['tema_tweet'];
   const yTexto = Y_TOPO + D_AVATAR + 56;
@@ -153,4 +252,4 @@ async function renderizar(slide, ctx, imagem) {
   return { png, metrics: m };
 }
 
-module.exports = { renderizar, COR, destaque };
+module.exports = { renderizar, renderizarEnsaio, COR, COR_E, destaque };

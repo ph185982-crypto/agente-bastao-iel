@@ -1,0 +1,180 @@
+#!/usr/bin/env node
+// Worker de edição de vídeo (roda no GitHub Actions, ver .github/workflows/video-worker.yml).
+// Pega até 3 jobs na fila do app, baixa o vídeo bruto, roda tools/reels/editar.py, sobe final.mp4 e poster.jpg no
+// Vercel Blob com um CLIENT TOKEN curto (o token de leitura/escrita nunca sai do servidor) e devolve o resultado.
+// Dependências: Node 20 (fetch nativo) e @vercel/blob. Nada é publicado no Instagram daqui: o vídeo vai para aprovação.
+// Ambiente: APP_URL (ex.: https://agente-bastao-iel.vercel.app), CRON_SECRET, PEXELS_API_KEY (opcional, para o b-roll).
+'use strict';
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { pipeline } = require('stream/promises');
+const { Readable } = require('stream');
+const { spawn } = require('child_process');
+
+const RAIZ = path.join(__dirname, '..', '..');
+const EDITAR = path.join(__dirname, 'editar.py');
+const MAX_JOBS = 3;
+const TEMPO_MAX_EDICAO_MS = 24 * 60 * 1000; // o workflow tem 30 min; sobra margem para subir o arquivo
+
+function log(msg) { console.log(`[${new Date().toISOString().slice(11, 19)}] ${msg}`); }
+
+function urlRun() {
+  const { GITHUB_SERVER_URL, GITHUB_REPOSITORY, GITHUB_RUN_ID } = process.env;
+  return GITHUB_SERVER_URL && GITHUB_REPOSITORY && GITHUB_RUN_ID ? `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}` : null;
+}
+
+/** Mensagem de erro sem nenhum segredo (token, chave) que possa ter vazado para o texto. */
+function limparErro(e) {
+  const txt = String(e && e.stack ? e.stack : e).slice(0, 1500);
+  return txt.replace(/vercel_blob_client_[A-Za-z0-9_-]+/g, '[token]').replace(/Bearer\s+\S+/g, 'Bearer [oculto]');
+}
+
+/** Caminhos no Blob dos arquivos do vídeo `id` (a rota exige o prefixo videos/<id>/). */
+function pathnames(id) {
+  return { final: `videos/${id}/final.mp4`, poster: `videos/${id}/poster.jpg` };
+}
+
+/** Corpo do POST resultado: o resultado.json do editar.py + as URLs do Blob. */
+function montarResultado(resultadoJson, upFinal, upPoster, tamanhoFinal) {
+  const { transcricao, avisos = [], tempos_s: tempos = {}, ...resto } = resultadoJson;
+  return {
+    resultado: {
+      ...resto, url: upFinal.url, pathname: upFinal.pathname, poster_url: upPoster.url, poster_pathname: upPoster.pathname,
+      tamanho: tamanhoFinal, editado_em: new Date().toISOString(), avisos, tempos_s: tempos,
+    },
+    transcricao,
+  };
+}
+
+class Api {
+  constructor(base, segredo) {
+    this.base = base.replace(/\/+$/, '');
+    this.segredo = segredo;
+  }
+  async chamar(metodo, rota, corpo) {
+    const r = await fetch(`${this.base}${rota}`, {
+      method: metodo,
+      headers: { Authorization: `Bearer ${this.segredo}`, 'Content-Type': 'application/json' },
+      body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    });
+    if (r.status === 204) return null;
+    const texto = await r.text();
+    if (!r.ok) throw new Error(`${metodo} ${rota} → HTTP ${r.status}: ${texto.slice(0, 300)}`);
+    try { return texto ? JSON.parse(texto) : {}; } catch { throw new Error(`${metodo} ${rota} devolveu algo que não é JSON`); }
+  }
+  proximo() { return this.chamar('GET', '/api/videos/worker/proximo'); }
+  token(id, pathname, contentType) { return this.chamar('POST', '/api/videos/worker/token', { id, pathname, contentType }); }
+  resultado(corpo) { return this.chamar('POST', '/api/videos/worker/resultado', corpo); }
+  erro(corpo) { return this.chamar('POST', '/api/videos/worker/erro', corpo); }
+}
+
+async function baixar(url, destino) {
+  const r = await fetch(url);
+  if (!r.ok || !r.body) throw new Error(`download da origem falhou: HTTP ${r.status}`);
+  await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(destino));
+  return fs.statSync(destino).size;
+}
+
+/** Roda o editar.py mostrando o log dele; resolve com o conteúdo de resultado.json. */
+function editar(entrada, saida, job, logJob) {
+  return new Promise((resolve, reject) => {
+    const args = [EDITAR, entrada, saida, '--estilo', job.estilo || 'hormozi', '--opcoes', JSON.stringify(job.opcoes || {})];
+    const roteiro = path.join(saida, 'roteiro.txt');
+    if (job.roteiro_texto && String(job.roteiro_texto).trim()) {
+      fs.writeFileSync(roteiro, String(job.roteiro_texto));
+      args.push('--roteiro', roteiro);
+    }
+    const p = spawn('python3', args, { cwd: RAIZ, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    const resto = { stderr: '' };
+    const timer = setTimeout(() => { p.kill('SIGKILL'); reject(new Error('editar.py passou do tempo máximo')); }, TEMPO_MAX_EDICAO_MS);
+    p.stdout.on('data', d => { stdout += d; });
+    p.stderr.on('data', d => {
+      const linhas = String(d).split('\n').filter(Boolean);
+      for (const l of linhas) { console.log(`    ${l}`); if (/^\[editar\]/.test(l)) logJob(l.replace(/^\[editar\]\s*/, '')); }
+      resto.stderr = (resto.stderr + d).slice(-4000);
+    });
+    p.on('error', e => { clearTimeout(timer); reject(e); });
+    p.on('close', code => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(`editar.py saiu com código ${code}: ${resto.stderr.slice(-800)}`));
+      const arq = path.join(saida, 'resultado.json');
+      if (!fs.existsSync(arq)) return reject(new Error('editar.py terminou sem resultado.json'));
+      resolve(JSON.parse(fs.readFileSync(arq, 'utf8')));
+    });
+  });
+}
+
+async function subir(api, id, arquivo, pathname, contentType) {
+  const { put } = require('@vercel/blob/client');
+  const { clientToken } = await api.token(id, pathname, contentType);
+  if (!clientToken) throw new Error('o servidor não devolveu clientToken');
+  const r = await put(pathname, fs.createReadStream(arquivo), { access: 'public', token: clientToken, contentType, multipart: true });
+  return { url: r.url, pathname: r.pathname };
+}
+
+async function processar(api, job) {
+  const id = job.id;
+  const pasta = fs.mkdtempSync(path.join(os.tmpdir(), `reel-${id}-`));
+  const logs = [];
+  const logJob = msg => logs.push({ em: new Date().toISOString(), msg: String(msg).slice(0, 300) });
+  const t0 = Date.now();
+  try {
+    if (!job.origem || !job.origem.url) throw new Error('job sem origem.url');
+    log(`job ${id}: estilo ${job.estilo || 'hormozi'}, opções ${JSON.stringify(job.opcoes || {})}`);
+    logJob(`worker iniciou (${urlRun() || 'local'})`);
+    const entrada = path.join(pasta, 'entrada' + (path.extname(new URL(job.origem.url).pathname) || '.mp4'));
+    const bytes = await baixar(job.origem.url, entrada);
+    log(`job ${id}: origem baixada (${(bytes / 1e6).toFixed(1)} MB)`);
+    logJob(`origem baixada: ${(bytes / 1e6).toFixed(1)} MB`);
+
+    const saida = path.join(pasta, 'saida');
+    fs.mkdirSync(saida);
+    const resultado = await editar(entrada, saida, job, logJob);
+    log(`job ${id}: editado em ${((Date.now() - t0) / 1000).toFixed(0)} s (${resultado.duracao_s}s, ${resultado.cortes} cortes, ${resultado.palavras} palavras)`);
+
+    const nomes = pathnames(id);
+    const finalMp4 = path.join(saida, 'final.mp4');
+    const upFinal = await subir(api, id, finalMp4, nomes.final, 'video/mp4');
+    log(`job ${id}: final.mp4 enviado ao Blob`);
+    const upPoster = await subir(api, id, path.join(saida, 'poster.jpg'), nomes.poster, 'image/jpeg');
+    log(`job ${id}: poster.jpg enviado ao Blob`);
+    logJob('arquivos enviados ao Blob');
+
+    const corpo = montarResultado(resultado, upFinal, upPoster, fs.statSync(finalMp4).size);
+    await api.resultado({ id, ...corpo, log: logs, run_url: urlRun() });
+    log(`job ${id}: resultado registrado (${((Date.now() - t0) / 1000).toFixed(0)} s no total)`);
+    return true;
+  } catch (e) {
+    const erro = limparErro(e);
+    log(`job ${id}: ERRO ${erro.split('\n')[0]}`);
+    logJob(`erro: ${erro.split('\n')[0]}`);
+    try { await api.erro({ id, erro: erro.slice(0, 800), log: logs, run_url: urlRun() }); } catch (e2) { log(`job ${id}: não consegui registrar o erro: ${limparErro(e2).split('\n')[0]}`); }
+    return false;
+  } finally {
+    fs.rmSync(pasta, { recursive: true, force: true });
+  }
+}
+
+async function main() {
+  const APP_URL = process.env.APP_URL;
+  const CRON_SECRET = process.env.CRON_SECRET;
+  if (!APP_URL || !CRON_SECRET) { console.error('Faltam APP_URL e/ou CRON_SECRET no ambiente.'); process.exit(1); }
+  if (!process.env.PEXELS_API_KEY) log('sem PEXELS_API_KEY: o b-roll será pulado');
+  const api = new Api(APP_URL, CRON_SECRET);
+  let feitos = 0, falhas = 0;
+  for (let i = 0; i < MAX_JOBS; i++) {
+    const job = await api.proximo();
+    if (!job) { log(i === 0 ? 'fila vazia: nada para editar' : 'fila esvaziou'); break; }
+    (await processar(api, job)) ? feitos++ : falhas++;
+  }
+  log(`fim: ${feitos} editado(s), ${falhas} com erro`);
+  process.exit(falhas && !feitos ? 1 : 0);
+}
+
+if (require.main === module) {
+  main().catch(e => { console.error(limparErro(e)); process.exit(1); });
+}
+
+module.exports = { pathnames, montarResultado, limparErro, Api };
