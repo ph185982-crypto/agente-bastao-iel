@@ -65,11 +65,16 @@ const maduro = (publicadoEm, agora) => { const t = Date.parse(publicadoEm); retu
 function pontuar(posts, seguidores, { agora = Date.now() } = {}) {
   const maduros = posts.filter((p) => maduro(p.publicado_em, agora));
   const comEr = maduros.map((p) => ({ ...p, er: er(p, seguidores), vps: p.visualizacoes != null && seguidores > 0 ? p.visualizacoes / seguidores : null }));
-  const medEr = mediana(comEr.map((p) => p.er));
-  const medVps = mediana(comEr.map((p) => p.vps));
+  // Linha de base da conta: mediana só dos posts com engajamento visível (curtidas ocultas dão ER 0 e derrubariam a
+  // mediana, inflando o índice para centenas de vezes). Piso de 0,01% de ER e teto de 50× para o índice ficar comparável.
+  const PISO_ER = 0.0001; const TETO_VL = 50;
+  const visiveis = comEr.filter((p) => p.er != null && p.er > 0).map((p) => p.er);
+  const medEr = Math.max(PISO_ER, mediana(visiveis.length >= 5 ? visiveis : comEr.map((p) => p.er)) || 0);
+  const medVps = Math.max(0.01, mediana(comEr.map((p) => p.vps).filter((v) => v != null && v > 0)) || 0);
+  const limita = (v) => (v == null ? null : Math.min(TETO_VL, v));
   return comEr.map((p) => {
-    const vl_er = p.er != null && medEr > 0 ? p.er / medEr : null;
-    const vl_views = p.vps != null && medVps > 0 ? p.vps / medVps : null;
+    const vl_er = limita(p.er != null && p.er > 0 ? p.er / medEr : null);
+    const vl_views = limita(p.vps != null && p.vps > 0 ? p.vps / medVps : null);
     return { ...p, seguidores, er: arred(p.er, 6), visualizacoes_por_seguidor: arred(p.vps, 4), vl_er: arred(vl_er), vl_views: arred(vl_views), vl: arred(vl_er ?? vl_views), mediana_er: arred(medEr, 6), n_base: comEr.length };
   });
 }
