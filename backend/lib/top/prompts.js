@@ -25,8 +25,10 @@ Leia os fatos com honestidade: se a notícia é neutra ou positiva, NÃO invente
 "imagem": a foto da CAPA. "pessoa_central": true só se a notícia gira em torno de UMA pessoa pública (aí a capa usa a foto dela). "lugar_brasil": se o assunto é uma instituição ou lugar brasileiro, o PRÉDIO por fora para buscar no Wikimedia Commons (ex.: "Congresso Nacional Brasília", "Prédio do Supremo Tribunal Federal", "Palácio do Planalto", "Banco Central do Brasil sede", "Porto de Santos"); senão null. "busca": a foto da CAPA em INGLÊS, 3 a 7 palavras: UMA PESSOA com emoção visível reagindo à consequência da notícia, rosto aparecendo, numa cena concreta do assunto (ex.: "worried woman looking at receipt", "shocked shop owner reading bill", "angry truck driver gas station", "stressed man calculator invoices", "smiling seller packing boxes"). Nunca prédio, paisagem, gráfico ou objeto sozinho: a capa precisa de gente.
 Responda APENAS JSON: {"gatilhos":{"contradicao":0,"bolso":0,"numero":0,"personagem":0,"empreendedor":0},"enviar_para":"seu sócio","tese":"","por_que_mandaria":"","risco":"o que pode soar injusto ou exagerado, se houver","formato":"tweet","imagem":{"pessoa_central":false,"lugar_brasil":null,"busca":""}}`;
 
-function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem', mente = '' }) {
+function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem', mente = '', enviarPara = 'seu sócio' }) {
   if (formato === 'tweet') return roteiroTweet({ voz, tese, porQue, feedback, mente });
+  if (formato === 'estatico') return roteiroEstatico({ voz, tese, porQue, feedback, mente, enviarPara });
+  if (formato === 'ensaio') return roteiroEnsaio({ voz, tese, porQue, feedback, mente, enviarPara });
   return `Você escreve carrosséis do @pedro_destrava que param o dedo e são encaminhados. O Pedro é de direita (liberdade econômica, responsabilidade fiscal, família, iniciativa privada) e cobra quem tem poder: nunca escreva elogio ao governo nem frase de propaganda. Escreva como o Pedro fala: primeira pessoa quando opinar, frases curtas de conversa, sem jargão de jornal, sem "Segundo a Agência X" em toda tela (a fonte aparece UMA vez, na tela de prova, e na legenda).
 TESE DESTE CARROSSEL (a leitura do Pedro): ${tese}
 POR QUE ALGUÉM MANDARIA: ${porQue}
@@ -98,6 +100,81 @@ ${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele mais compa
 Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"gap","texto":"","imagem_busca":null,"fatos":[]}],"legenda":"","hashtags":["#","#","#"],"cta_motivo":"","fechamento":{"titulo":"","texto":""}}`;
 }
 
+// Voz do Pedro nos formatos de texto longo (post estático e ensaio): o que ele é e como fala, para a legenda e o ensaio
+// soarem como ele, não como redação de agência.
+const VOZ_PEDRO = `QUEM ESCREVE: o Pedro é de direita e não esconde (liberdade econômica, responsabilidade fiscal, família, iniciativa privada). Cobra quem tem poder; quando couber nos fatos, crítica DURA ao PT e ao governo, sem acusar crime ou má-fé que os fatos não digam. Sem ataque pessoal a quem não é figura pública. Fatos com fonte; opinião marcada como opinião ("na minha leitura", "pra mim"). Primeira pessoa, frases de conversa, parágrafos curtos (1 a 3 frases). Sem jornalês, sem "segundo a agência" em todo parágrafo (a fonte vai no fim, pelo sistema).`;
+
+// Formato "estatico": 1 slide (capa magnética: headline + foto de gente) ou 2 (capa + 1 slide de prova/leitura) e a LEGENDA é o
+// post inteiro: 600 a 1.500 caracteres, 4 a 7 parágrafos curtos, lidos no celular com o dedo parado.
+function roteiroEstatico({ voz = [], tese, porQue, feedback = '', mente = '', enviarPara = 'seu sócio' }) {
+  return `Você escreve POSTS ESTÁTICOS do @pedro_destrava: UMA imagem (ou duas) com headline magnética e uma LEGENDA LONGA que é o post inteiro. Quem para o dedo lê a legenda; quem gosta manda para alguém. A legenda é o que importa.
+TESE DESTE POST (a leitura do Pedro): ${tese}
+POR QUE ALGUÉM MANDARIA: ${porQue}
+COM QUEM FALAR: ${enviarPara}
+${mente ? `\n${mente}\n` : ''}
+${VOZ_PEDRO}
+
+${AI.REGRAS}
+
+${AI.GANCHOS}
+
+ESTRUTURA:
+- "capas": 10 opções de HEADLINE da imagem (vai em letra grande em cima de uma foto de gente): até 10 palavras cada, de preferência 5 a 8, DIFERENTES entre si, magnéticas (bolso + novidade + curiosidade, sem entregar tudo), que quem não segue entende. Ator certo, número só se estiver nos fatos, sem clickbait mentiroso. Marque com **asteriscos** UMA expressão de destaque.
+- "virar": {"precisa": true|false, "motivo": "", "tela": {"papel": "prova"|"leitura", "texto": "", "fatos": ["f1"]}}. Só peça um 2º slide ("precisa": true) quando a headline sozinha deixa uma pergunta que exige o número da prova ou a frase de leitura para fechar. "texto" até 24 palavras, UMA ideia. Na dúvida, "precisa": false (1 imagem).
+- "legenda": lista de 4 a 7 PARÁGRAFOS curtos (1 a 3 frases cada), 600 a 1.500 caracteres no total, nesta ordem:
+  1. abertura que continua a headline (não a repete): uma CENA concreta do empreendedor (o boleto, a maquininha, o fornecedor ligando, a conversa com o sócio) ou a frase que ele já disse este mês;
+  2. os FATOS, com o número escrito igual ao fato verificado (sem fonte nem data: o sistema acrescenta a fonte no fim);
+  3. a leitura do Pedro: quem decide, quem ganha, quem paga; crítica ao PT e ao governo quando os fatos sustentam, marcada como opinião;
+  4. a FRASE DE OURO: 1 frase curta que a pessoa posta no story como se fosse dela;
+  5. o pedido: mandar para ${enviarPara} e marcar alguém ("Manda pra ${enviarPara}. Marca quem precisa ler isso.").
+- "frase_de_ouro": a mesma frase de ouro, sozinha (até 14 palavras).
+- "cta_motivo": complete "Segue o @pedro_destrava …" com 4 a 8 palavras ligadas à pauta, começando por "se você".
+- NÚMEROS: só os que estão nos FATOS VERIFICADOS, escritos do mesmo jeito. Nenhum a mais. SEM DATAS soltas. SEM ASPAS (nada de citação inventada). Previsão é previsão: "prevê", "pode".
+- OPINIÃO COM FATO: dura, mas não afirma o que os fatos não dizem. CONTEXTO DE FORA (histórico, o que o partido "sempre fez") só como leitura do Pedro, marcado.
+- "hashtags": 3, do assunto. Nunca hashtag que acuse sem fato.
+${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele mais compartilhados — imite RITMO e ATITUDE, nunca copie frases):\n${voz.map((v, i) => `${i + 1}. ${v}`).join('\n')}\n` : ''}${feedback ? `\nCORRIJA ESTES PROBLEMAS DA VERSÃO ANTERIOR:\n${feedback}\n` : ''}
+Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"virar":{"precisa":false,"motivo":"","tela":null},"legenda":["parágrafo 1","parágrafo 2","parágrafo 3","parágrafo 4"],"frase_de_ouro":"","hashtags":["#","#","#"],"cta_motivo":""}`;
+}
+
+// Variante "ensaio" do formato tweet: texto corrido, fundo escuro, sem foto. 5 a 7 slides com 2 a 3 parágrafos curtos cada,
+// 700 a 1.100 caracteres no total. Lê-se como um ensaio curto do Pedro, não como lista de dados.
+function roteiroEnsaio({ voz = [], tese, porQue, feedback = '', mente = '', enviarPara = 'seu sócio' }) {
+  return `Você escreve ENSAIOS CURTOS do @pedro_destrava no formato "ensaio": texto corrido em slides de fundo escuro, sem foto, só a palavra. Lê-se como uma crônica de uma página: começa numa cena ou numa frase de identidade, passa pelos fatos e termina numa frase que a pessoa guarda.
+TESE DESTE ENSAIO (a leitura do Pedro): ${tese}
+POR QUE ALGUÉM MANDARIA: ${porQue}
+COM QUEM FALAR: ${enviarPara}
+${mente ? `\n${mente}\n` : ''}
+${VOZ_PEDRO}
+
+${AI.REGRAS}
+
+${AI.GANCHOS}
+
+O QUE FAZ UM ENSAIO SER GUARDADO E ENVIADO (escolha UM eixo e sustente até o fim):
+- IDENTIDADE: o texto diz o que quem produz vive e não sabe explicar ("isso sou eu").
+- ÉTICA DE QUEM PRODUZ: o valor de quem acorda cedo, paga folha e nota, e o contraste com quem só arrecada.
+- HISTÓRIA POLÍTICA COM NOMES: o que governo, partido e Congresso fizeram, com nomes de figuras públicas e o que os fatos sustentam; o resto como leitura do Pedro.
+- NOSTALGIA DE PREÇO: o que custava e o que custa, só com números dos fatos.
+
+ESTRUTURA (total do texto: 700 a 1.100 caracteres, contando aberturas, blocos e fechamento):
+- "capas": 10 opções da ABERTURA (o 1º parágrafo, que aparece maior no 1º slide): 1 frase de até 14 palavras, DIFERENTES entre si, que puxam a leitura sem entregar tudo. Todas levam ao mesmo 1º bloco. Marque com **asteriscos** UMA expressão de destaque.
+- "telas": 4 a 6 BLOCOS, na ordem, cada um com "paragrafos": lista de 2 a 3 parágrafos curtos (1 a 2 frases cada, até 22 palavras por parágrafo), "papel" (gap | prova | contradicao | consequencia | leitura: pelo menos um "prova" com número dos fatos e o último "leitura") e "fatos" (ids usados). O 1º bloco continua a abertura (pode ter 1 ou 2 parágrafos). Cada bloco termina puxando o próximo.
+- "fechamento": {"titulo": "a FRASE DE OURO, até 12 palavras, que a pessoa posta como se fosse dela", "texto": "1 frase de até 20 palavras que fecha o ensaio"}. É o último slide. NÃO peça para seguir, mandar ou marcar: o sistema coloca isso.
+- "cta_motivo": complete "Segue o @pedro_destrava …" com 4 a 8 palavras ligadas à pauta, começando por "se você".
+- "legenda": 2 a 4 frases curtas que complementam (não repetem o ensaio); a última pede para mandar para ${enviarPara}. Sem fonte nem data. "hashtags": 3, do assunto.
+- NÚMEROS: só os que estão nos FATOS VERIFICADOS, escritos do mesmo jeito. Nenhum a mais. SEM DATAS soltas. SEM ASPAS. Previsão é previsão.
+- OPINIÃO COM FATO: dura, mas não afirma o que os fatos não dizem; marque a interpretação. CONTEXTO DE FORA só como leitura do Pedro.
+${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele mais compartilhados — imite RITMO e ATITUDE, nunca copie frases):\n${voz.map((v, i) => `${i + 1}. ${v}`).join('\n')}\n` : ''}${feedback ? `\nCORRIJA ESTES PROBLEMAS DA VERSÃO ANTERIOR:\n${feedback}\n` : ''}
+Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"gap","paragrafos":["",""],"fatos":[]}],"fechamento":{"titulo":"","texto":""},"cta_motivo":"","legenda":"","hashtags":["#","#","#"]}`;
+}
+
+// Nota para o júri saber o que está avaliando quando o formato não é carrossel de telas.
+function notaJuri(formato) {
+  if (formato === 'estatico') return 'FORMATO: POST ESTÁTICO. A "capa" é a headline da imagem e a LEGENDA é o post inteiro (o leitor lê a legenda com o dedo parado). Avalie "tela2" e "prova" pela legenda: ela entrega o que a headline prometeu, traz o número com clareza e a leitura do Pedro? Pode haver uma única tela (o 2º slide) ou nenhuma.';
+  if (formato === 'ensaio') return 'FORMATO: ENSAIO (texto corrido em slides escuros, sem foto). A "capa" é a frase de abertura e cada tela é um bloco de 2 a 3 parágrafos. Avalie o fluxo do texto como uma crônica curta: a abertura puxa, os fatos aparecem no meio, a frase de ouro fecha.';
+  return '';
+}
+
 const JURI = `Você é o júri editorial do @pedro_destrava. A audiência é de Instagram, veio de vídeos virais e só para por conflito. Seja duro: nota 9 é carrossel que você mandaria no seu grupo.
 Você recebe também os FATOS VERIFICADOS. Capa com erro de fato (ator errado, número que não está nos fatos, sentido invertido) vale 0 em "capa". Tese que critica o que a linha liberal defende (concessão, privatização, corte de gasto) perde pontos em "leitura".
 Para cada VERSÃO, dê notas de 0 a 10 em: "honestidade" (10 = toda afirmação, inclusive dentro da opinião, é sustentada pelos fatos; abaixo de 7 = afirma algo que os fatos não dizem, exagera ou distorce — explique em "honestidade_motivo"), "capa" (para o dedo de quem não segue?), "tela2" (entrega o que a capa prometeu e puxa a próxima?), "prova" (número claro e crível?), "leitura" (opinião clara do Pedro, sem panfleto vazio?), "envio" (um empreendedor mandaria para o sócio ou postaria nos stories? Se é só notícia sem o "isso sou eu" ou "isso é a cara de fulano", dê no máximo 5), "clareza" (dá para ler no celular, uma ideia por tela?). "nota" = média ponderada (capa ×2, envio ×2, demais ×1) / 8.
@@ -115,4 +192,4 @@ Opinião marcada como opinião é permitida. Em "motivo", 1 frase curta.
 Responda APENAS JSON: {"capas":[{"indice":0,"ok":true,"motivo":""}]}`;
 
 const AI = require('../mentes/antiIA');
-module.exports = { FATOS, ANGULO, roteiro, roteiroTweet, JURI, REVISOR_CAPA };
+module.exports = { FATOS, ANGULO, roteiro, roteiroTweet, roteiroEstatico, roteiroEnsaio, notaJuri, VOZ_PEDRO, JURI, REVISOR_CAPA };
