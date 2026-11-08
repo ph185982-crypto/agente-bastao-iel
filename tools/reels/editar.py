@@ -175,6 +175,19 @@ def amostrar_rostos(entrada, sonda, fps_amostra=3, largura_amostra=480):
 # ----------------------------------------------------------------------------------------------------------------------
 # 6. B-roll (Pexels Videos)
 # ----------------------------------------------------------------------------------------------------------------------
+def _credencial_app():
+    """Credencial para falar com o app: CRON_SECRET se houver; senão um token OIDC novo do GitHub Actions (vale poucos minutos)."""
+    seg = os.environ.get('CRON_SECRET', '').strip()
+    if seg:
+        return seg
+    url = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_URL'); tok = os.environ.get('ACTIONS_ID_TOKEN_REQUEST_TOKEN')
+    if not url or not tok:
+        raise RuntimeError('sem credencial para o app (CRON_SECRET ou OIDC)')
+    req = urllib.request.Request(url + ('&' if '?' in url else '?') + 'audience=agente-bastao-iel', headers={'Authorization': 'Bearer ' + tok})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode('utf-8'))['value']
+
+
 def baixar_broll(pontos, pasta, chave, avisos):
     """Para cada ponto, busca um vídeo retrato ≥ 1080 no Pexels e baixa. Devolve [{..., arquivo}] só dos que deram certo."""
     out = []
@@ -182,7 +195,10 @@ def baixar_broll(pontos, pasta, chave, avisos):
     for k, pt in enumerate(pontos):
         try:
             q = urllib.parse.urlencode({'query': pt['consulta'], 'orientation': 'portrait', 'size': 'medium', 'per_page': 6})
-            req = urllib.request.Request(f'https://api.pexels.com/videos/search?{q}', headers={'Authorization': chave, 'User-Agent': 'agente-bastao-reels/1.0'})
+            if chave == '__app__':   # sem chave do Pexels aqui: pede ao app, que guarda a chave (autentica com o token OIDC do runner)
+                req = urllib.request.Request(f"{os.environ['BROLL_URL']}?{q}", headers={'Authorization': 'Bearer ' + _credencial_app(), 'User-Agent': 'agente-bastao-reels/1.0'})
+            else:
+                req = urllib.request.Request(f'https://api.pexels.com/videos/search?{q}', headers={'Authorization': chave, 'User-Agent': 'agente-bastao-reels/1.0'})
             with urllib.request.urlopen(req, timeout=20) as r:
                 dados = json.loads(r.read().decode('utf-8'))
             escolhido = None
@@ -364,7 +380,7 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         cron.etapa('broll')
         brolls = []
         if opcoes.get('broll'):
-            chave = os.environ.get('PEXELS_API_KEY', '').strip()
+            chave = os.environ.get('PEXELS_API_KEY', '').strip() or ('__app__' if os.environ.get('BROLL_URL') else '')
             if not chave:
                 avisos.append('b-roll pulado: sem PEXELS_API_KEY')
             else:

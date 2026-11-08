@@ -4,24 +4,27 @@
 # Só roda se este arquivo estiver na branch principal e se as configurações abaixo existirem:
 #   Settings → Secrets and variables → Actions
 #     • Variável  MONITOR_URL  = endereço de PRODUÇÃO do app, sem barra no fim (a mesma do monitor e do Radar)
-#     • Secret    CRON_SECRET  = o mesmo CRON_SECRET definido na Vercel
+#     • (opcional) Secret CRON_SECRET; sem ele vale o token OIDC do runner (backend/lib/githubOidc.js)
 # Nunca publica nada: só coleta, mede e guarda; reciclar é decisão do Pedro no app.
 name: Radar de Reciclagem (09:00 Brasília)
 on:
   schedule:
     - cron: '0 12 * * *'
   workflow_dispatch: {}
-permissions: {}
+permissions:
+  contents: read
+  id-token: write   # a coleta se identifica ao app com o token OIDC do runner: não precisa de segredo cadastrado
 jobs:
   reciclagem:
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    if: ${{ vars.MONITOR_URL != '' }}
     steps:
       - name: Chamar a coleta da Reciclagem
         env:
-          URL: ${{ vars.MONITOR_URL }}
+          URL: ${{ vars.MONITOR_URL || 'https://agente-bastao-iel.vercel.app' }}
           SEGREDO: ${{ secrets.CRON_SECRET }}
         run: |
-          test -n "$SEGREDO" || { echo "Falta o secret CRON_SECRET."; exit 1; }
+          if [ -z "$SEGREDO" ]; then
+            SEGREDO=$(curl --fail --silent --show-error --max-time 20 -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=agente-bastao-iel" | python3 -c "import sys,json;print(json.load(sys.stdin)['value'])")
+          fi
           curl --fail --silent --show-error --max-time 100 -X POST -H "Authorization: Bearer $SEGREDO" "$URL/api/reciclagem/coletar"

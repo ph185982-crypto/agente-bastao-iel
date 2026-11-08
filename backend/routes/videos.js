@@ -66,6 +66,17 @@ router.post('/worker/token', limita({ max: 60, janelaMs: 60000, nome: 'videos-to
 router.post('/worker/resultado', limita({ max: 30, janelaMs: 60000, nome: 'videos-resultado' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.registrarResultado(String(b.id || ''), { resultado: b.resultado, transcricao: b.transcricao, log: b.log, run_url: b.run_url }); res.json(V.resumo(c)); } catch (e) { erro(res, e); }
 });
+// B-roll: o editor (GitHub Actions) pede os clipes por aqui e a chave do Pexels nunca sai do servidor. Devolve só o que o editor usa.
+router.get('/worker/pexels', limita({ max: 120, janelaMs: 60000, nome: 'videos-pexels' }), async (req, res) => {
+  try {
+    const chave = process.env.PEXELS_API_KEY; if (!chave) return res.status(503).json({ error: 'Sem PEXELS_API_KEY no servidor.', code: 'SEM_PEXELS' });
+    const q = String(req.query.query || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80); if (!q) return res.status(400).json({ error: 'Falta a consulta.' });
+    const r = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&orientation=portrait&size=medium&per_page=6`, { headers: { Authorization: chave }, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return res.status(502).json({ error: `Pexels respondeu ${r.status}.` });
+    const d = await r.json();
+    res.json({ videos: (d.videos || []).map((v) => ({ id: v.id, user: { name: v.user?.name }, video_files: (v.video_files || []).map((f) => ({ id: f.id, quality: f.quality, file_type: f.file_type, width: f.width, height: f.height, link: f.link })) })) });
+  } catch (e) { erro(res, e); }
+});
 router.post('/worker/erro', limita({ max: 30, janelaMs: 60000, nome: 'videos-erro' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.registrarErro(String(b.id || ''), { erro: b.erro, log: b.log, run_url: b.run_url }); res.json(V.resumo(c)); } catch (e) { erro(res, e); }
 });

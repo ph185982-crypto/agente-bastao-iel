@@ -3,7 +3,8 @@
 // Pega até 3 jobs na fila do app, baixa o vídeo bruto, roda tools/reels/editar.py, sobe final.mp4 e poster.jpg no
 // Vercel Blob com um CLIENT TOKEN curto (o token de leitura/escrita nunca sai do servidor) e devolve o resultado.
 // Dependências: Node 20 (fetch nativo) e @vercel/blob. Nada é publicado no Instagram daqui: o vídeo vai para aprovação.
-// Ambiente: APP_URL (ex.: https://agente-bastao-iel.vercel.app), CRON_SECRET, PEXELS_API_KEY (opcional, para o b-roll).
+// Ambiente: APP_URL (ex.: https://agente-bastao-iel.vercel.app); CRON_SECRET é opcional (no GitHub Actions o worker usa o token OIDC do runner);
+// PEXELS_API_KEY é opcional (sem ela o b-roll vem pelo app, que guarda a chave).
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -52,10 +53,19 @@ class Api {
     this.base = base.replace(/\/+$/, '');
     this.segredo = segredo;
   }
+  // Credencial: CRON_SECRET, se existir; senão um token OIDC novo do GitHub Actions (vale poucos minutos, por isso é pedido a cada chamada).
+  async credencial() {
+    if (this.segredo) return this.segredo;
+    const url = process.env.ACTIONS_ID_TOKEN_REQUEST_URL; const tok = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+    if (!url || !tok) throw new Error('Sem CRON_SECRET e sem OIDC do GitHub Actions (falta "permissions: id-token: write" no workflow).');
+    const r = await fetch(`${url}${url.includes('?') ? '&' : '?'}audience=agente-bastao-iel`, { headers: { Authorization: `Bearer ${tok}` } });
+    if (!r.ok) throw new Error(`OIDC do GitHub recusou (${r.status})`);
+    return (await r.json()).value;
+  }
   async chamar(metodo, rota, corpo) {
     const r = await fetch(`${this.base}${rota}`, {
       method: metodo,
-      headers: { Authorization: `Bearer ${this.segredo}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${await this.credencial()}`, 'Content-Type': 'application/json' },
       body: corpo === undefined ? undefined : JSON.stringify(corpo),
     });
     if (r.status === 204) return null;
@@ -85,7 +95,7 @@ function editar(entrada, saida, job, logJob) {
       fs.writeFileSync(roteiro, String(job.roteiro_texto));
       args.push('--roteiro', roteiro);
     }
-    const p = spawn('python3', args, { cwd: RAIZ, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn('python3', args, { cwd: RAIZ, env: { ...process.env, BROLL_URL: `${(process.env.APP_URL || '').replace(/\/+$/, '')}/api/videos/worker/pexels` }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     const resto = { stderr: '' };
     const timer = setTimeout(() => { p.kill('SIGKILL'); reject(new Error('editar.py passou do tempo máximo')); }, TEMPO_MAX_EDICAO_MS);
@@ -160,8 +170,9 @@ async function processar(api, job) {
 async function main() {
   const APP_URL = process.env.APP_URL;
   const CRON_SECRET = process.env.CRON_SECRET;
-  if (!APP_URL || !CRON_SECRET) { console.error('Faltam APP_URL e/ou CRON_SECRET no ambiente.'); process.exit(1); }
-  if (!process.env.PEXELS_API_KEY) log('sem PEXELS_API_KEY: o b-roll será pulado');
+  if (!APP_URL) { console.error('Falta APP_URL no ambiente.'); process.exit(1); }
+  if (!CRON_SECRET && !process.env.ACTIONS_ID_TOKEN_REQUEST_URL) { console.error('Falta CRON_SECRET (ou OIDC do GitHub Actions).'); process.exit(1); }
+  if (!process.env.PEXELS_API_KEY) log('b-roll: sem chave do Pexels aqui; o editor pede os clipes ao app');
   const api = new Api(APP_URL, CRON_SECRET);
   let feitos = 0, falhas = 0;
   for (let i = 0; i < MAX_JOBS; i++) {

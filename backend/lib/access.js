@@ -118,6 +118,9 @@ const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api
 // Reciclagem: a coleta diária (GitHub Actions) chama /api/reciclagem/coletar.
 const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/, /^\/api\/monitor\/tick$/, /^\/api\/radar\/cron$/, /^\/api\/top\/piloto\/rodada$/, /^\/api\/videos\/worker\/(proximo|token|resultado|erro)$/, /^\/api\/videos\/blob$/, /^\/api\/reciclagem\/coletar$/];
 
+// Rotas que o GitHub Actions chama com o token OIDC do próprio runner (sem segredo cadastrado): ver backend/lib/githubOidc.js.
+const ROTAS_OIDC = [/^\/api\/videos\/worker\/(proximo|token|resultado|erro|pexels)$/, /^\/api\/reciclagem\/coletar$/];
+
 const estadoAcesso = () => (acessoPublico() ? 'aberto_publico' : codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
 const aberto = (estado) => estado === 'aberto_local' || estado === 'aberto_publico';
 
@@ -134,8 +137,13 @@ function decidirAcesso(req, res, next) {
     return res.status(503).json({ error: `Configuração necessária: o servidor está sem código de acesso válido (APP_ACCESS_CODE com pelo menos ${MIN_CODIGO} caracteres). Até isso ser definido, operações privadas ficam bloqueadas.`, code: 'ACCESS_NOT_CONFIGURED' });
   }
   if (process.env.CRON_SECRET && ROTAS_CRON.some((r) => r.test(path)) && req.headers?.authorization === `Bearer ${process.env.CRON_SECRET}`) return next();
-  if (verify(tokenDe(req))) return next();
-  return res.status(401).json({ error: 'Acesso restrito. Entre com o código de acesso.', code: 'AUTH_REQUIRED' });
+  const negar = () => res.status(401).json({ error: 'Acesso restrito. Entre com o código de acesso.', code: 'AUTH_REQUIRED' });
+  const h = String(req.headers?.authorization || ''); const bearer = h.startsWith('Bearer ') ? h.slice(7) : '';
+  const seApp = () => (verify(tokenDe(req)) ? next() : negar());
+  if (bearer && ROTAS_OIDC.some((r) => r.test(path)) && require('./githubOidc').FORMA_JWT.test(bearer)) {
+    return require('./githubOidc').verificar(bearer).then((ok) => (ok ? next() : seApp()), seApp);
+  }
+  return seApp();
 }
 
 // ── Limite de consumo por cliente ───────────────────────────────────────────
