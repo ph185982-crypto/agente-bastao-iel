@@ -112,7 +112,7 @@ function registraFalha(ip) {
 // ── Middleware ──────────────────────────────────────────────────────────────
 // /api/publico/midia: a Meta baixa as imagens daqui SEM o código do Pedro; a rota só entrega
 // com um token assinado (HMAC) que amarra o conteúdo, o hash aprovado e o slide, e expira.
-const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/];
+const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/, /^\/api\/videos\/blob$/];
 // Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
 // Vídeos: o worker de edição (GitHub Actions) chama /api/videos/worker/* e pede client tokens em /api/videos/blob com o CRON_SECRET.
 const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/, /^\/api\/monitor\/tick$/, /^\/api\/radar\/cron$/, /^\/api\/top\/piloto\/rodada$/, /^\/api\/videos\/worker\/(proximo|token|resultado|erro)$/, /^\/api\/videos\/blob$/];
