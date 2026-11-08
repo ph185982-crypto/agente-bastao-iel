@@ -40,3 +40,5 @@ python3 tools/reels/lib_reels.test.py
 node --test tools/reels/worker.test.js
 python3 tools/reels/teste_e2e.py /tmp/reels-e2e --modelo small    # gera vídeo sintético e roda os 3 presets
 ```
+
+O plantão recomeça a cada publicação em `tools/reels/**` (evento push na main, aceito pelo servidor).

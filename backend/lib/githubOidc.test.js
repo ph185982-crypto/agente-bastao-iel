@@ -29,6 +29,8 @@ test('recusa: repositório de outro dono, branch que não é a principal, workfl
   assert.strictEqual(await ok(jwt({ ref: 'refs/heads/feature' })), false);
   assert.strictEqual(await ok(jwt({ job_workflow_ref: `${REPO}/.github/workflows/outro.yml@refs/heads/main` })), false);
   assert.strictEqual(await ok(jwt({ event_name: 'pull_request' })), false);
+  assert.strictEqual(await ok(jwt({ event_name: 'push' })), true, 'push na main (reinício ao publicar mudança)');
+  assert.strictEqual(await ok(jwt({ event_name: 'push', ref: 'refs/heads/outra' })), false);
 });
 
 test('recusa: expirado, audiência errada, emissor errado, assinatura de outra chave, lixo', async () => {

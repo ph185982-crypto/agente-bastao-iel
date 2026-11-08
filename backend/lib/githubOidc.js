@@ -9,7 +9,8 @@ const JWKS_URL = `${ISSUER}/.well-known/jwks`;
 const AUDIENCIA = 'agente-bastao-iel';
 const REPOSITORIO = () => process.env.GITHUB_OIDC_REPO || 'ph185982-crypto/agente-bastao-iel';
 const WORKFLOWS = ['video-worker.yml', 'reciclagem.yml'];
-const EVENTOS = new Set(['schedule', 'workflow_dispatch', 'repository_dispatch']);
+// `push` só chega aqui da branch principal (ref conferido abaixo): quem consegue dar push na main já é o dono do repositório.
+const EVENTOS = new Set(['schedule', 'workflow_dispatch', 'repository_dispatch', 'push']);
 const FORMA_JWT = /^[\w-]+\.[\w-]+\.[\w-]+$/;
 
 let cache = { em: 0, chaves: [] };
