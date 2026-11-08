@@ -261,3 +261,15 @@ test('rota: lista ordenada por VL, tendências, contas e reciclar reel pela API'
     assert.strictEqual((await fetch(`${base}/nao-e-id`)).status, 400);
   } finally { srv.close(); delete global.__RECICLAGEM_DEPS__; delete process.env.TESTE_RECICLAGEM; }
 });
+
+test('índice de viralidade: feed de cauda longa usa o p75 como base (sem 50× para todo post bom)', () => {
+  const agora = Date.parse('2026-11-08T12:00:00Z');
+  const h = (n) => new Date(agora - n * 3600000).toISOString();
+  // 20 posts: 15 fracos (200 curtidas) e 5 fortes (de 4 mil a 20 mil), 1 milhão de seguidores
+  const posts = [...Array.from({ length: 15 }, (_, i) => ({ permalink: `f${i}`, publicado_em: h(100 + i), curtidas: 200, comentarios: 5, visualizacoes: null })),
+    ...[4000, 6000, 9000, 14000, 20000].map((c, i) => ({ permalink: `v${i}`, publicado_em: h(200 + i), curtidas: c, comentarios: 50, visualizacoes: null }))];
+  const r = C.pontuar(posts, 1000000, { agora });
+  const melhor = r.find((p) => p.permalink === 'v4'); const fraco = r.find((p) => p.permalink === 'f0');
+  assert.ok(melhor.vl > 3 && melhor.vl < 50, `melhor com ${melhor.vl}`);
+  assert.ok(fraco.vl < 1.5, `fraco com ${fraco.vl}`);
+});

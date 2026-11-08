@@ -73,7 +73,10 @@ function pontuar(posts, seguidores, { agora = Date.now() } = {}) {
   const BASE_NOMINAL = 0.003;
   const visiveis = comEr.filter((p) => p.er != null && p.er > 0).map((p) => p.er);
   const baseEstimada = visiveis.length < 3;
-  const medEr = baseEstimada ? BASE_NOMINAL : Math.max(PISO_ER, mediana(visiveis) || 0);
+  // Base = 75º percentil do ER visível (e não a mediana): o feed dessas contas é de cauda longa (a maioria dos posts rende
+  // pouco e uns poucos rendem 50×), e uma mediana minúscula daria 50× para qualquer post bom. Contra o p75, VL ≥ 3 é outlier de verdade.
+  const percentil = (xs, q) => { const o = [...xs].sort((a, b) => a - b); if (!o.length) return 0; const i = (o.length - 1) * q; const lo = Math.floor(i); const hi = Math.ceil(i); return o[lo] + (o[hi] - o[lo]) * (i - lo); };
+  const medEr = baseEstimada ? BASE_NOMINAL : Math.max(PISO_ER, visiveis.length >= 12 ? percentil(visiveis, 0.75) : (mediana(visiveis) || 0));  // amostra pequena: mediana
   const medVps = Math.max(0.01, mediana(comEr.map((p) => p.vps).filter((v) => v != null && v > 0)) || 0);
   const limita = (v) => (v == null ? null : Math.min(TETO_VL, v));
   return comEr.map((p) => {
