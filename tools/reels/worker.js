@@ -175,14 +175,35 @@ async function main() {
   if (!process.env.PEXELS_API_KEY) log('b-roll: sem chave do Pexels aqui; o editor pede os clipes ao app');
   const api = new Api(APP_URL, CRON_SECRET);
   let feitos = 0, falhas = 0;
-  for (let i = 0; i < MAX_JOBS; i++) {
-    const job = await api.proximo();
-    if (!job) { log(i === 0 ? 'fila vazia: nada para editar' : 'fila esvaziou'); break; }
-    (await processar(api, job)) ? feitos++ : falhas++;
+  // Modo plantão (GitHub Actions): fica consultando a fila a cada INTERVALO_S até WORKER_MINUTOS e pede para ser reiniciado
+  // ao terminar (`recorrer=sim`), porque o agendamento do GitHub atrasa muito. Sem WORKER_MINUTOS: uma passada e sai.
+  const plantao = Number(process.env.WORKER_MINUTOS || 0) > 0;
+  const fim = Date.now() + Number(process.env.WORKER_MINUTOS || 0) * 60000;
+  const INTERVALO_S = Number(process.env.WORKER_INTERVALO_S || 30);
+  let errosSeguidos = 0; let i = 0;
+  while (true) {
+    if (!plantao && i >= MAX_JOBS) break;
+    if (plantao && Date.now() >= fim) break;
+    let job;
+    try { job = await api.proximo(); errosSeguidos = 0; }
+    catch (e) {
+      errosSeguidos++; log(`fila indisponível (${errosSeguidos}): ${limparErro(e).split('\n')[0].slice(0, 160)}`);
+      if (!plantao || errosSeguidos >= 20) { log('desisto: o app não responde'); saida('recorrer', 'nao'); process.exit(1); }
+      await new Promise((r) => setTimeout(r, 30000)); continue;
+    }
+    if (!job) {
+      if (!plantao) { log(i === 0 ? 'fila vazia: nada para editar' : 'fila esvaziou'); break; }
+      await new Promise((r) => setTimeout(r, INTERVALO_S * 1000)); continue;
+    }
+    i++; (await processar(api, job)) ? feitos++ : falhas++;
   }
-  log(`fim: ${feitos} editado(s), ${falhas} com erro`);
-  process.exit(falhas && !feitos ? 1 : 0);
+  log(`fim${plantao ? ' do plantão' : ''}: ${feitos} editado(s), ${falhas} com erro`);
+  if (plantao) saida('recorrer', 'sim');
+  process.exit(falhas && !feitos && !plantao ? 1 : 0);
 }
+
+/** Saída do passo para o workflow (GITHUB_OUTPUT), usada para decidir se a execução se reinicia. */
+function saida(nome, valor) { if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${nome}=${valor}\n`); }
 
 if (require.main === module) {
   main().catch(e => { console.error(limparErro(e)); process.exit(1); });
