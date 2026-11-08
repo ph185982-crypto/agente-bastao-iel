@@ -178,6 +178,8 @@
     resultados: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
     criar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>',
     radar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12l6-6"/></svg>',
+    videos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="13" height="14" rx="3"/><path d="M16 10l5-3v10l-5-3z"/></svg>',
+    reciclagem: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14.9 4M4 12a8 8 0 0 1 14.9-4"/><path d="M4 20v-4h4M20 4v4h-4"/></svg>',
     ajustes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#fff"/><circle cx="15" cy="12" r="2" fill="#fff"/><circle cx="7" cy="18" r="2" fill="#fff"/></svg>',
   };
 
@@ -493,7 +495,7 @@
   }
 
   function telaAjustes() {
-    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1>${window.StudioMobile.perfil()}<details class="st-advanced" ${state.ajustesAvancado ? 'open' : ''}><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.Piloto ? window.Piloto.secao() : ''}${window.Painel ? window.Painel.secao() : ''}${window.Recortes ? window.Recortes.secao() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
+    if(window.StudioMobile)return `<div class="st-profile"><span class="st-eyebrow">PEDRO DESTRAVA</span><h1>Seu perfil</h1><div class="es-card st-atalhos"><div class="es-label">Outras áreas</div><div class="es-days" style="grid-template-columns:1fr 1fr 1fr;margin-top:8px"><button data-action="tab" data-tab="radar">Radar de pautas</button><button data-action="tab" data-tab="resultados">Resultados</button><button data-action="tab" data-tab="criar">Ferramentas</button></div></div>${window.StudioMobile.perfil()}<details class="st-advanced" ${state.ajustesAvancado ? 'open' : ''}><summary>Configurações e editor avançado</summary>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.Piloto ? window.Piloto.secao() : ''}${window.Painel ? window.Painel.secao() : ''}${window.Recortes ? window.Recortes.secao() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}<button class="es-btn ghost" data-action="tab" data-tab="criar">Abrir ferramentas extras</button></details></div>`;
     return `<div class="es-h1">Ajustes</div>${secaoConta()}${window.MesaCentral ? window.MesaCentral.secaoConexoes() : ''}${window.Piloto ? window.Piloto.secao() : ''}${window.Painel ? window.Painel.secao() : ''}${window.Recortes ? window.Recortes.secao() : ''}${window.MesaEstrategia ? window.MesaEstrategia.secao() : ''}${secaoVoz()}${secaoPerfil()}${secaoArmazenamento()}${secaoQuarentena()}${secaoRotina()}`;
   }
 
@@ -534,14 +536,17 @@
     else if (state.tab === 'radar') corpo = window.RadarUI ? window.RadarUI.render(ctxEditor()) : '';
     else if (state.tab === 'semana') corpo = telaSemana();
     else if (state.tab === 'ajustes') corpo = telaAjustes();
+    else if (state.tab === 'videos') corpo = window.Videos ? window.Videos.render(ctxEditor()) : '<div class="es-card"><div class="es-label">Vídeos</div><div class="es-text">Esta parte ainda não carregou.</div></div>';
+    else if (state.tab === 'reciclagem') corpo = window.Reciclagem ? window.Reciclagem.render(ctxEditor()) : '<div class="es-card"><div class="es-label">Reciclar</div><div class="es-text">Esta parte ainda não carregou.</div></div>';
     const nCentral = window.MesaCentral ? window.MesaCentral.badge() : 0;
     const nRadar = window.RadarUI ? window.RadarUI.badge() : 0;
-    const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['radar', 'Radar'], ['criar', 'Ferramentas'], ['resultados', 'Resultados'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['radar', 'Radar'], ['criar', 'Criar'], ['resultados', 'Resultados'], ['ajustes', 'Ajustes']];
+    const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['videos', 'Vídeos'], ['reciclagem', 'Reciclar'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['videos', 'Vídeos'], ['reciclagem', 'Reciclar'], ['radar', 'Radar'], ['criar', 'Criar'], ['resultados', 'Resultados'], ['ajustes', 'Ajustes']];
+    const ROTULO_ABA = { radar: 'Radar', resultados: 'Resultados', criar: 'Ferramentas', semana: 'Semana' };;
     const [saveClass, saveText] = estadoSalvamento();
     root.innerHTML = `
       <a class="studio-skip" href="#${state.tab === 'criar' ? 'pico-legacy-app' : 'studio-main'}">Ir para o conteúdo</a>
       <div class="studio-brand"><img class="st-brand-logo" src="/logo-app.svg" alt="" width="36" height="36"><div><b>PEDRO DESTRAVA</b><span>Estúdio de conteúdo</span></div></div>
-      <header class="studio-header"><div class="studio-breadcrumb">Meu estúdio <span>/</span> <b>${tabs.find(t => t[0] === state.tab)?.[1] || 'Mesa'}</b></div><button class="studio-save ${saveClass}" data-action="tab" data-tab="ajustes" aria-label="${saveText}. Ver ajustes de armazenamento"><i aria-hidden="true"></i><span>${saveText}</span></button><span class="studio-avatar" title="${esc(M.ACCOUNT_PIN.handle)}">PD</span></header>
+      <header class="studio-header"><div class="studio-breadcrumb">Meu estúdio <span>/</span> <b>${tabs.find(t => t[0] === state.tab)?.[1] || ROTULO_ABA[state.tab] || 'Mesa'}</b></div><button class="studio-save ${saveClass}" data-action="tab" data-tab="ajustes" aria-label="${saveText}. Ver ajustes de armazenamento"><i aria-hidden="true"></i><span>${saveText}</span></button><span class="studio-avatar" title="${esc(M.ACCOUNT_PIN.handle)}">PD</span></header>
       <div class="es-top" ${state.tab === 'criar' ? '' : 'hidden'}>${CRIAR.filter((m) => !escondido(m.id)).map((m) => `<button data-action="criar" data-m="${m.id}" aria-pressed="${state.criarModulo === m.id}">${m.label}</button>`).join('')}</div>
       <main id="studio-main" class="es-main" tabindex="-1" ${state.tab === 'criar' ? 'hidden' : ''}><div class="studio-page ${state.tab === 'mesa' && !state.sub ? 'studio-home' : ''}">${corpo}</div></main>
       <div class="es-toast-slot">${state.toast ? `<div class="es-toast" role="status">${esc(state.toast)}</div>` : ''}</div>
@@ -590,8 +595,10 @@
       if (window.Piloto?.acao && await window.Piloto.acao(a, el, ctxEditor())) return;
       if (window.Painel?.acao && await window.Painel.acao(a, el, ctxEditor())) return;
       if (window.ContaAberta?.acao && await window.ContaAberta.acao(a, el, ctxEditor())) return;
+      if (window.Videos?.acao && await window.Videos.acao(a, el, ctxEditor())) return;
+      if (window.Reciclagem?.acao && await window.Reciclagem.acao(a, el, ctxEditor())) return;
       switch (a) {
-        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'radar') window.RadarUI?.carregar(ctxEditor(), { forcar: true }); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') { window.Piloto?.carregar(ctxEditor()); window.Painel?.carregar(ctxEditor()); window.Recortes?.carregar(ctxEditor()); window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); window.MesaEstrategia?.carregar(ctxEditor()); } if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
+        case 'tab': state.tab = el.dataset.tab; if (state.tab === 'resultados') window.MeuInstagram?.carregar(ctxEditor()); if (state.tab === 'radar') window.RadarUI?.carregar(ctxEditor(), { forcar: true }); if (state.tab === 'central') window.MesaCentral?.carregar(ctxEditor()); if (state.tab === 'ajustes') { window.Piloto?.carregar(ctxEditor()); window.Painel?.carregar(ctxEditor()); window.Recortes?.carregar(ctxEditor()); window.MesaCentral?.carregar(ctxEditor(), { forcarSaude: true }); window.MesaEstrategia?.carregar(ctxEditor()); } if (state.tab === 'mesa' && state.sub === 'conteudo') { /* mantém */ } if (state.tab === 'videos') window.Videos?.carregar(ctxEditor(), true); if (state.tab === 'reciclagem') window.Reciclagem?.carregar(ctxEditor(), true); if (state.tab === 'criar') trocarAntigo(state.criarModulo); return render();
         case 'criar': state.criarModulo = el.dataset.m; trocarAntigo(state.criarModulo); return render();
         case 'voltar': state.sub = null; state.atual = null; state.novo = null; return render();
         case 'abrir': return abrirConteudo(id);
@@ -680,6 +687,13 @@
   function ctxEditor() {
     return { state, M, G, S, E, api, esc, fmtData, toast, render, persistir, salvarConfig, abrirConteudo, criarConteudoDeFonte, novoId, entregarArquivo, recentesParaPrompt, conteudoAtual };
   }
+  // Abre a aba pedida pela URL (?tab=videos) ou pelo clique numa notificação (service worker).
+  function abrirAbaPedida(aba) {
+    if (!['videos', 'reciclagem', 'mesa', 'ajustes', 'resultados'].includes(aba)) return;
+    state.tab = aba; if (aba === 'videos') window.Videos?.carregar(ctxEditor(), true); if (aba === 'reciclagem') window.Reciclagem?.carregar(ctxEditor(), true); render();
+  }
+  try { const q = new URLSearchParams(location.search).get('tab'); if (q && q !== 'central' && q !== 'radar') { setTimeout(() => abrirAbaPedida(q), 0); history.replaceState(null, '', location.pathname); } } catch { /* sem URL */ }
+  if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', (ev) => { if (ev.data?.tipo === 'abrir-aba' && ev.data.aba !== 'radar') abrirAbaPedida(ev.data.aba); });
   window.Mesa = { state, ctx: ctxEditor };
 
   // ── Início ──────────────────────────────────────────────────────────────────

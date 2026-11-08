@@ -22,7 +22,7 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil((async () => {
     const todos = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of todos) {
-      if ('focus' in c) { await c.focus(); c.postMessage(String(alvo).includes('tab=radar') ? { tipo: 'abrir-aba', aba: 'radar' } : { tipo: 'abrir-central' }); return; }
+      if ('focus' in c) { await c.focus(); const aba = (String(alvo).match(/tab=([a-z]+)/) || [])[1]; c.postMessage(aba && aba !== 'central' ? { tipo: 'abrir-aba', aba } : { tipo: 'abrir-central' }); return; }
     }
     if (self.clients.openWindow) await self.clients.openWindow(alvo);
   })());
