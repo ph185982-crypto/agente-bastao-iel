@@ -1,0 +1,4 @@
+# Dependências do editor de reels (CPU, tudo gratuito e de código aberto). Instale: python3 -m pip install -r tools/reels/requirements.txt
+faster-whisper==1.1.1
+opencv-python-headless==4.10.0.84
+numpy==2.2.6
