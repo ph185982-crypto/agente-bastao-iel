@@ -65,11 +65,16 @@ const maduro = (publicadoEm, agora) => { const t = Date.parse(publicadoEm); retu
 function pontuar(posts, seguidores, { agora = Date.now() } = {}) {
   const maduros = posts.filter((p) => maduro(p.publicado_em, agora));
   const comEr = maduros.map((p) => ({ ...p, er: er(p, seguidores), vps: p.visualizacoes != null && seguidores > 0 ? p.visualizacoes / seguidores : null }));
-  const medEr = mediana(comEr.map((p) => p.er));
-  const medVps = mediana(comEr.map((p) => p.vps));
+  // Linha de base da conta: mediana só dos posts com engajamento visível (curtidas ocultas dão ER 0 e derrubariam a
+  // mediana, inflando o índice para centenas de vezes). Piso de 0,01% de ER e teto de 50× para o índice ficar comparável.
+  const PISO_ER = 0.0001; const TETO_VL = 50;
+  const visiveis = comEr.filter((p) => p.er != null && p.er > 0).map((p) => p.er);
+  const medEr = Math.max(PISO_ER, mediana(visiveis.length >= 5 ? visiveis : comEr.map((p) => p.er)) || 0);
+  const medVps = Math.max(0.01, mediana(comEr.map((p) => p.vps).filter((v) => v != null && v > 0)) || 0);
+  const limita = (v) => (v == null ? null : Math.min(TETO_VL, v));
   return comEr.map((p) => {
-    const vl_er = p.er != null && medEr > 0 ? p.er / medEr : null;
-    const vl_views = p.vps != null && medVps > 0 ? p.vps / medVps : null;
+    const vl_er = limita(p.er != null && p.er > 0 ? p.er / medEr : null);
+    const vl_views = limita(p.vps != null && p.vps > 0 ? p.vps / medVps : null);
     return { ...p, seguidores, er: arred(p.er, 6), visualizacoes_por_seguidor: arred(p.vps, 4), vl_er: arred(vl_er), vl_views: arred(vl_views), vl: arred(vl_er ?? vl_views), mediana_er: arred(medEr, 6), n_base: comEr.length };
   });
 }
@@ -265,7 +270,14 @@ async function guardar(itens, { agora = Date.now(), retencaoDias = RETENCAO_DIAS
     };
     await salvarItem(doc); if (ant) atualizados += 1; else novos += 1;
   }
-  for (const d of existentes.values()) if (Date.parse(d.publicado_em || d.coletado_em || 0) < limite) { await db().radar.apagar(conta(), TIPO, d.id); removidos += 1; }
+  // Sai da lista: o que venceu a retenção e, das contas lidas agora, o que já não está no recorte viral atual
+  // (a linha de base da conta mudou ou o post saiu da janela de leitura) — assim um índice antigo não fica inflado.
+  const contasLidas = new Set(itens.map((i) => i.conta?.handle || i.conta?.canal).filter(Boolean));
+  for (const d of existentes.values()) {
+    const vencido = Date.parse(d.publicado_em || d.coletado_em || 0) < limite;
+    const foraDoRecorte = !vistos.has(d.id) && contasLidas.has(d.conta?.handle || d.conta?.canal) && !(d.reciclado || []).length;
+    if (vencido || foraDoRecorte) { await db().radar.apagar(conta(), TIPO, d.id); removidos += 1; }
+  }
   return { novos, atualizados, removidos, guardados: candidatos.length };
 }
 
