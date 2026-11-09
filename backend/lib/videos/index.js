@@ -118,7 +118,23 @@ async function registrarEnvio(id, { url, pathname, tamanho, contentType, duracao
 }
 
 // Com GITHUB_DISPATCH_TOKEN, acorda o worker na hora; sem ele, o cron de 5 min pega o job. Falha aqui nunca derruba o envio.
+// Sinal de fila: um arquivo minúsculo no Blob (fila/sinal.json) que muda a cada vídeo novo na fila. O editor em plantão olha esse
+// arquivo (sem tocar no banco) e só consulta a fila quando ele muda; assim o Neon pode dormir entre um vídeo e outro.
+const SINAL = 'fila/sinal.json';
+function urlDoSinal() {
+  const m = /^vercel_blob_rw_([A-Za-z0-9]+)_/.exec(blobToken() || '');
+  return m ? `https://${m[1].toLowerCase()}.public.blob.vercel-storage.com/${SINAL}` : null;
+}
+async function marcarFila(id, deps = padrao) {
+  try {
+    if (!blobToken() && !deps.put) return false;
+    const put = deps.put || ((...a) => require('@vercel/blob').put(...a));
+    await put(SINAL, JSON.stringify({ ts: Date.now(), id }), { access: 'public', addRandomSuffix: false, allowOverwrite: true, contentType: 'application/json', cacheControlMaxAge: 60, token: blobToken() });
+    return true;
+  } catch { return false; }
+}
 async function dispararWorker(id, deps = padrao) {
+  await marcarFila(id, deps);
   const token = process.env.GITHUB_DISPATCH_TOKEN;
   if (!token) return { disparado: false, motivo: 'sem GITHUB_DISPATCH_TOKEN' };
   try {
@@ -373,7 +389,7 @@ async function listar() {
 async function obter(id) { return publico((await ler(id)).doc); }
 
 module.exports = {
-  criar, registrarEnvio, proximoJob, registrarResultado, registrarErro, refazer, apagar, listar, obter, resumo, publico,
+  criar, registrarEnvio, urlDoSinal, marcarFila, proximoJob, registrarResultado, registrarErro, refazer, apagar, listar, obter, resumo, publico,
   gerarLegenda, problemasDaLegenda, limparLegenda, tokenDoWorker, registrarUploadConcluido, restricoesToken, dispararWorker, exigirBlob, pathnameValido,
   ESTILOS, OPCOES_PADRAO, TIPOS_PERMITIDOS, TAMANHO_MAXIMO, LEASE_MS, MAX_TENTATIVAS, MSG_SEM_BLOB, PREFIXO,
 };

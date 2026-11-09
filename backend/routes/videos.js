@@ -12,7 +12,8 @@ const router = express.Router();
 
 // Erros da biblioteca do Blob (assinatura ausente, evento inválido) começam com "Vercel Blob:" e são culpa do pedido, não do servidor.
 const ehBlobError = (e) => /^Vercel Blob:/.test(String(e?.message || ''));
-const erro = (res, e) => res.status(e.status || (e.code === 'CONFLITO' ? 409 : ehBlobError(e) ? 400 : 500)).json({ error: e.message || 'Erro no vídeo.', code: e.code || (ehBlobError(e) ? 'BLOB' : 'VIDEO') });
+const { traduzir } = require('../lib/bancoErro');
+const erro = (res, e0) => { const e = traduzir(e0); return res.status(e.status || (e.code === 'CONFLITO' ? 409 : ehBlobError(e) ? 400 : 500)).json({ error: e.message || 'Erro no vídeo.', code: e.code || (ehBlobError(e) ? 'BLOB' : 'VIDEO') }); };
 const idDe = (req) => String(req.params.id || '').slice(0, 80);
 const iguais = (a, b) => { const x = Buffer.from(String(a)); const y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
@@ -66,6 +67,8 @@ router.post('/worker/token', limita({ max: 60, janelaMs: 60000, nome: 'videos-to
 router.post('/worker/resultado', limita({ max: 30, janelaMs: 60000, nome: 'videos-resultado' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.registrarResultado(String(b.id || ''), { resultado: b.resultado, transcricao: b.transcricao, log: b.log, run_url: b.run_url }); res.json(V.resumo(c)); } catch (e) { erro(res, e); }
 });
+// Onde está o sinal de fila (arquivo no Blob). Resposta sem banco de dados: o editor consulta isto sem acordar o Neon.
+router.get('/worker/sinal', limita({ max: 60, janelaMs: 60000, nome: 'videos-sinal' }), (req, res) => { const url = V.urlDoSinal(); res.json({ url }); });
 // B-roll: o editor (GitHub Actions) pede os clipes por aqui e a chave do Pexels nunca sai do servidor. Devolve só o que o editor usa.
 router.get('/worker/pexels', limita({ max: 120, janelaMs: 60000, nome: 'videos-pexels' }), async (req, res) => {
   try {

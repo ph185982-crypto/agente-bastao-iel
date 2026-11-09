@@ -6,7 +6,8 @@ const { limita } = require('../lib/access');
 const { armazem } = require('../lib/armazem');
 const { ACCOUNT } = require('../lib/account');
 const router = express.Router();
-const erro = (res, e) => res.status(e.status || 500).json({ error: e.message || 'Erro no carrossel.', code: e.code || 'TOP' });
+const { traduzir } = require('../lib/bancoErro');
+const erro = (res, e0) => { const e = traduzir(e0); return res.status(e.status || 500).json({ error: e.message || 'Erro no carrossel.', code: e.code || 'TOP' }); };
 
 router.post('/carrosseis', limita({ max: 12, janelaMs: 60000, nome: 'top-criar' }), async (req, res) => {
   try { const c = await T.criar({ url: req.body?.url, texto: req.body?.texto, titulo: req.body?.titulo, origem: req.body?.origem || 'manual', formato: req.body?.formato || null });
