@@ -116,10 +116,10 @@ const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api
 // Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
 // Vídeos: o worker de edição (GitHub Actions) chama /api/videos/worker/* e pede client tokens em /api/videos/blob com o CRON_SECRET.
 // Reciclagem: a coleta diária (GitHub Actions) chama /api/reciclagem/coletar.
-const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/, /^\/api\/monitor\/tick$/, /^\/api\/radar\/cron$/, /^\/api\/top\/piloto\/rodada$/, /^\/api\/videos\/worker\/(proximo|token|resultado|erro)$/, /^\/api\/videos\/blob$/, /^\/api\/reciclagem\/coletar$/];
+const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/, /^\/api\/monitor\/tick$/, /^\/api\/radar\/cron$/, /^\/api\/top\/piloto\/rodada$/, /^\/api\/videos\/worker\/(proximo|token|resultado|erro|sinal)$/, /^\/api\/videos\/blob$/, /^\/api\/reciclagem\/coletar$/];
 
 // Rotas que o GitHub Actions chama com o token OIDC do próprio runner (sem segredo cadastrado): ver backend/lib/githubOidc.js.
-const ROTAS_OIDC = [/^\/api\/videos\/worker\/(proximo|token|resultado|erro|pexels)$/, /^\/api\/reciclagem\/coletar$/];
+const ROTAS_OIDC = [/^\/api\/videos\/worker\/(proximo|token|resultado|erro|pexels|sinal)$/, /^\/api\/reciclagem\/coletar$/];
 
 const estadoAcesso = () => (acessoPublico() ? 'aberto_publico' : codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
 const aberto = (estado) => estado === 'aberto_local' || estado === 'aberto_publico';

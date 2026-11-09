@@ -11,7 +11,8 @@ const meta = require('../lib/meta');
 const { limita } = require('../lib/access');
 
 const router = express.Router();
-const erro = (res, e) => res.status(e.status || (e.code === 'CONFLITO' ? 409 : 500)).json({ error: e.status || e.code ? e.message : `Erro na Reciclagem: ${String(e.message).slice(0, 160)}`, code: e.code || 'RECICLAGEM' });
+const { traduzir } = require('../lib/bancoErro');
+const erro = (res, e0) => { const e = traduzir(e0); return res.status(e.status || (e.code === 'CONFLITO' ? 409 : 500)).json({ error: e.status || e.code ? e.message : `Erro na Reciclagem: ${String(e.message).slice(0, 160)}`, code: e.code || 'RECICLAGEM' }); };
 const rota = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { if (!res.headersSent) { if (!e.status && !e.code) console.error('[reciclagem]', e.message); erro(res, e); } } };
 const ID = /^rc_[a-f0-9]{16}$/;
 const exigeId = (id) => { if (!ID.test(String(id))) throw Object.assign(new Error('Identificador inválido.'), { code: 'ENTRADA', status: 400 }); return id; };

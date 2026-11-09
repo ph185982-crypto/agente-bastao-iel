@@ -299,3 +299,26 @@ test('acesso: as rotas do worker e /blob estão em ROTAS_CRON do access.js', () 
   assert.ok(!lista.some((r) => r.test('/api/videos')), 'criar/listar continuam só com a sessão do app');
   assert.ok(!lista.some((r) => r.test('/api/videos/vd_x/refazer')));
 });
+
+test('sinal de fila: marca um arquivo no Blob a cada vídeo na fila e a URL pública vem do token (sem banco)', async () => {
+  const V2 = require('./index');
+  const antes = process.env.BLOB_READ_WRITE_TOKEN;
+  process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_AbC123xyz_segredo';
+  try {
+    assert.strictEqual(V2.urlDoSinal(), 'https://abc123xyz.public.blob.vercel-storage.com/fila/sinal.json');
+    const chamadas = [];
+    const ok = await V2.marcarFila('vd_1', { put: async (nome, corpo, opts) => { chamadas.push({ nome, corpo, opts }); } });
+    assert.strictEqual(ok, true);
+    assert.strictEqual(chamadas[0].nome, 'fila/sinal.json');
+    assert.strictEqual(chamadas[0].opts.allowOverwrite, true);
+    assert.ok(JSON.parse(chamadas[0].corpo).ts > 0);
+    assert.strictEqual(await V2.marcarFila('vd_1', { put: async () => { throw new Error('blob fora'); } }), false, 'falha no sinal nunca derruba o envio');
+  } finally { if (antes === undefined) delete process.env.BLOB_READ_WRITE_TOKEN; else process.env.BLOB_READ_WRITE_TOKEN = antes; }
+});
+
+test('erro 53000 do Neon vira mensagem em português', () => {
+  const B = require('../bancoErro');
+  const e = B.traduzir(Object.assign(new Error('Your account or project has exceeded the quota. Upgrade your plan to increase limits.'), { code: '53000' }));
+  assert.strictEqual(e.status, 503); assert.match(e.message, /Neon/); assert.strictEqual(e.code, 'BANCO_COTA');
+  const outro = new Error('x'); assert.strictEqual(B.traduzir(outro), outro);
+});

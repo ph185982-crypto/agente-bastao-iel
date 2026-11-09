@@ -74,6 +74,15 @@ class Api {
     try { return texto ? JSON.parse(texto) : {}; } catch { throw new Error(`${metodo} ${rota} devolveu algo que não é JSON`); }
   }
   proximo() { return this.chamar('GET', '/api/videos/worker/proximo'); }
+  // Sinal de fila no Blob (sem banco): devolve o texto do arquivo, ou null se ainda não existe ou não dá para ler.
+  async sinal() {
+    try {
+      if (this.urlSinal === undefined) this.urlSinal = (await this.chamar('GET', '/api/videos/worker/sinal')).url || null;
+      if (!this.urlSinal) return null;
+      const r = await fetch(`${this.urlSinal}?t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+      return r.ok ? (await r.text()).slice(0, 200) : null;
+    } catch { return null; }
+  }
   token(id, pathname, contentType) { return this.chamar('POST', '/api/videos/worker/token', { id, pathname, contentType }); }
   resultado(corpo) { return this.chamar('POST', '/api/videos/worker/resultado', corpo); }
   erro(corpo) { return this.chamar('POST', '/api/videos/worker/erro', corpo); }
@@ -181,11 +190,23 @@ async function main() {
   const fim = Date.now() + Number(process.env.WORKER_MINUTOS || 0) * 60000;
   const INTERVALO_S = Number(process.env.WORKER_INTERVALO_S || 30);
   let errosSeguidos = 0; let i = 0;
+  // Plantão sem tocar no banco: só consulta a fila (que acorda o Neon) quando o sinal no Blob mudou, depois de um vídeo, ou a cada
+  // CHECAGEM_FILA_MIN minutos como rede de segurança. O Neon gratuito tem cota de tempo ligado: consultar a cada 30 s a esgotou.
+  const CHECAGEM_FILA_MS = Number(process.env.WORKER_CHECAGEM_FILA_MIN || 20) * 60000;
+  let visto = null; let forcar = true; let ultimaFila = 0;
   while (true) {
     if (!plantao && i >= MAX_JOBS) break;
     if (plantao && Date.now() >= fim) break;
+    if (plantao && !forcar) {
+      const s = await api.sinal();
+      const mudou = s !== null && s !== visto;
+      if (s !== null) visto = s;
+      if (!mudou && Date.now() - ultimaFila < CHECAGEM_FILA_MS) { await new Promise((r) => setTimeout(r, INTERVALO_S * 1000)); continue; }
+    }
+    if (plantao && forcar) visto = await api.sinal();
+    forcar = false;
     let job;
-    try { job = await api.proximo(); errosSeguidos = 0; }
+    try { job = await api.proximo(); errosSeguidos = 0; ultimaFila = Date.now(); }
     catch (e) {
       errosSeguidos++; log(`fila indisponível (${errosSeguidos}): ${limparErro(e).split('\n')[0].slice(0, 160)}`);
       if (!plantao || errosSeguidos >= 20) { log('desisto: o app não responde'); saida('recorrer', 'nao'); process.exit(1); }
@@ -195,7 +216,7 @@ async function main() {
       if (!plantao) { log(i === 0 ? 'fila vazia: nada para editar' : 'fila esvaziou'); break; }
       await new Promise((r) => setTimeout(r, INTERVALO_S * 1000)); continue;
     }
-    i++; (await processar(api, job)) ? feitos++ : falhas++;
+    i++; (await processar(api, job)) ? feitos++ : falhas++; forcar = true;
   }
   log(`fim${plantao ? ' do plantão' : ''}: ${feitos} editado(s), ${falhas} com erro`);
   if (plantao) saida('recorrer', 'sim');
