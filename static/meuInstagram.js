@@ -53,7 +53,7 @@
 
   // Placar da ferramenta: resultado real por jeito de fazer (backend/lib/placar.js). Grupo com menos de 3 posts é só indício.
   const ROTULO_DIM = { linha: 'Linha de conteúdo', formato: 'Formato', redator: 'Quem escreveu o roteiro', capa_de: 'Quem escreveu a capa', gancho: 'Tipo de gancho', origem: 'De onde veio', estilo_video: 'Estilo do vídeo' };
-  const NOME_VALOR = { noticia: 'Notícia com tese', opiniao: 'Opinião', video: 'Vídeo', outro: 'Outro', reel: 'Reel', tweet: 'Tweet', reportagem: 'Reportagem', estatico: 'Post único', ensaio: 'Ensaio', juri: 'Roteirista (júri)', piloto: 'Piloto automático', reciclagem: 'Reciclagem', manual: 'Criado por você' };
+  const NOME_VALOR = { noticia: 'Notícia com tese', opiniao: 'Opinião', historia: 'História sua', como_fazer: 'Como fazer', caso: 'Caso de cliente', video: 'Vídeo', outro: 'Outro', reel: 'Reel', tweet: 'Tweet', reportagem: 'Reportagem', estatico: 'Post único', ensaio: 'Ensaio', juri: 'Roteirista (júri)', piloto: 'Piloto automático', reciclagem: 'Reciclagem', manual: 'Criado por você' };
   function tabelaDim(nome, grupos) {
     if (!grupos?.length) return '';
     const linhas = grupos.map((g) => `<tr><th scope="row">${esc(NOME_VALOR[g.valor] || String(g.valor).charAt(0).toUpperCase() + String(g.valor).slice(1))}${g.amostra === 'pequena' ? ' <span class="ig-mudo">(indício)</span>' : ''}</th><td>${num(g.n)}</td><td>${num(g.alcance)}</td><td>${num(g.envios_mil, 1)}</td><td>${num(g.salvos_mil, 1)}</td><td>${g.contra_os_seus == null ? '—' : `${num(g.contra_os_seus, 2)}×`}</td></tr>`).join('');

@@ -30,7 +30,7 @@ function fichaDe(c) {
   const mec = String(capa?.mecanismo || '');
   return {
     content_id: c.id, titulo: String(c.titulo || '').slice(0, 90),
-    linha: c.video ? 'video' : top ? (top.entrada?.modo === 'opiniao' ? 'opiniao' : 'noticia') : 'outro',
+    linha: c.video ? 'video' : top ? (['opiniao', 'historia', 'como_fazer', 'caso'].includes(top.entrada?.modo) ? top.entrada.modo : 'noticia') : 'outro',
     origem: top?.origem || c.reciclagem?.origem || c.origem?.tipo || null,
     formato: c.video ? 'reel' : top?.formato || c.formato || null,
     redator: top?.mentes?.roteiro || v?.mente || c.video?.mente || null,

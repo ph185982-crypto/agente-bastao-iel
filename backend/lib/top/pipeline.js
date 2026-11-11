@@ -45,20 +45,34 @@ async function vozDoPedro() {
 }
 
 // ── Criação ─────────────────────────────────────────────────────────────────────
+const PROPRIOS = ['historia', 'como_fazer', 'caso'];
+const MODOS = ['opiniao', ...PROPRIOS];
 async function criar({ url = null, texto = null, titulo = '', origem = 'manual', formato = null, modo = null } = {}) {
   const a = armazem(); if (!a?.duravel) throw erro('O carrossel precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
   const u = url ? require('../radar/pauta').urlValida(url) : null;
   if (url && !u) throw erro('Link inválido.', 'LINK_INVALIDO');
-  if (!u && String(texto || '').trim().length < 300) throw erro('Envie o link da matéria ou cole um texto com pelo menos 300 caracteres.', 'ENTRADA');
+  const modoOk = MODOS.includes(modo) ? modo : null;
+  if (!u && String(texto || '').trim().length < (PROPRIOS.includes(modoOk) ? 200 : 300)) throw erro(PROPRIOS.includes(modoOk) ? 'Escreva pelo menos 200 caracteres: a ferramenta só usa o que você contar.' : 'Envie o link da matéria ou cole um texto com pelo menos 300 caracteres.', 'ENTRADA');
   const fmt = FORMATOS.includes(formato) ? formato : null;
   // Post estático é um conteúdo `formato: 'estatico'` (1 ou 2 imagens); os demais continuam carrossel.
   const c = M.novoConteudo({ titulo: String(titulo || '').slice(0, 140) || (fmt === 'estatico' ? 'Post em preparação' : 'Carrossel em preparação'), origem: u ? { tipo: 'link', url: u } : { tipo: 'texto' }, formato: fmt === 'estatico' ? 'estatico' : 'carrossel' });
-  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modo === 'opiniao' ? 'opiniao' : null }, tentativas: {}, erros: [], criado_em: agoraISO() };
+  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modoOk }, tentativas: {}, erros: [], criado_em: agoraISO() };
   await a.conteudos.salvar(conta(), c.id, c, 0);
   return c;
 }
 
 const opiniao = (c) => c.top?.entrada?.modo === 'opiniao';
+// Linhas PRÓPRIAS do Pedro (cadastro "Minhas histórias e casos"): a fonte é o texto que ele escreveu. Não há matéria, tese de
+// denúncia nem rodapé de fonte; os "fatos" são as frases dele e número só entra se estiver no texto dele.
+const proprio = (c) => PROPRIOS.includes(c.top?.entrada?.modo);
+const semMateria = (c) => opiniao(c) || proprio(c);
+// Chamada do último slide: história pede para mandar a quem precisa; passo a passo pede para salvar; o resto, mandar para a pessoa certa.
+function chamadaFinal(c) {
+  const m = c.top?.entrada?.modo;
+  if (m === 'como_fazer') return 'Salva esse passo a passo.';
+  if (m === 'historia') return 'Manda pra quem precisa ouvir isso.';
+  return `Manda pra ${c.top?.angulo?.enviar_para || 'seu sócio'}.`;
+}
 // Modo OPINIÃO (reciclagem de tese): não há matéria com fatos; o conteúdo sai como leitura do Pedro, sem nenhum número, e sem rodapé de fonte.
 const AVISO_OPINIAO = 'SEM FATOS VERIFICADOS. Este conteúdo é OPINIÃO do Pedro sobre a TESE do briefing, escrita do zero. PROIBIDO qualquer número, porcentagem, valor em reais, data, estatística, pesquisa, estudo ou citação: nada disso pode ser verificado aqui. Use papéis gap, contradicao, consequencia e leitura (não existe tela de prova com número); cenas do dia a dia do empreendedor, raciocínio e posição. Marque como leitura ("na minha leitura", "pra mim"), sem afirmar dado do mundo como se fosse fato.';
 
@@ -74,6 +88,14 @@ E.ler = async (c, ctx) => {
 
 E.fatos = async (c, ctx) => {
   if (opiniao(c)) { c.top.fatos = []; c.top.fatos_descartados = []; c.top.protagonista = null; return; }
+  if (proprio(c)) {
+    // Sem IA: cada frase do relato do Pedro é um fato, com o trecho literal. Nada de fora entra.
+    const frases = String(c.fonte_principal.texto || '').replace(/\s+/g, ' ').split(/(?<=[.!?])\s+/).map((f) => f.trim()).filter((f) => f.length >= 12).slice(0, 24);
+    c.top.fatos = frases.map((f, i) => ({ id: `f${i + 1}`, id_ia: `f${i + 1}`, texto: f.slice(0, 400), trecho: f.slice(0, 600), tipo: 'fato', quem: null, valores: M.extrairNumeros(f).map((n) => n.valor), origem: 'relato' }));
+    c.top.fatos_descartados = []; c.top.protagonista = null;
+    if (!c.top.fatos.length) throw Object.assign(erro('O texto cadastrado não tem frases completas para virar conteúdo.', 'SEM_FATOS', 422), { terminal: true, fim: 'descartada' });
+    return;
+  }
   const d = llmJson.dado('MATERIA', `${c.fonte_principal.titulo}\n\n${c.fonte_principal.texto}`, 18000);
   const { dados } = await ctx.ia({ sistema: `${P.FATOS}\n\n${llmJson.REGRAS_DADOS}`, usuario: d.bloco, maxTokens: 2600, temperatura: 0.1 });
   const r = K.verificarFatos(dados?.fatos, c.fonte_principal.texto);
@@ -86,7 +108,7 @@ E.fatos = async (c, ctx) => {
 };
 
 E.angulo = async (c, ctx) => {
-  const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: opiniao(c) ? `${AVISO_OPINIAO}\n\nBRIEFING (tese e ponte para o Pedro):\n${c.fonte_principal.texto.slice(0, 3000)}\n\nNo "numero" dê 0 (não há número). Avalie bolso, contradição e personagem pela tese e pela ponte.` : `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true });
+  const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: proprio(c) ? `${P.LINHAS[c.top.entrada.modo].angulo}\n\nTEXTO DO PEDRO (fonte única):\n${c.fonte_principal.texto.slice(0, 6000)}` : opiniao(c) ? `${AVISO_OPINIAO}\n\nBRIEFING (tese e ponte para o Pedro):\n${c.fonte_principal.texto.slice(0, 3000)}\n\nNo "numero" dê 0 (não há número). Avalie bolso, contradição e personagem pela tese e pela ponte.` : `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true });
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
   const empreendedor = g.empreendedor === undefined ? null : n('empreendedor'); // fora da soma: é filtro de público, não de viralidade
   const enviarPara = String(dados?.enviar_para || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -94,7 +116,7 @@ E.angulo = async (c, ctx) => {
   c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
   // Formato visual: o pedido de quem criou (piloto alterna para variar o feed) vence; senão a escolha do editor.
   c.top.formato = c.top.entrada?.formato || (dados?.formato === 'tweet' ? 'tweet' : 'reportagem');
-  if (opiniao(c)) { if (!c.top.angulo.tese) throw Object.assign(erro('Não saiu uma tese a partir do briefing.', 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' }); return; }
+  if (semMateria(c)) { if (!c.top.angulo.tese) throw Object.assign(erro('Não saiu uma tese a partir do briefing.', 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' }); return; }
   if (empreendedor === 0) throw Object.assign(erro('A pauta não muda nada para quem empreende (público do perfil): fica de fora.', 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
   const nucleo = Math.max(c.top.angulo.gatilhos.bolso, c.top.angulo.gatilhos.contradicao);
   if (c.top.angulo.soma >= regua().gatilhos_min && c.top.angulo.tese && nucleo < regua().nucleo_min) throw Object.assign(erro(`Sem bolso nem contradição (máximo ${nucleo}/3; mínimo ${regua().nucleo_min}): vira post de cotação, não de tese.`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
@@ -104,14 +126,14 @@ E.angulo = async (c, ctx) => {
 E.roteiro = async (c, ctx) => {
   c.top.versoes ||= [];
   const voz = c.top.voz || (c.top.voz = await vozDoPedro());
-  const fatos = opiniao(c) ? `${AVISO_OPINIAO}\n\nBRIEFING:\n${c.fonte_principal.texto.slice(0, 3000)}` : `FATOS VERIFICADOS (fonte: ${c.fonte_principal.veiculo}${c.fonte_principal.publicada_em ? `, ${String(c.fonte_principal.publicada_em).slice(0, 10)}` : ''}):\n${c.top.fatos.map((f) => `${f.id} [${f.tipo}${f.quem ? `, ${f.quem}` : ''}]: ${f.texto}`).join('\n')}`;
+  const fatos = proprio(c) ? `TEXTO DO PEDRO (fonte única; nada além disto pode ser afirmado):\n${c.fonte_principal.texto.slice(0, 6000)}\n\nFRASES DELE (use os ids em "fatos"):\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}` : opiniao(c) ? `${AVISO_OPINIAO}\n\nBRIEFING:\n${c.fonte_principal.texto.slice(0, 3000)}` : `FATOS VERIFICADOS (fonte: ${c.fonte_principal.veiculo}${c.fonte_principal.publicada_em ? `, ${String(c.fonte_principal.publicada_em).slice(0, 10)}` : ''}):\n${c.top.fatos.map((f) => `${f.id} [${f.tipo}${f.quem ? `, ${f.quem}` : ''}]: ${f.texto}`).join('\n')}`;
   while (c.top.versoes.length < 2 && ctx.restante() > 22000) {
     const anterior = c.top.versoes[c.top.versoes.length - 1];
     const feedback = anterior && !anterior.checagem.ok ? anterior.checagem.problemas.slice(0, 8).join('\n') : '';
     // Cada versão é escrita com o método de um copywriter (dupla em rodízio pelo id do carrossel).
     if (c.top.pesos_redator === undefined) { try { c.top.pesos_redator = ctx.deps.placar !== undefined ? (ctx.deps.placar?.pesos?.redator || null) : ((await armazem().config.obter(conta())).meu_placar?.pesos?.redator || null); } catch { c.top.pesos_redator = null; } }
     const mente = (ctx.deps.mentes || Mentes).parPara(c.id, c.top.pesos_redator)[c.top.versoes.length];
-    const { dados } = await ctx.ia({ sistema: P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para }), usuario: opiniao(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
+    const { dados } = await ctx.ia({ sistema: (proprio(c) ? `${P.LINHAS[c.top.entrada.modo].roteiro}\n\n` : '') + P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para }), usuario: semMateria(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
     const v = normalizarRoteiro(dados, c.top.formato);
     const estatico = c.top.formato === 'estatico';
     // Data também sai: o portão de publicação trata "27/10/2026" como número que precisa de fonte.
@@ -121,7 +143,7 @@ E.roteiro = async (c, ctx) => {
     const limparParagrafos = (txt) => K.paragrafosDe(txt).map(limparFrases).filter(Boolean).join('\n\n');
     v.legenda = estatico ? limparParagrafos(v.legenda) : limparFrases(v.legenda); v.cta_motivo = K.numerosSemFonte(v.cta_motivo, c.top.fatos).length ? '' : v.cta_motivo;
     v.fechamento = { titulo: K.numerosSemFonte(v.fechamento.titulo, c.top.fatos).length ? '' : v.fechamento.titulo, texto: limparFrases(v.fechamento.texto).replace(/eu comecei o pedro destrava por isso\.?/i, '').trim() };
-    v.checagem = K.checarRoteiro({ ...v, capa: v.capas[0]?.texto || '', telas: [...v.telas], legenda: estatico ? v.legenda : `${v.legenda}\n${v.fechamento.titulo}\n${v.fechamento.texto}\n${v.cta_motivo}` }, c.top.fatos, { formato: c.top.formato, opiniao: opiniao(c) });
+    v.checagem = K.checarRoteiro({ ...v, capa: v.capas[0]?.texto || '', telas: [...v.telas], legenda: estatico ? v.legenda : `${v.legenda}\n${v.fechamento.titulo}\n${v.fechamento.texto}\n${v.cta_motivo}` }, c.top.fatos, { formato: c.top.formato, opiniao: semMateria(c) });
     // capas com número fora dos fatos ou com vício de texto de IA saem da lista (não derrubam a versão inteira)
     v.capas = v.capas.filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')) && !Mentes.AI.vicios(k.texto).length);
     // Texto com cara de IA (a mesma fórmula em todo post): 3 ou mais vícios reprovam a versão, com as frases apontadas.
@@ -233,7 +255,7 @@ function limpaDados(d) {
 
 E.juri = async (c, ctx) => {
   const vs = c.top.versoes;
-  const notaFormato = [P.notaJuri(c.top.formato), opiniao(c) ? 'CONTEÚDO DE OPINIÃO (sem fatos verificados, por desenho): não exija prova numérica. Em "honestidade", reprove (abaixo de 7) quem afirma número, dado, pesquisa ou fato do mundo como verdade; opinião marcada como leitura do Pedro é honesta. Em "prova" avalie a força do argumento e da cena, não o número.' : ''].filter(Boolean).join('\n');
+  const notaFormato = [P.notaJuri(c.top.formato), proprio(c) ? P.LINHAS[c.top.entrada.modo].juri : opiniao(c) ? 'CONTEÚDO DE OPINIÃO (sem fatos verificados, por desenho): não exija prova numérica. Em "honestidade", reprove (abaixo de 7) quem afirma número, dado, pesquisa ou fato do mundo como verdade; opinião marcada como leitura do Pedro é honesta. Em "prova" avalie a força do argumento e da cena, não o número.' : ''].filter(Boolean).join('\n');
   const usuario = `${notaFormato ? `${notaFormato}\n\n` : ''}FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\n` + vs.map((v, i) => `VERSÃO ${i}${v.checagem.ok ? '' : ' (reprovada na checagem: ' + v.checagem.problemas.slice(0, 2).join(' ') + ')'}\nCAPAS:\n${v.capas.map((k, j) => `  [${j}] ${k.texto}`).join('\n')}\nTELAS:\n${v.telas.map((t, j) => `  ${j + 2}. (${t.papel}) ${[t.titulo, t.texto, t.destaque, t.dados ? JSON.stringify(t.dados) : ''].filter(Boolean).join(' | ')}`).join('\n')}${v.fechamento?.titulo ? `\nFECHAMENTO: ${[v.fechamento.titulo, v.fechamento.texto].filter(Boolean).join(' ')}` : ''}\nLEGENDA: ${v.legenda}`).join('\n\n');
   const { dados } = await ctx.ia({ sistema: P.JURI, usuario, maxTokens: 900, temperatura: 0.1, preferirMelhor: true });
   const notas = Array.isArray(dados?.versoes) ? dados.versoes : [];
@@ -414,7 +436,7 @@ function montarVersao(c) {
   const fonte = c.fonte_principal;
   const data = fonte.publicada_em ? new Date(fonte.publicada_em).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : null;
   // Sem data na linha de fonte: o portão de publicação trata "29/10/2026" como número sem fonte.
-  const linhaFonte = `Fonte: ${fonte.veiculo || 'matéria'}`; void data;
+  const linhaFonte = semMateria(c) ? null : `Fonte: ${fonte.veiculo || 'matéria'}`; void data;
   const porIa = new Map(c.top.fatos.map((f) => [f.id_ia, f.id])); const ids = new Set(c.top.fatos.map((f) => f.id));
   const mapa = (arr) => [...new Set((arr || []).map((x) => (ids.has(x) ? x : porIa.get(x))).filter(Boolean))];
   const numsDe = (txt) => M.extrairNumeros(txt).filter(M.exigeOrigem);
@@ -426,7 +448,7 @@ function montarVersao(c) {
     return (puros.length ? puros : cand).map((f) => f.id);
   }))];
   c.claims = c.top.fatos.map((f) => ({ id: f.id, texto: f.texto, tipo: 'fato', natureza: f.tipo === 'declaracao' ? 'declaracao' : f.tipo === 'previsao' ? 'previsao' : 'fato', central: true, estado: 'sustentada', evidencias: [`e_${f.id}`], valores: f.valores.map((x) => ({ valor: x })), risco: 'baixo', revisao: {}, origem: 'top' }));
-  c.evidencias = c.top.fatos.map((f) => ({ id: `e_${f.id}`, tipo: 'secundaria', autoridade: 'imprensa', correspondencia: 'integral', relacao: 'sustenta', trecho: f.trecho, origem: fonte.veiculo || 'matéria', titulo: fonte.titulo, url: fonte.url, consultada_em: fonte.acessada_em, fonte_principal: true }));
+  c.evidencias = c.top.fatos.map((f) => ({ id: `e_${f.id}`, tipo: 'secundaria', autoridade: 'imprensa', correspondencia: 'integral', relacao: 'sustenta', trecho: f.trecho, origem: proprio(c) ? 'Relato do Pedro' : fonte.veiculo || 'matéria', titulo: fonte.titulo, url: fonte.url, consultada_em: fonte.acessada_em, fonte_principal: true }));
   const capa = v.capas[c.top.escolha.capas[0] ?? 0]?.texto || v.capas[0].texto;
   if (c.top.formato === 'tweet') return montarVersaoTweet(c, v, { capa, fatosComNumeros, mapa, fonte });
   if (c.top.formato === 'estatico') return montarVersaoEstatico(c, v, { capa, fatosComNumeros, mapa, fonte });
@@ -456,7 +478,7 @@ function montarVersao(c) {
   // Legenda: só frases cujos números estão nos fatos (com a mesma régua do portão, que não perdoa data solta).
   const fraseOk = (f) => numsDe(f).every((n) => c.top.fatos.some((x) => x.valores.some((y) => M.igual(y, n.valor))));
   const corpo = String(v.legenda || '').split(/(?<=[.!?])\s+/).filter(fraseOk).join(' ').trim();
-  const legenda = [corpo, (opiniao(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`), ...creditos].filter(Boolean).join('\n\n').slice(0, 2000);
+  const legenda = [corpo, (semMateria(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`), ...creditos].filter(Boolean).join('\n\n').slice(0, 2000);
   const motivo = (v.cta_motivo || 'se você também cobra resultado').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
   // Fechamento no desenho da peça de referência: frase de impacto, posição, "Eu comecei o Pedro Destrava por isso." e a faixa de chamada.
@@ -487,10 +509,10 @@ function montarVersaoTweet(c, v, { capa, fatosComNumeros, mapa, fonte }) {
   const numsDe = (txt) => M.extrairNumeros(txt).filter(M.exigeOrigem);
   const fraseOk = (f) => numsDe(f).every((n) => c.top.fatos.some((x) => x.valores.some((y) => M.igual(y, n.valor))));
   const corpo = String(v.legenda || '').split(/(?<=[.!?])\s+/).filter(fraseOk).join(' ').trim();
-  const legenda = [corpo, (opiniao(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`)].filter(Boolean).join('\n\n').slice(0, 2000);
+  const legenda = [corpo, (semMateria(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`)].filter(Boolean).join('\n\n').slice(0, 2000);
   const motivo = (v.cta_motivo || 'se você também cobra resultado').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
-  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'tweet', tema_visual: 'tweet', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: `Manda pra ${c.top.angulo?.enviar_para || 'seu sócio'}.`, cta_apoio: `Segue o @pedro_destrava ${motivo}.`, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
+  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'tweet', tema_visual: 'tweet', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: chamadaFinal(c), cta_apoio: `Segue o @pedro_destrava ${motivo}.`, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
   return { capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'sequencia', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
 }
 
@@ -502,7 +524,7 @@ function legendaComFonte(c, texto, fonte, { paragrafos = false, fotos = [] } = {
   const corpo = paragrafos ? K.paragrafosDe(texto).map(limpa).filter(Boolean).join('\n\n') : limpa(texto);
   // foto do Wikimedia Commons com licença que exige crédito: o crédito vai na legenda
   const creditos = (c.imagens || []).filter((i) => fotos.includes(i.id) && i.exige_credito).map((i) => `Foto: ${i.autor} (${i.licenca}), via Wikimedia Commons.`);
-  return [corpo, (opiniao(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`), ...creditos].filter(Boolean).join('\n\n').slice(0, 2000);
+  return [corpo, (semMateria(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`), ...creditos].filter(Boolean).join('\n\n').slice(0, 2000);
 }
 
 // Post estático: 1 slide (capa do tema tweet: headline + foto de gente) ou 2 (capa + "virar" com a prova/leitura e a chamada).
@@ -520,7 +542,7 @@ function montarVersaoEstatico(c, v, { capa, fatosComNumeros, mapa, fonte }) {
     const aAtribuir = c.top.fatos.find((f) => claim_ids.includes(f.id) && ['declaracao', 'previsao'].includes(f.tipo));
     if (aAtribuir && !MARCA_ATRIBUICAO.test(t.texto || '')) t.texto = `${aAtribuir.quem || fonte.veiculo || 'A reportagem'} disse que ${String(t.texto || '').replace(/^\p{Lu}/u, (m) => m.toLowerCase())}`;
     // o 2º slide fecha o post: traz a prova/leitura e a chamada (manda pra… / segue)
-    slides.push({ id: 's2', funcao: t.papel === 'leitura' ? 'opiniao' : 'prova', layout: 'tweet', tema_visual: 'tweet', titulo: null, texto: t.texto || '', cta: `Manda pra ${c.top.angulo?.enviar_para || 'seu sócio'}.`, cta_apoio: `Segue o @pedro_destrava ${motivo}.`, claim_ids, dados: null });
+    slides.push({ id: 's2', funcao: t.papel === 'leitura' ? 'opiniao' : 'prova', layout: 'tweet', tema_visual: 'tweet', titulo: null, texto: t.texto || '', cta: chamadaFinal(c), cta_apoio: `Segue o @pedro_destrava ${motivo}.`, claim_ids, dados: null });
   }
   const legenda = legendaComFonte(c, v.legenda, fonte, { paragrafos: true, fotos: [fotoCapa].filter(Boolean) });
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
@@ -545,7 +567,7 @@ function montarVersaoEnsaio(c, v, { capa, fatosComNumeros, mapa, fonte }) {
   const legenda = legendaComFonte(c, v.legenda, fonte);
   const motivo = (v.cta_motivo || 'se você também cobra resultado').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
-  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'ensaio', tema_visual: 'ensaio', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: `Manda pra ${c.top.angulo?.enviar_para || 'seu sócio'}.`, cta_apoio: cta, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
+  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'ensaio', tema_visual: 'ensaio', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: chamadaFinal(c), cta_apoio: cta, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
   return { formato: 'ensaio', capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'ensaio', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
 }
 
@@ -756,4 +778,4 @@ async function revalidar(id) {
   return { conteudo: c, bloqueios: bl };
 }
 
-module.exports = { refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, FORMATOS, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };
+module.exports = { PROPRIOS, MODOS, chamadaFinal, refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, FORMATOS, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };

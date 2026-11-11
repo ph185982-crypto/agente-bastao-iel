@@ -268,8 +268,20 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
   if (iaPausada) r.avisos.push(`IA gratuita sem cota até ${horaSP(Date.parse(est.ia_pausa_ate))}: nenhuma pauta nova até lá.`);
   if (naJanela && !iaPausada && !emAndamento && prontosHoje < cfg.meta_dia + cfg.reserva + folga && (est.criados_hoje || 0) < cfg.candidatos_max_dia + folga && restante() > 12000) {
     try {
-      const pauta = await proximaPauta(est, { agora, deps, restante });
-      if (pauta) {
+      // Linhas próprias do Pedro: havendo história, caso ou passo a passo ainda não usado, 1 de cada 3 peças do dia sai dele.
+      const doDia = est.criados.filter((x) => x.dia === dia); const proprias = doDia.filter((x) => x.linha && x.linha !== 'noticia').length;
+      let historia = null;
+      if (!deps.semHistorias && proprias * 3 <= doDia.length) { try { historia = await (deps.proximaHistoria || (() => require('../historias').proximaNaoUsada()))(); } catch { historia = null; } }
+      if (historia) {
+        const g = await (deps.gerarHistoria || ((id) => require('../historias').gerar(id, { origem: 'piloto' })))(historia.id);
+        est.criados.push({ id: g.id, dia, em: new Date(agora).toISOString(), titulo: g.titulo, estado: 'em_andamento', formato: g.formato, linha: historia.tipo, historia_id: historia.id });
+        est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: g.id, titulo: g.titulo, linha: historia.tipo };
+        if (restante() > 20000 && !deps.gerarHistoria) {
+          try { const p2 = await T.passo(g.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) }); const x = est.criados[est.criados.length - 1]; x.estado = p2.conteudo.top.estado; r.avancados.push({ id: g.id, estado: x.estado }); } catch (e) { r.avisos.push(`${g.id}: ${String(e.message).slice(0, 120)}`); }
+        }
+      }
+      const pauta = historia ? null : await proximaPauta(est, { agora, deps, restante });
+      if (historia) { /* a vaga desta rodada foi para a linha própria */ } else if (pauta) {
         // Formato padrão do feed: "reportagem" (o visual da marca). Dá para mudar em config.piloto (formato_padrao);
         // "alterna" faz o rodízio tweet → ensaio → estatico a cada pauta.
         const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto';
@@ -281,7 +293,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
           fmt = Placar.sortear(FORMATOS_AUTO, pl?.pesos?.formato, (deps.sortear || Math.random)()) || FORMATOS_AUTO[(FORMATOS_AUTO.indexOf(ultimoFmt) + 1) % FORMATOS_AUTO.length];
         }
         const c = await (deps.criar || T.criar)({ url: pauta.url, titulo: pauta.titulo, origem: 'piloto', formato: fmt });
-        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pauta.id, titulo: pauta.titulo, estado: 'em_andamento', formato: fmt });
+        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pauta.id, titulo: pauta.titulo, estado: 'em_andamento', formato: fmt, linha: 'noticia' });
         est.usadas.push({ id: pauta.id, em: new Date(agora).toISOString() });
         est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: c.id, titulo: pauta.titulo };
         // aproveita o resto da rodada para já avançar o carrossel recém-criado
