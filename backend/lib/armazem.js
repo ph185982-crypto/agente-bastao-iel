@@ -134,11 +134,11 @@ function memoria() {
     arquivos: {
       async salvar(conta, chave, dados, tipo) {
         if (dados.length > LIMITE_ARQUIVO) throw erro('Arquivo acima de 8 MB.', 'TAMANHO');
-        arqs.set(k(conta, chave), { dados: Buffer.from(dados), tipo, sha256: sha256(dados) });
+        arqs.set(k(conta, chave), { dados: Buffer.from(dados), tipo, sha256: sha256(dados), em: new Date().toISOString() });
         return { sha256: sha256(dados), tamanho: dados.length };
       },
       async obter(conta, chave) { return arqs.get(k(conta, chave)) || null; },
-      async listar(conta) { return [...arqs.entries()].filter(([key]) => key.startsWith(`${conta}|`)).map(([key, v]) => ({ chave: key.split('|').slice(1).join('|'), tipo: v.tipo, tamanho: v.dados.length, sha256: v.sha256 })); },
+      async listar(conta) { return [...arqs.entries()].filter(([key]) => key.startsWith(`${conta}|`)).map(([key, v]) => ({ chave: key.split('|').slice(1).join('|'), tipo: v.tipo, tamanho: v.dados.length, sha256: v.sha256, criado_em: v.em })); },
       async apagar(conta, chaves) { let n = 0; for (const ch of chaves || []) if (arqs.delete(k(conta, ch))) n++; return n; },
     },
     publicacoes: publicacoesMemoria(),
@@ -153,6 +153,7 @@ function memoria() {
       async concluir(rid, resultado) { const j = jobs.get(rid); if (j) Object.assign(j, { estado: 'concluido', resultado, atualizado_em: new Date().toISOString() }); },
       async falhar(rid, msg) { const j = jobs.get(rid); if (j) Object.assign(j, { estado: 'erro', erro: msg, atualizado_em: new Date().toISOString() }); },
       async obter(rid) { return jobs.get(rid) || null; },
+      async podar(dias = 7) { let n = 0; const corte = Date.now() - dias * 86400000; for (const [rid, j] of jobs) if (Date.parse(j.criado_em) < corte) { jobs.delete(rid); n++; } return n; },
     },
   };
 }
@@ -258,7 +259,7 @@ function postgres({ url, pool }) {
       },
       async listar(conta) {
         await iniciar();
-        return (await q('select chave, tipo, tamanho, sha256 from pico_arquivos where conta = $1 order by criado_em desc', [conta])).rows;
+        return (await q('select chave, tipo, tamanho, sha256, criado_em from pico_arquivos where conta = $1 order by criado_em desc', [conta])).rows;
       },
       async apagar(conta, chaves) {
         if (!chaves?.length) return 0; await iniciar();
@@ -360,6 +361,7 @@ function postgres({ url, pool }) {
       },
       async concluir(rid, resultado) { await q("update pico_jobs set estado = 'concluido', resultado = $2, atualizado_em = now() where rid = $1", [rid, JSON.stringify(resultado)]); },
       async falhar(rid, msg) { await q("update pico_jobs set estado = 'erro', erro = $2, atualizado_em = now() where rid = $1", [rid, String(msg).slice(0, 500)]); },
+      async podar(dias = 7) { await iniciar(); return (await q("delete from pico_jobs where criado_em < now() - ($1 || ' days')::interval", [String(Math.max(1, Number(dias) || 7))])).rowCount || 0; },
       async obter(rid) {
         await iniciar();
         const r = await q('select rid, etapa, conteudo_id, estado, criado_em, atualizado_em, resultado, erro from pico_jobs where rid = $1', [rid]);

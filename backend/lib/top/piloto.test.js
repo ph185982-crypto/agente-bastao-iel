@@ -118,13 +118,21 @@ test('aprovação durante a rodada não some da agenda; rodada simultânea é re
   assert.strictEqual(outra.executou, true); // a trava foi liberada no fim
 });
 
-test('relógio: 1 min com produção, 10 min parado, e correntes simultâneas caem na mesma chave', async () => {
+test('relógio: 1 min com produção; parado dorme até o próximo compromisso (5 a 45 min); correntes simultâneas caem na mesma chave', async () => {
   const R = require('./relogio'); const t = Date.parse('2026-10-29T10:00:05Z');
   const ativo = R.proximo({ avancados: [{ id: 'x', estado: 'em_andamento' }] }, t);
   assert.strictEqual(ativo.alvo, Date.parse('2026-10-29T10:01:00Z'));
   assert.strictEqual(R.proximo({ avancados: [{ id: 'x', estado: 'em_andamento' }] }, t + 20000).chave, ativo.chave);
-  assert.strictEqual(R.proximo({ avancados: [] }, t).alvo, Date.parse('2026-10-29T10:10:00Z'));
-  assert.strictEqual(R.proximo(null, t).alvo, Date.parse('2026-10-29T10:10:00Z'));
+  // parado e sem compromisso informado: teto de 45 min, na grade (duas correntes caem na mesma chave)
+  assert.strictEqual(R.proximo({ avancados: [] }, t).alvo, Date.parse('2026-10-29T10:30:00Z'));
+  assert.strictEqual(R.proximo(null, t + 60000).chave, R.proximo(null, t).chave);
+  // compromisso em 20 min: acorda nele; em 2 min: espera o mínimo de 5; em 3 h: fica no teto de 45 min
+  assert.strictEqual(R.proximo({ proxima_em: Date.parse('2026-10-29T10:20:00Z') }, t).alvo, Date.parse('2026-10-29T10:20:00Z'));
+  assert.strictEqual(R.proximo({ proxima_em: Date.parse('2026-10-29T10:02:00Z') }, t).alvo, Date.parse('2026-10-29T10:06:00Z'));
+  assert.ok(R.proximo({ proxima_em: Date.parse('2026-10-29T13:00:00Z') }, t).alvo <= t + 45 * 60000);
+  const nudge = []; assert.deepStrictEqual(await R.agendarEm(Date.parse('2026-10-29T10:15:00Z'), { agora: t, enviar: async (m, o) => nudge.push(o) }), { alvo: Date.parse('2026-10-29T10:15:00Z') });
+  assert.strictEqual(nudge[0].delaySeconds, 895);
+  assert.strictEqual(await R.agendarEm(Date.parse('2026-10-29T13:00:00Z'), { agora: t, enviar: async () => {} }), null); // longe: o tique normal chega antes
   const enviados = []; await R.agendarProxima({ criado: { id: 'n' } }, { agora: t, enviar: async (m, o) => enviados.push(o) });
   assert.strictEqual(enviados[0].delaySeconds, 55);
   assert.ok(await R.agendarProxima({}, { agora: t, enviar: async () => { throw new Error('fila fora'); } }) === null);
@@ -187,4 +195,49 @@ test('pedido de pautas extras: vale só no dia, ignora o horário e soma ao limi
   assert.strictEqual(r.criado.titulo, 'Uma', 'com extra cria mesmo fora do horário');
   const amanha = SP('2026-10-30', '22:00');
   assert.strictEqual((await Pi.rodada({ agora: amanha, deps })).criado, null, 'o extra não passa para o dia seguinte');
+});
+
+test('próxima ação: dorme até o post agendado, a janela de aprovação, a volta da cota ou o início da produção', () => {
+  const cfg = { ...Pi.PADRAO }; const dia = '2026-10-29';
+  const base = (hhmm, est = {}, extra = {}) => Pi.proximaAcao(cfg, { criados: [], agenda: [], notificado: {}, ...est }, { agora: SP(dia, hhmm), dia, hora: hhmm, ...extra });
+  // de madrugada, antes da produção: acorda às 03:00
+  assert.strictEqual(base('01:00'), SP(dia, '03:00'));
+  // meta do dia cumprida à tarde, um post agendado para 17:00 e a janela das 14h já avisada: acorda no post
+  const prontos = Array.from({ length: 10 }, (_, i) => ({ id: `c${i}`, dia, estado: 'concluida' }));
+  assert.strictEqual(base('15:10', { criados: prontos, notificado: { '08:00': true, '14:00': true }, agenda: [{ id: 'c1', publicar_em: new Date(SP(dia, '17:00')).toISOString() }] }), SP(dia, '17:00'));
+  // IA sem cota até 16:00, dentro da janela: acorda quando a cota volta
+  assert.strictEqual(base('15:10', { notificado: { '08:00': true, '14:00': true }, ia_pausa_ate: new Date(SP(dia, '16:00')).toISOString() }), SP(dia, '16:00'));
+  // sem pauta nova: olha de novo em cerca de meia hora, na grade
+  assert.strictEqual(base('15:10', { notificado: { '08:00': true, '14:00': true } }, { semPauta: true }), SP(dia, '15:30'));
+  // piloto desligado e agenda vazia: nenhum compromisso (o relógio usa o teto)
+  assert.strictEqual(Pi.proximaAcao({ ...cfg, ativo: false }, { agenda: [] }, { agora: SP(dia, '15:10'), dia, hora: '15:10' }), null);
+});
+
+test('limpeza: prévia de post publicado há mais de 21 dias, arquivos do motor antigo de vídeo e tarefas velhas saem; o recente fica', async () => {
+  novo(); const a = arm.armazem(); const conta = ACCOUNT.ig_id; const L = require('../manutencao');
+  const pub = M.novoConteudo({ titulo: 'publicado' }); M.criarVersao(pub, { slides: [{ id: 's1', funcao: 'capa', layout: 'rep_capa', texto: 'x', claim_ids: [] }], legenda: '', cta: '', hashtags: [] }, { quem: 'sistema' });
+  const va = M.versaoAtiva(pub).id; pub.status = 'publicado'; pub.arte = { renders: [{ slide_id: 's1', versao: va, blob_key: `render:${pub.id}:${va}:s1:h` }] };
+  await a.conteudos.salvar(conta, pub.id, pub, 0);
+  for (const ch of [`render:${pub.id}:${va}:s1:h`, `motion:${pub.id}:${va}:parte0`, 'upload:encerramento']) await a.arquivos.salvar(conta, ch, Buffer.from('x'), 'image/jpeg');
+  await a.jobs.iniciar('job_velho', 'arte', pub.id);
+  // hoje: nada sai (publicado há pouco, arquivos novos)
+  await L.limpar();
+  assert.strictEqual((await a.arquivos.listar(conta)).length, 3);
+  // 22 dias depois: a prévia e os arquivos do motor antigo saem; o conteúdo e o upload ficam
+  const r = await L.limpar({ agora: Date.now() + 22 * 86400000 });
+  assert.deepStrictEqual((await a.arquivos.listar(conta)).map((f) => f.chave), ['upload:encerramento']);
+  assert.strictEqual(r.apagados, 2);
+  assert.ok((await a.conteudos.obter(conta, pub.id)).doc, 'o conteúdo publicado continua no histórico');
+  assert.strictEqual(await a.jobs.podar(-1), 1); // corte no futuro: a tarefa criada agora já conta como velha
+});
+
+test('rodada: post agendado que não sai avisa o Pedro uma vez; alertas de operação rodam uma vez por dia a partir das 8h', async () => {
+  novo(); const a = arm.armazem(); const push = []; let conferidos = 0;
+  await a.config.salvar(ACCOUNT.ig_id, { piloto: { ativo: false }, piloto_estado: { agenda: [{ id: 'c_fantasma_aprovado', publicar_em: new Date(SP('2026-10-29', '09:00')).toISOString() }] } });
+  const deps = { semLimpeza: true, notificar: async (o) => { push.push(o); }, alertas: async () => { conferidos++; return { frases: ['Banco de dados em 80% do limite gratuito (410 de 512 MB).'] }; }, publicar: async () => { throw new Error('A Meta recusou a publicação.'); } };
+  const r1 = await Pi.rodada({ agora: SP('2026-10-29', '09:05'), deps });
+  assert.strictEqual(conferidos, 1); assert.deepStrictEqual(r1.alertas, ['Banco de dados em 80% do limite gratuito (410 de 512 MB).']);
+  await Pi.rodada({ agora: SP('2026-10-29', '09:20'), deps });
+  assert.strictEqual(conferidos, 1, 'alertas só uma vez por dia');
+  assert.ok(push.filter((p) => /não foi publicado/.test(p.corpo)).length <= 1, 'falha de publicação avisa no máximo uma vez por post por dia');
 });

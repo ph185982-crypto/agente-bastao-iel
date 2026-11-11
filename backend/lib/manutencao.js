@@ -3,21 +3,30 @@
 //    que não são a ativa — a publicação redesenha o slide a partir do texto, a prévia é só para ver no app;
 //  - fotos (img:…) que nenhum conteúdo vivo usa;
 //  - revisões antigas do histórico de cada conteúdo (fica o limite do armazém).
-// Arquivos de outros tipos (upload:encerramento, recortes, áudios…) nunca são tocados.
+//  - prévias de conteúdo já publicado ou exportado há mais de 21 dias (o post está no Instagram; a prévia era só para o app);
+//  - arquivos do motor antigo de vídeo (motion:…: trechos mp4, wav e pôster) com mais de 14 dias;
+//  - registros de tarefas (pico_jobs) com mais de 7 dias.
+// Arquivos de outros tipos (upload:encerramento, recortes…) nunca são tocados.
 const { armazem } = require('./armazem');
 const { ACCOUNT } = require('./account');
 const M = require('../../static/contentModel');
 
 const MORTO = new Set(['arquivado', 'descartado', 'excluido']);
+const ENTREGUE = new Set(['publicado', 'exportado']);
+const DIAS_PREVIA_ENTREGUE = 21; const DIAS_MOTION = 14; const DIAS_JOBS = 7;
 
-async function limpar({ simular = false, orcamentoMs = 40000 } = {}) {
+async function limpar({ simular = false, orcamentoMs = 40000, agora = Date.now() } = {}) {
   const a = armazem(); const conta = ACCOUNT.ig_id; const inicio = Date.now();
   if (!a?.duravel) return { executou: false, motivo: 'Sem banco de dados no servidor.' };
   const antes = a.arquivos.espaco ? await a.arquivos.espaco().catch(() => null) : null;
 
   const lista = await a.conteudos.listar(conta);
   const ativa = new Map(); // id → versão ativa (só conteúdo vivo)
-  for (const x of lista) if (!MORTO.has(x.resumo?.status)) ativa.set(x.id, x.resumo?.versao || null);
+  const entregueAntigo = new Set(); // publicado/exportado há mais de 21 dias: a prévia sai, o conteúdo fica
+  for (const x of lista) {
+    if (!MORTO.has(x.resumo?.status)) ativa.set(x.id, x.resumo?.versao || null);
+    if (ENTREGUE.has(x.resumo?.status) && x.atualizado_em && Date.parse(x.atualizado_em) < agora - DIAS_PREVIA_ENTREGUE * 86400000) entregueAntigo.add(x.id);
+  }
 
   // fotos em uso: lê só os conteúdos vivos
   const fotosEmUso = new Set(); const previasEmUso = new Set(); const lidosIds = new Set(); let lidos = 0; let incompleto = false;
@@ -37,7 +46,8 @@ async function limpar({ simular = false, orcamentoMs = 40000 } = {}) {
   for (const f of arquivos) {
     const p = String(f.chave).split(':');
     let fora = false;
-    if (p[0] === 'render' && p.length >= 3) fora = !ativa.has(p[1]) || (lidosIds.has(p[1]) && !previasEmUso.has(f.chave));
+    if (p[0] === 'render' && p.length >= 3) fora = !ativa.has(p[1]) || entregueAntigo.has(p[1]) || (lidosIds.has(p[1]) && !previasEmUso.has(f.chave));
+    else if (p[0] === 'motion') fora = !!f.criado_em && Date.parse(f.criado_em) < agora - DIAS_MOTION * 86400000;
     else if (p[0] === 'img' && !incompleto) fora = !fotosEmUso.has(f.chave); // sem a lista completa de fotos em uso, não apaga foto
     if (fora) { apagar.push(f.chave); bytes += Number(f.tamanho) || 0; }
   }
@@ -46,6 +56,7 @@ async function limpar({ simular = false, orcamentoMs = 40000 } = {}) {
   if (!simular) {
     apagados = await a.arquivos.apagar(conta, apagar);
     revisoes = a.conteudos.podarHistorico ? await a.conteudos.podarHistorico(conta) : 0;
+    if (a.jobs?.podar) await a.jobs.podar(DIAS_JOBS).catch(() => {});
     if (a.arquivos.compactar) await a.arquivos.compactar().catch(() => {});
   }
   const depois = !simular && a.arquivos.espaco ? await a.arquivos.espaco().catch(() => null) : null;

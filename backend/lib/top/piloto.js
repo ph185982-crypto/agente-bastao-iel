@@ -88,6 +88,7 @@ async function agendar(id, { agora = Date.now() } = {}) {
   c.studio = { ...(c.studio || {}), estado: 'agendado', job: null };
   await a.conteudos.salvar(conta(), id, c, reg.rev);
   await gravarEstado({ ...est, agenda: [...agenda, { id, publicar_em: quando }].sort((x, y) => x.publicar_em.localeCompare(y.publicar_em)) });
+  await require('./relogio').agendarEm(Date.parse(quando), { agora }).catch(() => {}); // post para daqui a pouco: garante o tique no horário
   return c;
 }
 
@@ -142,6 +143,24 @@ async function proximaPauta(est, { agora, deps, restante }) {
 }
 
 // ── Rodada ──────────────────────────────────────────────────────────────────────
+// Quando a próxima rodada tem o que fazer (ms): o relógio dorme até lá em vez de acordar o banco à toa.
+function proximaAcao(cfg, est, { agora, dia, hora, removidos = new Set(), semPauta = false }) {
+  const c = [];
+  for (const x of est.agenda || []) if (!removidos.has(x.id)) { const t = Date.parse(x.publicar_em); if (t > agora) c.push(t); else c.push(agora + 10 * 60000); } // vencido e segurado: tenta de novo em 10 min
+  if (!cfg.ativo) return c.length ? Math.min(...c) : null;
+  for (const j of cfg.janelas_aprovacao || []) { const t = instante(dia, j); if (t > agora && !est.notificado?.[j]) c.push(t); }
+  const folga = est.extra_dia?.dia === dia ? est.extra_dia.n : 0;
+  const prontosHoje = (est.criados || []).filter((x) => x.dia === dia && x.estado === 'concluida' && x.decidido !== 'descartado').length;
+  const cabeMais = prontosHoje < cfg.meta_dia + cfg.reserva + folga && (est.criados_hoje || 0) < cfg.candidatos_max_dia + folga;
+  const amanha = instante(proximoDia(dia), cfg.inicio_producao);
+  if (hora < cfg.inicio_producao) c.push(instante(dia, cfg.inicio_producao));
+  else if (hora > cfg.fim_producao || !cabeMais) c.push(amanha);
+  else if (est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora) c.push(Date.parse(est.ia_pausa_ate));
+  else if (semPauta) c.push(Math.ceil((agora + 15 * 60000) / (30 * 60000)) * 30 * 60000); // fila de pautas vazia: olha de novo em ~30 min
+  else c.push(agora + 5 * 60000);
+  return Math.min(...c);
+}
+
 async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extra = 0 } = {}) {
   const inicio = Date.now(); const restante = () => orcamentoMs - (Date.now() - inicio);
   const a = armazem(); if (!a?.duravel) return { executou: false, motivo: 'O piloto precisa do banco de dados no servidor.' };
@@ -177,15 +196,30 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       }
     } catch (e) { r.avisos.push(`Painel não atualizou: ${String(e.message).slice(0, 100)}`); }
   }
+  // 0c) De madrugada: apaga do Blob os vídeos brutos e os editados antigos (o Blob gratuito tem 1 GB).
+  if (hora < '04:00' && est.faxina_video_dia !== dia && !deps.semLimpeza) {
+    est.faxina_video_dia = dia;
+    try { const f = await (deps.faxinaVideos || ((o) => require('../videos').faxina(o)))({ agora }); if (f.apagados) r.faxina_videos = f; } catch (e) { r.avisos.push(`Faxina de vídeos falhou: ${String(e.message).slice(0, 100)}`); }
+  }
+  // 0d) Uma vez por dia, a partir das 8h: alertas de operação (banco, acesso ao Instagram, relógio que ficou parado).
+  if (hora >= '08:00' && est.alerta_dia !== dia && (process.env.VERCEL || deps.alertas)) {
+    est.alerta_dia = dia;
+    try { const al = await (deps.alertas || ((o) => require('../alertas').conferir(o)))({ agora, ultimaRodadaEm: est.ultima_rodada?.em || null }); if (al.frases?.length) r.alertas = al.frases; } catch { /* alerta nunca derruba a rodada */ }
+  }
   // 1) Agenda vencida → publica (vale mesmo com o piloto desligado: foi aprovado pelo Pedro).
   for (const item of [...(est.agenda || [])].filter((x) => Date.parse(x.publicar_em) <= agora)) {
     try { await publicarAgora(item.id, deps); removidos.add(item.id); r.publicados.push(item.id); }
     catch (e) {
       if (/não está aprovado|não encontrado/i.test(e.message)) removidos.add(item.id);
       r.avisos.push(`Publicação de ${item.id} segurada: ${e.message}`);
+      // Post aprovado que não saiu: o Pedro precisa saber na hora (um aviso por post por dia).
+      if (!est.aviso_falha?.[item.id] || est.aviso_falha[item.id] !== dia) {
+        est.aviso_falha = { ...Object.fromEntries(Object.entries(est.aviso_falha || {}).filter(([, d]) => d === dia)), [item.id]: dia };
+        await (deps.notificar || ((o) => require('../push').notificar(o)))({ corpo: `Um post agendado não foi publicado: ${String(e.message).slice(0, 110)}`, tag: `piloto-falha-${item.id}` }).catch(() => {});
+      }
     }
   }
-  if (!cfg.ativo) { est.ultima_rodada = r; await gravarRodada(est, removidos); return { executou: true, ...r, motivo: 'Piloto desligado: só a agenda já aprovada foi conferida.' }; }
+  if (!cfg.ativo) { r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos }); est.ultima_rodada = r; await gravarRodada(est, removidos); return { executou: true, ...r, motivo: 'Piloto desligado: só a agenda já aprovada foi conferida.' }; }
 
   // 2) Avança o que está em produção.
   for (const x of est.criados.filter((y) => y.estado === 'em_andamento')) {
@@ -194,6 +228,11 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       const p = await T.passo(x.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) });
       x.estado = p.conteudo.top.estado; x.nota = p.conteudo.top.escolha?.nota ?? null; r.avancados.push({ id: x.id, estado: x.estado });
       if (p.conteudo.top.cota_dia && p.conteudo.top.adiar_ate) est.ia_pausa_ate = p.conteudo.top.adiar_ate;
+      // IA gratuita sem cota por pelo menos 1 h: avisa uma vez por dia, de dia.
+      if (p.conteudo.top.cota_dia && p.conteudo.top.adiar_ate && est.aviso_cota_dia !== dia && hora >= '08:00' && hora <= '21:30' && Date.parse(p.conteudo.top.adiar_ate) - agora >= 50 * 60000) {
+        est.aviso_cota_dia = dia;
+        await (deps.notificar || ((o) => require('../push').notificar(o)))({ corpo: `A IA gratuita ficou sem cota: a produção para até ${horaSP(Date.parse(p.conteudo.top.adiar_ate))}.`, tag: 'piloto-cota' }).catch(() => {});
+      }
       // OpenAI sem créditos: avisa o Pedro uma vez por dia (o piloto fica parado até recarregar).
       if (p.conteudo.top.sem_credito && est.aviso_credito_dia !== dia) {
         est.aviso_credito_dia = dia;
@@ -235,9 +274,10 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
         if (restante() > 20000 && !deps.criar) {
           try { const p2 = await T.passo(c.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) }); const x = est.criados[est.criados.length - 1]; x.estado = p2.conteudo.top.estado; r.avancados.push({ id: c.id, estado: x.estado }); } catch (e) { r.avisos.push(`${c.id}: ${String(e.message).slice(0, 120)}`); }
         }
-      } else r.avisos.push('Sem pauta nova agora (fila vazia ou descoberta adiada).');
+      } else { r.sem_pauta = true; r.avisos.push('Sem pauta nova agora (fila vazia ou descoberta adiada).'); }
     } catch (e) { r.avisos.push(`Criação falhou: ${String(e.message).slice(0, 160)}`); }
   }
+  r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos, semPauta: !!r.sem_pauta });
   est.ultima_rodada = { ...r, avisos: r.avisos.slice(0, 6) };
   await gravarRodada(est, removidos);
   return { executou: true, ...r };
@@ -258,6 +298,7 @@ async function registrar(id, { titulo = '', agora = Date.now() } = {}) {
   const est = await lerEstado();
   est.criados = [...(est.criados || []).filter((x) => x.id !== id), { id, dia: diaSP(agora), em: new Date(agora).toISOString(), titulo, estado: 'em_andamento', origem: 'monitor' }];
   await gravarEstado(est);
+  await require('./relogio').agendarEm(agora + 60000, { agora }).catch(() => {}); // produção nova: não espera o tique parado
 }
 
 // Atualiza o estado de um item no índice (ex.: carrossel revalidado que saiu de "Para aprovar").
@@ -286,4 +327,4 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   };
 }
 
-module.exports = { paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, RODIZIO };
+module.exports = { proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, RODIZIO };
