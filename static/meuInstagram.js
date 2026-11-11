@@ -51,6 +51,30 @@
       <div class="ig-nums"><span><b>${num(p.alcance)}</b> alcance</span><span><b>${num(p.compartilhamentos_por_mil, 1)}</b> envios/mil</span><span><b>${num(p.salvamentos_por_mil, 1)}</b> salv./mil</span><span><b>${num(p.seguidores_ganhos)}</b> seguidores</span></div></li>`;
   }
 
+  // Placar da ferramenta: resultado real por jeito de fazer (backend/lib/placar.js). Grupo com menos de 3 posts é só indício.
+  const ROTULO_DIM = { linha: 'Linha de conteúdo', formato: 'Formato', redator: 'Quem escreveu o roteiro', capa_de: 'Quem escreveu a capa', gancho: 'Tipo de gancho', origem: 'De onde veio', estilo_video: 'Estilo do vídeo' };
+  const NOME_VALOR = { noticia: 'Notícia com tese', opiniao: 'Opinião', video: 'Vídeo', outro: 'Outro', reel: 'Reel', tweet: 'Tweet', reportagem: 'Reportagem', estatico: 'Post único', ensaio: 'Ensaio', juri: 'Roteirista (júri)', piloto: 'Piloto automático', reciclagem: 'Reciclagem', manual: 'Criado por você' };
+  function tabelaDim(nome, grupos) {
+    if (!grupos?.length) return '';
+    const linhas = grupos.map((g) => `<tr><th scope="row">${esc(NOME_VALOR[g.valor] || String(g.valor).charAt(0).toUpperCase() + String(g.valor).slice(1))}${g.amostra === 'pequena' ? ' <span class="ig-mudo">(indício)</span>' : ''}</th><td>${num(g.n)}</td><td>${num(g.alcance)}</td><td>${num(g.envios_mil, 1)}</td><td>${num(g.salvos_mil, 1)}</td><td>${g.contra_os_seus == null ? '—' : `${num(g.contra_os_seus, 2)}×`}</td></tr>`).join('');
+    return `<div class="es-label">${esc(ROTULO_DIM[nome] || nome)}</div><div class="ig-tabela-wrap"><table class="ig-tabela"><thead><tr><th scope="col"></th><th scope="col">Posts</th><th scope="col">Alcance</th><th scope="col">Envios<br>/mil</th><th scope="col">Salvos<br>/mil</th><th scope="col">× os<br>seus</th></tr></thead><tbody>${linhas}</tbody></table></div>`;
+  }
+  function blocoPlacar(pl) {
+    if (!pl) return '';
+    const f = pl.ferramenta || {}; const s = pl.seus || {};
+    let h = `<div class="es-card"><div class="es-label">Placar da ferramenta</div><div class="es-text">Resultado real de cada jeito de fazer, medido por <b>envios e salvos por mil alcançados</b> (só posts com mais de 48 h). É isso que decide o que o piloto produz mais.</div>
+      <div class="es-text" style="margin-top:8px">Seus posts: alcance <b>${num(s.alcance)}</b> · envios/mil <b>${num(s.envios_mil, 1)}</b> (${num(s.n)} posts). Da ferramenta: alcance <b>${num(f.alcance)}</b> · envios/mil <b>${num(f.envios_mil, 1)}</b> (${num(f.n)} posts).</div></div>`;
+    if (!f.n) return `${h}<div class="es-text ig-mudo">Ainda não há post da ferramenta com mais de 48 h medido. O placar se enche sozinho a cada post publicado; a leitura é feita todo dia de manhã.</div>`;
+    h += Object.keys(ROTULO_DIM).map((k) => tabelaDim(k, pl.por?.[k])).join('');
+    const pf = pl.pesos?.formato;
+    h += `<div class="es-card"><div class="es-label">O que o placar está decidindo</div><div class="es-text">${pf ? `Formatos do piloto: 80% das vagas seguem o resultado (${Object.entries(pf).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${esc(NOME_VALOR[k] || k)} ${num(v * 100)}%`).join(' · ')}) e 20% são repartidas por igual entre os quatro formatos, para continuar testando.` : 'Formatos: ainda sem dado suficiente (3 posts por formato em pelo menos 2 formatos). Até lá o piloto faz rodízio.'}</div>
+      <div class="es-text" style="margin-top:6px">${pl.pesos?.redator ? 'Redatores: quem rende mais envios escreve mais vezes.' : 'Redatores: ainda em rodízio, por falta de dado.'}</div>
+      <div class="es-text" style="margin-top:6px"><b>Nota do júri:</b> ${esc(pl.calibracao?.juri?.leitura || '—')}</div>
+      <div class="es-text" style="margin-top:6px"><b>Nota do painel de 30 perfis:</b> ${esc(pl.calibracao?.painel?.leitura || '—')}</div></div>`;
+    if (pl.sem_ficha) h += `<div class="es-text ig-mudo">${num(pl.sem_ficha)} post(s) da ferramenta sem registro de como foram feitos (conteúdo apagado ou de antes deste banco).</div>`;
+    return h;
+  }
+
   function seguidores30(snap) {
     const s = snap?.serie_conta?.follower_count;
     if (!s || !s.length) return null;
@@ -81,6 +105,7 @@
           (a.comparacoes || []).forEach((c) => { corpo += `<div class="es-text ig-mudo">${esc(c.leitura)}</div>`; });
           const orig = Object.values(a.por_origem || {});
           if (orig.length > 1) corpo += `<div class="es-label">Ferramenta × fora dela</div><div class="ig-grid">${orig.map(cartaoFormato).join('')}</div>`;
+          corpo += blocoPlacar(d.placar);
           if (a.concentracao_seguidores) { const c = a.concentracao_seguidores; corpo += `<div class="es-card"><div class="es-label">Quem traz seguidores (só posts de feed)</div><div class="es-text">${num(c.total)} seguidores atribuídos a ${num(c.n_posts)} posts; ${c.posts_sem_seguidor} não trouxeram nenhum. Os 2 maiores concentram <b>${num(c.pct_top2)}%</b>.</div></div>`; }
           if (a.melhores_por_envios?.length) corpo += `<div class="es-label">Mais enviados (por mil alcançados)</div><ul class="ig-lista">${a.melhores_por_envios.map(linhaPost).join('')}</ul>`;
           if (a.menores_por_envios?.length) corpo += `<div class="es-label">Menos enviados</div><ul class="ig-lista">${a.menores_por_envios.map(linhaPost).join('')}</ul>`;

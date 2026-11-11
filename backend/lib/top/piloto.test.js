@@ -37,7 +37,7 @@ test('rodada na janela de produção: escolhe a pauta de maior prioridade com li
   };
   const r = await Pi.rodada({ agora: SP('2026-10-29', '06:00'), deps });
   assert.strictEqual(r.criado.titulo, 'Alta');
-  assert.deepStrictEqual(criados[0], { url: 'https://agenciabrasil.ebc.com.br/b', titulo: 'Alta', origem: 'piloto', formato: 'reportagem' });
+  assert.deepStrictEqual(criados[0], { url: 'https://agenciabrasil.ebc.com.br/b', titulo: 'Alta', origem: 'piloto', formato: 'tweet' }); // 'auto' sem placar: rodízio começa no tweet
   // fora da janela de produção não cria
   const r2 = await Pi.rodada({ agora: SP('2026-10-29', '23:30'), deps });
   assert.strictEqual(r2.criado, null);
@@ -240,4 +240,19 @@ test('rodada: post agendado que não sai avisa o Pedro uma vez; alertas de opera
   await Pi.rodada({ agora: SP('2026-10-29', '09:20'), deps });
   assert.strictEqual(conferidos, 1, 'alertas só uma vez por dia');
   assert.ok(push.filter((p) => /não foi publicado/.test(p.corpo)).length <= 1, 'falha de publicação avisa no máximo uma vez por post por dia');
+});
+
+test('formato automático: com placar o piloto segue os envios reais (com 20% de teste); a leitura diária dos resultados roda uma vez por dia', async () => {
+  novo(); const criados = []; let coletas = 0;
+  const placar = { pesos: { formato: { tweet: 0.8, reportagem: 0.2 } } };
+  const deps = (u) => ({ semLimpeza: true, placar, sortear: () => u, coletarMetricas: async () => { coletas++; return { snapshot: { posts: [1, 2, 3], parcial: false } }; },
+    descobrir: async () => ({ pautas: [{ id: `p${criados.length}`, titulo: `Pauta ${criados.length}`, prioridade: 90, fontes: [{ url: `https://agenciabrasil.ebc.com.br/${criados.length}` }] }] }),
+    criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; } });
+  const r = await Pi.rodada({ agora: SP('2026-10-29', '07:10'), deps: deps(0.1) });
+  assert.strictEqual(criados[0].formato, 'tweet'); assert.deepStrictEqual(r.metricas, { posts: 3, parcial: false });
+  // a peça criada fica "em andamento" no índice: marca como concluída para abrir a vaga da próxima
+  const a = arm.armazem(); const cfg = await a.config.obter(ACCOUNT.ig_id); cfg.piloto_estado.criados.forEach((x) => { x.estado = 'concluida'; }); await a.config.salvar(ACCOUNT.ig_id, { piloto_estado: cfg.piloto_estado });
+  await Pi.rodada({ agora: SP('2026-10-29', '07:30'), deps: deps(0.95) });
+  assert.strictEqual(criados[1].formato, 'estatico', 'os 20% de teste caem em formato ainda sem dado');
+  assert.strictEqual(coletas, 1, 'resultados lidos uma vez por dia');
 });

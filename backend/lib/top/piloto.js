@@ -17,10 +17,12 @@ const PADRAO = Object.freeze({
   inicio_producao: '03:00', fim_producao: '20:30', // começa de madrugada: às 8h já há carrosséis prontos
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
-  formato_padrao: 'reportagem', // 'reportagem' (visual da marca) | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
+  // 'auto' reparte as vagas pelo placar real (envios por mil de cada formato, com 20% de teste); sem dado suficiente, faz o rodízio dos quatro.
+  formato_padrao: 'auto', // 'auto' | 'reportagem' (visual da marca) | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
 });
 // Formatos que o piloto pode pedir ao pipeline; 'alterna' roda tweet → ensaio → estatico para o feed variar.
-const FORMATOS_PILOTO = ['reportagem', 'tweet', 'estatico', 'ensaio', 'alterna'];
+const FORMATOS_PILOTO = ['reportagem', 'tweet', 'estatico', 'ensaio', 'alterna', 'auto'];
+const FORMATOS_AUTO = ['tweet', 'reportagem', 'estatico', 'ensaio'];
 const RODIZIO = ['tweet', 'ensaio', 'estatico'];
 const proximoDoRodizio = (ultimo) => RODIZIO[(RODIZIO.indexOf(ultimo) + 1) % RODIZIO.length]; // desconhecido (-1) → tweet
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -39,7 +41,7 @@ function validar(patch = {}) {
   const inteiro = (k, min, max) => { if (!(k in patch)) return; const n = Number(patch[k]); if (!Number.isInteger(n) || n < min || n > max) throw erro(`${k} deve ser um inteiro de ${min} a ${max}.`); out[k] = n; };
   inteiro('meta_dia', 1, 15); inteiro('reserva', 0, 5); inteiro('candidatos_max_dia', 1, 30);
   for (const k of ['inicio_producao', 'fim_producao']) if (k in patch) { if (!HORA.test(patch[k])) throw erro(`${k} deve estar no formato HH:MM.`); out[k] = patch[k]; }
-  if ('formato_padrao' in patch) { if (!FORMATOS_PILOTO.includes(patch.formato_padrao)) throw erro(`formato_padrao deve ser ${FORMATOS_PILOTO.slice(0, -1).join(', ')} ou alterna.`); out.formato_padrao = patch.formato_padrao; }
+  if ('formato_padrao' in patch) { if (!FORMATOS_PILOTO.includes(patch.formato_padrao)) throw erro(`formato_padrao deve ser ${FORMATOS_PILOTO.slice(0, -1).join(', ')} ou auto.`); out.formato_padrao = patch.formato_padrao; }
   for (const k of ['horarios', 'janelas_aprovacao']) if (k in patch) {
     const l = Array.isArray(patch[k]) ? [...new Set(patch[k].map(String).map((x) => x.trim()))].sort() : null;
     if (!l || !l.length || l.length > 15 || !l.every((x) => HORA.test(x))) throw erro(`${k} deve ser uma lista de horários HH:MM (até 15).`);
@@ -206,6 +208,12 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
     est.alerta_dia = dia;
     try { const al = await (deps.alertas || ((o) => require('../alertas').conferir(o)))({ agora, ultimaRodadaEm: est.ultima_rodada?.em || null }); if (al.frases?.length) r.alertas = al.frases; } catch { /* alerta nunca derruba a rodada */ }
   }
+  // 0e) Uma vez por dia, a partir das 7h: lê os resultados reais dos posts (Meta) e refaz o placar que orienta a produção.
+  if (hora >= '07:00' && est.metricas_dia !== dia && restante() > 40000 && (process.env.VERCEL || deps.coletarMetricas)) {
+    est.metricas_dia = dia;
+    try { const m = await (deps.coletarMetricas || ((o) => require('../placar').coletar(o)))({ agora, orcamentoMs: Math.min(22000, restante() - 18000) }); r.metricas = { posts: m.snapshot?.posts?.length || 0, parcial: !!m.snapshot?.parcial }; }
+    catch (e) { r.avisos.push(`Leitura dos resultados falhou: ${String(e.meta?.amigavel || e.message).slice(0, 110)}`); }
+  }
   // 1) Agenda vencida → publica (vale mesmo com o piloto desligado: foi aprovado pelo Pedro).
   for (const item of [...(est.agenda || [])].filter((x) => Date.parse(x.publicar_em) <= agora)) {
     try { await publicarAgora(item.id, deps); removidos.add(item.id); r.publicados.push(item.id); }
@@ -264,8 +272,14 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       if (pauta) {
         // Formato padrão do feed: "reportagem" (o visual da marca). Dá para mudar em config.piloto (formato_padrao);
         // "alterna" faz o rodízio tweet → ensaio → estatico a cada pauta.
-        const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'reportagem';
-        const fmt = formato === 'alterna' ? proximoDoRodizio([...est.criados].reverse().find((x) => x.formato)?.formato) : formato;
+        const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto';
+        const ultimoFmt = [...est.criados].reverse().find((x) => x.formato)?.formato;
+        let fmt = formato === 'alterna' ? proximoDoRodizio(ultimoFmt) : formato;
+        if (formato === 'auto') {
+          // Placar real decide; sem dado suficiente, rodízio dos quatro formatos (é assim que o dado aparece).
+          const Placar = require('../placar'); const pl = deps.placar !== undefined ? deps.placar : await Placar.ler().catch(() => null);
+          fmt = Placar.sortear(FORMATOS_AUTO, pl?.pesos?.formato, (deps.sortear || Math.random)()) || FORMATOS_AUTO[(FORMATOS_AUTO.indexOf(ultimoFmt) + 1) % FORMATOS_AUTO.length];
+        }
         const c = await (deps.criar || T.criar)({ url: pauta.url, titulo: pauta.titulo, origem: 'piloto', formato: fmt });
         est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pauta.id, titulo: pauta.titulo, estado: 'em_andamento', formato: fmt });
         est.usadas.push({ id: pauta.id, em: new Date(agora).toISOString() });
@@ -327,4 +341,4 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   };
 }
 
-module.exports = { proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, RODIZIO };
+module.exports = { proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
