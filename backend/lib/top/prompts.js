@@ -54,7 +54,7 @@ ESTRUTURA OBRIGATÓRIA (cada tela termina puxando a próxima — amarra de curio
 - "fechamento": {"titulo": "frase de impacto de até 6 palavras que resume a tese (ex.: \"O resultado está nos números.\")", "texto": "1 frase de até 22 palavras com a posição do Pedro"}. A última tela também leva, fixos, "Eu comecei o Pedro Destrava por isso." e a chamada para seguir.
 - "cta_motivo": complete a frase "Segue o @pedro_destrava …" com 4 a 8 palavras ligadas à pauta, começando por "se você" (ex.: "se você também cobra resultado").
 - CONTEXTO DE FORA: o que não está nos FATOS (histórico de alguém, o que um partido "sempre disse") só entra como leitura do Pedro, marcado ("na minha leitura", "pra mim"), nunca como fato.
-- "legenda": 2 a 4 frases curtas que complementam (não repetem as telas) e terminam com uma pergunta que puxa comentário. NÃO escreva fonte nem data na legenda (o sistema acrescenta a fonte). "hashtags": 3, do assunto (ex.: #Rodovias #Impostos #Economia); nunca hashtag que acuse (#Corrupção, #Roubo) sem fato.
+- "legenda": 2 a 4 frases curtas que complementam (não repetem as telas). Termine de um destes jeitos, variando entre as peças: pedindo para mandar a alguém específico, pedindo para salvar, ou com uma pergunta concreta sobre o negócio de quem lê (nunca "o que você acha?"). NÃO escreva fonte nem data na legenda (o sistema acrescenta a fonte). "hashtags": 3, do assunto (ex.: #Rodovias #Impostos #Economia); nunca hashtag que acuse (#Corrupção, #Roubo) sem fato.
 ${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele que mais foram compartilhados — imite o RITMO e a ATITUDE, nunca copie frases):\n${voz.map((v, i) => `${i + 1}. ${v}`).join('\n')}\n` : ''}${feedback ? `\nCORRIJA ESTES PROBLEMAS DA VERSÃO ANTERIOR:\n${feedback}\n` : ''}
 Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"gap","layout":"rep_manchete","titulo":"","texto":"","destaque":null,"dados":null,"apoio":null,"fatos":[]}],"legenda":"","hashtags":["#","#","#"],"cta_motivo":"","fechamento":{"titulo":"","texto":""}}`;
 }
@@ -191,5 +191,40 @@ Aprove (ok: true) só se a capa afirma o que os FATOS VERIFICADOS sustentam. Rep
 Opinião marcada como opinião é permitida. Em "motivo", 1 frase curta.
 Responda APENAS JSON: {"capas":[{"indice":0,"ok":true,"motivo":""}]}`;
 
+
+// ── Linhas próprias do Pedro (cadastro "Minhas histórias e casos") ──────────────────────────────────────────────────────
+// Entram ANTES do prompt do formato e valem acima das instruções de notícia. A fonte é o texto que o Pedro escreveu: nada
+// além dele pode ser afirmado (sem nome, número, data ou detalhe que ele não deu).
+const REGRA_PROPRIA = `REGRA DE HONESTIDADE DESTA LINHA: a ÚNICA fonte é o TEXTO DO PEDRO que você recebe. Não invente cena, fala, número, prazo, nome de pessoa, cidade ou resultado que não esteja nele. Pode reorganizar, cortar e dar ritmo; não pode acrescentar fato. Número só se estiver no texto dele, escrito igual. Sem "Fonte:", sem citar notícia, sem tese de denúncia a governo que o texto não traga.
+PAPÉIS DAS TELAS NESTA LINHA: use "gap", "contradicao", "consequencia" e, na última tela de conteúdo, "leitura" (o que o Pedro tira disso). Não existe tela de "prova" com dado de matéria; só use "prova" se o número estiver no texto dele (liste o id da frase em "fatos").
+CAPA: fala com quem empreende (dono de loja, MEI, quem vende em marketplace), promete o que a peça entrega e não mais que isso.
+LEGENDA: 2 a 4 frases; termine pedindo para mandar a alguém ou salvar (não termine com pergunta genérica).`;
+const LINHAS = {
+  historia: {
+    nome: 'História do Pedro',
+    angulo: 'LINHA: HISTÓRIA DO PEDRO (não é notícia). A "tese" é a LIÇÃO da história em UMA frase, em primeira pessoa, sem transformar em denúncia política. Nos gatilhos, "numero" vale 0 se o texto não tiver número; avalie "personagem" pelo próprio Pedro e "bolso" pelo que a história ensina sobre dinheiro e negócio. "enviar_para": quem precisa ouvir esta história (comece por "seu", "sua" ou "quem").',
+    roteiro: `LINHA EDITORIAL DESTA PEÇA: HISTÓRIA DO PEDRO, em PRIMEIRA PESSOA ("eu"). Vale ACIMA das instruções de notícia abaixo.
+ESTRUTURA: comece dentro da CENA (onde ele estava, o que aconteceu), mostre a VIRADA (o erro, o aperto ou a decisão) e termine no que ele APRENDEU e faria diferente. Frases curtas, de quem conta para um amigo. Uma ideia por tela.
+${REGRA_PROPRIA}`,
+    juri: 'LINHA: HISTÓRIA DO PEDRO (não é notícia). Não exija prova numérica nem tese política. Em "honestidade", reprove (abaixo de 7) qualquer cena, fala, número ou detalhe que NÃO esteja nas frases do Pedro listadas como fatos. Em "prova", avalie a força da cena e da virada. Em "envio", pergunte: quem empreende se reconhece e mandaria para alguém?',
+  },
+  como_fazer: {
+    nome: 'Como fazer',
+    angulo: 'LINHA: COMO FAZER (passo a passo do Pedro; não é notícia). A "tese" é a PROMESSA prática em UMA frase (o que a pessoa consegue fazer depois de ler), sem prometer resultado em dinheiro que o texto não traga. Nos gatilhos, "bolso" mede a utilidade para o caixa de quem empreende; "numero" vale 0 se o texto não tiver número. "enviar_para": quem precisa deste passo a passo.',
+    roteiro: `LINHA EDITORIAL DESTA PEÇA: COMO FAZER. Vale ACIMA das instruções de notícia abaixo.
+ESTRUTURA: a 1ª tela diz o problema que o passo a passo resolve; depois UM PASSO POR TELA, numerado ("1.", "2."…), na ordem do texto do Pedro, com o verbo no começo ("Separe…", "Anote…"); a última tela de conteúdo é o erro mais comum ou o que ele faz na prática. Sem promessa de resultado ("você vai lucrar…").
+${REGRA_PROPRIA}`,
+    juri: 'LINHA: COMO FAZER (passo a passo do Pedro; não é notícia). Não exija prova numérica nem tese política. Em "honestidade", reprove (abaixo de 7) passo, número ou promessa de resultado que NÃO esteja nas frases do Pedro. Em "prova", avalie se os passos são concretos e aplicáveis hoje. Em "envio", pergunte: alguém salvaria ou mandaria para o sócio?',
+  },
+  caso: {
+    nome: 'Caso de cliente',
+    angulo: 'LINHA: CASO DE CLIENTE (bastidor de um negócio que o Pedro atendeu; não é notícia). A "tese" é o que o caso ENSINA em UMA frase. Não identifique o cliente. Nos gatilhos, "numero" só pontua se o texto trouxer número; "personagem" é o dono do negócio, sem nome. "enviar_para": quem está na mesma situação do cliente.',
+    roteiro: `LINHA EDITORIAL DESTA PEÇA: CASO DE CLIENTE. Vale ACIMA das instruções de notícia abaixo.
+ESTRUTURA: como o negócio ESTAVA (o problema), o que FOI FEITO (as decisões, na ordem) e como FICOU. Termine no que qualquer dono de negócio pode copiar. NUNCA identifique o cliente: sem nome, marca, cidade ou detalhe que permita reconhecer; diga "um cliente", "uma loja de…" como estiver no texto. Sem prometer que o leitor terá o mesmo resultado.
+${REGRA_PROPRIA}`,
+    juri: 'LINHA: CASO DE CLIENTE (não é notícia). Não exija tese política. Em "honestidade", reprove (abaixo de 7) número, resultado ou detalhe que NÃO esteja nas frases do Pedro, promessa de que o leitor terá o mesmo resultado, e qualquer dado que identifique o cliente. Em "prova", avalie o antes e depois. Em "envio", pergunte: quem está na mesma situação mandaria?',
+  },
+};
+
 const AI = require('../mentes/antiIA');
-module.exports = { FATOS, ANGULO, roteiro, roteiroTweet, roteiroEstatico, roteiroEnsaio, notaJuri, VOZ_PEDRO, JURI, REVISOR_CAPA };
+module.exports = { LINHAS,  FATOS, ANGULO, roteiro, roteiroTweet, roteiroEstatico, roteiroEnsaio, notaJuri, VOZ_PEDRO, JURI, REVISOR_CAPA };

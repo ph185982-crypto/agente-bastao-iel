@@ -1,0 +1,25 @@
+/* "Minhas histórias e casos" (Perfil). Usa as cores e o raio da marca (marca.css). */
+.hs-tela { display: grid; gap: 14px; }
+.hs-voltar { justify-self: start; background: none; border: 0; padding: 8px 0; min-height: 44px; font: 600 15px var(--pd-texto); color: var(--pd-azul); cursor: pointer; }
+.hs-intro { max-width: 60ch; }
+.hs-form { display: grid; gap: 12px; }
+.hs-tipos { display: flex; flex-wrap: wrap; gap: 8px; }
+.hs-tipo { min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 1.5px solid var(--pd-linha); background: var(--pd-cartao); font: 600 14px var(--pd-texto); color: var(--pd-tinta); cursor: pointer; }
+.hs-tipo[aria-pressed="true"] { background: var(--pd-tinta); border-color: var(--pd-tinta); color: var(--pd-papel); }
+.hs-ajuda { margin: 0; color: var(--pd-cinza); }
+.hs-campo { display: grid; gap: 6px; font: 600 13px var(--pd-texto); color: var(--pd-cinza); }
+.hs-campo input, .hs-campo textarea { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 10px; border: 1.5px solid var(--pd-linha); background: #fff; font: 400 16px/1.45 var(--pd-texto); color: var(--pd-tinta); }
+.hs-campo textarea { resize: vertical; min-height: 180px; }
+.hs-campo input:focus-visible, .hs-campo textarea:focus-visible, .hs-tipo:focus-visible, .hs-voltar:focus-visible { outline: 3px solid var(--pd-azul); outline-offset: 2px; }
+.hs-rodape { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.hs-contador { font: 500 13px var(--pd-texto); color: var(--pd-cinza); font-variant-numeric: tabular-nums; }
+.hs-botoes { display: flex; gap: 8px; }
+.hs-nota { margin: 0; font-size: 13px; color: var(--pd-cinza); }
+.hs-lista-titulo { margin-top: 6px; }
+.hs-item { display: grid; gap: 8px; }
+.hs-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.hs-etiqueta { font: 700 12px var(--pd-texto); letter-spacing: .06em; text-transform: uppercase; color: var(--pd-azul); }
+.hs-titulo { margin: 0; font: 700 18px/1.25 var(--pd-titulo); color: var(--pd-tinta); overflow-wrap: anywhere; }
+.hs-trecho { margin: 0; overflow-wrap: anywhere; }
+.hs-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hs-acoes .es-btn:first-child { grid-column: 1 / -1; }
