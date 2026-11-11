@@ -322,3 +322,40 @@ test('erro 53000 do Neon vira mensagem em português', () => {
   assert.strictEqual(e.status, 503); assert.match(e.message, /Neon/); assert.strictEqual(e.code, 'BANCO_COTA');
   const outro = new Error('x'); assert.strictEqual(B.traduzir(outro), outro);
 });
+
+test('faxina: o bruto sai do Blob 7 dias depois de pronto; antes disso fica; refazer sem bruto explica o motivo', async () => {
+  novo(); const d = depsDe(iaFalsa([LEGENDA_BOA]).ia);
+  const id = await ateNaFila(d.deps); await V.proximoJob();
+  await V.registrarResultado(id, { resultado: RESULTADO(id), transcricao: TRANSCRICAO }, d);
+  const pronto = Date.parse((await ler(id)).video.worker.concluido_em);
+  const cedo = await V.faxina({ agora: pronto + 3 * 86400000, deps: d.deps });
+  assert.strictEqual(cedo.apagados, 0); assert.ok((await ler(id)).video.origem.url);
+  const tarde = await V.faxina({ agora: pronto + 8 * 86400000, deps: d.deps });
+  assert.strictEqual(tarde.apagados, 1); assert.deepStrictEqual(tarde.videos, [id]);
+  assert.deepStrictEqual(d.dels[d.dels.length - 1], [blob(id, 'bruto.mp4').url]);
+  const c = await ler(id); assert.strictEqual(c.video.origem.url, null); assert.ok(c.video.origem.apagada_em);
+  assert.ok(c.video.resultado.url, 'o vídeo editado continua'); assert.ok(c.motion?.url);
+  await assert.rejects(V.refazer(id, { estilo: 'caixa' }, d), /já foi apagado/);
+  // Blob fora do ar: nada muda no documento (tenta de novo no dia seguinte)
+  novo(); const id2 = await ateNaFila(d.deps); await V.proximoJob();
+  await V.registrarResultado(id2, { resultado: RESULTADO(id2), transcricao: TRANSCRICAO }, d);
+  const f = await V.faxina({ agora: Date.now() + 9 * 86400000, deps: { del: async () => { throw new Error('rede'); } } });
+  assert.strictEqual(f.apagados, 0); assert.ok((await ler(id2)).video.origem.url);
+});
+
+test('alertas de operação: banco acima de 70%, acesso ao Instagram vencendo ou caído, piloto que ficou parado', () => {
+  const AL = require('../alertas'); const agora = Date.parse('2026-11-11T12:00:00Z');
+  assert.deepStrictEqual(AL.avaliar({ espaco: { banco: 100 * 1048576 }, saude: { token: { valido: true, expira_em: '2027-01-01T00:00:00Z' } }, ultimaRodadaEm: '2026-11-11T11:30:00Z', agora }), []);
+  assert.match(AL.avaliar({ espaco: { banco: 400 * 1048576 }, agora })[0], /78% do limite/);
+  assert.match(AL.avaliar({ saude: { token: { valido: true, expira_em: '2026-11-14T12:00:00Z' } }, agora })[0], /vence em 3 dias/);
+  assert.match(AL.avaliar({ saude: { reconectar: true, token: { valido: false } }, agora })[0], /acesso ao Instagram caiu/);
+  assert.match(AL.avaliar({ saude: { token: { valido: true, expira_em: 'nunca (token sem expiração informada)' } }, ultimaRodadaEm: '2026-11-11T05:00:00Z', agora })[0], /7 h sem rodar/);
+});
+
+test('alertas: conferir mede, junta as frases num push só e nunca lança', async () => {
+  const AL = require('../alertas'); const push = [];
+  const r = await AL.conferir({ agora: Date.parse('2026-11-11T12:00:00Z'), deps: { armazem: { arquivos: { espaco: async () => ({ banco: 450 * 1048576 }) } }, saude: async () => ({ reconectar: true }), notificar: async (o) => { push.push(o); } } });
+  assert.strictEqual(r.frases.length, 2); assert.strictEqual(push.length, 1); assert.match(push[0].corpo, /Banco de dados em 88%.*acesso ao Instagram caiu/);
+  const ok = await AL.conferir({ deps: { armazem: { arquivos: { espaco: async () => { throw new Error('x'); } } }, saude: async () => { throw new Error('y'); }, notificar: async () => { throw new Error('z'); } } });
+  assert.deepStrictEqual(ok.frases, []);
+});

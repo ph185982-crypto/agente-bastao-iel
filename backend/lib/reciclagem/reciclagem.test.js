@@ -240,8 +240,10 @@ test('rota: lista ordenada por VL, tendências, contas e reciclar reel pela API'
   novo(); process.env.TESTE_RECICLAGEM = '1'; delete process.env.VERCEL;
   global.__RECICLAGEM_DEPS__ = { pedirJson: async () => ({ dados: BOM }), sortear: () => 0 };
   const a = arm.armazem();
-  await a.radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, ITEM);
-  await a.radar.salvar(ACCOUNT.ig_id, C.TIPO, 'rc_fedcba9876543210', { ...ITEM, id: 'rc_fedcba9876543210', permalink: 'https://www.instagram.com/p/OUTRO/', vl: 7.5, mecanismo: 'polemica', conta: { ...ITEM.conta, idioma: 'pt' }, legenda: 'texto de terceiro' });
+  // A rota filtra pelo relógio de verdade: os posts do teste são sempre de 2 dias atrás (data fixa vencia o filtro de 7 dias).
+  const recente = new Date(Date.now() - 48 * 3600000).toISOString();
+  await a.radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, publicado_em: recente });
+  await a.radar.salvar(ACCOUNT.ig_id, C.TIPO, 'rc_fedcba9876543210', { ...ITEM, publicado_em: recente, id: 'rc_fedcba9876543210', permalink: 'https://www.instagram.com/p/OUTRO/', vl: 7.5, mecanismo: 'polemica', conta: { ...ITEM.conta, idioma: 'pt' }, legenda: 'texto de terceiro' });
   await a.radar.salvar(ACCOUNT.ig_id, C.TIPO_ESTADO, 'estado', { tendencias: { em: h(1), itens: [{ titulo: 'lavanderia', trafego: '20.000+', noticias: [], link: null }] } });
   const app = express(); app.use(express.json()); app.use('/api/reciclagem', require('../../routes/reciclagem'));
   const srv = await new Promise((ok) => { const s = app.listen(0, '127.0.0.1', () => ok(s)); });

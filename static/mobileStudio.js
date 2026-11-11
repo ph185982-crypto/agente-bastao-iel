@@ -263,6 +263,7 @@
   window.Mesa.state.tab='central';
   setTimeout(()=>{original.carregar(x()).catch(()=>{});atualizar({silencioso:true});x().api('/api/studio/experimentos').then(d=>{ui.experimentos=d;}).catch(()=>{});},1200);
   setTimeout(()=>monitorar(),4000);
-  setInterval(()=>{if(!document.hidden&&!ui.reprovar&&!ui.ocupado){atualizar({silencioso:true});monitorar();rodarPiloto();}},10000);
+  // Com algo em produção, confere a cada 10 s; parado, a cada 60 s (cada consulta mantém o banco gratuito acordado).
+  let tique=0;setInterval(()=>{tique++;if(document.hidden||ui.reprovar||ui.ocupado)return;const produzindo=(ui.estado?.ativos||[]).length>0||ui.gerando;if(!produzindo&&tique%6)return;atualizar({silencioso:true});monitorar();rodarPiloto();},10000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)atualizar({silencioso:true});});
 })();

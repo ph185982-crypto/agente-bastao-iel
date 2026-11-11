@@ -314,7 +314,7 @@ async function refazer(id, { estilo, opcoes } = {}, { deps } = {}) {
   const reg = await ler(id); const c = reg.doc;
   if (c.status === 'arquivado') throw falha('Este vídeo foi apagado.', 409, 'ARQUIVADO');
   if (['publicado', 'aprovado', 'exportado'].includes(c.status)) throw falha('Este vídeo já foi aprovado. Grave outro para não alterar a publicação.', 409, 'APROVADO');
-  if (!c.video.origem?.url) throw falha('O arquivo bruto ainda não chegou: envie o vídeo primeiro.', 409, 'SEM_ORIGEM');
+  if (!c.video.origem?.url) throw falha(c.video.origem?.apagada_em ? 'O arquivo bruto deste vídeo já foi apagado (fica guardado por 7 dias). Envie o vídeo de novo para refazer.' : 'O arquivo bruto ainda não chegou: envie o vídeo primeiro.', 409, 'SEM_ORIGEM');
   if (c.video.estado === 'editando' && !leaseVencido(c)) throw falha('O editor está trabalhando neste vídeo agora. Espere terminar.', 409, 'EM_ANDAMENTO');
   c.video.estilo = normalizarEstilo(estilo, c.video.estilo);
   if (opcoes) c.video.opcoes = normalizarOpcoes({ ...c.video.opcoes, ...opcoes });
@@ -344,6 +344,29 @@ async function apagar(id, { deps } = {}) {
   M.registrar(c, 'pedro', 'descartado', 'Apagou o vídeo.');
   await gravar(c, reg.rev);
   return { id: c.id, arquivado: true, blobs_apagados: apagados };
+}
+
+// ── Faxina do Blob (1 GB no plano gratuito) ─────────────────────────────────
+// Bruto: sai 7 dias depois de o vídeo ficar pronto (até lá dá para "Refazer com outro estilo"). Editado e pôster: saem 45 dias
+// depois de publicado (o vídeo já está no Instagram). Vídeo que ficou em erro há mais de 7 dias perde o bruto também.
+const DIAS_BRUTO = 7; const DIAS_FINAL_PUBLICADO = 45;
+async function faxina({ agora: t = Date.now(), deps } = {}) {
+  const d = comDeps(deps); if (!blobToken() && !deps?.del) return { executou: false, apagados: 0 };
+  let apagados = 0; const ids = [];
+  for (const reg of await docsDeVideo()) {
+    const c = reg.doc; if (c.status === 'arquivado' || !c.video) continue;
+    const pronto = Date.parse(c.video.worker?.concluido_em || c.updated_at || 0);
+    const urls = []; let mudou = false;
+    if (urlPublica(c.video.origem?.url) && ['pronto', 'erro'].includes(c.video.estado) && pronto && t - pronto > DIAS_BRUTO * 86400000) { urls.push(c.video.origem.url); c.video.origem = { ...c.video.origem, url: null, apagada_em: new Date(t).toISOString() }; mudou = true; }
+    if (c.status === 'publicado' && urlPublica(c.video.resultado?.url) && t - Date.parse(c.updated_at || 0) > DIAS_FINAL_PUBLICADO * 86400000) {
+      urls.push(c.video.resultado.url, c.video.resultado.poster_url); c.video.resultado = { ...c.video.resultado, url: null, poster_url: null, apagado_em: new Date(t).toISOString() }; c.motion = null; mudou = true;
+    }
+    if (!mudou) continue;
+    try { await d.del(urls.filter(urlPublica)); } catch (e) { continue; } // não apagou: tenta de novo amanhã, sem perder o endereço
+    log(c, `Faxina: ${urls.filter(Boolean).length} arquivo(s) antigo(s) apagado(s) do Blob.`);
+    try { await arm().conteudos.salvar(conta(), c.id, c, reg.rev); apagados += urls.filter(Boolean).length; ids.push(c.id); } catch { /* conflito: a próxima faxina resolve */ }
+  }
+  return { executou: true, apagados, videos: ids };
 }
 
 // ── Client tokens do Blob ───────────────────────────────────────────────────
@@ -389,7 +412,7 @@ async function listar() {
 async function obter(id) { return publico((await ler(id)).doc); }
 
 module.exports = {
-  criar, registrarEnvio, urlDoSinal, marcarFila, proximoJob, registrarResultado, registrarErro, refazer, apagar, listar, obter, resumo, publico,
+  criar, registrarEnvio, urlDoSinal, marcarFila, proximoJob, registrarResultado, registrarErro, refazer, apagar, faxina, listar, obter, resumo, publico,
   gerarLegenda, problemasDaLegenda, limparLegenda, tokenDoWorker, registrarUploadConcluido, restricoesToken, dispararWorker, exigirBlob, pathnameValido,
   ESTILOS, OPCOES_PADRAO, TIPOS_PERMITIDOS, TAMANHO_MAXIMO, LEASE_MS, MAX_TENTATIVAS, MSG_SEM_BLOB, PREFIXO,
 };

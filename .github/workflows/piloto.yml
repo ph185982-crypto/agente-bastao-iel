@@ -1,4 +1,6 @@
-# Piloto automático do carrossel "top": a cada 10 minutos chama uma rodada no servidor.
+# Piloto automático do carrossel "top": rede de segurança, a cada 3 horas chama uma rodada no servidor.
+# Quem marca o ritmo é o relógio do próprio app (fila da Vercel, backend/lib/top/relogio.js); este agendamento só religa a
+# corrente se ela parar. Cada chamada acorda o banco gratuito por ~5 min: de 10 em 10 min ele nunca dormia.
 # Cada rodada avança a produção (pauta → fatos → roteiro → júri → arte), manda o aviso nas janelas de aprovação e
 # publica o que o Pedro JÁ APROVOU quando chega o horário agendado. Nada é publicado sem aprovação.
 # Endereço: variável MONITOR_URL (Settings → Secrets and variables → Actions) ou, sem ela, o endereço de produção.
@@ -6,7 +8,7 @@
 name: Piloto automático
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '17 */3 * * *'
   workflow_dispatch: {}
 permissions: {}
 concurrency: { group: piloto, cancel-in-progress: false }

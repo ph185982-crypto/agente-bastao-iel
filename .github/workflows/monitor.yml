@@ -1,4 +1,5 @@
-# Monitor de notícias em alta com o app fechado: chama a rodada a cada 30 minutos.
+# Monitor de notícias em alta com o app fechado: chama a rodada de hora em hora, das 6h às 22h de Brasília.
+# (Cada chamada acorda o banco gratuito por ~5 min; de madrugada ninguém aprova roteiro.)
 # Só roda se este arquivo estiver na branch principal do repositório e se as duas configurações abaixo existirem:
 #   Settings → Secrets and variables → Actions
 #     • Variável  MONITOR_URL  = endereço de PRODUÇÃO do app, sem barra no fim (ex.: https://seu-app.vercel.app)
@@ -8,7 +9,7 @@
 name: Monitor de notícias em alta
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '23 9-23,0-1 * * *'
   workflow_dispatch: {}
 permissions: {}
 jobs:
