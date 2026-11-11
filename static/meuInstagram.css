@@ -30,3 +30,11 @@
 .ca-isca { border-top: 1px solid #ECEAE1; padding-top: 10px; margin-top: 10px; }
 .ca-tab { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
 .ca-tab th, .ca-tab td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #ECEAE1; }
+/* Placar da ferramenta: tabela que rola de lado no celular (nunca a página). */
+.ig-tabela-wrap { overflow-x: auto; margin: 6px 0 14px; }
+.ig-tabela { border-collapse: collapse; width: 100%; min-width: 320px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.ig-tabela th, .ig-tabela td { padding: 7px 5px; text-align: right; border-bottom: 1px solid rgba(0,0,0,.08); }
+.ig-tabela td { white-space: nowrap; }
+.ig-tabela thead th { line-height: 1.2; vertical-align: bottom; }
+.ig-tabela thead th { font-size: 12px; color: #686A73; font-weight: 600; }
+.ig-tabela tbody th { text-align: left; font-weight: 600; }

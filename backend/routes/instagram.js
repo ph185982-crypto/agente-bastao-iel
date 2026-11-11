@@ -8,6 +8,7 @@ const { armazem } = require('../lib/armazem');
 const { limita } = require('../lib/access');
 const Temas = require('../lib/temas');
 const Estrategia = require('../lib/estrategia');
+const Placar = require('../lib/placar');
 
 const router = express.Router();
 const IDADE_MAX_H = 24; // depois disso o painel avisa que os números estão velhos
@@ -29,7 +30,7 @@ router.get('/painel', async (req, res) => {
     const a = armazem();
     const guardado = a?.duravel ? (await a.config.obter(require('../lib/account').ACCOUNT.ig_id)).meu_instagram : null;
     const est = await Estrategia.ler();
-    res.json({ ...montar(guardado || null, est.min_posts_por_grupo), configurado: meta.faltando().length === 0, faltando: meta.faltando() });
+    res.json({ ...montar(guardado || null, est.min_posts_por_grupo), placar: await Placar.ler().catch(() => null), configurado: meta.faltando().length === 0, faltando: meta.faltando() });
   } catch (e) { console.error('[instagram] painel', e.message); res.status(500).json({ error: 'Não consegui abrir o painel agora.' }); }
 });
 
@@ -37,15 +38,12 @@ router.post('/atualizar', limita({ max: 2, janelaMs: 60000, nome: 'instagram-atu
   const falta = meta.faltando();
   if (falta.length) return res.status(409).json({ error: `A conexão com o Instagram não está configurada no servidor (falta ${falta.join(', ')}). Veja docs/META_SETUP.md.`, code: 'META_NAO_CONFIGURADA', faltando: falta });
   try {
-    const daFerramenta = new Map();
-    try { (await P.listarPublicacoes()).filter((p) => p.estado === 'publicada' && p.ig_media_id).forEach((p) => daFerramenta.set(String(p.ig_media_id), p.content_id)); } catch { /* sem banco: nenhum marcado */ }
-    const snapshot = await MI.atualizar({ daFerramenta });
-    const a = armazem();
-    if (a?.duravel) await a.config.salvar(require('../lib/account').ACCOUNT.ig_id, { meu_instagram: snapshot });
+    // Lê a Meta, guarda a foto do dia, a série por post e o placar (backend/lib/placar.js).
+    const { snapshot, placar } = await Placar.coletar();
     // Os posts lidos viram "temas usados": a ferramenta não repete assunto que já saiu no perfil.
     try { await Temas.semearDoInstagram(snapshot.posts); } catch (e) { console.error('[instagram] temas', e.message); }
     const est = await Estrategia.ler();
-    res.json({ ...montar(snapshot, est.min_posts_por_grupo), configurado: true, faltando: [] });
+    res.json({ ...montar(snapshot, est.min_posts_por_grupo), placar, configurado: true, faltando: [] });
   } catch (e) {
     const m = e.meta;
     if (m) return res.status(m.tipo === 'token' ? 401 : 502).json({ error: m.amigavel, code: 'META', meta: { code: m.code, tipo: m.tipo } });

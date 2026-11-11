@@ -135,7 +135,18 @@ const porId = new Map(MENTES.map((m) => [m.id, m]));
 
 function hash(s) { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; }
 // Rodízio estável pelo id do carrossel: ao longo dos dias, todas as duplas escrevem o mesmo número de vezes.
-function parPara(id) { return PARES[hash(id) % PARES.length].map((x) => porId.get(x)); }
+// Com placar real (peso por redator, backend/lib/placar.js): 80% das vezes a dupla sai pelo resultado medido dos dois, 20% por
+// igual entre todas (quem tem pouco dado continua escrevendo). O sorteio é estável pelo id do carrossel.
+function parPara(id, pesos = null) {
+  if (pesos && Object.keys(pesos).length >= 2) {
+    const media = Object.values(pesos).reduce((s, x) => s + x, 0) / Object.keys(pesos).length;
+    const w = PARES.map(([a, b]) => (pesos[a] ?? media) + (pesos[b] ?? media)); const soma = w.reduce((s, x) => s + x, 0);
+    const p = w.map((x) => 0.8 * (x / soma) + 0.2 / PARES.length);
+    const u = (hash(`${id}:par`) % 10000) / 10000; let acc = 0;
+    for (let i = 0; i < PARES.length; i++) { acc += p[i]; if (u < acc) return PARES[i].map((x) => porId.get(x)); }
+  }
+  return PARES[hash(id) % PARES.length].map((x) => porId.get(x));
+}
 
 // Bloco completo de uma mente para o prompt do roteiro.
 function paraRoteiro(m) {

@@ -34,7 +34,11 @@ async function vozDoPedro() {
   // Legendas reais dos posts que mais foram compartilhados (painel Resultados). Sem painel, segue sem exemplos.
   try {
     const cfg = await armazem().config.obter(conta());
-    const posts = (cfg.meu_instagram?.posts || []).filter((p) => !p.da_ferramenta && String(p.legenda || '').length > 80 && p.alcance);
+    // Exemplos de voz: os posts do Pedro e, da ferramenta, só os que foram MAIS enviados que a mediana dos posts dele
+    // (o que a ferramenta acertou volta para a escrita; o que errou não vira exemplo).
+    const corte = cfg.meu_placar?.seus?.envios_mil ?? null;
+    const posts = (cfg.meu_instagram?.posts || []).filter((p) => String(p.legenda || '').length > 80 && p.alcance
+      && (!p.da_ferramenta || (corte != null && p.maduro && ((p.compartilhamentos || 0) / p.alcance) * 1000 > corte)));
     return posts.map((p) => ({ p, envios: (p.compartilhamentos || 0) / p.alcance }))
       .sort((a, b) => b.envios - a.envios).slice(0, 5).map(({ p }) => String(p.legenda).replace(/\s+/g, ' ').slice(0, 420));
   } catch { return []; }
@@ -105,7 +109,8 @@ E.roteiro = async (c, ctx) => {
     const anterior = c.top.versoes[c.top.versoes.length - 1];
     const feedback = anterior && !anterior.checagem.ok ? anterior.checagem.problemas.slice(0, 8).join('\n') : '';
     // Cada versão é escrita com o método de um copywriter (dupla em rodízio pelo id do carrossel).
-    const mente = (ctx.deps.mentes || Mentes).parPara(c.id)[c.top.versoes.length];
+    if (c.top.pesos_redator === undefined) { try { c.top.pesos_redator = ctx.deps.placar !== undefined ? (ctx.deps.placar?.pesos?.redator || null) : ((await armazem().config.obter(conta())).meu_placar?.pesos?.redator || null); } catch { c.top.pesos_redator = null; } }
+    const mente = (ctx.deps.mentes || Mentes).parPara(c.id, c.top.pesos_redator)[c.top.versoes.length];
     const { dados } = await ctx.ia({ sistema: P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para }), usuario: opiniao(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
     const v = normalizarRoteiro(dados, c.top.formato);
     const estatico = c.top.formato === 'estatico';
@@ -302,7 +307,12 @@ E.painel = async (c, ctx) => {
   }
   c.top.painel = { ativo: true, ...r, capa_indices: ordem };
   if (r.melhor_capa > 0) c.top.escolha.capas = [ordem[r.melhor_capa], ...ordem.filter((_, i) => i !== r.melhor_capa)].slice(0, 2);
-  if (r.nota < cfg.minimo) {
+  // O painel só barra enquanto não houver prova de que erra: com 30+ posts medidos e nota que NÃO acompanha envios e salvos
+  // reais (placar), ele passa a só opinar (a nota fica registrada, a produção segue).
+  let soOpina = false;
+  try { const cal = ctx.deps.placar !== undefined ? ctx.deps.placar?.calibracao?.painel : (await armazem().config.obter(conta())).meu_placar?.calibracao?.painel; soOpina = !!cal && cal.n >= 30 && cal.acerta === false; } catch { /* sem placar: o painel continua valendo */ }
+  if (r.nota < cfg.minimo && soOpina) c.top.painel.so_opina = true;
+  if (r.nota < cfg.minimo && !soOpina) {
     const motivo = `O painel de audiência deu ${r.nota.toFixed(1)} (mínimo ${cfg.minimo}). ${r.objecoes.map((o) => `${o.quem}: "${o.texto}"`).join(' · ')}`.slice(0, 380);
     c.top.reprovacoes_painel = (c.top.reprovacoes_painel || 0) + 1;
     if (c.top.reprovacoes_painel > 1) throw Object.assign(erro(motivo, 'ABAIXO_DA_REGUA', 422), { terminal: true, fim: 'abaixo_da_regua' });
