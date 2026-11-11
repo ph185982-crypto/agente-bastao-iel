@@ -82,3 +82,20 @@ test('redatores: sem pesos a dupla sai no rodízio de sempre; com pesos a dupla 
   assert.ok(forte > fraca, `a dupla do redator forte escreve mais (${forte} × ${fraca})`);
   assert.strictEqual(conta.size, Mentes.PARES.length, 'todas as duplas continuam escrevendo (exploração)');
 });
+
+test('post antigo da ferramenta sem registro de publicação é reconhecido pela assinatura da legenda e sai da base do Pedro', async () => {
+  const MI = require('./meuInstagram');
+  assert.ok(MI.ASSINATURA_FERRAMENTA.test('Texto do post.\n\nFonte: Agência Brasil (informações segundo a reportagem).\n\nFoto: Fulano (CC BY 2.0)'));
+  assert.ok(!MI.ASSINATURA_FERRAMENTA.test('Hoje eu fui na fonte e vi a reportagem do jornal.'));
+  const grafo = async (metodo, caminho, q) => {
+    if (/\/media$/.test(caminho)) return { data: [
+      { id: '1', caption: 'Dólar sobe.\n\nFonte: InfoMoney (informações segundo a reportagem).', media_type: 'CAROUSEL_ALBUM', media_product_type: 'FEED', timestamp: '2026-11-01T12:00:00+0000' },
+      { id: '2', caption: 'Minha história com a maquininha.', media_type: 'CAROUSEL_ALBUM', media_product_type: 'FEED', timestamp: '2026-11-02T12:00:00+0000' }] };
+    if (/\/insights$/.test(caminho)) return { data: (q.metric || '').split(',').map((name) => ({ name, values: [{ value: 100 }] })) };
+    return { username: 'pedro_destrava', followers_count: 1, media_count: 2 };
+  };
+  const s = await MI.atualizar({ grafo, igId: 'ig', agora: Date.parse('2026-11-11T12:00:00Z') });
+  const por = Object.fromEntries(s.posts.map((p) => [p.id, p]));
+  assert.strictEqual(por['1'].da_ferramenta, true); assert.strictEqual(por['1'].reconhecido_pela_legenda, true); assert.strictEqual(por['1'].content_id, null);
+  assert.strictEqual(por['2'].da_ferramenta, false);
+});
