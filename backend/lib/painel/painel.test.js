@@ -90,13 +90,13 @@ function iaFalsa(painelNota) {
 const sharp = require('sharp');
 const deps = (ia) => ({ ...ia, lerFonte: async () => ({ tipo: 'artigo', url: 'https://exemplo.test/m', titulo: 'Índice de exemplo bate 82,9%', veiculo: 'Jornal Exemplo', publicada_em: '2026-10-27T12:00:00Z', texto: MATERIA, legivel: true }), fotoDe: async () => null, buscarFoto: async () => { throw new Error('sem'); } });
 
-async function comPainel(votosPorChamada) {
+async function comPainel(votosPorChamada, extraDeps = {}) {
   novo();
   await PN.montar({ ia: async () => ({ dados: { personas: [] } }), retrato: RETRATO });
   const doc = await PN.personasAtuais();
   const ia = iaFalsa((n) => ({ vozes: doc.personas.map((p) => ({ id: p.id, ...votosPorChamada(n, p) })) }));
   const c = await T.criar({ url: 'https://exemplo.test/m' });
-  const r = await T.executarTudo(c.id, { deps: deps(ia) });
+  const r = await T.executarTudo(c.id, { deps: { ...deps(ia), ...extraDeps } });
   return { r, ia, doc: (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id)).doc };
 }
 
@@ -108,8 +108,15 @@ test('pipeline: o painel escolhe a melhor capa e a nota fica no carrossel', asyn
   assert.strictEqual(M.versaoAtiva(doc).slides[0].texto, 'De 71,7% para 82,9%: e agora?', 'a capa B venceu no painel');
 });
 
-test('pipeline: nota baixa manda reescrever com as objeções; continuando baixa, descarta', async () => {
+test('pipeline: sem prova de que acerta, a nota baixa do painel NÃO barra; fica registrada e a produção segue', async () => {
   const { r, ia } = await comPainel(() => ({ capa: [1, 1, 1], interesse: 1, envio: 0, objecao: 'parece notícia de jornal' }));
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  assert.strictEqual(r.conteudo.top.painel.so_opina, true); assert.ok(r.conteudo.top.painel.nota < 4.5, 'a nota fica gravada para o placar');
+  assert.strictEqual(ia.chamadas.filter((c) => c.tipo === 'painel').length, 1, 'uma avaliação só, sem reescrita');
+});
+
+test('pipeline: quando o placar prova que a nota do painel acompanha o resultado real, ele volta a barrar (reescreve e, continuando baixa, descarta)', async () => {
+  const { r, ia } = await comPainel(() => ({ capa: [1, 1, 1], interesse: 1, envio: 0, objecao: 'parece notícia de jornal' }), { placar: { calibracao: { painel: { n: 14, acerta: true } } } });
   assert.strictEqual(r.conteudo.top.estado, 'abaixo_da_regua');
   assert.match(r.conteudo.top.motivo, /painel de audiência/);
   assert.strictEqual(ia.chamadas.filter((c) => c.tipo === 'painel').length, 2, 'avaliou, mandou reescrever e avaliou de novo');

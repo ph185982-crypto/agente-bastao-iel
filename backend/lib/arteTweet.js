@@ -1,28 +1,16 @@
-// Tema "tweet": o carrossel que mais engaja no nicho (referência: posts do @thiago.nigro com 150–380 mil curtidas).
-// Fundo branco, cabeçalho de rede social (avatar redondo do Pedro, nome e @), UMA frase por slide em Inter grande, foto
-// colorida de canto arredondado embaixo quando houver, seta "→" puxando o próximo slide. Parece conversa, não anúncio.
-// O último slide fecha com a posição do Pedro e a chamada para seguir. Nenhum selo de verificação: a conta não tem.
+// Tema "tweet": fundo branco, UMA frase por slide em Inter grande, foto colorida de canto arredondado embaixo quando
+// houver, seta "→" puxando o próximo slide. Parece conversa, não anúncio.
+// SÓ TEXTO E IMAGEM: a pedido do Pedro, os slides não levam mais avatar, nome, @ nem contador no topo; o espaço foi para o
+// texto e para a foto. O último slide fecha com a posição do Pedro e a chamada para mandar e seguir.
 require('../fontSetup');
 const sharp = require('sharp');
-const path = require('path');
 const A = require('./arte');
 const { ACCOUNT } = require('./account');
 
 const { W, H, esc, ARQ } = A;
 const MARGEM = 72; const LARG = W - 2 * MARGEM;
 const COR = { fundo: '#FFFFFF', texto: '#0F1419', mudo: '#536471', linha: '#E6E8EB', marca: '#2448FF' };
-const AVATAR = path.join(__dirname, '..', 'assets', 'pedro-perfil.png');
-const NOME = ACCOUNT.nome || 'Pedro Martins';
-const D_AVATAR = 108; const Y_TOPO = 84;
-
-let _avatar;
-async function avatar() {
-  if (_avatar) return _avatar;
-  const foto = await sharp(AVATAR).resize(D_AVATAR, D_AVATAR, { fit: 'cover' }).png().toBuffer();
-  const mascara = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${D_AVATAR}" height="${D_AVATAR}"><circle cx="${D_AVATAR / 2}" cy="${D_AVATAR / 2}" r="${D_AVATAR / 2}" fill="#fff"/></svg>`);
-  _avatar = await sharp(foto).composite([{ input: mascara, blend: 'dest-in' }]).png().toBuffer();
-  return _avatar;
-}
+const Y_TOPO = 96; // onde o texto começa (margem de cima)
 
 const cap = (k) => (k === 'iCorpo' ? 0.727 : k === 'iNegrito' ? 0.727 : 0.73);
 // Maior tamanho em que o texto cabe (altura medida pela altura visual das linhas).
@@ -39,12 +27,6 @@ function fit({ texto, k, larg, alt, max, min, ent = 1.18, papel }) {
 }
 const colocar = (b, { x, ytop, k, cor }) => A.textoSvg(b, { x, y: ytop - (0.92 - cap(k)) * b.tam, k, tema: { texto: cor, destaque: cor, colchete: 'none' } });
 
-function cabecalho() {
-  const xT = MARGEM + D_AVATAR + 24;
-  return `<text x="${xT}" y="${Y_TOPO + 44}" font-family="${ARQ.iNegrito.familia}" font-weight="700" font-size="36" fill="${COR.texto}">${esc(NOME)}</text>` +
-    `<text x="${xT}" y="${Y_TOPO + 88}" font-family="${ARQ.iCorpo.familia}" font-weight="400" font-size="30" fill="${COR.mudo}">${esc(ACCOUNT.handle)}</text>`;
-}
-
 // CAPA (1º slide): é o que para o dedo. Título GRANDE em negrito com a expressão-chave em marca-texto amarelo, e a foto ocupando toda a
 // parte de baixo, de ponta a ponta (sem faixa branca vazia), com a seta num círculo branco por cima da foto.
 // A IA às vezes marca o destaque com um asterisco só ("*Impõe*"): vira destaque de verdade, sem asterisco aparecendo.
@@ -52,10 +34,9 @@ const destaque = (t) => String(t || '').replace(/(?<!\*)\*(?![\s*])([^*\n]+?)(?<
 async function renderizarCapa(slide, ctx, imagem) {
   const { total = 1 } = ctx || {};
   const blocos = []; const elementos = ['tema_tweet', 'capa_tweet'];
-  const yTexto = Y_TOPO + D_AVATAR + 52;
-  let svg = `<rect width="${W}" height="${H}" fill="${COR.fundo}"/>` + cabecalho();
-  if (total > 1) svg += `<text x="${W - MARGEM}" y="${Y_TOPO + 44}" text-anchor="end" font-family="${ARQ.iCorpo.familia}" font-size="26" fill="${COR.mudo}">1/${total}</text>`;
-  const camadas = [{ input: await avatar(), left: MARGEM, top: Y_TOPO }];
+  const yTexto = Y_TOPO;
+  let svg = `<rect width="${W}" height="${H}" fill="${COR.fundo}"/>`;
+  const camadas = [];
   const texto = destaque(slide.texto).trim();
   let foto = null;
   if (imagem) { try { foto = { meta: await sharp(imagem).metadata() }; } catch { elementos.push('foto_invalida'); } }
@@ -95,7 +76,7 @@ async function renderizarCapa(slide, ctx, imagem) {
 }
 
 // ── Variante "ensaio": texto corrido em fundo escuro, sem foto ─────────────────────────────────────────────────────────
-// Mesmo cabeçalho do tweet (avatar, nome, @), Inter branca 54–64 px, 2–3 parágrafos por slide. O 1º slide abre com o 1º
+// Sem cabeçalho (só texto), Inter branca 54–64 px, 2–3 parágrafos por slide. O 1º slide abre com o 1º
 // parágrafo maior (slide.titulo); o último traz a frase de ouro em amarelo e o pedido de envio.
 const COR_E = { fundo: '#0B0B0C', texto: '#FFFFFF', mudo: '#A1A1AA', ouro: '#FDE047', linha: '#2A2B30' };
 const paragrafosDe = (txt) => String(txt || '').split(/\n{2,}|\n/).map((p) => p.trim()).filter(Boolean);
@@ -127,21 +108,14 @@ function colocarParagrafos(b, { x, ytop, cor, corDestaque }) {
   return out;
 }
 
-function cabecalhoEscuro() {
-  const xT = MARGEM + D_AVATAR + 24;
-  return `<text x="${xT}" y="${Y_TOPO + 44}" font-family="${ARQ.iNegrito.familia}" font-weight="700" font-size="36" fill="${COR_E.texto}">${esc(NOME)}</text>` +
-    `<text x="${xT}" y="${Y_TOPO + 88}" font-family="${ARQ.iCorpo.familia}" font-weight="400" font-size="30" fill="${COR_E.mudo}">${esc(ACCOUNT.handle)}</text>`;
-}
-
 async function renderizarEnsaio(slide, ctx) {
   const { indice = 1, total = 1 } = ctx || {};
   const capa = slide.funcao === 'capa' || (indice === 1 && total > 1 && slide.funcao !== 'encerramento');
   const ultimo = slide.funcao === 'encerramento' || (indice === total && total > 1);
   const blocos = []; const elementos = ['tema_tweet', 'ensaio', 'fundo_escuro', ...(capa ? ['capa_ensaio'] : []), ...(ultimo ? ['fechamento_ensaio'] : [])];
-  let svg = `<rect width="${W}" height="${H}" fill="${COR_E.fundo}"/>` + cabecalhoEscuro();
-  if (total > 1) svg += `<text x="${W - MARGEM}" y="${Y_TOPO + 44}" text-anchor="end" font-family="${ARQ.iCorpo.familia}" font-size="26" fill="${COR_E.mudo}">${indice}/${total}</text>`;
-  const camadas = [{ input: await avatar(), left: MARGEM, top: Y_TOPO }];
-  const yTexto = Y_TOPO + D_AVATAR + 72;
+  let svg = `<rect width="${W}" height="${H}" fill="${COR_E.fundo}"/>`;
+  const camadas = [];
+  const yTexto = Y_TOPO + 12;
   let y = yTexto;
   const paragrafos = paragrafosDe(destaque(slide.texto));
   // Fechamento: a chamada ocupa o rodapé; o texto fica acima dela. Demais: a seta fica no canto de baixo.
@@ -196,17 +170,16 @@ async function renderizar(slide, ctx, imagem) {
   if ((indice === 1 && total > 1 && slide.funcao !== 'encerramento') || (slide.funcao === 'capa' && indice === 1)) return renderizarCapa(slide, ctx, imagem);
   const ultimo = slide.funcao === 'encerramento' || indice === total;
   const blocos = []; const elementos = ['tema_tweet'];
-  const yTexto = Y_TOPO + D_AVATAR + 56;
+  const yTexto = Y_TOPO;
   const yFim = H - 150; // acima da seta/rodapé
-  let svg = `<rect width="${W}" height="${H}" fill="${COR.fundo}"/>` + cabecalho();
-  if (total > 1) svg += `<text x="${W - MARGEM}" y="${Y_TOPO + 44}" text-anchor="end" font-family="${ARQ.iCorpo.familia}" font-size="26" fill="${COR.mudo}">${indice}/${total}</text>`;
+  let svg = `<rect width="${W}" height="${H}" fill="${COR.fundo}"/>`;
 
-  const camadas = [{ input: await avatar(), left: MARGEM, top: Y_TOPO }];
+  const camadas = [];
   let temFoto = false; let foto = null;
   if (imagem && !ultimo) {
     try {
       const meta = await sharp(imagem).metadata();
-      const w = LARG; const h = Math.min(560, Math.round(w * 0.62));
+      const w = LARG; const h = Math.min(700, Math.round(w * 0.75)); // sem cabeçalho, a foto cresceu de 560 para 700 px
       const mascara = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="28" ry="28" fill="#fff"/></svg>`);
       const corpo = await sharp(imagem).rotate().resize(w, h, { fit: 'cover', position: 'attention' }).png().toBuffer();
       const input = await sharp(corpo).composite([{ input: mascara, blend: 'dest-in' }]).png().toBuffer();
@@ -219,9 +192,10 @@ async function renderizar(slide, ctx, imagem) {
   const altTexto = temFoto ? yFim - yTexto - foto.h - 40 : yFim - yTexto;
   const texto = destaque(slide.titulo && ultimo ? `**${slide.titulo}** ${slide.texto || ''}` : slide.texto || '').trim();
   const b = fit({ texto, k: 'iCorpo', larg: LARG, alt: altTexto, max: temFoto ? 60 : 76, min: 40, papel: 't_corpo' });
-  // Sem foto, o texto fica centralizado na área livre (em cima do rodapé); com foto, logo abaixo do cabeçalho, como num tweet.
+  // Sem foto, o texto fica centralizado na área livre (em cima do rodapé); com foto, no alto, com a foto logo abaixo.
   const altLivre = ultimo ? altTexto - 250 : altTexto; // no último, o espaço da chamada fica reservado embaixo
-  const ytop = temFoto ? yTexto : yTexto + Math.max(0, (altLivre - b.altura) / 2);
+  // Com foto, o conjunto texto + foto fica centralizado na altura livre (sem sobra vazia embaixo).
+  const ytop = temFoto ? yTexto + Math.max(0, (yFim - yTexto - (b.altura + 40 + foto.h)) / 2) : yTexto + Math.max(0, (altLivre - b.altura) / 2);
   svg += colocar(b, { x: MARGEM, ytop, k: 'iCorpo', cor: COR.texto });
   blocos.push({ nome: 'texto', ...A.resumo(b, altTexto) });
   let y = ytop + b.altura;
