@@ -307,10 +307,13 @@ E.painel = async (c, ctx) => {
   }
   c.top.painel = { ativo: true, ...r, capa_indices: ordem };
   if (r.melhor_capa > 0) c.top.escolha.capas = [ordem[r.melhor_capa], ...ordem.filter((_, i) => i !== r.melhor_capa)].slice(0, 2);
-  // O painel só barra enquanto não houver prova de que erra: com 30+ posts medidos e nota que NÃO acompanha envios e salvos
-  // reais (placar), ele passa a só opinar (a nota fica registrada, a produção segue).
-  let soOpina = false;
-  try { const cal = ctx.deps.placar !== undefined ? ctx.deps.placar?.calibracao?.painel : (await armazem().config.obter(conta())).meu_placar?.calibracao?.painel; soOpina = !!cal && cal.n >= 30 && cal.acerta === false; } catch { /* sem placar: o painel continua valendo */ }
+  // O painel NÃO barra por padrão: ele escolhe a melhor capa e a nota fica registrada para o placar medir se ela prevê
+  // alguma coisa. Motivo (produção, 11/11): barrou 5 de 5 carrosséis com nota 8,1 a 9,1 do júri, com objeções que não
+  // batiam com o texto ("fala de grandes corporações" num post sobre IPCA; "memes" onde não havia meme), depois de 12 a
+  // 14 chamadas de IA cada. Ele só volta a barrar quando o placar provar que a nota acompanha envios e salvos reais
+  // (10+ posts medidos e correlação positiva).
+  let soOpina = true;
+  try { const cal = ctx.deps.placar !== undefined ? ctx.deps.placar?.calibracao?.painel : (await armazem().config.obter(conta())).meu_placar?.calibracao?.painel; soOpina = !(cal && cal.acerta === true); } catch { /* sem placar: o painel só opina */ }
   if (r.nota < cfg.minimo && soOpina) c.top.painel.so_opina = true;
   if (r.nota < cfg.minimo && !soOpina) {
     const motivo = `O painel de audiência deu ${r.nota.toFixed(1)} (mínimo ${cfg.minimo}). ${r.objecoes.map((o) => `${o.quem}: "${o.texto}"`).join(' · ')}`.slice(0, 380);

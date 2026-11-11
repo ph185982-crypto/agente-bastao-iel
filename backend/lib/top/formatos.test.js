@@ -164,6 +164,18 @@ test('arte do ensaio: fundo escuro no canto, abertura em negrito maior, último 
   if (DUMP) { fs.mkdirSync(DUMP, { recursive: true }); fs.writeFileSync(`${DUMP}/arte-ensaio-s1.png`, r1.png); fs.writeFileSync(`${DUMP}/arte-ensaio-s3.png`, r3.png); fs.writeFileSync(`${DUMP}/arte-ensaio-s5.png`, r5.png); }
 });
 
+test('slides só com texto e imagem: sem avatar, sem nome e sem @ no topo em capa, miolo e ensaio', async () => {
+  // O topo esquerdo (onde ficavam o avatar redondo e o nome) é fundo liso em todos os layouts.
+  const liso = async (png, fundo) => { for (const [x, y] of [[90, 100], [126, 138], [220, 125], [300, 165]]) { const [r, g, b] = await pixel(png, x, y); assert.ok(Math.abs(r - fundo[0]) < 6 && Math.abs(g - fundo[1]) < 6 && Math.abs(b - fundo[2]) < 6, `pixel ${x},${y} = ${[r, g, b]}`); } };
+  // textos curtos e centralizados, para o topo ficar livre de letra
+  const miolo = await AT.renderizar({ funcao: 'explicacao', layout: 'tweet', tema_visual: 'tweet', texto: 'Uma frase só.' }, { indice: 2, total: 5 }, null);
+  await liso(miolo.png, [255, 255, 255]);
+  const ensaio = await AT.renderizar({ funcao: 'explicacao', layout: 'ensaio', tema_visual: 'ensaio', texto: 'Um parágrafo curto.' }, { indice: 3, total: 5 }, null);
+  await liso(ensaio.png, [11, 11, 12]);
+  const fecho = await AT.renderizar({ funcao: 'encerramento', layout: 'tweet', tema_visual: 'tweet', titulo: 'Fim.', texto: 'Curto.', cta: 'Manda pra seu sócio.', cta_apoio: 'Segue o @pedro_destrava.' }, { indice: 5, total: 5 }, null);
+  await liso(fecho.png, [255, 255, 255]);
+});
+
 test('arte do post único: capa com headline e foto mesmo com 1 slide só, sem seta; texto que não cabe no ensaio é marcado', async () => {
   const foto = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#a77' } }).jpeg().toBuffer();
   const r = await AT.renderizar({ funcao: 'capa', layout: 'tweet', tema_visual: 'tweet', texto: 'Prometeram meta. Entregaram o **maior patamar** em cinco anos.' }, { indice: 1, total: 1 }, foto);
@@ -171,7 +183,7 @@ test('arte do post único: capa com headline e foto mesmo com 1 slide só, sem s
   // sem seta: o canto inferior direito é foto, não o círculo branco
   const [pr, pg, pb] = await pixel(r.png, 1080 - 72 - 45, 1350 - 93); assert.ok(pr < 240 || pg < 240 || pb < 240, `canto ${[pr, pg, pb]}`);
   if (DUMP) fs.writeFileSync(`${DUMP}/arte-estatico-s1.png`, r.png);
-  const longo = await AT.renderizar({ funcao: 'prova', layout: 'ensaio', tema_visual: 'ensaio', texto: Array.from({ length: 3 }, () => 'Uma frase comprida que se repete para encher o slide além do que o tamanho mínimo legível de cinquenta e quatro pixels permite caber na tela.').join('\n\n') }, { indice: 2, total: 5 }, null);
+  const longo = await AT.renderizar({ funcao: 'prova', layout: 'ensaio', tema_visual: 'ensaio', texto: Array.from({ length: 5 }, () => 'Uma frase comprida que se repete para encher o slide além do que o tamanho mínimo legível de cinquenta e quatro pixels permite caber na tela.').join('\n\n') }, { indice: 2, total: 5 }, null);
   assert.strictEqual(longo.metrics.cabe, false);
 });
 
