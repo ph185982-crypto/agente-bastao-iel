@@ -23,6 +23,7 @@ const JANELA_MADURA_H = 72;
 const MIN_POR_GRUPO = 5;
 const ROTULO_TIPO = { carrossel: 'Carrossel', imagem: 'Imagem', reel: 'Reel', video: 'Vídeo' };
 
+const ASSINATURA_FERRAMENTA = /Fonte: [^\n]{2,80}\(informações segundo a reportagem\)/i;
 const mediana = (arr) => {
   const v = arr.filter((x) => x != null && Number.isFinite(x)).sort((a, b) => a - b);
   if (!v.length) return null;
@@ -115,7 +116,11 @@ async function atualizar({ grafo = meta.graph, igId = meta.config().igId, agora 
       alcance: v.reach ?? null, visualizacoes: v.views ?? null, salvamentos: v.saved ?? null, compartilhamentos: v.shares ?? null,
       interacoes: v.total_interactions ?? null, seguidores_ganhos: v.follows ?? null, visitas_ao_perfil: v.profile_visits ?? null,
       sem_dados: ins ? ins.indisponiveis : ['todas'], erro_meta: ins?.erro ? (ins.erro.amigavel || null) : null,
-      da_ferramenta: daFerramenta.has(m.id), content_id: daFerramenta.get(m.id) || null,
+      // Post da ferramenta: o registro de publicação diz; sem registro (banco trocado), a legenda denuncia: todo carrossel
+      // de notícia da ferramenta termina com "Fonte: X (informações segundo a reportagem)". Sem isso, posts antigos da
+      // ferramenta entravam na conta dos posts do Pedro e estragavam a base de comparação.
+      da_ferramenta: daFerramenta.has(m.id) || ASSINATURA_FERRAMENTA.test(String(m.caption || '')), content_id: daFerramenta.get(m.id) || null,
+      ...(!daFerramenta.has(m.id) && ASSINATURA_FERRAMENTA.test(String(m.caption || '')) ? { reconhecido_pela_legenda: true } : {}),
     };
   }));
   if (parcial) avisos.push('A leitura foi interrompida por tempo. Atualize de novo para completar.');
@@ -231,4 +236,4 @@ function analisar(posts, { minPorGrupo = MIN_POR_GRUPO, seguidoresDaConta = null
   };
 }
 
-module.exports = { atualizar, analisar, medidas, tipoDe, lerValores, insightsDe, mediana, MIN_POR_GRUPO, JANELA_MADURA_H, FEED, REEL };
+module.exports = { ASSINATURA_FERRAMENTA, atualizar, analisar, medidas, tipoDe, lerValores, insightsDe, mediana, MIN_POR_GRUPO, JANELA_MADURA_H, FEED, REEL };
