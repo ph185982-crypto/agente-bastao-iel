@@ -4,7 +4,8 @@
 (function () {
   'use strict';
   const ST = { carregando: false, carregou: false, erro: null, itens: [], tipos: { historia: 'História minha', caso: 'Caso de cliente', como_fazer: 'Como fazer' }, min: 200, max: 6000,
-    form: { tipo: 'historia', titulo: '', texto: '' }, editando: null, salvando: false, ocupado: {} };
+    form: { tipo: 'historia', titulo: '', texto: '' }, editando: null, salvando: false, ocupado: {},
+    fotos: [], maxFotos: 20, enviando: null };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const dia = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }); };
   const AJUDA = {
@@ -18,6 +19,8 @@
     ST.carregando = true; ctx.render();
     try { const r = await ctx.api('/api/historias'); ST.itens = r.itens || []; ST.tipos = r.tipos || ST.tipos; ST.min = r.min || ST.min; ST.max = r.max || ST.max; ST.erro = null; }
     catch (e) { ST.erro = e.message || 'Não consegui abrir suas histórias.'; }
+    try { const f = await ctx.api('/api/historias/fotos'); ST.fotos = f.fotos || []; ST.maxFotos = f.max || 20; }
+    catch (e) { /* fotos indisponíveis: a tela das histórias abre mesmo assim */ }
     ST.carregando = false; ST.carregou = true; ctx.render();
   }
 
@@ -47,6 +50,44 @@
         <button class="es-btn ghost sm" data-action="hs-apagar" data-id="${esc(h.id)}" ${oc ? 'disabled' : ''}>Apagar</button></div></article>`;
   }
 
+  // Fotos do Pedro para as capas: as linhas história, como fazer, caso e opinião usam uma delas, em rodízio.
+  function secaoFotos() {
+    const cheio = ST.fotos.length >= ST.maxFotos; const env = ST.enviando;
+    const grade = ST.fotos.map((f) => `<figure class="hs-foto">${f.mini ? `<img src="${esc(f.mini)}" alt="Foto sua para capa" loading="lazy">` : '<div class="hs-foto-vazia"></div>'}
+      <figcaption>${f.usos ? `usada ${f.usos}×` : 'ainda não usada'}</figcaption>
+      <button class="hs-foto-apagar" data-action="hs-foto-apagar" data-id="${esc(f.id)}" aria-label="Apagar esta foto" ${ST.ocupado[`f:${f.id}`] ? 'disabled' : ''}>Apagar</button></figure>`).join('');
+    return `<div class="es-card hs-fotos"><div class="es-label">Suas fotos para as capas (${ST.fotos.length} de ${ST.maxFotos})</div>
+      <p class="es-text hs-ajuda">Capas de história, como fazer, caso e opinião passam a usar o seu rosto no lugar de foto de banco de imagens. Mande fotos com expressões variadas (sério, sorrindo, apontando, pensando), de preferência na vertical e com espaço em volta do rosto.</p>
+      ${ST.fotos.length ? `<div class="hs-grade">${grade}</div>` : '<p class="es-text hs-nota">Nenhuma foto enviada ainda. Sem fotos suas, as capas continuam com banco de imagens.</p>'}
+      <label class="es-btn sm hs-enviar ${cheio || env ? 'desligado' : ''}">${env ? `Enviando ${env.feitas + 1} de ${env.total}…` : cheio ? 'Limite de fotos atingido' : 'Enviar fotos'}
+        <input type="file" id="hs-foto-input" accept="image/*" multiple ${cheio || env ? 'disabled' : ''}></label></div>`;
+  }
+
+  // Reduz a foto no próprio celular (até 1600 px, JPEG) antes de enviar: foto de câmera tem vários MB e o servidor aceita pouco por pedido.
+  async function reduzir(arquivo) {
+    const url = URL.createObjectURL(arquivo);
+    try {
+      const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('formato não suportado')); i.src = url; });
+      const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement('canvas'); cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      return cv.toDataURL('image/jpeg', 0.86);
+    } finally { URL.revokeObjectURL(url); }
+  }
+  async function enviarFotos(arquivos, ctx) {
+    const lista = [...arquivos].filter((a) => /^image\//.test(a.type || '') || /\.(jpe?g|png|webp|heic|heif)$/i.test(a.name || '')).slice(0, Math.max(0, ST.maxFotos - ST.fotos.length));
+    if (!lista.length) { ctx.toast(ST.fotos.length >= ST.maxFotos ? 'Limite de fotos atingido.' : 'Escolha arquivos de imagem.'); return; }
+    ST.enviando = { feitas: 0, total: lista.length }; ctx.render(); let falhas = 0;
+    for (const arq of lista) {
+      try { const nova = await ctx.api('/api/historias/fotos', { method: 'POST', body: { imagem: await reduzir(arq) } }); ST.fotos = [nova, ...ST.fotos]; }
+      catch (e) { falhas++; ST.ultimaFalhaFoto = e.message || 'não consegui ler a imagem'; }
+      ST.enviando.feitas++; ctx.render();
+    }
+    ST.enviando = null; ctx.render();
+    ctx.toast(falhas ? `${lista.length - falhas} foto(s) enviada(s); ${falhas} não entrou: ${ST.ultimaFalhaFoto}` : `${lista.length} foto(s) enviada(s).`);
+  }
+  document.addEventListener('change', (e) => { if (e.target?.id !== 'hs-foto-input' || !e.target.files?.length) return; const ctx = window.Mesa?.ctx ? window.Mesa.ctx() : null; if (ctx) enviarFotos(e.target.files, ctx); });
+
   function render() {
     let corpo = `<button class="hs-voltar" data-action="tab" data-tab="ajustes">← Perfil</button>
       <span class="st-eyebrow">SEU MATERIAL</span><h1 class="es-h1">Minhas histórias e casos</h1>
@@ -56,6 +97,7 @@
     if (ST.carregando && !ST.carregou) corpo += '<div class="es-empty-day">Abrindo suas histórias…</div>';
     else if (!ST.itens.length && !ST.erro) corpo += '<div class="es-empty-day">Você ainda não cadastrou nada. Comece por uma história curta: um aperto que você passou e o que aprendeu.</div>';
     else if (ST.itens.length) corpo += `<div class="es-label hs-lista-titulo">Cadastradas (${ST.itens.length})</div>${ST.itens.map(cartao).join('')}`;
+    corpo += secaoFotos();
     return `<div class="hs-tela">${corpo}</div>`;
   }
 
@@ -82,6 +124,12 @@
         ST.editando = null; ST.form = { tipo: salvo.tipo, titulo: '', texto: '' }; ctx.toast('Salvo.');
       } catch (e) { ctx.toast(e.message || 'Não consegui salvar.'); }
       ST.salvando = false; ctx.render(); return true;
+    }
+    if (a === 'hs-foto-apagar') {
+      const fid = el.dataset.id; if (!fid || !window.confirm('Apagar esta foto? As capas já geradas com ela não mudam.')) return true;
+      ST.ocupado[`f:${fid}`] = true; ctx.render();
+      try { await ctx.api(`/api/historias/fotos/${encodeURIComponent(fid)}`, { method: 'DELETE' }); ST.fotos = ST.fotos.filter((x) => x.id !== fid); } catch (e) { ctx.toast(e.message || 'Não consegui apagar a foto.'); }
+      delete ST.ocupado[`f:${fid}`]; ctx.render(); return true;
     }
     const id = el.dataset.id; if (!id) return true;
     if (a === 'hs-apagar') {

@@ -9,6 +9,12 @@ const erro = (res, e0) => { const e = traduzir(e0); if (!e.status && !e.code) co
 const ID = /^hs_[a-f0-9]{16}$/;
 const idDe = (req) => { if (!ID.test(String(req.params.id))) throw Object.assign(new Error('Identificador inválido.'), { status: 400 }); return req.params.id; };
 
+// Fotos do Pedro para as capas (declaradas antes de '/:id').
+const F = require('../lib/fotosPedro');
+router.get('/fotos', async (req, res) => { try { res.json(await F.listar()); } catch (e) { erro(res, e); } });
+router.post('/fotos', limita({ max: 30, janelaMs: 60000, nome: 'fotos-enviar' }), async (req, res) => { try { res.status(201).json(await F.enviar(String(req.body?.imagem || ''))); } catch (e) { erro(res, e); } });
+router.delete('/fotos/:id', async (req, res) => { try { res.json(await F.apagar(String(req.params.id))); } catch (e) { erro(res, e); } });
+
 router.get('/', async (req, res) => { try { res.json({ itens: await H.listar(), tipos: H.TIPOS, min: H.MIN_TEXTO, max: H.MAX_TEXTO }); } catch (e) { erro(res, e); } });
 router.post('/', limita({ max: 20, janelaMs: 60000, nome: 'historias-criar' }), async (req, res) => { try { res.status(201).json(await H.criar(req.body || {})); } catch (e) { erro(res, e); } });
 router.put('/:id', limita({ max: 30, janelaMs: 60000, nome: 'historias-editar' }), async (req, res) => { try { res.json(await H.editar(idDe(req), req.body || {})); } catch (e) { erro(res, e); } });

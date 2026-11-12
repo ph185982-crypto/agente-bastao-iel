@@ -125,3 +125,53 @@ test('piloto: com história não usada, 1 de cada 3 peças do dia sai dela; sem 
   const est = (await a.config.obter(ACCOUNT.ig_id)).piloto_estado;
   assert.deepStrictEqual(est.criados.map((x) => x.linha), ['historia', 'noticia', 'noticia', 'caso', 'noticia', 'noticia']);
 });
+
+// ── Fotos do Pedro ────────────────────────────────────────────────────────────────────────────────────────────────────
+const F = require('./fotosPedro');
+const jpeg = (cor, w = 1200, h = 1500) => sharp({ create: { width: w, height: h, channels: 3, background: cor } }).jpeg().toBuffer();
+
+test('fotos do Pedro: envia (corrige e reduz), lista com miniatura, recusa imagem pequena ou inválida, limita a 20 e apaga', async () => {
+  novo();
+  const a = await F.enviar(await jpeg('#a55', 3000, 4000));
+  assert.match(a.id, /^[a-f0-9]{12}$/); assert.match(a.mini, /^data:image\/jpeg;base64,/);
+  const guardada = await arm.armazem().arquivos.obter(ACCOUNT.ig_id, `foto_pedro:${a.id}`);
+  const meta = await sharp(Buffer.from(guardada.dados)).metadata(); assert.ok(Math.max(meta.width, meta.height) <= 1600, 'reduzida para caber no banco');
+  const b = await F.enviar(`data:image/jpeg;base64,${(await jpeg('#5a5')).toString('base64')}`);
+  const l = await F.listar(); assert.strictEqual(l.fotos.length, 2); assert.ok(l.fotos.every((f) => f.mini && f.usos === 0)); assert.strictEqual(l.max, 20);
+  await assert.rejects(F.enviar(await jpeg('#000', 300, 300)), /pequena demais para a capa/);
+  await assert.rejects(F.enviar('data:text/html;base64,PGgxPg=='), /Envie uma imagem/);
+  await assert.rejects(F.enviar(Buffer.alloc(5000, 7)), /Não consegui ler/);
+  assert.deepStrictEqual(await F.apagar(b.id), { id: b.id, apagada: true });
+  await assert.rejects(F.apagar(b.id), (e) => e.status === 404);
+  for (let i = 0; i < 19; i++) await F.enviar(await jpeg('#777', 700, 700));
+  await assert.rejects(F.enviar(await jpeg('#777', 700, 700)), (e) => e.code === 'LIMITE');
+});
+
+test('rodízio: a capa usa a foto menos usada; a limpeza diária não apaga as fotos do Pedro', async () => {
+  novo();
+  const a = await F.enviar(await jpeg('#a55')); const b = await F.enviar(await jpeg('#5a5'));
+  const usadas = []; for (let i = 0; i < 4; i++) usadas.push((await F.proxima()).meta.id);
+  assert.strictEqual(usadas.filter((x) => x === `fp_${a.id}`).length, 2); assert.strictEqual(usadas.filter((x) => x === `fp_${b.id}`).length, 2);
+  await require('./manutencao').limpar({ agora: Date.now() + 60 * 86400000 });
+  assert.strictEqual((await F.listar()).fotos.length, 2, 'fotos do Pedro ficam mesmo depois de 60 dias');
+  assert.strictEqual((await F.listar()).fotos.find((f) => f.id === a.id).usos, 2);
+});
+
+test('capa com o rosto do Pedro: história usa a foto dele (sem buscar banco de imagens); notícia não usa', async () => {
+  novo(); const foto = await F.enviar(await jpeg('#a55'));
+  const ia = iaFalsa(); let buscas = 0;
+  const h = await H.criar({ tipo: 'historia', texto: HISTORIA }); const g = await H.gerar(h.id);
+  const r = await T.executarTudo(g.id, { deps: { ...deps(ia), buscarFoto: async () => { buscas++; throw new Error('não deveria buscar a capa'); } } });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  const doc = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, g.id)).doc;
+  assert.strictEqual(doc.top.foto_do_pedro, true); assert.strictEqual(doc.top.foto_cena_id, `fp_${foto.id}`);
+  assert.strictEqual(M.versaoAtiva(doc).slides[0].imagem_id, `fp_${foto.id}`, 'a capa aponta para a foto dele');
+  assert.doesNotMatch(M.versaoAtiva(doc).legenda, /Foto:/, 'foto própria não leva crédito');
+  assert.strictEqual((await F.listar()).fotos[0].usos, 1);
+  // notícia (matéria com link) não usa a foto dele
+  const ia2 = iaFalsa();
+  const MATERIA = 'O índice de exemplo do Órgão Fictício chegou a 82,9% em agosto de 2026, segundo o relatório divulgado nesta segunda-feira. Em dezembro de 2022, o mesmo índice era de 71,7%. O ministro Fulano de Tal afirmou que a alta é temporária e que o governo vai cumprir a meta.';
+  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  await T.passo(c.id, { deps: { ...deps(ia2), lerFonte: async () => ({ tipo: 'artigo', url: 'https://exemplo.test/materia', titulo: 'Índice bate 82,9%', veiculo: 'Jornal Exemplo', publicada_em: '2026-10-27T12:00:00Z', texto: MATERIA, legivel: true }) }, orcamentoMs: 2000 }).catch(() => {});
+  assert.strictEqual((await F.listar()).fotos[0].usos, 1, 'a notícia não consumiu a foto dele');
+});

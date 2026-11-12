@@ -384,6 +384,17 @@ E.foto = async (c, ctx) => {
       if (f) { await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg'); c.imagens = [...(c.imagens || []).filter((i) => i.id !== f.meta.id), f.meta]; c.top.foto_lugar_id = f.meta.id; }
     } catch { /* segue para a cena */ }
   }
+  // Linhas próprias e opinião: a capa leva uma foto do PEDRO (enviada por ele em Perfil), em rodízio. Sem foto enviada, segue a busca.
+  if (semMateria(c) && !c.top.foto_lugar_id && !c.top.fotos_cena) {
+    try {
+      const f = await (ctx.deps.fotoPedro || (() => require('../fotosPedro').proxima()))();
+      if (f) {
+        await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg');
+        c.imagens = [...(c.imagens || []).filter((i) => i.id !== f.meta.id), f.meta];
+        c.top.fotos_cena = [f.meta.id]; c.top.foto_cena_id = f.meta.id; c.top.foto_do_pedro = true;
+      }
+    } catch { /* sem foto dele: segue para a busca */ }
+  }
   // Instituição brasileira sem foto real disponível: capa tipográfica. Banco de imagens traria um parlamento estrangeiro.
   if (!lugar && !c.top.foto_lugar_id && !c.top.fotos_cena && (ctx.deps.buscarFoto || process.env.PEXELS_API_KEY)) {
     c.top.fotos_cena = [];
