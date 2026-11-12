@@ -23,3 +23,15 @@
 .hs-trecho { margin: 0; overflow-wrap: anywhere; }
 .hs-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .hs-acoes .es-btn:first-child { grid-column: 1 / -1; }
+/* Fotos do Pedro para as capas */
+.hs-fotos { display: grid; gap: 12px; }
+.hs-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.hs-foto { margin: 0; display: grid; gap: 4px; }
+.hs-foto img, .hs-foto-vazia { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 10px; background: var(--pd-papel-2); display: block; }
+.hs-foto figcaption { font: 500 12px var(--pd-texto); color: var(--pd-cinza); }
+.hs-foto-apagar { min-height: 44px; border-radius: 10px; border: 1.5px solid var(--pd-linha); background: var(--pd-cartao); font: 600 13px var(--pd-texto); color: var(--pd-tinta); cursor: pointer; }
+.hs-foto-apagar:focus-visible, .hs-enviar:focus-within { outline: 3px solid var(--pd-azul); outline-offset: 2px; }
+.hs-enviar { position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer; width: 100%; max-width: 100%; box-sizing: border-box; }
+.hs-enviar.desligado { opacity: .55; cursor: default; }
+.hs-enviar input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.hs-enviar.desligado input { cursor: default; }
