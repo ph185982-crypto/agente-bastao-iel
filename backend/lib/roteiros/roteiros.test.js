@@ -159,3 +159,9 @@ test('piloto: rodada chama a fábrica de roteiros e o resumo do dia mostra a met
   assert.throws(() => Pi.validar({ roteiros_dia: 40 }));
   void ACCOUNT;
 });
+
+test('pausa: limite por minuto volta em 4 min; cota do dia em 45', () => {
+  assert.strictEqual(R.pausaMin(new Error('429 Rate limit reached on tokens per minute (TPM): Limit 8000')), 4);
+  assert.strictEqual(R.pausaMin(new Error('429 Rate limit reached on tokens per day (TPD)')), 45);
+  assert.strictEqual(R.pausaMin(new Error('429 rate limit')), 45);
+});
