@@ -78,6 +78,8 @@ function faixaSemTexto(linhas, altura) {
   return melhor.h >= altura * FAIXA_MIN ? melhor : null;
 }
 
+const TT = require('./trocaTexto');
+
 async function lerSlide(buf, { ocr, sharp = require('sharp') } = {}) {
   const meta = await sharp(buf).metadata();
   const r = await (ocr || require('../lerPrint').lerLinhas)(buf);
@@ -85,7 +87,9 @@ async function lerSlide(buf, { ocr, sharp = require('sharp') } = {}) {
   const sep = require('../lerCarrossel').separarTelaDeCarrossel({ linhas, text: r.text });
   const faixa = faixaSemTexto(linhas, meta.height || 1350);
   const foto = faixa ? await sharp(buf).extract({ left: 0, top: Math.round(faixa.y), width: meta.width, height: Math.round(faixa.h) }).jpeg({ quality: 88 }).toBuffer() : null;
-  return { titulo: String(sep.title || '').trim(), corpo: String(sep.body || '').trim(), texto_ocr: String(r.text || '').trim().slice(0, 1500), foto };
+  // Parágrafos com caixa: a cópia fiel troca cada um no lugar, em cima da imagem original.
+  const paragrafos = (r.trechos || r.paragrafos || []).filter(TT.ehTexto).slice(0, 30).map((p) => ({ texto: p.texto.slice(0, 600), x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, altura_linha: p.altura_linha, confianca: p.confianca }));
+  return { titulo: String(sep.title || '').trim(), corpo: String(sep.body || '').trim(), texto_ocr: String(r.text || '').trim().slice(0, 1500), foto, paragrafos };
 }
 
 // ── Traduzir (uma chamada, só IA gratuita) ──────────────────────────────────
@@ -93,8 +97,29 @@ const SISTEMA_TRADUCAO = `Você traduz um carrossel de Instagram para o portugu�
 Tire do texto: @ e nome do autor, marca d'água, contador de slides ("3/8"), "arraste/swipe", e pedidos para seguir, comentar ou salvar o PERFIL DO AUTOR (o crédito ao autor vai na legenda, pelo sistema).
 Responda APENAS JSON: {"slides":[{"i":0,"titulo":"","texto":""}],"legenda":""}`;
 
+// Cópia fiel: traduz parágrafo por parágrafo (cada um volta para o mesmo lugar da imagem original).
+const SISTEMA_TRADUCAO_FIEL = `Você traduz para o português do Brasil o texto que aparece nas imagens de um post de Instagram, parágrafo por parágrafo. Cada parágrafo vai ser escrito NO MESMO LUGAR da imagem original, então: tradução fiel, natural e do MESMO TAMANHO ou mais curta (é texto de imagem: prefira a forma curta). Números, valores e nomes ficam iguais. Corrija só erros evidentes de leitura (OCR).
+Devolva "texto" igual ao original (sem traduzir) quando o parágrafo for: @ ou nome de perfil, marca d'água, assinatura, nome próprio, onomatopeia, ou lixo de leitura sem sentido.
+Responda APENAS JSON: {"blocos":[{"id":"0.0","texto":""}],"legenda":""}`;
+
+async function traduzirFiel(slides, legenda, pedir) {
+  const usuario = `PARÁGRAFOS LIDOS DAS IMAGENS (id = slide.parágrafo):\n${slides.flatMap((s, i) => (s.paragrafos || []).map((p, j) => `[${i}.${j}] ${p.texto}`)).join('\n')}\n\nLEGENDA ORIGINAL:\n${legenda || '(sem legenda)'}`;
+  const { dados } = await pedir({ sistema: SISTEMA_TRADUCAO_FIEL, usuario, maxTokens: 3000, temperatura: 0.2, pago: 'nunca', etapa: 'clone_traducao' });
+  const por = new Map((Array.isArray(dados?.blocos) ? dados.blocos : []).map((x) => [String(x.id), String(x.texto ?? '').replace(/\s+/g, ' ').trim().slice(0, 600)]));
+  return {
+    fiel: true,
+    slides: slides.map((s, i) => {
+      const blocos = (s.paragrafos || []).map((p, j) => { const t = por.get(`${i}.${j}`); return { ...p, novo: t && t.toLowerCase() !== p.texto.toLowerCase() ? t : null }; });
+      const textos = blocos.map((b) => b.novo || b.texto);
+      return { titulo: (textos[0] || '').slice(0, 160), texto: textos.slice(1).join(' ').slice(0, 700), blocos };
+    }),
+    legenda: (String(dados?.legenda || '').trim() || String(legenda || '').trim()).slice(0, 1900),
+  };
+}
+
 async function traduzir(slides, legenda, { pedirJson } = {}) {
   const pedir = pedirJson || require('../llmJson').pedirJson;
+  if (slides.some((s) => (s.paragrafos || []).length)) return traduzirFiel(slides, legenda, pedir);
   const usuario = `SLIDES (texto lido da imagem):\n${slides.map((s, i) => `[${i}] TÍTULO: ${s.titulo || '(vazio)'}\nCORPO: ${s.corpo || '(vazio)'}`).join('\n\n')}\n\nLEGENDA ORIGINAL:\n${legenda || '(sem legenda)'}`;
   const { dados } = await pedir({ sistema: SISTEMA_TRADUCAO, usuario, maxTokens: 3000, temperatura: 0.2, pago: 'nunca', etapa: 'clone_traducao' });
   const por = new Map((Array.isArray(dados?.slides) ? dados.slides : []).map((x) => [Number(x.i), x]));
@@ -111,11 +136,13 @@ function montar(c, item) {
   const slides = cl.traducao.slides.map((t, i) => {
     const txt = i === 0 ? [t.titulo, t.texto].filter(Boolean).join(' ') : (t.titulo ? `**${t.titulo}** ${t.texto}`.trim() : t.texto);
     let claim_ids = [];
-    if (M.extrairNumeros(txt).length) { // número traduzido: ligado ao texto lido do post original (a fonte autorizada)
+    if (M.extrairNumeros(txt).length && !cl.traducao.fiel) { // número traduzido: ligado ao texto lido do post original (a fonte autorizada)
       const id = `k${i + 1}`; claim_ids = [id];
       claims.push({ id, texto: txt.replace(/\*/g, '').slice(0, 400), tipo: 'fato', natureza: 'fato', central: true, estado: 'sustentada', evidencias: [`e_${id}`], valores: M.extrairNumeros(txt).map((n) => ({ valor: n.valor })), risco: 'baixo', revisao: {}, origem: 'clone' });
       evidencias.push({ id: `e_${id}`, tipo: 'secundaria', autoridade: 'autor_original', correspondencia: 'integral', relacao: 'sustenta', trecho: cl.slides[i].texto_ocr.slice(0, 600), origem: aut.autor, titulo: `Post original de ${aut.autor}`, url: item.permalink, consultada_em: cl.lido_em, fonte_principal: true });
     }
+    // Cópia fiel: a imagem original com o texto trocado no lugar (desenho, cores e layout iguais ao original).
+    if (cl.traducao.fiel) return { id: `s${i + 1}`, funcao: i === 0 ? 'capa' : 'explicacao', layout: 'foto_inteira', tema_visual: 'foto', titulo: null, texto: '', imagem_id: cl.slides[i].pt_id || cl.slides[i].inteira_id, claim_ids: [] };
     // Sem texto traduzido (post de foto, ou a leitura só achou ruído): o slide é a imagem original inteira.
     if (!txt.replace(/\*/g, '').trim()) return { id: `s${i + 1}`, funcao: i === 0 ? 'capa' : 'explicacao', layout: 'foto_inteira', tema_visual: 'foto', titulo: null, texto: '', imagem_id: cl.slides[i].inteira_id || cl.slides[i].foto_id || null, claim_ids: [] };
     return { id: `s${i + 1}`, funcao: i === 0 ? 'capa' : 'explicacao', layout: 'tweet', tema_visual: 'tweet', titulo: null, texto: txt || ' ', imagem_id: cl.slides[i].foto_id || null, claim_ids };
@@ -127,7 +154,7 @@ function montar(c, item) {
     evidencias.push({ id: 'e_kL', tipo: 'secundaria', autoridade: 'autor_original', correspondencia: 'integral', relacao: 'sustenta', trecho: String(cl.legenda_original || '').slice(0, 600), origem: aut.autor, titulo: `Legenda original de ${aut.autor}`, url: item.permalink, consultada_em: cl.lido_em, fonte_principal: true });
   }
   c.claims = claims; c.evidencias = evidencias;
-  c.imagens = cl.slides.flatMap((s) => [s.foto_id, s.inteira_id]).filter(Boolean).map((fid) => ({ id: fid })).map((s) => ({ id: s.id, tipo: 'foto_autorizada', autor: aut.autor, licenca: `Uso autorizado por ${aut.autor} (${aut.canal}, ${aut.data})`, exige_credito: false, origem: item.permalink }));
+  c.imagens = cl.slides.flatMap((s) => [s.foto_id, s.inteira_id, s.pt_id]).filter(Boolean).map((fid) => ({ id: fid })).map((s) => ({ id: s.id, tipo: 'foto_autorizada', autor: aut.autor, licenca: `Uso autorizado por ${aut.autor} (${aut.canal}, ${aut.data})`, exige_credito: false, origem: item.permalink }));
   const legenda = [cl.traducao.legenda, aut.credito].filter(Boolean).join('\n\n').slice(0, 2200);
   M.criarVersao(c, { slides, legenda, legenda_claim_ids: claims.map((k) => k.id), cta: '', hashtags: [] }, { quem: 'sistema', rotulo: `clone autorizado de ${aut.autor}` });
 }
@@ -168,14 +195,25 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
           const s = await lerSlide(Buffer.from(arq.dados), { ocr: deps.ocr });
           let foto_id = null; if (s.foto) { foto_id = `clone_${c.id}_${i}`; await a.arquivos.salvar(conta(), `img:${foto_id}`, s.foto, 'image/jpeg'); }
           // A imagem inteira também fica: slide sem texto de verdade (só foto) sai igual ao original.
-          const inteira_id = `clone_${c.id}_${i}_inteira`; await a.arquivos.salvar(conta(), `img:${inteira_id}`, await require('sharp')(Buffer.from(arq.dados)).rotate().resize({ width: 1080, height: 1350, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer(), 'image/jpeg');
-          cl.slides.push({ titulo: s.titulo, corpo: s.corpo, texto_ocr: s.texto_ocr, foto_id, inteira_id });
+          const inteira_id = `clone_${c.id}_${i}_inteira`; await a.arquivos.salvar(conta(), `img:${inteira_id}`, await TT.encaixar45(Buffer.from(arq.dados)), 'image/jpeg');
+          cl.slides.push({ titulo: s.titulo, corpo: s.corpo, texto_ocr: s.texto_ocr, foto_id, inteira_id, paragrafos: s.paragrafos || [] });
         }
         if (cl.slides.length < cl.n) break;
         
         cl.etapa = 'traduzir';
       } else if (cl.etapa === 'traduzir') {
         cl.traducao = await traduzir(cl.slides, cl.legenda_original, { pedirJson: deps.pedirJson });
+        // Cópia fiel: escreve a tradução em cima da imagem original, no lugar de cada parágrafo (sem IA).
+        if (cl.traducao.fiel) {
+          for (const [i, t] of cl.traducao.slides.entries()) {
+            if (!t.blocos.some((b) => b.novo)) continue;
+            const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`); if (!arq) continue;
+            const { buffer, trocados } = await TT.substituir(Buffer.from(arq.dados), t.blocos);
+            if (!trocados.length) continue;
+            const pt_id = `clone_${c.id}_${i}_pt`; await a.arquivos.salvar(conta(), `img:${pt_id}`, await TT.encaixar45(buffer), 'image/jpeg');
+            cl.slides[i].pt_id = pt_id; cl.slides[i].trocados = trocados.length;
+          }
+        }
         c.titulo = (cl.traducao.slides[0]?.titulo || cl.traducao.slides[0]?.texto || c.titulo || '').replace(/\*/g, '').slice(0, 140) || c.titulo;
         montar(c, item); cl.arte_indice = 0; c.arte = { renders: [] };
         cl.etapa = 'arte';
@@ -217,4 +255,4 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
 
 const resumo = (c) => ({ id: c.id, titulo: c.titulo, estado: c.clone?.estado, etapa: c.clone?.etapa, slides: c.clone?.n ?? null, lidos: c.clone?.slides?.length ?? 0, aviso: c.clone?.aviso || null, motivo: c.clone?.motivo || null, erro: (c.clone?.erros || []).slice(-1)[0] || null, concluido: c.clone?.estado !== 'em_andamento' });
 
-module.exports = { CANAIS, ETAPAS, autorizar, buscarOriginal, faixaSemTexto, lerSlide, traduzir, montar, iniciar, passo, resumo, SISTEMA_TRADUCAO };
+module.exports = { SISTEMA_TRADUCAO_FIEL, CANAIS, ETAPAS, autorizar, buscarOriginal, faixaSemTexto, lerSlide, traduzir, montar, iniciar, passo, resumo, SISTEMA_TRADUCAO };
