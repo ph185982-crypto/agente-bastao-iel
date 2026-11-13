@@ -90,7 +90,7 @@ function pontuar(posts, seguidores, { agora = Date.now() } = {}) {
 const tipoIg = (m) => (m.media_product_type === 'REELS' || m.media_type === 'VIDEO' ? 'reel' : m.media_type === 'CAROUSEL_ALBUM' ? 'carrossel' : 'imagem');
 function normalizarMidiaIg(m) {
   if (!m?.permalink || !m?.timestamp) return null;
-  return { permalink: String(m.permalink), publicado_em: String(m.timestamp), tipo: tipoIg(m), curtidas: num(m.like_count), comentarios: num(m.comments_count), visualizacoes: num(m.view_count), legenda: String(m.caption || '').replace(/\s+/g, ' ').trim().slice(0, 500) };
+  return { permalink: String(m.permalink), publicado_em: String(m.timestamp), tipo: tipoIg(m), curtidas: num(m.like_count), comentarios: num(m.comments_count), visualizacoes: num(m.view_count), n_slides: Array.isArray(m.children?.data) ? m.children.data.length || null : null, legenda: String(m.caption || '').replace(/\s+/g, ' ').trim().slice(0, 500) };
 }
 async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxContas = MAX_CONTAS, orcamentoMs = 40000, concorrencia = 4 } = {}) {
   const lista = (contas || []).slice(0, maxContas); const itens = []; const resumo = []; const inicio = Date.now(); let parcial = false;
@@ -100,7 +100,7 @@ async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxCo
       if (Date.now() - inicio > orcamentoMs) { parcial = true; return; }
       const c = fila.shift(); const h = c.handle;
       try {
-        const campos = `business_discovery.username(${h}){username,followers_count,media.limit(${LIMITE_MIDIAS}){like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type}}`;
+        const campos = `business_discovery.username(${h}){username,followers_count,media.limit(${LIMITE_MIDIAS}){like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,children.limit(20){media_type}}}`;
         const d = await graph('GET', igId, { fields: campos });
         const bd = d?.business_discovery || {}; const seguidores = num(bd.followers_count);
         const posts = (bd.media?.data || []).map(normalizarMidiaIg).filter(Boolean);
@@ -270,6 +270,7 @@ async function guardar(itens, { agora = Date.now(), retencaoDias = RETENCAO_DIAS
     const doc = {
       ...(ant || {}), id, rede: i.rede, conta: i.conta, permalink: i.permalink, publicado_em: i.publicado_em, tipo: i.tipo,
       curtidas: i.curtidas, comentarios: i.comentarios, visualizacoes: i.visualizacoes, seguidores: i.seguidores, er: i.er, visualizacoes_por_seguidor: i.visualizacoes_por_seguidor,
+      n_slides: i.n_slides ?? ant?.n_slides ?? null,
       vl_er: i.vl_er, vl_views: i.vl_views, vl: i.vl, mediana_er: i.mediana_er, n_base: i.n_base,
       legenda: ant?.classificado_em ? null : (i.legenda || ant?.legenda || null), // texto de terceiro só até classificar
       tema: ant?.tema ?? null, mecanismo: ant?.mecanismo ?? null, tese: ant?.tese ?? null, ponte_pedro: ant?.ponte_pedro ?? null, classificado_em: ant?.classificado_em ?? null,

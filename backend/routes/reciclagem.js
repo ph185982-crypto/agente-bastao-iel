@@ -62,7 +62,7 @@ router.post('/:id/reciclar', limita({ max: 6, janelaMs: 60000, nome: 'reciclagem
   if (!Reciclar.FORMATOS.includes(formato)) return res.status(400).json({ error: `Formato inválido. Use ${Reciclar.FORMATOS.join(', ')}.`, code: 'ENTRADA' });
   const deps = depsDeTeste();
   if (formato === 'reel' && !deps.pedirJson && !llmJson.hasLlmKey()) return res.status(503).json({ error: 'Nenhuma IA está configurada no servidor: o roteiro não pode ser escrito.', code: 'SEM_IA' });
-  const r = await Reciclar.reciclar(id, { formato, deps });
+  const r = await Reciclar.reciclar(id, { formato, deps, mesmaEstrutura: req.body?.mesma_estrutura === true });
   res.status(201).json(r);
 }));
 

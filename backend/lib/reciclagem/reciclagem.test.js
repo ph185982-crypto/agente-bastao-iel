@@ -62,7 +62,7 @@ test('coleta do Instagram: 1 chamada por conta, conta recusada só registra o er
   const g = graphFalsa({ hormozi: { seguidores: 5000000, posts: [post('h1'), post('h2', { curtidas: 9000 }), post('h3'), post('h4', { horas: 5, curtidas: 90000 })] }, joeljota: { seguidores: 6500000, posts: [post('j1', { comentarios: 100 }), post('j2', { comentarios: 100 }), post('j3', { comentarios: 900, tipo: 'VIDEO', produto: 'REELS', views: 2000000 })] } });
   const r = await C.coletarInstagram({ contas: contasTeste(['hormozi', 'recusada', 'joeljota']).instagram, graph: g.graph, igId: '17841', agora: AGORA });
   assert.strictEqual(g.chamadas.length, 3, 'uma chamada por conta');
-  assert.ok(g.chamadas.every((c) => c.caminho === '17841' && /media\.limit\(40\)\{like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type\}/.test(c.fields)));
+  assert.ok(g.chamadas.every((c) => c.caminho === '17841' && /media\.limit\(40\)\{like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,children\.limit\(20\)\{media_type\}\}/.test(c.fields)));
   const recusada = r.contas.find((c) => c.handle === 'recusada');
   assert.strictEqual(recusada.ok, false); assert.match(recusada.erro, /permissão/);
   assert.strictEqual(r.contas.filter((c) => c.ok).length, 2);
@@ -274,4 +274,15 @@ test('índice de viralidade: feed de cauda longa usa o p75 como base (sem 50× p
   const melhor = r.find((p) => p.permalink === 'v4'); const fraco = r.find((p) => p.permalink === 'f0');
   assert.ok(melhor.vl > 3 && melhor.vl < 50, `melhor com ${melhor.vl}`);
   assert.ok(fraco.vl < 1.5, `fraco com ${fraco.vl}`);
+});
+
+test('reciclar na mesma estrutura: o briefing leva o nº de slides e o mecanismo, sem texto do original', async () => {
+  novo(); const chamadas = [];
+  const criar = async (args) => { chamadas.push(args); const c = M.novoConteudo({ titulo: args.titulo, origem: { tipo: 'texto' } }); c.top = { estado: 'em_andamento', etapa: 'ler', origem: args.origem }; await arm.armazem().conteudos.salvar(ACCOUNT.ig_id, c.id, c, 0); return c; };
+  await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, n_slides: 10, mecanismo: 'lista_erros' });
+  await R.reciclar(ITEM.id, { formato: 'carrossel', mesmaEstrutura: true, deps: { criar } });
+  assert.match(chamadas[0].texto, /MESMA ESTRUTURA DO POST ORIGINAL/); assert.match(chamadas[0].texto, /10 slides/); assert.match(chamadas[0].texto, /8 telas de conteúdo/);
+  await R.reciclar(ITEM.id, { formato: 'carrossel', deps: { criar } });
+  assert.doesNotMatch(chamadas[1].texto, /MESMA ESTRUTURA/, 'sem o botão, nada muda');
+  assert.ok(chamadas[0].texto.length >= 300);
 });
