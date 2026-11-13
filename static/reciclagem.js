@@ -8,7 +8,7 @@
   const ST = {
     carregando: false, carregou: false, erro: null, itens: [], total: 0, estado: null, tendencias: null, tela: 'lista',
     filtro: { mecanismo: '', idioma: '', min_vl: '3', dias: '7' }, menu: null, ocupado: {}, roteiro: null, producao: null,
-    contas: null, contasForm: { handle: '', nome: '', pais: 'BR', idioma: 'pt', por_que: '', canal: '', canal_nome: '', canal_pais: 'BR', canal_idioma: 'pt' }, contasAlterado: false,
+    contas: null, contasForm: { handle: '', nome: '', pais: 'BR', idioma: 'pt', por_que: '', canal: '', canal_nome: '', canal_pais: 'BR', canal_idioma: 'pt' }, contasAlterado: false, autoriza: null, autForm: {},
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TZ = 'America/Sao_Paulo';
@@ -131,11 +131,48 @@
         <div class="rc2-acoes">
           ${i.tese ? `<button class="rc2-btn laranja" data-action="rc2-menu" data-id="${esc(i.id)}" aria-expanded="${menu}" ${oc ? 'disabled' : ''}>${oc ? (oc === 'reel' ? 'Escrevendo o roteiro…' : 'Enviando para produção…') : 'Reciclar como…'}</button>` : ''}
           <a class="rc2-btn fantasma" href="${esc(link(i.permalink))}" target="_blank" rel="noopener noreferrer">Ver post original ↗</a>
+          ${i.rede === 'instagram' && ['carrossel', 'imagem'].includes(i.tipo) ? `<button class="rc2-btn" data-action="rc2-clone-abrir" data-id="${esc(i.id)}" ${oc ? 'disabled' : ''}>${oc === 'clone' ? 'Clonando…' : i.autorizacao ? 'Clonar traduzido' : 'Clonar com autorização'}</button>` : ''}
         </div>
         ${menu ? `<div class="rc2-menu" role="group" aria-label="Formato"><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel">Carrossel</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel" data-e="1">Carrossel na mesma estrutura</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="estatico">Post estático</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="reel">Roteiro de reel</button><p class="rc2-meta">Só a tese e a estrutura (nº de slides e tipo de gancho) são reaproveitadas; texto, exemplos e fotos são seus. Para republicar um conteúdo de terceiros como está, é preciso a autorização do autor, fora da ferramenta. Carrossel e post passam pelos mesmos filtros de fatos e anti-IA e vão para “Aprovar”.</p></div>` : ''}
-        ${ja.length ? `<p class="rc2-meta">Já reciclado: ${ja.map((r) => `${esc({ carrossel: 'carrossel', estatico: 'post', reel: 'reel' }[r.formato] || r.formato)} em ${dh(r.em)}`).join(' · ')}</p>` : ''}
+        ${ST.autoriza === i.id ? formAutorizacao(i) : ''}
+        ${ja.length ? `<p class="rc2-meta">Já reciclado: ${ja.map((r) => `${esc({ carrossel: 'carrossel', estatico: 'post', reel: 'reel', clone: 'clone traduzido' }[r.formato] || r.formato)} em ${dh(r.em)}`).join(' · ')}</p>` : ''}
       </div></article>`;
   }
+  // Clone traduzido: só com a autorização do autor registrada (quem, onde, quando e a prova). O crédito entra na legenda.
+  const CANAIS = ['DM do Instagram', 'WhatsApp', 'E-mail', 'Pessoalmente', 'Outro'];
+  function formAutorizacao(i) {
+    const f = ST.autForm; const a = i.autorizacao;
+    if (a) return `<div class="rc2-menu" role="group" aria-label="Clone autorizado"><p class="rc2-meta">Autorizado por <b>${esc(a.autor)}</b> (${esc(a.canal)}, ${esc(a.data)}). Crédito: “${esc(a.credito)}”</p>
+      <p class="rc2-meta">A ferramenta lê o texto de cada slide, traduz para o português (IA gratuita) e remonta no mesmo número de slides, com a foto de cada um. Vai para “Aprovar”; nada é publicado sem você.</p>
+      <button class="rc2-btn laranja" data-action="rc2-clonar" data-id="${esc(i.id)}">Clonar agora</button> <button class="rc2-btn fantasma" data-action="rc2-clone-fechar">Fechar</button></div>`;
+    return `<form class="rc2-menu rc2-aut" data-rc2-aut="${esc(i.id)}" aria-label="Registrar autorização">
+      <p class="rc2-meta"><b>Antes de clonar, registre a autorização do autor.</b> Sem ela o post não é processado.</p>
+      <label>Quem autorizou<input data-rc2-aut="autor" value="${esc(f.autor ?? `@${i.conta?.handle || ''}`)}" maxlength="40" required></label>
+      <label>Onde<select data-rc2-aut="canal">${CANAIS.map((c) => `<option ${f.canal === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+      <label>Data<input type="date" data-rc2-aut="data" value="${esc(f.data || new Date().toISOString().slice(0, 10))}" required></label>
+      <label>Prova (o que ele escreveu ou onde está o print)<textarea data-rc2-aut="prova" rows="3" maxlength="600" required>${esc(f.prova || '')}</textarea></label>
+      <label>Crédito na legenda (opcional)<input data-rc2-aut="credito" value="${esc(f.credito || '')}" maxlength="160" placeholder="Conteúdo original de @autor, traduzido e publicado com autorização."></label>
+      <button type="button" class="rc2-btn laranja" data-action="rc2-autorizar" data-id="${esc(i.id)}">Registrar autorização</button> <button type="button" class="rc2-btn fantasma" data-action="rc2-clone-fechar">Cancelar</button></form>`;
+  }
+  async function clonar(ctx, id) {
+    if (ST.ocupado[id]) return;
+    ST.ocupado[id] = 'clone'; ST.autoriza = null; ctx.render();
+    try {
+      let r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/clonar`, { method: 'POST', body: {} });
+      ST.producao = { id: r.id, titulo: 'Clone traduzido', rotulo: 'Lendo os slides…' }; ctx.render();
+      for (let k = 0; k < 40 && !r.concluido; k++) {
+        await new Promise((x) => setTimeout(x, r.erro?.codigo === 'COTA_IA' ? 20000 : 1500));
+        try { r = await ctx.api(`/api/reciclagem/clone/${encodeURIComponent(r.id)}/passo`, { method: 'POST', body: {} }); } catch (e) { if (e.status === 429) continue; throw e; }
+        ST.producao = { id: r.id, titulo: 'Clone traduzido', rotulo: { buscar: 'Buscando o post…', ler: `Lendo os slides (${r.lidos}/${r.slides || '?'})…`, traduzir: r.erro?.codigo === 'COTA_IA' ? 'IA gratuita sem cota: esperando…' : 'Traduzindo…', arte: 'Desenhando…', fim: 'Conferindo…' }[r.etapa] || '…' }; ctx.render();
+      }
+      if (r.estado === 'concluido') ctx.toast(r.aviso ? `Clone pronto em “Aprovar”. Atenção: ${r.aviso}` : 'Clone pronto. Veja em “Aprovar”.');
+      else if (r.estado === 'erro') ctx.toast(`O clone parou: ${r.motivo}`);
+      else ctx.toast('O clone continua no servidor; aparece em “Aprovar” quando terminar.');
+      const item = ST.itens.find((x) => x.id === id); if (item) item.reciclado = [...(item.reciclado || []), { formato: 'clone', conteudo_id: r.id, em: new Date().toISOString() }];
+    } catch (e) { ctx.toast(e.message || 'Não foi possível clonar.'); }
+    ST.producao = null; delete ST.ocupado[id]; ctx.render();
+  }
+
   function roteiroModal() {
     const r = ST.roteiro; if (!r) return '';
     return `<div class="rc2-modal"><div role="dialog" aria-modal="true" aria-labelledby="rc2-rot-t"><h3 id="rc2-rot-t">${esc(r.titulo || 'Roteiro de reel')}</h3>
@@ -206,6 +243,15 @@
         case 'rc2-sel': break; // tratado no evento change
         case 'rc2-tela': ST.tela = el.dataset.t === 'contas' ? 'contas' : 'lista'; ctx.render(); if (ST.tela === 'contas') await carregarContas(ctx); break;
         case 'rc2-menu': ST.menu = ST.menu === id ? null : id; ctx.render(); break;
+        case 'rc2-clone-abrir': ST.autoriza = ST.autoriza === id ? null : id; ST.autForm = {}; ST.menu = null; ctx.render(); break;
+        case 'rc2-clone-fechar': ST.autoriza = null; ctx.render(); break;
+        case 'rc2-autorizar': {
+          const f = ST.autForm; const item = ST.itens.find((x) => x.id === id);
+          const corpo = { autor: f.autor ?? `@${item?.conta?.handle || ''}`, canal: f.canal || CANAIS[0], data: f.data || new Date().toISOString().slice(0, 10), prova: f.prova || '', credito: f.credito || '' };
+          try { const a = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/autorizacao`, { method: 'POST', body: corpo }); if (item) item.autorizacao = a; ctx.toast('Autorização registrada.'); } catch (e) { ctx.toast(e.message); }
+          ctx.render(); break;
+        }
+        case 'rc2-clonar': await clonar(ctx, id); break;
         case 'rc2-reciclar': await reciclar(ctx, id, el.dataset.f, el.dataset.e === '1'); break;
         case 'rc2-fechar': ST.roteiro = null; ctx.render(); break;
         case 'rc2-copiar': { const r = ST.roteiro; if (r) { try { await navigator.clipboard.writeText(r.roteiro); ctx.toast('Roteiro copiado.'); } catch { ctx.toast('Não consegui copiar. Selecione o texto.'); } } break; }
@@ -265,6 +311,8 @@
   const root = document.getElementById('esteira');
   if (root) {
     root.addEventListener('input', (ev) => { const k = ev.target?.dataset?.rc2Campo; if (k) ST.contasForm[k] = ev.target.value; });
+    root.addEventListener('input', (ev) => { const k = ev.target?.dataset?.rc2Aut; if (k && ev.target.tagName !== 'FORM') ST.autForm[k] = ev.target.value; });
+    root.addEventListener('change', (ev) => { const k = ev.target?.dataset?.rc2Aut; if (k && ev.target.tagName === 'SELECT') ST.autForm[k] = ev.target.value; });
     root.addEventListener('change', async (ev) => {
       const t = ev.target; if (!t?.dataset) return;
       if (t.dataset.rc2Campo) ST.contasForm[t.dataset.rc2Campo] = t.value;

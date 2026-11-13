@@ -291,6 +291,7 @@ async function lerLinhas(imagem) {
         linhas.push({
           texto,
           altura: Math.round((l.bbox?.y1 || 0) - (l.bbox?.y0 || 0)),
+          y0: Math.round(l.bbox?.y0 || 0), y1: Math.round(l.bbox?.y1 || 0),
           confianca: Math.round(l.confidence || 0),
         });
       }
