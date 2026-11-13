@@ -27,9 +27,9 @@ async function graphFalsa(n = 3) {
 const ocr = async () => ({ text: 'You lose 30% of profit\nSeparate your accounts today.', linhas: [{ texto: 'You lose 30% of profit', altura: 70, y0: 80, y1: 150, confianca: 90 }, { texto: 'Separate your accounts today.', altura: 30, y0: 190, y1: 225, confianca: 90 }] });
 const TRAD = { slides: [{ i: 0, titulo: 'Você perde 30% do lucro', texto: 'Separe suas contas hoje.' }, { i: 1, titulo: 'Passo um', texto: 'Abra uma conta da empresa.' }, { i: 2, titulo: 'Passo dois', texto: 'Defina sua retirada.' }], legenda: 'Você perde 30% do lucro.' };
 
-test('sem autorização registrada não clona; autorização exige autor, canal, data e prova', async () => {
+test('clona direto, sem registro; o crédito padrão vai na legenda; o registro opcional valida os campos', async () => {
   novo(); await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, ITEM);
-  await assert.rejects(CL.iniciar(ITEM.id), (e) => e.code === 'SEM_AUTORIZACAO');
+  const c0 = await CL.iniciar(ITEM.id); assert.strictEqual(c0.clone.autorizacao.credito, 'Conteúdo original de @codiesanchez.');
   await assert.rejects(CL.autorizar(ITEM.id, { ...AUT, prova: 'ok' }), /prova/);
   await assert.rejects(CL.autorizar(ITEM.id, { ...AUT, canal: 'Telepatia' }), /onde a autorização/);
   await assert.rejects(CL.autorizar(ITEM.id, { ...AUT, data: '2099-01-01' }), /Data/);

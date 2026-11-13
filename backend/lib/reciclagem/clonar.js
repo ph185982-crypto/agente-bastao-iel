@@ -1,6 +1,6 @@
 // Clone autorizado: traduz um post de outra conta e remonta no formato da ferramenta, mantendo a mesma estrutura (mesmo
-// número de slides, mesma ordem, mesmo texto traduzido e a foto de cada slide). SÓ com a autorização do autor registrada
-// antes; o crédito ao autor entra sempre na legenda e nada vai ao Instagram sem a aprovação do Pedro.
+// número de slides, mesma ordem, mesmo texto traduzido e a foto de cada slide). O Pedro combina com cada autor por fora;
+// o crédito ao autor entra na legenda e nada vai ao Instagram sem a aprovação do Pedro.
 //
 // Custo de IA mínimo: o texto dos slides sai por OCR (Tesseract, já no servidor, de graça); a tradução é UMA chamada por
 // post e só pelas IAs gratuitas (pago: 'nunca'). Nada passa pela OpenAI.
@@ -122,7 +122,11 @@ function montar(c, item) {
 // ── Passo a passo ───────────────────────────────────────────────────────────
 async function iniciar(itemId, { agora = Date.now() } = {}) {
   const item = await Coletar.obter(itemId); if (!item) throw erro('Item não encontrado.', 404, 'NAO_ENCONTRADO');
-  if (!item.autorizacao) throw erro('Registre a autorização do autor antes de clonar.', 409, 'SEM_AUTORIZACAO');
+  // Sem etapa de registro (decisão do Pedro: ele combina com cada autor por fora). O crédito ao autor entra na legenda e pode ser
+  // editado na aprovação.
+  const h = `@${String(item.conta?.handle || 'autor').replace(/^@/, '')}`;
+  item.autorizacao = item.autorizacao || { autor: h, canal: 'combinado pelo Pedro', data: new Date(agora).toISOString().slice(0, 10), prova: null, credito: `Conteúdo original de ${h}.` };
+  await db().radar.salvar(conta(), Coletar.TIPO, item.id, item);
   const c = M.novoConteudo({ titulo: `Clone autorizado: ${item.conta?.handle || ''} ${item.tema || ''}`.trim().slice(0, 140), formato: 'carrossel', origem: { tipo: 'clone_autorizado', url: item.permalink } });
   c.clone = { item_id: item.id, etapa: 'buscar', estado: 'em_andamento', autorizacao: item.autorizacao, slides: [], criado_em: new Date(agora).toISOString(), erros: [] };
   c.studio = { estado: 'gerando', origem: 'clone' };
