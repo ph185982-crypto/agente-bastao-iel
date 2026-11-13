@@ -88,6 +88,11 @@ router.post('/worker/erro', limita({ max: 30, janelaMs: 60000, nome: 'videos-err
 router.post('/', limita({ max: 12, janelaMs: 60000, nome: 'videos-criar' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.criar({ titulo: b.titulo, estilo: b.estilo, opcoes: b.opcoes, roteiro_id: b.roteiro_id, roteiro_texto: b.roteiro_texto }); res.status(201).json({ id: c.id, ...V.resumo(c), prefixo_blob: `videos/${c.id}/` }); } catch (e) { erro(res, e); }
 });
+// Fábrica de roteiros (até 10 por dia, aprovados pelos fiscais): situação do dia e "gerar agora".
+router.get('/roteiros', async (req, res) => { try { const P = require('../lib/top/piloto'); res.json((await P.resumoDoDia()).roteiros); } catch (e) { erro(res, e); } });
+router.post('/roteiros/gerar', limita({ max: 6, janelaMs: 60000, nome: 'roteiros-gerar' }), async (req, res) => {
+  try { res.json(await require('../lib/top/piloto').avancarRoteiros({ orcamentoMs: 45000 })); } catch (e) { erro(res, e); }
+});
 router.get('/', async (req, res) => { try { res.json({ videos: await V.listar() }); } catch (e) { erro(res, e); } });
 router.get('/:id', async (req, res) => { try { res.json(await V.obter(idDe(req))); } catch (e) { erro(res, e); } });
 router.post('/:id/enviado', limita({ max: 20, janelaMs: 60000, nome: 'videos-enviado' }), async (req, res) => {

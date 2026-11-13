@@ -43,6 +43,7 @@
       estilo: c.estilo || v.estilo || 'hormozi', opcoes: { ...OPCOES_PADRAO, ...(c.opcoes || v.opcoes || {}) },
       erro: c.erro || (v.worker && v.worker.erro) || null, cortes: v.resultado && v.resultado.cortes, palavras: v.resultado && v.resultado.palavras,
       status: c.status || null, studio: c.studio || null, agenda: c.agenda || null, publicacao: c.publicacao || null, roteiro_texto: v.roteiro_texto || c.roteiro_texto || '',
+      roteiro: c.roteiro || v.roteiro || null, duracao_estimada_s: c.duracao_estimada_s ?? v.duracao_estimada_s ?? null,
     };
   }
   const agendado = (c) => !!(c.agenda && c.agenda.publicar_em) && c.status === 'aprovado';
@@ -65,7 +66,7 @@
       else ST.erro = e.message || 'Não consegui abrir os vídeos.';
     }
     ST.carregando = false; ST.carregou = true;
-    redesenhar(); agendarAtualizacao();
+    redesenhar(); agendarAtualizacao(); carregarFabrica(ctx);
   }
   // Enquanto houver vídeo na fila ou em edição, a lista se atualiza sozinha a cada 10 s (só com a aba aberta).
   function agendarAtualizacao() {
@@ -166,13 +167,14 @@
     const legenda = [c.legenda, (c.hashtags || []).join(' ')].filter(Boolean).join('\n\n');
     const nomeArquivo = `${String(c.titulo || 'video').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'video'}.mp4`;
     return `<article class="vd-card estado-${esc(c.estado)}" data-vd-card="${esc(c.id)}" aria-busy="${!!oc}">
-      <div class="vd-tags"><span class="vd-tag ${situacao[0]}">${esc(situacao[1])}</span><span class="vd-tag suave">${esc(ESTILOS.find((e) => e[0] === c.estilo)?.[1] || c.estilo)}</span>${c.cortes != null ? `<span class="vd-tag suave">${esc(c.cortes)} cortes</span>` : ''}</div>
+      <div class="vd-tags"><span class="vd-tag ${situacao[0]}">${esc(situacao[1])}</span>${c.estado === 'roteiro' && c.roteiro ? `<span class="vd-tag azul">${esc(c.roteiro.formato_nome || c.roteiro.formato || '')}</span>${c.roteiro.nota != null ? `<span class="vd-tag ok" title="Média dos fiscais (0 a 10)">Nota ${esc(String(c.roteiro.nota).replace('.', ','))}</span>` : ''}${c.duracao_estimada_s ? `<span class="vd-tag suave">~${esc(c.duracao_estimada_s)} s</span>` : ''}` : `<span class="vd-tag suave">${esc(ESTILOS.find((e) => e[0] === c.estilo)?.[1] || c.estilo)}</span>`}${c.cortes != null ? `<span class="vd-tag suave">${esc(c.cortes)} cortes</span>` : ''}</div>
       <h3>${esc(c.titulo)}</h3>
       ${midia(c)}
       ${c.estado === 'erro' ? `<div class="vd-aviso erro" role="status"><b>Não consegui editar este vídeo.</b> ${esc(c.erro || 'Erro sem detalhe.')} Você pode refazer com outro estilo ou enviar outro arquivo.</div>` : ''}
       ${c.estado === 'pronto' && legenda ? `<details class="vd-legenda" open><summary>Legenda do Instagram</summary><p>${esc(legenda)}</p><button class="vd-btn peq fantasma" data-action="vd-copiar" data-id="${esc(c.id)}" aria-label="Copiar legenda de ${esc(c.titulo)}">Copiar legenda</button></details>` : ''}
       ${c.estado === 'pronto' && !legenda ? '<p class="vd-meta">Sem legenda gerada: escreva a sua no Instagram ao publicar.</p>' : ''}
-      ${c.roteiro_texto && c.estado !== 'pronto' ? `<details class="vd-legenda"><summary>Roteiro</summary><p>${esc(c.roteiro_texto)}</p></details>` : ''}
+      ${c.roteiro_texto && c.estado !== 'pronto' ? `<details class="vd-legenda"${c.estado === 'roteiro' ? ' open' : ''}><summary>Roteiro</summary><p class="vd-roteiro">${esc(c.roteiro_texto)}</p></details>` : ''}
+      ${c.estado === 'roteiro' && c.roteiro ? `<details class="vd-legenda"><summary>Texto na tela e cena</summary><ul class="vd-telas">${c.roteiro.tela_gancho ? `<li><b>Gancho:</b> ${esc(c.roteiro.tela_gancho)}</li>` : ''}${(c.roteiro.telas || []).map((t, i) => `<li><b>Bloco ${i + 1}:</b> ${esc(t)}</li>`).join('')}${c.roteiro.visual ? `<li><b>Abertura:</b> ${esc(c.roteiro.visual)}</li>` : ''}</ul>${c.roteiro.pauta && c.roteiro.pauta.tema ? `<p class="vd-meta">Pauta: ${esc(c.roteiro.pauta.tema)}</p>` : ''}</details>` : ''}
       ${paraAprovar(c) ? `<div class="vd-decisao">
           <button class="vd-btn" data-action="vd-publicar" data-id="${esc(c.id)}" ${d}>${oc === 'publicar' ? '<span class="es-spin"></span> Enviando…' : '✓ Aprovar e publicar agora'}</button>
           <button class="vd-btn contorno" data-action="vd-agendar" data-id="${esc(c.id)}" ${d} aria-label="Agendar ${esc(c.titulo)} no próximo horário livre">${oc === 'agendar' ? '<span class="es-spin"></span>' : '🕒 Agendar'}</button>
@@ -193,6 +195,16 @@
     if (!lista.length) return vazio ? `<div class="vd-vazio">${vazio}</div>` : '';
     return `<section class="vd-secao"><div class="vd-h2"><h2>${titulo}</h2><span>${lista.length}</span></div><div class="vd-grade">${lista.map(cartao).join('')}</div></section>`;
   }
+  // Fábrica de roteiros: até 10 por dia, cada um aprovado por três fiscais (código, retenção, verdade e voz).
+  function painelRoteiros(roteiros) {
+    const f = ST.fabrica; const oc = ST.gerandoRoteiros;
+    const linha = f ? `Hoje: ${f.feitos} de ${f.meta} roteiros aprovados pelos fiscais${f.descartados ? ` · ${f.descartados} reprovados e descartados` : ''}${f.em_producao ? ` · escrevendo: ${esc(f.em_producao.tema || '')}` : ''}${f.pausa_ate ? ` · IA gratuita sem cota até ${esc(dh(f.pausa_ate))}` : ''}.` : 'Até 10 roteiros por dia, escritos com a técnica dos especialistas em vídeo curto e conferidos por três fiscais.';
+    return `<section class="vd-secao"><div class="vd-h2"><h2>Roteiros para gravar</h2><span>${roteiros.length}</span></div>
+      <div class="vd-fabrica"><p class="vd-meta">${linha}</p><button class="vd-btn peq contorno" data-action="vd-roteiros-gerar" ${oc ? 'disabled' : ''}>${oc ? '<span class="es-spin"></span> Escrevendo e fiscalizando…' : '✎ Gerar roteiros agora'}</button></div>
+      ${roteiros.length ? `<div class="vd-grade">${roteiros.map(cartao).join('')}</div>` : '<div class="vd-vazio"><p>Nenhum roteiro na fila. O piloto escreve ao longo do dia; toque em “Gerar roteiros agora” para adiantar.</p></div>'}
+    </section>`;
+  }
+  async function carregarFabrica(ctx) { try { ST.fabrica = await ctx.api('/api/videos/roteiros'); redesenhar(); } catch { /* opcional */ } }
   function render(ctx) {
     if (ctx) ST.ctx = ctx;
     if (!ST.carregou && !ST.carregando) setTimeout(() => carregar(ctx), 0);
@@ -218,7 +230,7 @@
       ${secao('Para aprovar', prontos)}
       ${secao('Em edição', emEdicao)}
       ${secao('Com erro', comErro)}
-      ${secao('Roteiros para gravar', roteiros)}
+      ${painelRoteiros(roteiros)}
       ${nada ? '<div class="vd-vazio"><b>Nenhum vídeo ainda.</b><p>Toque em “Gravar com roteiro” para o primeiro. O editor cuida dos cortes e das legendas; você só aprova.</p></div>' : ''}
       ${feitos.length ? `<details class="vd-feitos"><summary>Agendados e publicados (${feitos.length})</summary><div class="vd-grade">${feitos.map(cartao).join('')}</div></details>` : ''}
       ${emEdicao.length ? '<p class="vd-meta centro">A lista se atualiza sozinha enquanto houver vídeo em edição.</p>' : ''}
@@ -255,6 +267,15 @@
         case 'vd-gravar': {
           if (!window.Teleprompter) { ctx.toast('O teleprompter não carregou. Atualize a página.'); break; }
           window.Teleprompter.abrir({ roteiro: c ? c.roteiro_texto : '', roteiro_id: c ? c.id : null, titulo: c ? c.titulo : '', ctx });
+          break;
+        }
+        case 'vd-roteiros-gerar': {
+          if (ST.gerandoRoteiros) break; ST.gerandoRoteiros = true; redesenhar();
+          try {
+            const r = await ctx.api('/api/videos/roteiros/gerar', { method: 'POST', body: {} });
+            if (r.resumo) ST.fabrica = r.resumo;
+            ctx.toast(r.ocupado ? r.motivo : r.salvos && r.salvos.length ? `${r.salvos.length} roteiro${r.salvos.length > 1 ? 's' : ''} novo${r.salvos.length > 1 ? 's' : ''} aprovado${r.salvos.length > 1 ? 's' : ''}.` : r.pausado ? 'A IA gratuita está sem cota agora; o piloto retoma sozinho.' : r.sem_pauta ? 'Sem pauta nova para roteiro agora.' : 'Roteiro em andamento: os fiscais ainda estão avaliando. Toque de novo para continuar.');
+          } finally { ST.gerandoRoteiros = false; await carregar(ctx, true); }
           break;
         }
         case 'vd-galeria': { const inp = document.getElementById('vd-arquivo'); if (inp) { inp.value = ''; inp.click(); } break; }

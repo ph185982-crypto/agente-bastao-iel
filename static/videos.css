@@ -180,3 +180,9 @@ body.tp-aberto { overflow: hidden; }
   .tp-topo { padding-left: 24px; padding-right: 24px; }
 }
 @media (prefers-reduced-motion: reduce) { .tp-contagem b, .tp-crono.on i, .vd-tag::before { animation: none !important; } }
+/* Fábrica de roteiros */
+.vd-fabrica { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: 0 0 12px; }
+.vd-fabrica .vd-meta { margin: 0; flex: 1 1 220px; }
+.vd-roteiro { white-space: pre-line; line-height: 1.5; }
+.vd-telas { margin: 6px 0; padding-left: 18px; font-size: 14px; line-height: 1.45; }
+.vd-telas li { margin: 2px 0; }

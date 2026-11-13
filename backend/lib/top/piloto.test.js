@@ -198,8 +198,13 @@ test('pedido de pautas extras: vale só no dia, ignora o horário e soma ao limi
 });
 
 test('próxima ação: dorme até o post agendado, a janela de aprovação, a volta da cota ou o início da produção', () => {
-  const cfg = { ...Pi.PADRAO }; const dia = '2026-10-29';
+  const cfg = { ...Pi.PADRAO, roteiros_dia: 0 }; const dia = '2026-10-29'; // fábrica de roteiros desligada: tem teste próprio abaixo
   const base = (hhmm, est = {}, extra = {}) => Pi.proximaAcao(cfg, { criados: [], agenda: [], notificado: {}, ...est }, { agora: SP(dia, hhmm), dia, hora: hhmm, ...extra });
+  // roteiros de Reels faltando hoje: volta em 3 min; meta cumprida ou IA pausada: não acorda por eles
+  const comRt = (rt) => Pi.proximaAcao(Pi.PADRAO, { criados: [], agenda: [], notificado: { '08:00': true, '14:00': true }, roteiros: rt }, { agora: SP(dia, '15:10'), dia, hora: '15:10', semPauta: true });
+  assert.strictEqual(comRt({ dia, feitos: 2, comecados: 3 }), SP(dia, '15:13'));
+  assert.strictEqual(comRt({ dia, feitos: 10, comecados: 12 }), SP(dia, '15:30'));
+  assert.strictEqual(comRt({ dia, feitos: 2, comecados: 3, pausa_ate: new Date(SP(dia, '16:00')).toISOString() }), SP(dia, '15:30'));
   // de madrugada, antes da produção: acorda às 03:00
   assert.strictEqual(base('01:00'), SP(dia, '03:00'));
   // meta do dia cumprida à tarde, um post agendado para 17:00 e a janela das 14h já avisada: acorda no post
