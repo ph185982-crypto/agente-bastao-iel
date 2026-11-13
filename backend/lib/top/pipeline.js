@@ -108,7 +108,7 @@ E.fatos = async (c, ctx) => {
 };
 
 E.angulo = async (c, ctx) => {
-  const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: proprio(c) ? `${P.LINHAS[c.top.entrada.modo].angulo}\n\nTEXTO DO PEDRO (fonte única):\n${c.fonte_principal.texto.slice(0, 6000)}` : opiniao(c) ? `${AVISO_OPINIAO}\n\nBRIEFING (tese e ponte para o Pedro):\n${c.fonte_principal.texto.slice(0, 3000)}\n\nNo "numero" dê 0 (não há número). Avalie bolso, contradição e personagem pela tese e pela ponte.` : `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true });
+  const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: proprio(c) ? `${P.LINHAS[c.top.entrada.modo].angulo}\n\nTEXTO DO PEDRO (fonte única):\n${c.fonte_principal.texto.slice(0, 6000)}` : opiniao(c) ? `${AVISO_OPINIAO}\n\nBRIEFING (tese e ponte para o Pedro):\n${c.fonte_principal.texto.slice(0, 3000)}\n\nNo "numero" dê 0 (não há número). Avalie bolso, contradição e personagem pela tese e pela ponte.` : `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true, pago: 'mini' });
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
   const empreendedor = g.empreendedor === undefined ? null : n('empreendedor'); // fora da soma: é filtro de público, não de viralidade
   const enviarPara = String(dados?.enviar_para || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -133,7 +133,7 @@ E.roteiro = async (c, ctx) => {
     // Cada versão é escrita com o método de um copywriter (dupla em rodízio pelo id do carrossel).
     if (c.top.pesos_redator === undefined) { try { c.top.pesos_redator = ctx.deps.placar !== undefined ? (ctx.deps.placar?.pesos?.redator || null) : ((await armazem().config.obter(conta())).meu_placar?.pesos?.redator || null); } catch { c.top.pesos_redator = null; } }
     const mente = (ctx.deps.mentes || Mentes).parPara(c.id, c.top.pesos_redator)[c.top.versoes.length];
-    const { dados } = await ctx.ia({ sistema: (proprio(c) ? `${P.LINHAS[c.top.entrada.modo].roteiro}\n\n` : '') + P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para }), usuario: semMateria(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true });
+    const { dados } = await ctx.ia({ sistema: (proprio(c) ? `${P.LINHAS[c.top.entrada.modo].roteiro}\n\n` : '') + P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para }), usuario: semMateria(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true, pago: c.top.versoes.length ? 'mini' : 'premium' });
     const v = normalizarRoteiro(dados, c.top.formato);
     const estatico = c.top.formato === 'estatico';
     // Data também sai: o portão de publicação trata "27/10/2026" como número que precisa de fonte.
@@ -257,7 +257,7 @@ E.juri = async (c, ctx) => {
   const vs = c.top.versoes;
   const notaFormato = [P.notaJuri(c.top.formato), proprio(c) ? P.LINHAS[c.top.entrada.modo].juri : opiniao(c) ? 'CONTEÚDO DE OPINIÃO (sem fatos verificados, por desenho): não exija prova numérica. Em "honestidade", reprove (abaixo de 7) quem afirma número, dado, pesquisa ou fato do mundo como verdade; opinião marcada como leitura do Pedro é honesta. Em "prova" avalie a força do argumento e da cena, não o número.' : ''].filter(Boolean).join('\n');
   const usuario = `${notaFormato ? `${notaFormato}\n\n` : ''}FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\n` + vs.map((v, i) => `VERSÃO ${i}${v.checagem.ok ? '' : ' (reprovada na checagem: ' + v.checagem.problemas.slice(0, 2).join(' ') + ')'}\nCAPAS:\n${v.capas.map((k, j) => `  [${j}] ${k.texto}`).join('\n')}\nTELAS:\n${v.telas.map((t, j) => `  ${j + 2}. (${t.papel}) ${[t.titulo, t.texto, t.destaque, t.dados ? JSON.stringify(t.dados) : ''].filter(Boolean).join(' | ')}`).join('\n')}${v.fechamento?.titulo ? `\nFECHAMENTO: ${[v.fechamento.titulo, v.fechamento.texto].filter(Boolean).join(' ')}` : ''}\nLEGENDA: ${v.legenda}`).join('\n\n');
-  const { dados } = await ctx.ia({ sistema: P.JURI, usuario, maxTokens: 900, temperatura: 0.1, preferirMelhor: true });
+  const { dados } = await ctx.ia({ sistema: P.JURI, usuario, maxTokens: 900, temperatura: 0.1, preferirMelhor: true, pago: 'mini' });
   const notas = Array.isArray(dados?.versoes) ? dados.versoes : [];
   let melhor = -1; let nota = -1;
   vs.forEach((v, i) => {
@@ -297,7 +297,7 @@ E.capas = async (c, ctx) => {
     : `O CARROSSEL (slides depois da capa):\n${v.telas.map((t, j) => `${j + 2}. ${[t.titulo, t.texto].filter(Boolean).join(' — ')}`).join('\n')}`;
   const usuario = `FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\nTESE: ${c.top.angulo?.tese || ''}\nCOM QUEM FALAR: ${c.top.angulo?.enviar_para || 'o empreendedor'}\n\n${corpo}\n\nCAPAS QUE JÁ EXISTEM (não repita):\n${v.capas.map((k) => `- ${k.texto}`).join('\n')}`;
   let dados;
-  try { ({ dados } = await ctx.ia({ sistema: M.SALA_CAPAS, usuario, maxTokens: 1400, temperatura: 0.8, preferirMelhor: true })); } catch (e) {
+  try { ({ dados } = await ctx.ia({ sistema: M.SALA_CAPAS, usuario, maxTokens: 1400, temperatura: 0.8, preferirMelhor: true, pago: 'premium' })); } catch (e) {
     if (e.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(e.message)) || (c.top.tentativas.capas || 0) < 1) throw e;
     v.sala_feita = true; c.top.mentes = { ...(c.top.mentes || {}), roteiro: v.mente || null, sala: 0, falhou: String(e.message).slice(0, 120) }; return;
   }
@@ -355,7 +355,7 @@ E.painel = async (c, ctx) => {
   if (aConferir.length) {
     let reprovadas = new Set(aConferir);
     try {
-      const { dados } = await ctx.ia({ sistema: P.REVISOR_CAPA, usuario: `FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\nO CARROSSEL:\n${v.telas.map((t, j) => `${j + 2}. ${[t.titulo, t.texto].filter(Boolean).join(' — ')}`).join('\n')}\n\nCAPAS:\n${aConferir.map((i) => `[${i}] ${v.capas[i].texto}`).join('\n')}`, maxTokens: 500, temperatura: 0.1, preferirMelhor: true });
+      const { dados } = await ctx.ia({ sistema: P.REVISOR_CAPA, usuario: `FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\nO CARROSSEL:\n${v.telas.map((t, j) => `${j + 2}. ${[t.titulo, t.texto].filter(Boolean).join(' — ')}`).join('\n')}\n\nCAPAS:\n${aConferir.map((i) => `[${i}] ${v.capas[i].texto}`).join('\n')}`, maxTokens: 500, temperatura: 0.1, preferirMelhor: true, pago: 'mini' });
       const res = Array.isArray(dados?.capas) ? dados.capas : [];
       reprovadas = new Set(aConferir.filter((i) => { const x = res.find((y) => Number(y.indice) === i); return !x || x.ok !== true; }));
       c.top.revisao_capas = res.slice(0, 3).map((x) => ({ indice: Number(x.indice), ok: x.ok === true, motivo: String(x.motivo || '').slice(0, 160) }));
@@ -674,6 +674,7 @@ async function passo(id, { deps = {}, orcamentoMs = 44000 } = {}) {
     ia: async (args) => {
       const pedir = deps.pedirJson || llmJson.pedirJson;
       let resultado;
+      args = { etapa: c.top.etapa, ...args };
       if (deps.pedirJson) resultado = await pedir(args);
       else { const r = await llmJson.comConsumo(() => llmJson.comPrazo(Math.max(12000, ctx.restante() - 2000), () => pedir(args))); c.top.chamadas_ia = (c.top.chamadas_ia || 0) + (r.consumo?.chamadas?.length || 0); resultado = r.resultado; }
       // Registra qual IA escreveu cada etapa (para o Pedro saber se foi a premium) …

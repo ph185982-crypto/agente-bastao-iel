@@ -350,6 +350,7 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
     itens: hoje.map((x) => ({ id: x.id, titulo: x.titulo || '', estado: x.estado, nota: x.nota ?? null, decidido: x.decidido || null })),
     agenda: (est.agenda || []).slice(0, 20), proximo_horario: proximoHorario(cfg, (est.agenda || []).map((x) => x.publicar_em), agora),
     ultima_rodada: est.ultima_rodada || null, guardado: !!armazem()?.duravel,
+    ia_paga: process.env.IA_OPENAI === '1' && process.env.OPENAI_API_KEY ? await require('../gastoIa').resumo({ agora }).catch(() => null) : null,
   };
 }
 

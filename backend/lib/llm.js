@@ -190,7 +190,7 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
   // Modelos gpt-oss "pensam" antes de responder e isso pode passar de 30 s:
   // pedimos raciocínio curto (reasoning_effort, documentado pela Groq) e sem o
   // texto do raciocínio na resposta. Se o provedor recusar o parâmetro, repete sem.
-  const { esforco, preferirMelhor, ...base0 } = opts || {};
+  const { esforco, preferirMelhor, pago, etapa, ...base0 } = opts || {};
   let base = base0;
   const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : /^gemini-3/i.test(model) ? { reasoning_effort: 'low' } : {};
   // Modelos de raciocínio da OpenAI (gpt-5.x, o*): sem temperature e com max_completion_tokens (o raciocínio também
@@ -200,17 +200,21 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
     base = { ...r, max_completion_tokens: (max_tokens || 2000) + 2500 };
     extra.reasoning_effort = esforco === 'alto' ? 'medium' : 'low';
   }
+  // OpenAI: o prefixo repetido do prompt sai a 10% do preço. A chave agrupa as chamadas da mesma instrução no mesmo cache.
+  if (provider.name === 'openai') { const sis = String(base0?.messages?.[0]?.content || '').slice(0, 400); let h = 0; for (const ch of sis) h = (h * 31 + ch.charCodeAt(0)) >>> 0; extra.prompt_cache_key = `pd-${h.toString(36)}`; }
   let res;
   try {
     res = await client.chat.completions.create({ ...base, ...extra, model }, requestOptions);
   } catch (err) {
-    if (Object.keys(extra).length && err?.status === 400 && /reasoning/i.test(err?.message || '')) res = await client.chat.completions.create({ ...base, model }, requestOptions);
+    if (Object.keys(extra).length && err?.status === 400 && /reasoning|prompt_cache_key/i.test(err?.message || '')) res = await client.chat.completions.create({ ...base, model }, requestOptions);
     else throw err;
   }
   _lastGood[nivel(opts?.model)] = { provider: provider.name, model };
   const out = opts?.response_format?.type === 'json_object' ? withSanitizedJson(res) : res;
   // Quem usou a resposta pode registrar qual provedor/modelo a produziu.
   const u = res?.usage;
+  // Toda chamada paga entra no registro de gasto (teto mensal em backend/lib/gastoIa.js).
+  if (provider.paid && u) { try { await require('./gastoIa').registrar(res?.model || model, u, { etapa: etapa || null }); } catch (e) { console.warn('[llm] gasto não registrado:', String(e.message).slice(0, 100)); } }
   const tokens = u ? { entrada: u.prompt_tokens ?? null, saida: u.completion_tokens ?? null, total: u.total_tokens ?? null } : null;
   try { Object.defineProperty(out, '__llm', { value: { provider: provider.name, model: res?.model || model, pago: !!provider.paid, tokens, tentativas_provedor: cont ? cont.n : 1 }, enumerable: false }); } catch { /* resposta congelada */ }
   return out;
@@ -218,7 +222,12 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
 
 // Percorre provedores × modelos até um responder.
 async function cascade(opts, requestOptions) {
-  const providers = availableProviders();
+  // OpenAI (paga) só entra se houver orçamento no mês e a etapa não for das que nunca pagam (pago: 'nunca').
+  let providers = availableProviders();
+  if (providers.some((p) => p.paid)) {
+    let orcamento = true; try { orcamento = await require('./gastoIa').podeGastar(); } catch { orcamento = false; }
+    if (!orcamento || opts.pago === 'nunca') providers = providers.filter((p) => !p.paid);
+  }
   const cont = { n: 0 };
   if (!providers.length) throw new Error('Nenhuma chave de IA configurada (GROQ_API_KEY, GEMINI_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY ou OPENAI_API_KEY)');
 
@@ -235,12 +244,13 @@ async function cascade(opts, requestOptions) {
     return scope;
   };
 
-  // Etapas criativas (preferirMelhor: ângulo, roteiro, júri) vão primeiro ao modelo premium da OpenAI quando ela está
-  // ligada (OPENAI_API_KEY e IA_PREMIUM diferente de "0"). Se falhar, segue a cascata normal (gratuitos primeiro).
-  const premium = opts.preferirMelhor && process.env.IA_PREMIUM !== '0' ? providers.find((p) => p.name === 'openai') : null;
-  if (premium) {
-    const modelo = process.env.IA_PREMIUM_MODELO || 'gpt-5.4';
-    try { return await attempt(premium, modelo); } catch (err) { remember(premium, modelo, err); } // nunca derruba: cai na cascata
+  // Economia de tokens: só as etapas marcadas vão direto à OpenAI. 'premium' (o texto que o público lê: roteiro e capas) usa
+  // o modelo forte; 'mini' (ângulo, júri, revisões) usa o modelo barato. O resto vai primeiro às IAs gratuitas e só cai na
+  // OpenAI (modelo barato) se todas falharem.
+  const openaiP = (opts.pago === 'premium' || opts.pago === 'mini') && process.env.IA_PREMIUM !== '0' ? providers.find((p) => p.name === 'openai') : null;
+  if (openaiP) {
+    const modelo = opts.pago === 'premium' ? (process.env.IA_PREMIUM_MODELO || 'gpt-5.4') : (process.env.IA_MINI_MODELO || 'gpt-5.4-mini');
+    try { return await attempt(openaiP, modelo); } catch (err) { remember(openaiP, modelo, err); } // nunca derruba: cai na cascata
   }
 
   // Atalho: tenta primeiro a combinação que funcionou na chamada anterior.

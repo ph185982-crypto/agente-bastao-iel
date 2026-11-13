@@ -21,8 +21,10 @@
   function secao() {
     const d = st.dados; if (!d) return st.erro ? `<div class="es-card"><div class="es-label">Piloto automático</div><div class="es-warn">${esc(st.erro)}</div></div>` : '';
     const c = d.config; const h = d.hoje;
+    const g = d.ia_paga; const brl = (x) => `US$ ${Number(x || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const gasto = g ? `<div class="es-text" style="margin-top:8px"><b>IA paga (OpenAI) este mês:</b> ${brl(g.usd)} de ${brl(g.teto_usd)}. Hoje: ${brl(g.hoje_usd)} (limite do dia ${brl(g.teto_dia_usd)}).${g.cache_pct != null ? ` ${g.cache_pct}% do texto enviado saiu do cache (10% do preço).` : ''}${g.pode_gastar ? '' : ' <b>Limite atingido: até virar o dia ou o mês, a produção segue com as IAs gratuitas.</b>'}</div>` : '';
     return `<div class="es-card" id="pl-secao"><div class="es-label">Piloto automático</div>
-      <div class="es-text">O app escolhe as pautas, escreve, confere os números e desenha. Você recebe um aviso às ${esc(c.janelas_aprovacao.join(' e '))}, aprova, e cada aprovado entra no próximo horário da grade. <b>Nada vai ao Instagram sem a sua aprovação.</b></div>
+      <div class="es-text">O app escolhe as pautas, escreve, confere os números e desenha. Você recebe um aviso às ${esc(c.janelas_aprovacao.join(' e '))}, aprova, e cada aprovado entra no próximo horário da grade. <b>Nada vai ao Instagram sem a sua aprovação.</b></div>${gasto}
       <div class="es-days" style="grid-template-columns:1fr 1fr;margin-top:8px">
         <button data-action="pl-ativo" data-v="true" aria-pressed="${c.ativo}" ${st.salvando ? 'disabled' : ''}>Ligado</button>
         <button data-action="pl-ativo" data-v="false" aria-pressed="${!c.ativo}" ${st.salvando ? 'disabled' : ''}>Desligado</button></div>
