@@ -35,7 +35,7 @@ async function pautas({ est = {}, deps = {} } = {}) {
   const out = { tese: [], noticia: [], proprio: [] };
   try {
     const itens = await (deps.teses || (() => require('../reciclagem/coletar').listar({ dias: 10, limite: 60 })))();
-    for (const it of itens || []) {
+    for (const it of (Array.isArray(itens) ? itens : itens?.itens) || []) {
       if (!it.tese) continue; const chave = `rc:${it.id}`; if (usadas.has(chave)) continue;
       out.tese.push({ chave, tipo: 'tese', tema: limpa(it.tema || it.tese, 120), texto: [`TESE (viralizou em outra conta; não cite a origem): ${it.tese}`, it.ponte_pedro ? `PONTE PARA O EMPREENDEDOR BRASILEIRO: ${it.ponte_pedro}` : '', it.mecanismo ? `MECANISMO QUE FEZ VIRALIZAR: ${it.mecanismo}` : ''].filter(Boolean).join('\n'), peso: Number(it.vl) || 0 });
     }

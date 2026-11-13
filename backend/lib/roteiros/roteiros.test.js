@@ -84,7 +84,7 @@ test('avancar: escreve, passa nos dois fiscais e salva o roteiro na aba Vídeos 
   novo();
   const ia = iaFalsa(); const salvos = [];
   const est = {};
-  const r = await R.avancar(est, { agora: AGORA, dia: DIA, meta: 1, orcamentoMs: 600000, deps: { pedirJson: ia.pedirJson, teses: async () => [TESE], historias: async () => [], noticias: [], salvar: async (c) => { salvos.push(c); return c; } } });
+  const r = await R.avancar(est, { agora: AGORA, dia: DIA, meta: 1, orcamentoMs: 600000, deps: { pedirJson: ia.pedirJson, teses: async () => ({ itens: [TESE], total: 1 }), historias: async () => [], noticias: [], salvar: async (c) => { salvos.push(c); return c; } } });
   assert.strictEqual(r.salvos.length, 1);
   assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'fiscal_retencao', 'fiscal_verdade']);
   assert.ok(ia.chamadas.every((c) => c.pago === 'nunca'), 'nenhuma chamada paga');
