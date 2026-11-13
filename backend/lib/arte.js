@@ -442,6 +442,12 @@ async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, ar
     return { png, metrics: { cabe: true, fonte_px: null, blocos: [], layout, elementos: ['arquivo_aprovado', ...(igual ? [] : ['arquivo_aprovado_redimensionado'])], arquivo: { largura: meta.width, altura: meta.height } } };
   }
 
+  // Foto inteira (cópia de post que é só imagem, sem texto para traduzir): a imagem ocupa o slide todo, sem texto.
+  if (layout === 'foto_inteira' && imagem) {
+    const png = await sharp(imagem).rotate().resize(W, H, { fit: 'cover', position: 'attention' }).png().toBuffer();
+    return { png, metrics: { cabe: true, fonte_px: null, blocos: [], layout, elementos: ['foto_inteira'] } };
+  }
+
   // tema tweet e a variante ensaio (texto corrido, fundo escuro) vivem em arteTweet.js
   if (['tweet', 'ensaio'].includes(layout) || ['tweet', 'ensaio'].includes(slide.tema_visual)) return require('./arteTweet').renderizar(slide, ctx, imagem);
   if (String(layout || '').startsWith('rep_') || slide.tema_visual === 'reportagem') return require('./arteReportagem').renderizar(slide, ctx, imagem, arquivoEncerramento, fundo);
