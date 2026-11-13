@@ -1,7 +1,7 @@
 // Interface comum dos publicadores: { name, canPublish(item), publish(id, opts), getStatus(id) }.
 //  - instagram: implementado (máquina de estados em ../publicador.js);
 //  - facebook: opcional, desligado por padrão (publishers/facebook.js);
-//  - linkedin: SÓ o esqueleto — o acesso à API ainda será solicitado; nada é implementado.
+//  - linkedin: perfil do Pedro, depois do Instagram e só do que foi aprovado (../linkedin.js).
 const P = require('../publicador');
 const fb = require('./facebook');
 
@@ -19,10 +19,9 @@ const facebook = {
 };
 const linkedin = {
   name: 'linkedin',
-  canPublish: async () => false,
-  publish: async () => { throw new P.ErroPub('NAO_IMPLEMENTADO', 'A publicação no LinkedIn ainda não foi implementada (aguardando o acesso à API).', 501); },
-  getStatus: async () => null,
+  canPublish: async (id) => { const L = require('../linkedin'); const e = await L.estado(); if (!e.ativo) return false; try { await P.carregarAprovado(id); return true; } catch { return false; } },
+  publish: (id, opts) => require('../linkedin').publicar(id, opts),
+  getStatus: async (id) => { const p = await require('../armazem').armazem().publicacoes.obter(P.conta(), id, 'linkedin'); return p ? P.resposta(p) : null; },
 };
-
 const PUBLICADORES = { instagram, facebook, linkedin };
 module.exports = { PUBLICADORES, instagram, facebook, linkedin };

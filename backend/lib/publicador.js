@@ -373,11 +373,17 @@ async function renderizarMidia(token) {
   const c = reg.doc;
   const v = M.versaoAtiva(c);
   if (!v || c.revisao?.aprovada_versao !== v.id || c.revisao.hash_aprovado !== p.h || v.hash !== p.h) throw new ErroPub('VERSAO_DIFERENTE', 'A versão aprovada mudou; este link não vale mais.', 409);
-  const s = v.slides[p.i];
+  return jpegDoSlide(c, v, p.i);
+}
+
+// JPEG 1080×1350 de um slide da versão (o mesmo arquivo que vai ao Instagram; o LinkedIn usa também).
+async function jpegDoSlide(c, v, i) {
+  const a = armazem();
+  const s = v.slides[i];
   if (!s) throw new ErroPub('NAO_ENCONTRADO', 'Slide não encontrado.', 404);
   const imagem = s.imagem_id ? (await a.arquivos.obter(conta(), `img:${s.imagem_id}`))?.dados : null;
   const enc = s.layout === 'encerramento' ? (await a.arquivos.obter(conta(), 'upload:encerramento'))?.dados : null;
-  const r = await arte.renderizarSlide(s, { indice: p.i + 1, total: Math.min(v.slides.length, LIMITE_CARROSSEL), imagem: imagem ? Buffer.from(imagem) : null, arquivoEncerramento: enc ? Buffer.from(enc) : null });
+  const r = await arte.renderizarSlide(s, { indice: i + 1, total: Math.min(v.slides.length, LIMITE_CARROSSEL), imagem: imagem ? Buffer.from(imagem) : null, arquivoEncerramento: enc ? Buffer.from(enc) : null });
   if (r.metrics.cabe === false) throw new ErroPub('TEXTO_CORTADO', 'O texto do slide não cabe na arte.', 409);
   const sharp = require('sharp');
   // Feed aceita só JPEG (documentação da Meta): converte sem alterar 1080×1350.
@@ -385,4 +391,4 @@ async function renderizarMidia(token) {
 }
 
 module.exports = {
-  exigirAcessoProtegido, urlMidia, conferirMidias, conta, iniciar, avancar, saude, config, listarPublicacoes, avancarPendentes, renderizarMidia, montarLegenda, conferirLegenda, carregarAprovado, ErroPub, resposta, LIMITE_CARROSSEL, LIMITE_LEGENDA, REDE };
+  exigirAcessoProtegido, jpegDoSlide, urlMidia, conferirMidias, conta, iniciar, avancar, saude, config, listarPublicacoes, avancarPendentes, renderizarMidia, montarLegenda, conferirLegenda, carregarAprovado, ErroPub, resposta, LIMITE_CARROSSEL, LIMITE_LEGENDA, REDE };

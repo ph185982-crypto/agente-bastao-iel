@@ -45,6 +45,7 @@
       // Retoma o que ficou no meio (app fechado): o servidor guardou o estado.
       Object.values(st.pubs).filter((p) => INTERMEDIARIOS.includes(p.estado)).forEach((p) => iniciarPolling(x, p.content_id));
     } catch (e) { st.erroServidor = e.message; }
+    try { st.linkedin = await x.api('/api/linkedin/estado'); } catch { st.linkedin = null; }
     if (forcarSaude || Date.now() - st.saudeEm > 60000) await carregarSaude(x, true);
     st.carregou = true; st.carregando = false; x.render();
   }
@@ -301,6 +302,18 @@
   }
 
   // ── Ajustes → Conexões ──────────────────────────────────────────────────────
+  // LinkedIn: o que você aprova para o Instagram sai também no seu perfil do LinkedIn (carrossel vira documento em PDF).
+  function secaoLinkedIn() {
+    const L = st.linkedin; if (!L) return '';
+    let corpo;
+    if (!L.configurado) corpo = `<div class="es-text">Falta um passo seu: criar o app do LinkedIn (developer.linkedin.com → Create app, com os produtos "Sign In with LinkedIn using OpenID Connect" e "Share on LinkedIn") e mandar o Client ID e o Client Secret. Endereço de retorno para cadastrar no app: <b>${esc(L.redirect_uri)}</b></div>`;
+    else if (!L.conectado) corpo = `<div class="es-text">${L.venceu ? '<b>O acesso venceu.</b> ' : ''}Conecte uma vez; o acesso vale cerca de 60 dias e o app avisa antes de vencer.</div><a class="es-btn sm" style="margin-top:8px;display:inline-flex" href="/api/linkedin/conectar">Conectar LinkedIn</a>`;
+    else corpo = `<div class="es-text">Conectado como <b>${esc(L.nome || 'você')}</b>.${L.dias_para_vencer != null && L.dias_para_vencer <= 7 ? ` <b>Vence em ${esc(L.dias_para_vencer)} dia(s).</b> <a href="/api/linkedin/conectar">Renovar</a>` : ''}</div>
+      <label class="cn-pausa"><input type="checkbox" data-cn-li ${L.ativo ? 'checked' : ''}><span>Publicar também no LinkedIn<br><small>Só o que você aprovar. Carrossel vai como documento (um slide por página); vídeo ainda não vai.</small></span></label>
+      <button class="es-btn ghost sm" data-action="cn-li-sair">Desconectar</button>`;
+    return `<div class="es-label">LinkedIn</div>${corpo}`;
+  }
+
   function secaoConexoes() {
     const { esc } = ctx();
     const s = st.saude;
@@ -322,6 +335,7 @@
     return secaoNotificacoes() + `<div class="es-card" style="margin-top:12px"><div class="es-title" style="margin-top:0">Conexões</div>
       <div class="es-label">Instagram</div>${corpo}
       <button class="es-btn ghost sm" style="margin-top:8px" data-action="cn-saude">Verificar agora</button>
+      ${secaoLinkedIn()}
       <div class="es-label">Limites e regras de publicação</div>
       <label class="es-label" for="cn-cap">Máximo de publicações por dia</label>
       <input id="cn-cap" class="es-input" type="number" min="1" max="50" value="${esc(cfg.daily_publish_cap ?? 10)}" data-cn-cap ${st.config ? '' : 'disabled'}>
@@ -367,6 +381,7 @@
       case 'cn-descartar': c.status = 'arquivado'; M.registrar(c, 'pedro', 'arquivado', 'Descartou na Central'); await S.snapshot(c, 'descartado'); await x.persistir(c); x.render(); x.toast('Descartado. Dá para restaurar na aba Descartados.'); return true;
       case 'cn-restaurar': c.status = 'rascunho'; M.registrar(c, 'pedro', 'restaurado', 'Restaurou da aba Descartados'); await x.persistir(c); x.render(); return true;
       case 'cn-saude': await carregarSaude(x); return true;
+      case 'cn-li-sair': { if (!window.confirm('Desconectar o LinkedIn? Os próximos posts saem só no Instagram.')) return true; try { st.linkedin = await x.api('/api/linkedin/desconectar', { method: 'POST', body: {} }); } catch (e) { x.toast(e.message); } x.render(); return true; }
       case 'cn-push': try { await ativarNotificacoes(x); x.toast('Notificações ativadas neste aparelho.'); } catch (e) { x.toast(e.message); } st.push = await estadoPush(); x.render(); return true;
       default: return false;
     }
@@ -379,6 +394,7 @@
       if ('cnCap' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { daily_publish_cap: Number(el.value) } }); st.config = r.config; x.toast(`Limite diário: ${r.config.daily_publish_cap}.`); x.render(); return; }
       if ('cnGcap' in d) { const v = Math.min(50, Math.max(1, Number(el.value) || 10)); await x.salvarConfig({ daily_generation_cap: v }); x.toast(`Limite de geração por dia: ${v}.`); x.render(); return; }
       if ('cnFb' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { publishers: { facebook: el.checked } } }); st.config = r.config; x.toast(el.checked ? 'Facebook ligado.' : 'Facebook desligado.'); x.render(); return; }
+      if ('cnLi' in d) { st.linkedin = await x.api('/api/linkedin/ativo', { method: 'POST', body: { ativo: el.checked } }); x.toast(el.checked ? 'LinkedIn ligado: o que você aprovar sai lá também.' : 'LinkedIn desligado.'); x.render(); return; }
       if ('cnEnc' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { permitir_encerramento_provisorio: el.checked } }); st.config = r.config; x.render(); return; }
       if (d.cnLegenda) {
         const c = x.state.contents.find((k) => k.id === d.cnLegenda);
