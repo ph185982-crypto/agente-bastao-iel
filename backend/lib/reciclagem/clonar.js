@@ -267,8 +267,8 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
     }
   } catch (e) {
     const cota = e.status === 429 || /\b429\b|rate.?limit|quota/i.test(String(e.message));
-    cl.erros = [...(cl.erros || []), { etapa: cl.etapa, em: new Date().toISOString(), mensagem: String(e.message).slice(0, 240), codigo: e.code || (cota ? 'COTA_IA' : null) }].slice(-8);
-    if (!cota) { cl.estado = 'erro'; cl.motivo = String(e.message).slice(0, 300); c.studio = { estado: 'erro', erro: cl.motivo, origem: 'clone' }; 
+    cl.erros = [...(cl.erros || []), { etapa: cl.etapa, em: new Date().toISOString(), mensagem: String(e.message).slice(0, 900), codigo: e.code || (cota ? 'COTA_IA' : null) }].slice(-8);
+    if (!cota) { cl.estado = 'erro'; cl.motivo = String(e.message).slice(0, 900); c.studio = { estado: 'erro', erro: cl.motivo, origem: 'clone' }; 
       await a.arquivos.apagar(conta(), Array.from({ length: cl.n || 0 }, (_, i) => `clone_orig:${c.id}:${i}`)).catch(() => {}); }
   }
   await gravar();

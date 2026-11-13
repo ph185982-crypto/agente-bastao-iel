@@ -4,10 +4,25 @@
 // Sem leitura confiável, a cópia NÃO sai: melhor esperar a cota voltar do que publicar texto errado.
 const sharp = require('sharp');
 
+// Provedores gratuitos com visão. Os nomes de modelo mudam: além da lista fixa, cada um descobre na hora os modelos que
+// aceitam imagem (Gemini: todo "flash"; Groq: llama-4/vision/scout/maverick; OpenRouter: entrada de imagem e preço zero).
 const MODELOS = [
-  { provedor: 'gemini', env: 'GEMINI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', modelos: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'] },
-  { provedor: 'groq', env: 'GROQ_API_KEY', url: 'https://api.groq.com/openai/v1/chat/completions', modelos: ['meta-llama/llama-4-scout-17b-16e-instruct'] },
+  { provedor: 'gemini', env: 'GEMINI_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta/openai', modelos: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'], descobrir: (m) => /flash/i.test(m.id) && !/image|tts|audio|live|embed/i.test(m.id) },
+  { provedor: 'groq', env: 'GROQ_API_KEY', base: 'https://api.groq.com/openai/v1', modelos: [], descobrir: (m) => /llama-4|vision|scout|maverick|-vl/i.test(m.id) },
+  { provedor: 'openrouter', env: 'OPENROUTER_API_KEY', base: 'https://openrouter.ai/api/v1', modelos: [], descobrir: (m) => (m.architecture?.input_modalities || []).includes('image') && /:free$/.test(m.id) },
 ];
+const _descobertos = new Map();
+async function modelosDe(m, f) {
+  if (_descobertos.has(m.provedor)) return _descobertos.get(m.provedor);
+  let ids = [];
+  try {
+    const r = await f(`${m.base}/models`, { headers: { Authorization: `Bearer ${process.env[m.env]}` }, signal: AbortSignal.timeout(8000) });
+    const j = await r.json(); ids = (j.data || j.models || []).filter(m.descobrir).map((x) => String(x.id).replace(/^models\//, ''));
+  } catch { /* lista fixa basta */ }
+  const todos = [...new Set([...m.modelos, ...ids.sort((a, b) => (/flash-lite|mini|8b|11b/.test(a) ? 1 : 0) - (/flash-lite|mini|8b|11b/.test(b) ? 1 : 0)).slice(0, 4)])];
+  _descobertos.set(m.provedor, todos);
+  return todos;
+}
 const disponivel = () => MODELOS.some((m) => process.env[m.env]);
 
 const SISTEMA = (handle) => `Você olha UMA imagem de um post de Instagram (slide de carrossel ou post único) e devolve cada texto visível, para a imagem ser traduzida para o português do Brasil mantendo o desenho original.
@@ -24,23 +39,26 @@ async function chamar({ imagem, handle, legenda, fetch: f = globalThis.fetch, pr
   const jpg = await sharp(imagem).rotate().resize({ width: 1024, height: 1280, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer();
   const url = `data:image/jpeg;base64,${jpg.toString('base64')}`;
   const msgs = [{ role: 'system', content: SISTEMA(handle) }, { role: 'user', content: [{ type: 'text', text: legenda ? `LEGENDA ORIGINAL:\n${String(legenda).slice(0, 2000)}` : 'Sem legenda (devolva "legenda": "").' }, { type: 'image_url', image_url: { url } }] }];
-  let ultimo = null;
+  const erros = []; let cota = false; const t0 = Date.now();
   for (const m of MODELOS.filter((x) => process.env[x.env])) {
-    for (const modelo of m.modelos) {
+    for (const modelo of await modelosDe(m, f)) {
+      if (Date.now() - t0 > prazoMs * 1.5) break;
       try {
-        const r = await f(m.url, { method: 'POST', signal: AbortSignal.timeout(prazoMs), headers: { Authorization: `Bearer ${process.env[m.env]}`, 'Content-Type': 'application/json' },
+        const r = await f(`${m.base}/chat/completions`, { method: 'POST', signal: AbortSignal.timeout(prazoMs), headers: { Authorization: `Bearer ${process.env[m.env]}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model: modelo, messages: msgs, temperature: 0.1, max_tokens: 2500, response_format: { type: 'json_object' }, ...(/^gemini-3/.test(modelo) ? { reasoning_effort: 'low' } : {}) }) });
         const corpo = await r.text();
-        if (!r.ok) { ultimo = Object.assign(new Error(`${m.provedor} ${r.status}: ${corpo.slice(0, 160)}`), { status: r.status }); continue; }
+        if (!r.ok) { if (r.status === 429) cota = true; erros.push(`${m.provedor}/${modelo} ${r.status}: ${corpo.replace(/\s+/g, ' ').slice(0, 120)}`); continue; }
         const txt = JSON.parse(corpo)?.choices?.[0]?.message?.content || '';
         const ini = txt.indexOf('{'); const fim = txt.lastIndexOf('}');
         const dados = JSON.parse(txt.slice(ini, fim + 1));
         if (!Array.isArray(dados?.elementos)) throw new Error('resposta sem "elementos"');
         return { dados, provedor: m.provedor, modelo };
-      } catch (e) { ultimo = e; }
+      } catch (e) { erros.push(`${m.provedor}/${modelo}: ${String(e.message).slice(0, 120)}`); }
     }
   }
-  throw ultimo || Object.assign(new Error('Nenhuma IA com visão configurada (GEMINI_API_KEY).'), { code: 'SEM_VISAO' });
+  if (!erros.length) throw Object.assign(new Error('Nenhuma IA com visão configurada (GEMINI_API_KEY).'), { code: 'SEM_VISAO' });
+  // Todos sem cota: o clone espera (status 429) em vez de virar erro.
+  throw Object.assign(new Error(`Leitura da imagem por IA indisponível agora: ${erros.join(' | ').slice(0, 900)}`), { status: cota ? 429 : 503, code: cota ? 'COTA_IA' : 'VISAO' });
 }
 
 const limpa = (s, n = 600) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
