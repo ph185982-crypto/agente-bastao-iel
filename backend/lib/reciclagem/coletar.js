@@ -100,8 +100,14 @@ async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxCo
       if (Date.now() - inicio > orcamentoMs) { parcial = true; return; }
       const c = fila.shift(); const h = c.handle;
       try {
-        const campos = `business_discovery.username(${h}){username,followers_count,media.limit(${LIMITE_MIDIAS}){like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,media_url,thumbnail_url,children.limit(20){media_type,media_url}}}`;
-        const d = await graph('GET', igId, { fields: campos });
+        const campos = (n) => `business_discovery.username(${h}){username,followers_count,media.limit(${n}){like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,media_url,thumbnail_url,children.limit(20){media_type,media_url}}}`;
+        let d;
+        try { d = await graph('GET', igId, { fields: campos(LIMITE_MIDIAS) }); }
+        catch (e1) {
+          // Conta grande: a Meta pede "reduce the amount of data". Repete com menos mídias antes de desistir.
+          if (!/reduce the amount|amount of data|too large|1\b.*unknown error|An unknown error/i.test(`${e1?.meta?.mensagem_original || ''} ${e1?.message || ''}`) || e1?.meta?.tipo === 'limite' || e1?.meta?.tipo === 'token') throw e1;
+          d = await graph('GET', igId, { fields: campos(15) });
+        }
         const bd = d?.business_discovery || {}; const seguidores = num(bd.followers_count);
         const posts = (bd.media?.data || []).map(normalizarMidiaIg).filter(Boolean);
         const pontuados = pontuar(posts, seguidores, { agora });
@@ -109,7 +115,7 @@ async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxCo
         resumo.push({ handle: h, ok: true, seguidores, lidos: posts.length, maduros: pontuados.length });
       } catch (e) {
         // Conta que a Meta recusa (não é profissional, handle errado, permissão) só fica registrada: as outras seguem.
-        resumo.push({ handle: h, ok: false, erro: String(e?.meta?.amigavel || e?.message || 'erro').slice(0, 160), tipo: e?.meta?.tipo || null });
+        resumo.push({ handle: h, ok: false, erro: String(e?.meta?.amigavel || e?.message || 'erro').slice(0, 160), original: String(e?.meta?.mensagem_original || '').slice(0, 200) || null, tipo: e?.meta?.tipo || null });
         if (e?.meta?.tipo === 'token' || e?.meta?.tipo === 'limite') { parcial = true; fila.length = 0; return; }
       }
     }
