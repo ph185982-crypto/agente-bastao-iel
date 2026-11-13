@@ -264,6 +264,60 @@ form.diag .btn{grid-column:1/-1;margin-top:6px}
   form.diag{grid-template-columns:1fr;padding:20px}
 }
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.barra i{transition:none}}
+
+/* ===== Efeitos ===== */
+html{scroll-padding-top:84px}
+.cab{position:sticky;top:0;z-index:40;background:rgba(245,240,230,.86);-webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px);transition:box-shadow .3s,padding .3s}
+.cab.rolado{box-shadow:0 6px 24px rgba(11,27,51,.08);padding:14px 0}
+.nav a:not(.btn){position:relative;text-decoration:none!important}
+.nav a:not(.btn)::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;background:var(--laranja);transform:scaleX(0);transform-origin:left;transition:transform .3s}
+.nav a:not(.btn):hover::after{transform:scaleX(1)}
+.btn{transition:background-color .25s,box-shadow .25s,transform .25s,color .25s}
+.btn-laranja::after{content:"→";display:inline-block;margin-left:10px;transition:transform .25s}
+.btn-laranja:hover{box-shadow:0 10px 28px rgba(255,106,31,.38);transform:translateY(-2px)}
+.btn-laranja:hover::after{transform:translateX(4px)}
+.btn-linha:hover{background:var(--marinho);color:var(--creme)}
+.sec-marinho .btn-linha:hover{background:var(--creme);color:var(--marinho)}
+.case,.setor,.depo,.noventa>div,.sim,.quem-grid{transition:transform .3s cubic-bezier(.2,.7,.2,1),box-shadow .3s,border-color .3s}
+.setor:hover,.noventa>div:hover{transform:translateY(-5px);box-shadow:0 18px 40px rgba(11,27,51,.10)}
+.case:hover,.depo:hover{transform:translateY(-5px);box-shadow:0 18px 44px rgba(0,0,0,.28);border-color:#3A5078}
+.frente{transition:padding-left .3s,background-color .3s}
+.frente:hover{padding-left:12px;background:rgba(255,106,31,.05)}
+.num strong,.case .valor{font-variant-numeric:tabular-nums}
+/* Revelar ao rolar */
+html.js-rv .rv{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.2,1) var(--d,0s),transform .8s cubic-bezier(.2,.7,.2,1) var(--d,0s)}
+html.js-rv .rv.in{opacity:1;transform:none}
+/* Linha do método que se preenche */
+.trilha::after{content:"";position:absolute;left:0;right:0;top:9px;height:2px;background:var(--laranja);transform:scaleX(var(--p,0));transform-origin:left;transition:transform .15s linear}
+.trilha .no{z-index:1}
+/* Faixa de logos */
+.logos-faixa{margin-top:28px;overflow:hidden;border-top:1px solid var(--areia);border-bottom:1px solid var(--areia);-webkit-mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent);mask-image:linear-gradient(90deg,transparent,#000 7%,#000 93%,transparent)}
+.logos.mq{display:flex;width:max-content;margin:0;border:0;animation:mq 45s linear infinite}
+.logos.mq li{flex:none;width:210px;border:0;border-right:1px solid var(--areia)}
+.logos.mq img{filter:grayscale(1);opacity:.7;transition:filter .3s,opacity .3s}
+.logos.mq li:hover img{filter:none;opacity:1}
+.logos-faixa:hover .logos.mq{animation-play-state:paused}
+@keyframes mq{to{transform:translateX(-50%)}}
+/* WhatsApp flutuante */
+.zap-flut{position:fixed;right:22px;bottom:22px;z-index:50;width:60px;height:60px;border-radius:50%;background:#25D366;color:#fff;display:grid;place-items:center;box-shadow:0 10px 28px rgba(0,0,0,.25);opacity:0;transform:translateY(20px) scale(.8);pointer-events:none;transition:opacity .35s,transform .35s}
+.zap-flut.on{opacity:1;transform:none;pointer-events:auto}
+.zap-flut:hover{transform:scale(1.08)}
+.zap-flut svg{width:30px;height:30px}
+.zap-flut::before{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid #25D366;animation:pulso 2.4s ease-out infinite}
+@keyframes pulso{from{transform:scale(1);opacity:.7}to{transform:scale(1.6);opacity:0}}
+@media (max-width:980px){
+  .trilha::after{left:9px;right:auto;top:0;bottom:0;width:2px;height:auto;transform:scaleY(var(--p,0));transform-origin:top}
+}
+@media (max-width:560px){
+  .logos.mq li{width:150px}
+  .zap-flut{right:16px;bottom:16px;width:54px;height:54px}
+  .cab.rolado{padding:10px 0}
+}
+@media (prefers-reduced-motion:reduce){
+  .btn,.case,.setor,.depo,.noventa>div,.frente,.zap-flut{transition:none}
+  .zap-flut::before{animation:none}
+  .trilha::after{transform:none}
+}
 </style>
 </head>
 <body>
@@ -594,6 +648,77 @@ form.diag .btn{grid-column:1/-1;margin-top:6px}
   ids.forEach(function(id){ campos[id].addEventListener('input', monta); campos[id].addEventListener('change', monta); });
   document.getElementById('form').addEventListener('submit', function(e){ e.preventDefault(); });
   monta();
+})();
+</script>
+<a class="zap-flut" id="zap-flut" href="#" target="_blank" rel="noopener" aria-label="Conversar com a Avanteza no WhatsApp"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
+<script>
+(function(){
+  var reduz = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var temIO = 'IntersectionObserver' in window;
+  var d = document;
+
+  /* WhatsApp flutuante */
+  var zf = d.getElementById('zap-flut');
+  zf.href = 'https://wa.me/5562984465388?text=' + encodeURIComponent('Oi! Vim pelo site da Avanteza e quero meu diagnóstico.\n\nRef: SITE-FLUTUANTE');
+  var cab = d.querySelector('.cab'), trilha = d.querySelector('.trilha');
+  function rolar(){
+    var y = window.scrollY || 0, vh = window.innerHeight;
+    cab.classList.toggle('rolado', y > 10);
+    zf.classList.toggle('on', y > 500);
+    if(trilha && !reduz){
+      var r = trilha.getBoundingClientRect();
+      var p = (vh*0.85 - r.top) / (r.height + vh*0.25);
+      trilha.style.setProperty('--p', Math.max(0, Math.min(1, p)).toFixed(3));
+    }
+  }
+  window.addEventListener('scroll', rolar, {passive:true}); window.addEventListener('resize', rolar); rolar();
+  if(reduz && trilha) trilha.style.setProperty('--p', 1);
+
+  if(reduz || !temIO) return;
+
+  /* Faixa de logos */
+  var ul = d.querySelector('.logos');
+  if(ul){
+    var faixa = d.createElement('div'); faixa.className = 'logos-faixa';
+    ul.parentNode.insertBefore(faixa, ul); faixa.appendChild(ul);
+    Array.prototype.slice.call(ul.children).forEach(function(li){ var c = li.cloneNode(true); c.setAttribute('aria-hidden','true'); c.querySelectorAll('img').forEach(function(i){ i.alt=''; }); ul.appendChild(c); });
+    ul.classList.add('mq');
+  }
+
+  /* Revelar ao rolar */
+  d.documentElement.classList.add('js-rv');
+  var sel = '.topo h1 .l,.topo .sub,.topo .acoes,.topo .filtro,.sim,.num,.numeros-pe,.clientes .t,.clientes-pe,.h2,.lede,.falas blockquote,.frente,.setor,.case,.depo,.nota,.trilha li,.noventa>div,.tabela-wrap,.quem-grid,.paraquem li,details.faq,.final h2,form.diag,.sec>.wrap>.pilula';
+  var els = d.querySelectorAll(sel);
+  var cont = new Map();
+  els.forEach(function(el){
+    var pai = el.parentNode, i = cont.get(pai) || 0; cont.set(pai, i+1);
+    el.style.setProperty('--d', Math.min(i, 6)*0.08 + 's'); el.classList.add('rv');
+  });
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(!e.isIntersecting) return;
+      var el = e.target; io.unobserve(el); el.classList.add('in');
+      var atraso = parseFloat(getComputedStyle(el).getPropertyValue('--d')) || 0;
+      setTimeout(function(){ el.classList.remove('rv','in'); el.style.removeProperty('--d'); }, 900 + atraso*1000);
+    });
+  }, {rootMargin:'0px 0px -8% 0px', threshold:0.08});
+  els.forEach(function(el){ io.observe(el); });
+
+  /* Números que contam */
+  function conta(el){
+    var tn = null, w = d.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while(w.nextNode()){ if(/\d/.test(w.currentNode.nodeValue)){ tn = w.currentNode; break; } }
+    if(!tn) return;
+    var m = tn.nodeValue.match(/^(\D*)(\d+)(.*)$/); if(!m) return;
+    var alvo = parseInt(m[2],10); if(alvo < 5) return;
+    var ini = null, dur = 1600;
+    tn.nodeValue = m[1] + '0' + m[3];
+    function passo(t){ if(ini===null) ini = t; var k = Math.min(1,(t-ini)/dur), e = 1-Math.pow(1-k,3);
+      tn.nodeValue = m[1] + Math.round(alvo*e) + m[3]; if(k<1) requestAnimationFrame(passo); }
+    requestAnimationFrame(passo);
+  }
+  var io2 = new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ io2.unobserve(e.target); conta(e.target); } }); }, {threshold:0.6});
+  d.querySelectorAll('.num strong,.case .valor').forEach(function(el){ io2.observe(el); });
 })();
 </script>
 </body>
