@@ -1,6 +1,6 @@
 // Coleta por conta: anúncios, visitas, pedidos, perguntas, reputação e Product Ads.
 // Processa UMA conta por vez, a mais desatualizada primeiro, até esgotar o orçamento de tempo.
-import { adminDb } from "./supabase/admin";
+import { adminDb } from "./db";
 import { getValidAccessToken, type AccountRow } from "./accounts";
 import { getAdapter } from "./marketplaces";
 import { addDays, spDate } from "./dates";

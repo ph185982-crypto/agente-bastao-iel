@@ -1,6 +1,6 @@
 // Agente diário: lê os dados de cada cliente, gera resumo/diagnóstico, propõe ações na fila
 // (sempre com justificativa) e monta o relatório diário pronto para envio.
-import { adminDb } from "../supabase/admin";
+import { adminDb } from "../db";
 import { addDays, spDate } from "../dates";
 import { proposeAction } from "../executor/executor";
 import { ACTION_LABEL, resolvePolicy, type PolicyRow } from "../executor/policy";

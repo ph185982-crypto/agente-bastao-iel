@@ -1,9 +1,8 @@
-import { userDb } from "@/lib/supabase/server";
-import { adminDb } from "@/lib/supabase/admin";
+import { userDb, adminDb } from "@/lib/db";
 import { Flash } from "@/components/Flash";
 import { Submit } from "@/components/Submit";
 import { CopyButton } from "@/components/CopyButton";
-import { saveSettings, savePolicy } from "@/app/actions";
+import { saveSettings, savePolicy, changePassword } from "@/app/actions";
 import { ACTION_LABEL, ACTION_TYPES } from "@/lib/executor/policy";
 import { appUrl, missingConfig } from "@/lib/env";
 import { redirectUri } from "@/lib/oauth";
@@ -88,6 +87,13 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
         )}
         {optional.length > 0 && <p className="small muted" style={{ marginTop: 8 }}>Opcionais ainda vazias: {optional.join(", ")}</p>}
       </div>
+
+      <h2>Minha senha</h2>
+      <form action={changePassword} className="card stack">
+        <div className="field"><label htmlFor="cp">Senha atual</label><input id="cp" name="current_password" type="password" autoComplete="current-password" required /></div>
+        <div className="field"><label htmlFor="np">Nova senha (mínimo 10 caracteres)</label><input id="np" name="new_password" type="password" autoComplete="new-password" minLength={10} required /></div>
+        <Submit className="btn btn-sm">Trocar senha</Submit>
+      </form>
 
       <h2>Últimas rotinas</h2>
       <div className="card">

@@ -1,11 +1,13 @@
 # Avanteza — gestão autônoma de contas de marketplace
 
 Painel da consultoria para monitorar, alertar, propor e executar ações nas contas de Mercado Livre
-dos clientes (Shopee na Fase 3). Next.js (App Router) + TypeScript na Vercel, Supabase (Postgres + Auth).
+dos clientes (Shopee na Fase 3). Next.js (App Router) + TypeScript na Vercel, Postgres no Neon.
 
 - Produção: https://app.avanteza.com.br (também https://avanteza.vercel.app)
 - Projeto Vercel: `avanteza` (diretório `avanteza/` deste repositório)
-- Banco: schema `avanteza` no projeto Supabase `nexo-vendedoria`
+- Banco: **Neon** (Postgres, plano gratuito, São Paulo) via integração da Vercel — schema `avanteza` (`db/schema.sql`).
+- Agendador: pg_cron do projeto Supabase `nexo-vendedoria` só dispara as rotinas (nenhum dado fica lá).
+- Login: sessão própria (cookie HttpOnly assinado com `SESSION_SECRET`, senha bcrypt, limite de tentativas).
 
 ## Arquitetura
 
@@ -14,6 +16,8 @@ src/lib/marketplaces/types.ts            MarketplaceAdapter (interface comum)
 src/lib/marketplaces/mercadolivre/       MercadoLivreAdapter (OAuth, leitura, escrita, webhooks)
 src/lib/accounts.ts                      tokens criptografados, renovação antecipada com trava
 src/lib/crypto.ts                        AES-256-GCM (ENCRYPTION_KEY)
+src/lib/db/                              acesso ao Postgres (consultas parametrizadas)
+src/lib/session.ts, login.ts             sessão do admin e login
 src/lib/http.ts                          retry + backoff (429/5xx, Retry-After)
 src/lib/collector.ts                     coleta por conta, snapshots diários
 src/lib/webhooks.ts                      fila de notificações
@@ -26,15 +30,15 @@ supabase/migrations/                     0001 schema + RLS, 0002 pg_cron
 ```
 
 ### Rotinas
-O plano Hobby da Vercel só permite cron **diário**; por isso as rotinas frequentes rodam no
-**pg_cron do Supabase**, que chama as rotas com `Authorization: Bearer <CRON_SECRET>`
+O plano Hobby da Vercel só permite cron **diário**; por isso as rotinas frequentes são disparadas pelo
+**pg_cron do Supabase** (horários agrupados para o Neon dormir entre as rodadas: 100 h de computação/mês no plano grátis), que chama as rotas com `Authorization: Bearer <CRON_SECRET>`
 (segredo guardado no Vault, nome `avanteza_cron_secret`):
 
 | Rotina | Frequência | O que faz |
 |---|---|---|
-| `tick` | a cada 5 min | renova tokens que vencem em < 1 h, processa webhooks, executa aprovadas |
-| `collect` | a cada 30 min | coleta 1 conta por vez (a mais desatualizada), até 45 s por chamada |
-| `alerts` | a cada 30 min | avalia regras, abre/resolve alertas, envia e-mail |
+| `tick` | a cada 20 min | renova tokens que vencem em < 1 h, processa webhooks, executa aprovadas |
+| `collect` | a cada 40 min | coleta 1 conta por vez (a mais desatualizada), até 45 s por chamada |
+| `alerts` | de hora em hora | avalia regras, abre/resolve alertas, envia e-mail |
 | `ai-daily` | 7h–8h (Brasília) | agente de IA + relatório diário, um cliente por vez |
 | `daily` | 1×/dia (Vercel Cron) | fallback: tokens + coleta + alertas + IA |
 
@@ -77,6 +81,7 @@ conectar contas** (os tokens salvos deixariam de abrir; seria preciso reautoriza
 ```sh
 cd avanteza
 npm ci
-npm test          # testes unitários (criptografia, retry, regras, limites)
+npm test          # testes unitários (criptografia, retry, regras, limites, banco, sessão)
+DATABASE_URL=... node db/apply.mjs   # cria/atualiza o schema no Postgres
 npm run build
 ```

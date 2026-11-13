@@ -1,5 +1,5 @@
 // Gestão de tokens das contas: criptografia, renovação antecipada e trava contra corrida.
-import { adminDb } from "./supabase/admin";
+import { adminDb } from "./db";
 import { decrypt, encrypt } from "./crypto";
 import { getAdapter } from "./marketplaces";
 import type { TokenSet } from "./marketplaces/types";

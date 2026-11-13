@@ -1,5 +1,5 @@
 // Motor de alertas: avalia regras por cliente/conta, abre alertas novos, resolve os que sumiram e notifica.
-import { adminDb } from "../supabase/admin";
+import { adminDb } from "../db";
 import { addDays, spDate } from "../dates";
 import { DEFAULT_RULES, evaluateRule, type AccountContext, type AlertCandidate, type Rule } from "./rules";
 import { getChannels, type AlertMessage } from "./channels";

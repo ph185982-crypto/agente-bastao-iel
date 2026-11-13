@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { userDb } from "@/lib/supabase/server";
+import { userDb } from "@/lib/db";
 import { addDays, spDate } from "@/lib/dates";
 import { brl, int, pct, dec, dt, ago, REPUTATION_LABEL, STATUS_LABEL } from "@/lib/format";
 import { Flash } from "@/components/Flash";

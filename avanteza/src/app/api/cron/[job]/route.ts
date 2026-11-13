@@ -2,7 +2,7 @@
 // Chamadas pelo pg_cron do Supabase (frequentes) e pela Vercel Cron (diária, plano Hobby).
 import { NextResponse, type NextRequest } from "next/server";
 import { authorizeCron, runJob } from "@/lib/cron";
-import { adminDb } from "@/lib/supabase/admin";
+import { adminDb } from "@/lib/db";
 import { refreshAccount, REFRESH_WINDOW_MS, type AccountRow } from "@/lib/accounts";
 import { collectBatch } from "@/lib/collector";
 import { processWebhookQueue } from "@/lib/webhooks";

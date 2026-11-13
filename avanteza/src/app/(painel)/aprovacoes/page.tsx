@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { userDb } from "@/lib/supabase/server";
+import { userDb } from "@/lib/db";
 import { Flash } from "@/components/Flash";
 import { Submit } from "@/components/Submit";
 import { decide, executeApproved } from "@/app/actions";

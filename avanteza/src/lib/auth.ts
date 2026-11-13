@@ -1,12 +1,11 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { userDb } from "./supabase/server";
-import { adminEmails } from "./env";
+import { SESSION_COOKIE, isAllowedAdmin, verifySession } from "./session";
 
 /** Garante que há um administrador logado. Retorna o e-mail. */
 export async function requireAdmin(): Promise<string> {
-  const db = await userDb();
-  const { data } = await db.auth.getUser();
-  const email = data.user?.email?.toLowerCase();
-  if (!email || !adminEmails().includes(email)) redirect("/login");
+  const jar = await cookies();
+  const email = await verifySession(jar.get(SESSION_COOKIE)?.value).catch(() => null);
+  if (!email || !isAllowedAdmin(email)) redirect("/login");
   return email;
 }

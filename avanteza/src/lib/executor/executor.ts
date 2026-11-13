@@ -1,5 +1,5 @@
 // Executor com travas: proposta → aprovada → executada/simulada/falhou.
-import { adminDb } from "../supabase/admin";
+import { adminDb } from "../db";
 import { getValidAccessToken } from "../accounts";
 import { getAdapter } from "../marketplaces";
 import type { ActionType, AdsContext } from "../marketplaces/types";

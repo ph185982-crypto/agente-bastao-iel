@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { safeEqual } from "./crypto";
-import { adminDb } from "./supabase/admin";
+import { adminDb } from "./db";
 
 /** Valida "Authorization: Bearer <CRON_SECRET>" (padrão da Vercel Cron e do pg_cron). */
 export function authorizeCron(req: Request): NextResponse | null {

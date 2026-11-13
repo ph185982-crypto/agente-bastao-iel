@@ -1,4 +1,6 @@
 -- Agendamento das rotinas via pg_cron + pg_net (o plano Hobby da Vercel só permite cron diário).
+-- Os dados ficam no Neon; aqui só ficam os agendamentos. Horários agrupados para o Neon dormir entre as
+-- rodadas (o plano gratuito tem 100 horas de computação/mês).
 -- O CRON_SECRET fica no Vault do Supabase (nunca em texto no código).
 -- Antes de rodar: select vault.create_secret('<CRON_SECRET>', 'avanteza_cron_secret');
 create extension if not exists pg_cron;
@@ -22,9 +24,9 @@ end $$;
 revoke all on function avanteza.call_job(text) from public, anon, authenticated;
 
 select cron.unschedule(jobname) from cron.job where jobname like 'avanteza-%';
-select cron.schedule('avanteza-tick',    '*/5 * * * *',  $$select avanteza.call_job('tick')$$);    -- tokens, webhooks, execução
-select cron.schedule('avanteza-collect', '7,37 * * * *', $$select avanteza.call_job('collect')$$); -- coleta (1 conta por vez)
-select cron.schedule('avanteza-alerts',  '20,50 * * * *', $$select avanteza.call_job('alerts')$$); -- motor de alertas
+select cron.schedule('avanteza-tick',    '0,20,40 * * * *',  $$select avanteza.call_job('tick')$$);    -- tokens, webhooks, execução
+select cron.schedule('avanteza-collect', '1,41 * * * *', $$select avanteza.call_job('collect')$$); -- coleta (1 conta por vez)
+select cron.schedule('avanteza-alerts',  '2 * * * *', $$select avanteza.call_job('alerts')$$); -- motor de alertas
 
 -- Fase 2: agente de IA e relatório diário (≈ 7h–8h de Brasília; várias chamadas cobrem todos os clientes)
-select cron.schedule('avanteza-ai-daily', '5,20,35,50 10,11 * * *', $$select avanteza.call_job('ai-daily')$$);
+select cron.schedule('avanteza-ai-daily', '3,23,43 10,11 * * *', $$select avanteza.call_job('ai-daily')$$);

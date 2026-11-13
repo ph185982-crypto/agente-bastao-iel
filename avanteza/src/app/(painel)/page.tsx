@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { userDb } from "@/lib/supabase/server";
+import { userDb } from "@/lib/db";
 import { addDays, spDate } from "@/lib/dates";
 import { brl, int, pct, dec, REPUTATION_LABEL, ago, STATUS_LABEL } from "@/lib/format";
 import { ACTION_LABEL } from "@/lib/executor/policy";

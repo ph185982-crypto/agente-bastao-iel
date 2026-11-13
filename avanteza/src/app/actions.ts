@@ -2,9 +2,11 @@
 // Server Actions do painel. Todas exigem administrador logado.
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { cookies, headers } from "next/headers";
 import { requireAdmin } from "@/lib/auth";
-import { userDb } from "@/lib/supabase/server";
-import { adminDb } from "@/lib/supabase/admin";
+import { SESSION_COOKIE, SESSION_TTL_S, signSession } from "@/lib/session";
+import { checkLogin, setPassword } from "@/lib/login";
+import { userDb, adminDb } from "@/lib/db";
 import { createAuthorizationLink } from "@/lib/oauth";
 import { collectBatch } from "@/lib/collector";
 import { runAlerts, ensureDefaultRules } from "@/lib/alerts/engine";
@@ -25,9 +27,42 @@ function flash(path: string, msg: string, kind: "ok" | "erro" = "ok"): never {
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function logout() {
-  const db = await userDb();
-  await db.auth.signOut();
+  (await cookies()).delete(SESSION_COOKIE);
   redirect("/login");
+}
+
+export async function login(_prev: { error?: string; email?: string } | null, fd: FormData): Promise<{ error?: string; email?: string }> {
+  const email = str(fd, "email");
+  const password = String(fd.get("password") ?? "");
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconhecido";
+  const r = await checkLogin(email, password, ip);
+  if (!r.ok) return { error: r.error, email };
+  (await cookies()).set(SESSION_COOKIE, await signSession(email), {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_TTL_S,
+  });
+  redirect("/");
+}
+
+export async function changePassword(fd: FormData) {
+  const email = await requireAdmin();
+  const nova = String(fd.get("new_password") ?? "");
+  const atual = String(fd.get("current_password") ?? "");
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconhecido";
+  const check = await checkLogin(email, atual, ip);
+  if (!check.ok) flash("/configuracoes", "Senha atual incorreta.", "erro");
+  try {
+    await setPassword(email, nova);
+  } catch (e) {
+    flash("/configuracoes", errMsg(e), "erro");
+  }
+  await adminDb().from("audit_log").insert({ event: "password_changed", actor: email });
+  flash("/configuracoes", "Senha alterada.");
 }
 
 // ───────────── Clientes e contas ─────────────

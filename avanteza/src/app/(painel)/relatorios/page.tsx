@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { userDb } from "@/lib/supabase/server";
+import { userDb } from "@/lib/db";
 import { spDate } from "@/lib/dates";
 import { CopyButton } from "@/components/CopyButton";
 import { dt } from "@/lib/format";

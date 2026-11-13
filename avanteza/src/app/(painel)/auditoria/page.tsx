@@ -1,4 +1,4 @@
-import { userDb } from "@/lib/supabase/server";
+import { userDb } from "@/lib/db";
 import { dt } from "@/lib/format";
 
 const EVENT: Record<string, string> = {

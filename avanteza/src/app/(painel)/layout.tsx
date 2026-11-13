@@ -1,6 +1,6 @@
 import { Shell } from "@/components/Shell";
 import { requireAdmin } from "@/lib/auth";
-import { userDb } from "@/lib/supabase/server";
+import { userDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 

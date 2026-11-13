@@ -25,9 +25,8 @@ export function adminEmails(): string[] {
 /** Lista quais configurações obrigatórias estão faltando (só nomes, nunca valores). */
 export function missingConfig(): string[] {
   const required = [
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
+    "DATABASE_URL",
+    "SESSION_SECRET",
     "ML_CLIENT_ID",
     "ML_CLIENT_SECRET",
     "ENCRYPTION_KEY",

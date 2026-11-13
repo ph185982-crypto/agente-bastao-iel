@@ -1,7 +1,7 @@
 // Notificações do Mercado Livre: grava na fila e responde 200 imediatamente.
 // O processamento acontece em seguida (after) e, como garantia, pelo cron da fila.
 import { NextResponse, after } from "next/server";
-import { adminDb } from "@/lib/supabase/admin";
+import { adminDb } from "@/lib/db";
 import { getAdapter } from "@/lib/marketplaces";
 import { processWebhookQueue } from "@/lib/webhooks";
 

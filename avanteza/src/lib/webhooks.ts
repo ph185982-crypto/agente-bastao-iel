@@ -1,5 +1,5 @@
 // Processamento assíncrono da fila de notificações (webhook_events).
-import { adminDb } from "./supabase/admin";
+import { adminDb } from "./db";
 import { getValidAccessToken, type AccountRow } from "./accounts";
 import { getAdapter } from "./marketplaces";
 

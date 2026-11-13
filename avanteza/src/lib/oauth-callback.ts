@@ -1,6 +1,6 @@
 // Callback OAuth genérico (Mercado Livre e Shopee): valida state, troca o code e salva tokens criptografados.
 import { NextResponse } from "next/server";
-import { adminDb } from "./supabase/admin";
+import { adminDb } from "./db";
 import { getAdapter } from "./marketplaces";
 import { encrypt } from "./crypto";
 import { redirectUri } from "./oauth";

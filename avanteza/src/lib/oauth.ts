@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { adminDb } from "./supabase/admin";
+import { adminDb } from "./db";
 import { appUrl, envOptional } from "./env";
 import { randomToken } from "./crypto";
 import { getAdapter } from "./marketplaces";
