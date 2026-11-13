@@ -68,11 +68,11 @@
     } catch (e) { ctx.toast(`A produção continua no servidor (${e.message}).`); }
     ST.producao = null; ctx.render();
   }
-  async function reciclar(ctx, id, formato) {
+  async function reciclar(ctx, id, formato, mesmaEstrutura = false) {
     if (ST.ocupado[id]) return;
     ST.ocupado[id] = formato; ST.menu = null; ctx.render();
     try {
-      const r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/reciclar`, { method: 'POST', body: { formato } });
+      const r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/reciclar`, { method: 'POST', body: { formato, mesma_estrutura: mesmaEstrutura } });
       const item = ST.itens.find((x) => x.id === id); if (item) item.reciclado = [...(item.reciclado || []), { formato, conteudo_id: r.id, em: new Date().toISOString() }];
       if (formato === 'reel') { ST.roteiro = { id: r.id, roteiro: r.roteiro, titulo: r.titulo, duracao: r.duracao_estimada_s, mente: r.mente, tentativas: r.tentativas }; ctx.toast('Roteiro pronto.'); }
       else { ctx.toast(`${formato === 'estatico' ? 'Post' : 'Carrossel'} em produção: a tese vira texto do Pedro com fatos brasileiros.`); delete ST.ocupado[id]; ctx.render(); await conduzirTop(ctx, r.id, r.titulo); return; }
@@ -132,7 +132,7 @@
           ${i.tese ? `<button class="rc2-btn laranja" data-action="rc2-menu" data-id="${esc(i.id)}" aria-expanded="${menu}" ${oc ? 'disabled' : ''}>${oc ? (oc === 'reel' ? 'Escrevendo o roteiro…' : 'Enviando para produção…') : 'Reciclar como…'}</button>` : ''}
           <a class="rc2-btn fantasma" href="${esc(link(i.permalink))}" target="_blank" rel="noopener noreferrer">Ver post original ↗</a>
         </div>
-        ${menu ? `<div class="rc2-menu" role="group" aria-label="Formato"><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel">Carrossel</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="estatico">Post estático</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="reel">Roteiro de reel</button><p class="rc2-meta">Só a tese é reaproveitada, nunca o texto. Carrossel e post passam pelos mesmos filtros de fatos e anti-IA e vão para “Aprovar”.</p></div>` : ''}
+        ${menu ? `<div class="rc2-menu" role="group" aria-label="Formato"><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel">Carrossel</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel" data-e="1">Carrossel na mesma estrutura</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="estatico">Post estático</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="reel">Roteiro de reel</button><p class="rc2-meta">Só a tese e a estrutura (nº de slides e tipo de gancho) são reaproveitadas; texto, exemplos e fotos são seus. Para republicar um conteúdo de terceiros como está, é preciso a autorização do autor, fora da ferramenta. Carrossel e post passam pelos mesmos filtros de fatos e anti-IA e vão para “Aprovar”.</p></div>` : ''}
         ${ja.length ? `<p class="rc2-meta">Já reciclado: ${ja.map((r) => `${esc({ carrossel: 'carrossel', estatico: 'post', reel: 'reel' }[r.formato] || r.formato)} em ${dh(r.em)}`).join(' · ')}</p>` : ''}
       </div></article>`;
   }
@@ -206,7 +206,7 @@
         case 'rc2-sel': break; // tratado no evento change
         case 'rc2-tela': ST.tela = el.dataset.t === 'contas' ? 'contas' : 'lista'; ctx.render(); if (ST.tela === 'contas') await carregarContas(ctx); break;
         case 'rc2-menu': ST.menu = ST.menu === id ? null : id; ctx.render(); break;
-        case 'rc2-reciclar': await reciclar(ctx, id, el.dataset.f); break;
+        case 'rc2-reciclar': await reciclar(ctx, id, el.dataset.f, el.dataset.e === '1'); break;
         case 'rc2-fechar': ST.roteiro = null; ctx.render(); break;
         case 'rc2-copiar': { const r = ST.roteiro; if (r) { try { await navigator.clipboard.writeText(r.roteiro); ctx.toast('Roteiro copiado.'); } catch { ctx.toast('Não consegui copiar. Selecione o texto.'); } } break; }
         case 'rc2-gravar': {

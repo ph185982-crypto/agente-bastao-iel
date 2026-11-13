@@ -34,7 +34,18 @@ function fonteDe(item) {
 }
 
 // Briefing que entra no pipeline como "texto colado": tese, ponte, mecanismo e a instrução de escrever como opinião, sem número.
-function briefing(item) {
+// "Mesma estrutura": o app só enxerga o tipo do post, a quantidade de slides e o MECANISMO que o fez viralizar (nunca as
+// imagens nem o texto). A estrutura vira instrução de ritmo: mesmo número de telas, mesmo tipo de gancho e de virada.
+function blocoEstrutura(item) {
+  const n = Number(item.n_slides) || null; const telas = n ? Math.max(4, Math.min(8, n - 2)) : null;
+  const mec = item.mecanismo ? `${item.mecanismo}: ${Contas.MECANISMOS[item.mecanismo] || ''}` : null;
+  return ['MESMA ESTRUTURA DO POST ORIGINAL (a ordem e o ritmo, não as palavras):',
+    n ? `- O original tem ${n} slides: capa, ${n - 2} de desenvolvimento e fechamento. Faça o mesmo ritmo, com ${telas} telas de conteúdo entre a capa e o fechamento.` : '- Número de slides do original desconhecido: use o padrão do formato.',
+    mec ? `- Mecanismo que sustentou o original: ${mec}. A capa abre com o mesmo tipo de gancho e o meio repete o tipo de virada.` : null,
+    '- Texto, exemplos, números e fotos são do Pedro, escritos do zero em português; nada do original é citado, traduzido nem imitado de perto.'].filter(Boolean).join('\n');
+}
+
+function briefing(item, { mesmaEstrutura = false } = {}) {
   const mec = item.mecanismo ? `${item.mecanismo}: ${Contas.MECANISMOS[item.mecanismo] || ''}` : 'não identificado';
   return [
     `Briefing de reciclagem: ${item.tema || 'tese em alta'}`,
@@ -45,6 +56,7 @@ function briefing(item) {
     `SINAL DE VIRALIDADE: índice ${item.vl ?? '?'} vezes a mediana da conta de origem (${item.conta?.pais || '?'}, ${item.conta?.idioma || '?'}); o conteúdo original não é citado nem traduzido.`,
     '',
     'INSTRUÇÕES PARA A REDAÇÃO: escreva do zero, na voz do Pedro (direita assumida, liberdade econômica, responsabilidade fiscal, crítica ao PT e ao governo quando o assunto pede), para quem empreende no Brasil: dono de empresa, MEI, quem vende em marketplace, autônomo. Reaproveite a TESE e o MECANISMO, nunca o texto, o exemplo ou a história do autor original; não cite nem imite a conta de origem.',
+    ...(mesmaEstrutura ? ['', blocoEstrutura(item), ''] : []),
     'SEM FATOS: este conteúdo é OPINIÃO do Pedro sobre a tese, marcada como leitura dele ( "na minha leitura", "pra mim" ), sem nenhum número, porcentagem, data, pesquisa ou estatística. Use cenas do dia a dia do empreendedor brasileiro (maquininha, boleto, fornecedor, nota fiscal, funcionário) no lugar de dados.',
   ].join('\n');
 }
@@ -56,13 +68,13 @@ async function salvarConteudo(c) {
 }
 
 // Carrossel ou post estático: entra no pipeline "top" com origem 'reciclagem'.
-async function reciclarCarrossel(item, { formato = 'carrossel', deps = {} } = {}) {
+async function reciclarCarrossel(item, { formato = 'carrossel', deps = {}, mesmaEstrutura = false } = {}) {
   const criar = deps.criar || require('../top/pipeline').criar;
-  const texto = briefing(item);
+  const texto = briefing(item, { mesmaEstrutura });
   const c = await criar({ texto, titulo: `Reciclagem: ${item.tema || 'tese em alta'}`.slice(0, 140), origem: 'reciclagem', formato: formato === 'estatico' ? 'estatico' : null, modo: 'opiniao' });
   c.top = c.top || {};
   c.top.reciclado_de = fonteDe(item);
-  c.top.reciclagem_formato = formato;
+  c.top.reciclagem_formato = formato; c.top.reciclagem_mesma_estrutura = !!mesmaEstrutura;
   await (deps.salvarConteudo || salvarConteudo)(c);
   return { id: c.id, formato, titulo: c.titulo, etapa: c.top.etapa || null };
 }
@@ -130,12 +142,12 @@ async function reciclarReel(item, { deps = {} } = {}) {
 }
 
 // Entrada única da rota: acha o item, recicla no formato pedido e registra no item.
-async function reciclar(itemOuId, { formato, deps = {} } = {}) {
+async function reciclar(itemOuId, { formato, deps = {}, mesmaEstrutura = false } = {}) {
   if (!FORMATOS.includes(formato)) throw erro(`Formato inválido. Use ${FORMATOS.join(', ')}.`, 'ENTRADA');
   const item = typeof itemOuId === 'string' ? await (deps.obter || Coletar.obter)(itemOuId) : itemOuId;
   if (!item) throw erro('Item não encontrado.', 'NAO_ENCONTRADO', 404);
   if (!item.tese && !item.tema) throw erro('Este item ainda não foi classificado pela IA (sem tese). Atualize a coleta e tente de novo.', 'SEM_TESE', 409);
-  const r = formato === 'reel' ? await reciclarReel(item, { deps }) : await reciclarCarrossel(item, { formato, deps });
+  const r = formato === 'reel' ? await reciclarReel(item, { deps }) : await reciclarCarrossel(item, { formato, deps, mesmaEstrutura });
   try { await (deps.marcarReciclado || Coletar.marcarReciclado)(item.id, { formato, conteudo_id: r.id }); } catch { /* registro no item é cortesia */ }
   return { ...r, rotulo: ROTULO[formato] };
 }
