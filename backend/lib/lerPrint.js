@@ -278,26 +278,64 @@ async function lerTexto(imagem) {
  * mesmo quando não há linha em branco entre os dois.
  * @param {Buffer|string} imagem  buffer ou caminho do arquivo
  */
+// Trechos de texto com caixa justa, para trocar o texto no lugar sem apagar o desenho em volta:
+//  1. palavra a palavra (confiança ≥ 70, com letra ou número), só junta vizinhas na mesma linha (espaço < 1,2× a altura);
+//  2. trechos empilhados (mesma altura de letra, alinhados e próximos) viram um parágrafo, traduzido de uma vez.
+function trechosDe(data) {
+  const caixa = (ws) => ({ x0: Math.min(...ws.map((w) => w.x0)), x1: Math.max(...ws.map((w) => w.x1)), y0: Math.min(...ws.map((w) => w.y0)), y1: Math.max(...ws.map((w) => w.y1)) });
+  const corridos = [];
+  for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) {
+    const ws = (l.words || []).map((w) => ({ t: String(w.text || '').trim(), c: w.confidence || 0, x0: w.bbox.x0, x1: w.bbox.x1, y0: w.bbox.y0, y1: w.bbox.y1 }))
+      .filter((w) => w.t && w.c >= 70 && /[\p{L}\p{N}]/u.test(w.t) && w.y1 - w.y0 >= 8);
+    let atual = [];
+    const fecha = () => { if (atual.length) { const cx = caixa(atual); corridos.push({ texto: atual.map((w) => w.t).join(' '), ...cx, altura: cx.y1 - cx.y0, confianca: Math.round(atual.reduce((a, w) => a + w.c, 0) / atual.length) }); } atual = []; };
+    for (const w of ws) {
+      const ult = atual[atual.length - 1]; const h = Math.max(w.y1 - w.y0, ult ? ult.y1 - ult.y0 : 0);
+      if (ult && (w.x0 - ult.x1 > h * 1.2 || Math.abs((w.y0 + w.y1) / 2 - (ult.y0 + ult.y1) / 2) > h * 0.6)) fecha();
+      atual.push(w);
+    }
+    fecha();
+  }
+  corridos.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const grupos = [];
+  for (const t of corridos) {
+    const g = grupos.find((x) => { const u = x.itens[x.itens.length - 1];
+      const sobrepoe = Math.min(u.x1, t.x1) - Math.max(u.x0, t.x0) > 0.3 * Math.min(u.x1 - u.x0, t.x1 - t.x0);
+      return sobrepoe && t.y0 - u.y1 < u.altura * 0.9 && t.y0 >= u.y0 && Math.abs(t.altura - u.altura) < u.altura * 0.35; });
+    if (g) g.itens.push(t); else grupos.push({ itens: [t] });
+  }
+  return grupos.map((g) => ({ texto: g.itens.map((t) => t.texto).join(' '), linhas: g.itens.map((t) => t.texto), ...caixa(g.itens), altura_linha: Math.round(g.itens.reduce((a, t) => a + t.altura, 0) / g.itens.length), confianca: Math.round(g.itens.reduce((a, t) => a + t.confianca, 0) / g.itens.length), n_linhas: g.itens.length }));
+}
+
 async function lerLinhas(imagem) {
   const worker = await obterWorker();
   const { data } = await worker.recognize(imagem, {}, { blocks: true });
 
-  const linhas = [];
+  const linhas = []; const paragrafos = [];
   for (const bloco of data.blocks || []) {
     for (const par of bloco.paragraphs || []) {
+      const doPar = [];
       for (const l of par.lines || []) {
         const texto = String(l.text || '').trim();
         if (!texto) continue;
-        linhas.push({
+        const linha = {
           texto,
           altura: Math.round((l.bbox?.y1 || 0) - (l.bbox?.y0 || 0)),
+          x0: Math.round(l.bbox?.x0 || 0), x1: Math.round(l.bbox?.x1 || 0),
           y0: Math.round(l.bbox?.y0 || 0), y1: Math.round(l.bbox?.y1 || 0),
           confianca: Math.round(l.confidence || 0),
-        });
+        };
+        linhas.push(linha); doPar.push(linha);
       }
+      // Parágrafo com caixa e altura de linha: é o que a cópia traduzida troca no lugar, mantendo a imagem original.
+      if (doPar.length) paragrafos.push({
+        texto: doPar.map((l) => l.texto).join(' '), linhas: doPar.map((l) => l.texto),
+        x0: Math.min(...doPar.map((l) => l.x0)), x1: Math.max(...doPar.map((l) => l.x1)), y0: Math.min(...doPar.map((l) => l.y0)), y1: Math.max(...doPar.map((l) => l.y1)),
+        altura_linha: Math.round(doPar.reduce((a, l) => a + l.altura, 0) / doPar.length), confianca: Math.round(doPar.reduce((a, l) => a + l.confianca, 0) / doPar.length),
+      });
     }
   }
-  return { linhas, text: data.text, confidence: data.confidence };
+  return { linhas, paragrafos, trechos: trechosDe(data), text: data.text, confidence: data.confidence };
 }
 
 /**

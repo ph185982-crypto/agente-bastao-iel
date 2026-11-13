@@ -116,3 +116,35 @@ test('post só de foto (a leitura só acha ruído): cada slide sai com a imagem 
   const png = (await require('../arte').renderizarSlide(v.slides[0], { imagem: imgs[0] })).png;
   const m = await sharp(png).metadata(); assert.deepStrictEqual([m.width, m.height], [1080, 1350]);
 });
+
+test('cópia fiel: o texto é trocado no lugar, em cima da imagem original (sem tweet), e a tradução vem por trecho', async () => {
+  novo();
+  // Fundo branco com um "desenho" laranja e um título preto no alto.
+  const base = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#ffffff' } })
+    .composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect x="100" y="120" width="880" height="70" fill="#111"/><circle cx="540" cy="800" r="200" fill="#e8812f"/></svg>'), top: 0, left: 0 }]).jpeg().toBuffer();
+  await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, tipo: 'imagem', midias: ['https://cdn.test/a.jpg'], legenda: 'Getting good at something.' });
+  const ocrFiel = async () => ({ text: 'Getting good at something:', linhas: [{ texto: 'Getting good at something:', altura: 70, y0: 120, y1: 190, confianca: 95 }], trechos: [{ texto: 'Getting good at something:', x0: 100, y0: 120, x1: 980, y1: 190, altura_linha: 70, confianca: 95, n_linhas: 1 }] });
+  const pedidos = [];
+  const deps = { fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => base }), ocr: ocrFiel, pedirJson: async (a) => { pedidos.push(a); return { dados: { blocos: [{ id: '0.0', texto: 'Ficando bom em algo:' }], legenda: 'Ficando bom em algo.' } }; } };
+  const c = await CL.iniciar(ITEM.id); let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps }); if (r.concluido) break; }
+  assert.strictEqual(r.estado, 'concluido', JSON.stringify(r));
+  assert.match(pedidos[0].usuario, /\[0\.0\] Getting good at something:/); assert.strictEqual(pedidos[0].pago, 'nunca');
+  const doc = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id)).doc; const v = M.versaoAtiva(doc);
+  assert.strictEqual(v.slides[0].layout, 'foto_inteira'); assert.match(v.slides[0].imagem_id, /_pt$/);
+  assert.strictEqual(doc.titulo, 'Ficando bom em algo:');
+  const img = await arm.armazem().arquivos.obter(ACCOUNT.ig_id, `img:${v.slides[0].imagem_id}`);
+  const { data, info } = await sharp(Buffer.from(img.dados)).raw().toBuffer({ resolveWithObject: true });
+  const px = (x, y) => { const i = (y * info.width + x) * info.channels; return [data[i], data[i + 1], data[i + 2]]; };
+  assert.deepStrictEqual([info.width, info.height], [1080, 1350]);
+  assert.ok(px(540, 800)[0] > 200 && px(540, 800)[2] < 100, 'o desenho laranja continua lá');
+  assert.ok(px(970, 130).every((c0) => c0 > 200), 'o fim do retângulo preto original foi apagado (tradução mais curta)');
+});
+
+test('troca de texto: ignora ruído do desenho e encaixa a tradução na caixa', () => {
+  const TT = require('./trocaTexto');
+  assert.strictEqual(TT.ehTexto({ texto: 'Reality', confianca: 95, x0: 1, x1: 50, y0: 1, y1: 20 }), true);
+  assert.strictEqual(TT.ehTexto({ texto: 'À x rá ::', confianca: 23, x0: 1, x1: 50, y0: 1, y1: 20 }), false);
+  assert.strictEqual(TT.ehTexto({ texto: '1,000 misses', confianca: 84, x0: 1, x1: 50, y0: 1, y1: 20 }), true);
+  const d = TT.diagramar({ x0: 100, x1: 980, y0: 120, y1: 190, altura_linha: 70 }, 'Ficando bom em algo:', { width: 1080, height: 1350 });
+  assert.strictEqual(d.linhas.length, 1); assert.strictEqual(d.centrado, true);
+});
