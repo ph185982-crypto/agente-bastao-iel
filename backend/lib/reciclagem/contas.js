@@ -1,4 +1,6 @@
-// Radar de Reciclagem: contas vigiadas. Lista curada a partir da pesquisa de 07/11/2026 (40 contas de Instagram e
+// Radar de Reciclagem: contas vigiadas. Em 13/11/2026 entraram 40 contas que postam CARROSSEL e IMAGEM (formato: 'imagem'),
+// porque das 243 publicações coletadas 193 eram reels e a aba Copiar só usa post e carrossel.
+// Lista curada a partir da pesquisa de 07/11/2026 (40 contas de Instagram e
 // 20 canais de YouTube de empreendedorismo e finanças, em 7 países), mesclada com a configuração editável do Pedro
 // (`reciclagem_contas` no armazém: adicionar e remover handles sem mexer no código).
 //
@@ -51,6 +53,46 @@ const INSTAGRAM = [
   { handle: 'judit_cat', nome: 'Judit Català', pais: 'ES', idioma: 'es', por_que: 'Marketing digital em espanhol para pequena empresa.' },
   { handle: 'euge.oller', nome: 'Euge Oller', pais: 'ES', idioma: 'es', por_que: 'Negócios digitais e produtividade em espanhol.' },
   { handle: 'pedrobuerbaum', nome: 'Pedro Buerbaum', pais: 'ES', idioma: 'es', por_que: 'Podcast de negócios; cortes com pergunta única.' },
+  { handle: 'thedankoe', nome: 'Dan Koe', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Posts de texto em imagem sobre negócio de uma pessoa só; muito salvo e enviado.' },
+  { handle: 'justinwelsh', nome: 'Justin Welsh', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Frases e listas em imagem sobre solopreneur; formato de carrossel de texto.' },
+  { handle: 'sahilbloom', nome: 'Sahil Bloom', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Carrosséis de modelos mentais e listas; alto salvamento.' },
+  { handle: 'visualizevalue', nome: 'Visualize Value (Jack Butcher)', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Desenho minimalista + frase de negócio: o tipo de post que se copia traduzido.' },
+  { handle: 'thefutur', nome: 'The Futur (Chris Do)', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Carrosséis de precificação e venda para quem presta serviço.' },
+  { handle: 'chrisdo', nome: 'Chris Do', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Frases de preço e posicionamento em imagem.' },
+  { handle: 'foundr', nome: 'Foundr', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Carrosséis e citações de fundadores; página feita de posts de imagem.' },
+  { handle: 'entrepreneur', nome: 'Entrepreneur', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Revista de empreendedorismo; carrosséis de lição de negócio.' },
+  { handle: 'morningbrew', nome: 'Morning Brew', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Memes e gráficos de negócio e economia; viralizam por envio.' },
+  { handle: 'chartr', nome: 'Chartr', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Gráfico único com um dado de negócio: formato de imagem muito compartilhado.' },
+  { handle: 'visualcapitalist', nome: 'Visual Capitalist', pais: 'CA', idioma: 'en', formato: 'imagem', por_que: 'Infográficos de economia e dinheiro; carrosséis de dado.' },
+  { handle: 'personalfinanceclub', nome: 'Personal Finance Club', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Gráficos simples de dinheiro e juros compostos; carrosséis muito salvos.' },
+  { handle: 'ramit', nome: 'Ramit Sethi', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Finanças pessoais com frase forte em imagem.' },
+  { handle: 'aliabdaal', nome: 'Ali Abdaal', pais: 'GB', idioma: 'en', formato: 'imagem', por_que: 'Produtividade e negócio online; carrosséis de lista.' },
+  { handle: 'naval', nome: 'Naval', pais: 'US', idioma: 'en', formato: 'imagem', a_confirmar: true, por_que: 'Frases sobre riqueza e alavancagem em imagem.' },
+  { handle: 'businessinsider', nome: 'Business Insider', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Notícia de negócio em carrossel.' },
+  { handle: 'fee.org', nome: 'FEE (Foundation for Economic Education)', pais: 'US', idioma: 'en', formato: 'imagem', a_confirmar: true, por_que: 'Liberdade econômica em carrossel e meme: tese idêntica à do Pedro.' },
+  { handle: 'mises_brasil', nome: 'Instituto Mises Brasil', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Liberdade econômica em português; carrosséis de tese.' },
+  { handle: 'institutoliberal', nome: 'Instituto Liberal', pais: 'BR', idioma: 'pt', formato: 'imagem', a_confirmar: true, por_que: 'Carrosséis e frases liberais.' },
+  { handle: 'brasilparalelo', nome: 'Brasil Paralelo', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Carrosséis de economia e história com viés liberal-conservador.' },
+  { handle: 'revistaoeste', nome: 'Revista Oeste', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Notícia e opinião de direita em carrossel.' },
+  { handle: 'gazetadopovo', nome: 'Gazeta do Povo', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Notícia de economia com leitura liberal; carrosséis.' },
+  { handle: 'g4educacao', nome: 'G4 Educação', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Carrosséis de gestão e vendas para empresário.' },
+  { handle: 'exame', nome: 'Exame', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Negócios e economia em carrossel.' },
+  { handle: 'infomoney', nome: 'InfoMoney', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Mercado e dinheiro em carrossel; muito compartilhado.' },
+  { handle: 'investnews', nome: 'InvestNews', pais: 'BR', idioma: 'pt', formato: 'imagem', a_confirmar: true, por_que: 'Notícia de dinheiro explicada em carrossel.' },
+  { handle: 'neofeed', nome: 'NeoFeed', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Negócios e startups; carrosséis de caso.' },
+  { handle: 'startse', nome: 'StartSe', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Inovação e negócio em carrossel.' },
+  { handle: 'sebrae', nome: 'Sebrae', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Dicas para MEI e pequeno negócio em carrossel: o público do Pedro.' },
+  { handle: 'contaazul', nome: 'Conta Azul', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Gestão e imposto para pequena empresa em carrossel.' },
+  { handle: 'thenews.cc', nome: 'The News', pais: 'BR', idioma: 'pt', formato: 'imagem', a_confirmar: true, por_que: 'Newsletter de notícias em carrossel com humor.' },
+  { handle: 'economistasincero', nome: 'Economista Sincero', pais: 'BR', idioma: 'pt', formato: 'imagem', a_confirmar: true, por_que: 'Economia explicada sem rodeio; carrosséis e prints.' },
+  { handle: 'primopobre', nome: 'Primo Pobre', pais: 'BR', idioma: 'pt', formato: 'imagem', a_confirmar: true, por_que: 'Finanças para quem ganha pouco; prints e carrosséis de identificação.' },
+  { handle: 'ecommercenapratica', nome: 'E-commerce na Prática', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Venda online e marketplace em carrossel.' },
+  { handle: 'olist', nome: 'Olist', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Vender em marketplace: carrosséis de dica para lojista.' },
+  { handle: 'nubank', nome: 'Nubank', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Dinheiro do dia a dia em carrossel e meme.' },
+  { handle: 'xpinvestimentos', nome: 'XP Investimentos', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Mercado e economia em carrossel.' },
+  { handle: 'jurgenklaric', nome: 'Jürgen Klarić', pais: 'MX', idioma: 'es', formato: 'imagem', a_confirmar: true, por_que: 'Venda e neuromarketing em espanhol; frases em imagem.' },
+  { handle: 'emprendedores', nome: 'Emprendedores', pais: 'ES', idioma: 'es', formato: 'imagem', a_confirmar: true, por_que: 'Revista espanhola de empreendedorismo; carrosséis.' },
+  { handle: 'forbesmexico', nome: 'Forbes México', pais: 'MX', idioma: 'es', formato: 'imagem', a_confirmar: true, por_que: 'Negócios em espanhol; carrosséis de caso.' },
 ];
 
 // canal: handle (@) ou id UC… aceito por channels.list (forHandle / id). url: página pública do canal.
