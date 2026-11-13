@@ -28,15 +28,14 @@ async function modelosDe(m, f) {
 }
 const disponivel = () => MODELOS.some((m) => process.env[m.env]);
 
-const SISTEMA = (handle) => `Você olha UMA imagem de um post de Instagram (slide de carrossel ou post único) e devolve cada texto visível, para a imagem ser traduzida para o português do Brasil mantendo o desenho original.
-Para cada elemento:
-- "box": [ymin, xmin, ymax, xmax] na escala 0 a 1000 da imagem, justo em volta do texto (ou do logo/rosto, no caso de assinatura).
-- "original": o texto EXATAMENTE como aparece (confira números escritos à mão com atenção: 1 e 4, 7 e 1, 0 e 6).
-- "tipo": "texto" (conteúdo do post) ou "assinatura" (o @${handle || 'autor'}, nome do autor, logo, foto/rosto do autor usado como selo, marca d'água, site, "follow", contador de slide, "arraste/swipe"). Assinatura com logo/rosto: UM elemento cuja box cobre o logo E o texto juntos.
-- "traducao": a tradução natural para o português do Brasil, do MESMO tamanho ou mais curta (é texto de imagem). Números e valores iguais ao original (só troca a pontuação: 1,000 → 1.000). Onomatopeia (swish, boom) e nome próprio ficam como estão. Em assinatura, deixe "".
-Não invente texto que não está na imagem. Não junte textos distantes num elemento só.
-Responda APENAS JSON: {"elementos":[{"box":[0,0,0,0],"original":"","tipo":"texto","traducao":""}],"legenda":""}
-"legenda": a tradução da LEGENDA ORIGINAL que vier na mensagem (ou "" se não vier), sem @ do autor, sem pedido para seguir o autor, sem link dele.`;
+const SISTEMA = (handle) => `Você olha UMA imagem de um post de Instagram e devolve o texto que aparece nela, para a imagem ser traduzida para o português do Brasil mantendo o desenho original. Você NÃO precisa dizer onde fica cada texto (o sistema já sabe): só o texto certo e a tradução.
+"textos": cada trecho de texto separado da imagem (título, rótulo, parágrafo, balão), em ordem de leitura:
+- "original": EXATAMENTE como aparece. Confira número escrito à mão com atenção (1 e 4, 7 e 1, 0 e 6).
+- "traducao": tradução natural para o português do Brasil, do MESMO tamanho ou mais curta (é texto de imagem). Números e valores iguais (só a pontuação muda: 1,000 → 1.000). Onomatopeia (swish, boom) e nome próprio ficam iguais.
+Não inclua nos "textos" a assinatura do autor.
+"assinaturas": tudo que identifica o autor ou outra marca e precisa SAIR da imagem: @${handle || 'autor'}, nome do autor, logo, foto/rosto usado como selo, marca d'água, site, "follow/siga", contador de slide, "swipe/arraste". Para cada uma: "texto" (o que está escrito, ou "logo"/"rosto") e "posicao": uma de topo-esquerda, topo-centro, topo-direita, meio-esquerda, meio-centro, meio-direita, base-esquerda, base-centro, base-direita.
+"legenda": a tradução da LEGENDA ORIGINAL que vier na mensagem (ou ""), sem @ do autor, sem pedido para seguir o autor, sem link dele.
+Responda APENAS JSON: {"textos":[{"original":"","traducao":""}],"assinaturas":[{"texto":"","posicao":"base-centro"}],"legenda":""}`;
 
 async function chamar({ imagem, handle, legenda, fetch: f = globalThis.fetch, prazoMs = 30000 }) {
   const jpg = await sharp(imagem).rotate().resize({ width: 1024, height: 1280, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer();
@@ -61,7 +60,7 @@ async function chamar({ imagem, handle, legenda, fetch: f = globalThis.fetch, pr
         const txt = json?.choices?.[0]?.message?.content || '';
         const ini = txt.indexOf('{'); const fim = txt.lastIndexOf('}');
         const dados = JSON.parse(txt.slice(ini, fim + 1));
-        if (!Array.isArray(dados?.elementos)) throw new Error('resposta sem "elementos"');
+        if (!Array.isArray(dados?.textos) && !Array.isArray(dados?.elementos)) throw new Error('resposta sem "textos"');
         return { dados, provedor: m.provedor, modelo };
       } catch (e) { erros.push(`${m.provedor}/${modelo}: ${String(e.message).slice(0, 120)}`); }
     }
@@ -72,35 +71,46 @@ async function chamar({ imagem, handle, legenda, fetch: f = globalThis.fetch, pr
 }
 
 const limpa = (s, n = 600) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
-const centro = (b) => [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
-const dentro = (p, b, folga = 0) => p[0] >= b.x0 - folga && p[0] <= b.x1 + folga && p[1] >= b.y0 - folga && p[1] <= b.y1 + folga;
+const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+function semelhanca(a, b) {
+  a = norm(a); b = norm(b); if (!a || !b) return 0; if (a === b) return 1;
+  const m = a.length; const n = b.length; let ant = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(ant[j] + 1, cur[j - 1] + 1, ant[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); ant = cur; }
+  return 1 - ant[n] / Math.max(m, n);
+}
+const POSICOES = ['topo-esquerda', 'topo-centro', 'topo-direita', 'meio-esquerda', 'meio-centro', 'meio-direita', 'base-esquerda', 'base-centro', 'base-direita'];
 
-// Junta a resposta da IA com as caixas da OCR (pixels da imagem original).
-// Devolve blocos para trocaTexto: { x0,y0,x1,y1, altura_linha, texto, novo } ou { ..., apagar: true }.
-function blocosDaVisao(dados, { largura, altura, trechos = [] }) {
-  const out = [];
-  for (const e of (dados?.elementos || []).slice(0, 40)) {
-    const bx = Array.isArray(e?.box) ? e.box.map(Number) : null;
-    if (!bx || bx.length !== 4 || bx.some((v) => !Number.isFinite(v))) continue;
-    const [ymin, xmin, ymax, xmax] = bx.map((v) => Math.max(0, Math.min(1000, v)));
-    if (ymax <= ymin || xmax <= xmin) continue;
-    const vb = { x0: Math.round((xmin / 1000) * largura), x1: Math.round((xmax / 1000) * largura), y0: Math.round((ymin / 1000) * altura), y1: Math.round((ymax / 1000) * altura) };
-    const tipo = e.tipo === 'assinatura' ? 'assinatura' : 'texto';
-    const folga = Math.round(Math.max(vb.y1 - vb.y0, 10) * 0.4);
-    // Caixa justa: os trechos da OCR cujo centro cai dentro da caixa da IA.
-    const ocr = trechos.filter((t) => dentro(centro(t), vb, folga));
-    const caixa = ocr.length && tipo === 'texto' ? { x0: Math.min(...ocr.map((t) => t.x0)), x1: Math.max(...ocr.map((t) => t.x1)), y0: Math.min(...ocr.map((t) => t.y0)), y1: Math.max(...ocr.map((t) => t.y1)) } : vb;
-    const altura_linha = ocr.length ? Math.round(ocr.reduce((a, t) => a + (t.altura_linha || t.y1 - t.y0), 0) / ocr.length) : Math.max(12, Math.round((vb.y1 - vb.y0) / Math.max(1, Math.round((vb.y1 - vb.y0) / 60))));
-    const original = limpa(e.original); const traducao = limpa(e.traducao);
-    if (tipo === 'assinatura') {
-      const pad = Math.round(Math.max(vb.y1 - vb.y0, vb.x1 - vb.x0) * 0.06) + 4; // folga para a caixa da IA; trocaTexto encolhe até a tinta
-      out.push({ ...vb, x0: vb.x0 - pad, x1: vb.x1 + pad, y0: vb.y0 - pad, y1: vb.y1 + pad, altura_linha, texto: original || '(assinatura)', apagar: true, confianca: 100 });
-      continue;
+// Junta a resposta da IA com as caixas da OCR (pixels da imagem original). A posição vem SEMPRE da OCR: a IA só corrige o
+// texto e traduz. Cada trecho da OCR é casado com o texto da IA mais parecido ("4 shot" ↔ "1 shot").
+// Devolve { blocos, faltando }: blocos para trocaTexto ({x0,y0,x1,y1,altura_linha,texto,novo} ou {apagar, posicao}).
+function blocosDaVisao(dados, { trechos = [] } = {}) {
+  const textos = (Array.isArray(dados?.textos) ? dados.textos : []).slice(0, 40).map((t) => ({ original: limpa(t?.original), traducao: limpa(t?.traducao) })).filter((t) => t.original);
+  const porTexto = new Map();
+  for (const tr of trechos) {
+    let melhor = null; let nota = 0;
+    for (const [k, t] of textos.entries()) {
+      // trecho da OCR pode ser só um pedaço do texto (parágrafo partido): compara com o texto inteiro e com o pedaço do mesmo tamanho.
+      const n1 = semelhanca(tr.texto, t.original);
+      const n2 = norm(t.original).includes(norm(tr.texto)) && norm(tr.texto).length >= 4 ? 0.9 : 0;
+      const n = Math.max(n1, n2); if (n > nota) { nota = n; melhor = k; }
     }
-    if (!original || !traducao || traducao.toLowerCase() === original.toLowerCase()) continue;
-    out.push({ ...caixa, altura_linha, n_linhas: Math.max(1, ocr.length), texto: original, novo: traducao, confianca: 100, visao: true });
+    if (melhor != null && nota >= 0.55) { if (!porTexto.has(melhor)) porTexto.set(melhor, []); porTexto.get(melhor).push(tr); }
   }
-  return out;
+  const blocos = []; const faltando = [];
+  for (const [k, t] of textos.entries()) {
+    const ocr = porTexto.get(k);
+    const mudou = t.traducao && norm(t.traducao) !== norm(t.original);
+    if (!ocr) { if (mudou) faltando.push(t.original); continue; }
+    if (!mudou) continue;
+    const caixa = { x0: Math.min(...ocr.map((o) => o.x0)), x1: Math.max(...ocr.map((o) => o.x1)), y0: Math.min(...ocr.map((o) => o.y0)), y1: Math.max(...ocr.map((o) => o.y1)) };
+    const altura_linha = Math.round(ocr.reduce((a, o) => a + (o.altura_linha || o.y1 - o.y0), 0) / ocr.length);
+    blocos.push({ ...caixa, altura_linha, n_linhas: ocr.reduce((a, o) => a + (o.n_linhas || 1), 0), texto: t.original, novo: t.traducao, confianca: 100, visao: true });
+  }
+  for (const a of (Array.isArray(dados?.assinaturas) ? dados.assinaturas : []).slice(0, 6)) {
+    const posicao = POSICOES.includes(a?.posicao) ? a.posicao : null; if (!posicao) continue;
+    if (!blocos.some((b) => b.apagar && b.posicao === posicao)) blocos.push({ apagar: true, posicao, texto: limpa(a?.texto, 80) || '(assinatura)' });
+  }
+  return { blocos, faltando };
 }
 
-module.exports = { disponivel, chamar, blocosDaVisao, SISTEMA, MODELOS };
+module.exports = { disponivel, chamar, blocosDaVisao, semelhanca, POSICOES, SISTEMA, MODELOS };

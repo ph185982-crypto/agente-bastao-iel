@@ -157,10 +157,9 @@ test('cópia com IA que enxerga: usa o texto conferido na imagem (não o da OCR)
   // A OCR leu errado ("4 shot"); a IA de visão confere ("1 shot").
   const ocrErrada = async () => ({ text: '4 shot', linhas: [{ texto: '4 shot', altura: 40, y0: 300, y1: 340, confianca: 91 }], trechos: [{ texto: '4 shot', x0: 200, y0: 300, x1: 400, y1: 340, altura_linha: 40, confianca: 91, n_linhas: 1 }] });
   const chamadas = [];
-  const visao = async (o) => { chamadas.push(o); return { provedor: 'teste', dados: { elementos: [
-    { box: [222, 185, 252, 370], original: '1 shot', tipo: 'texto', traducao: '1 arremesso' },
-    { box: [880, 420, 980, 580], original: '@codiesanchez', tipo: 'assinatura', traducao: '' },
-  ], legenda: 'Siga @codiesanchez para mais.' } }; };
+  // A IA não dá posição: só o texto certo, a tradução e a região da assinatura (a posição vem da OCR e da própria imagem).
+  const visao = async (o) => { chamadas.push(o); return { provedor: 'teste', dados: { textos: [{ original: '1 shot', traducao: '1 arremesso' }],
+    assinaturas: [{ texto: '@codiesanchez', posicao: 'base-centro' }], legenda: 'Siga @codiesanchez para mais.' } }; };
   const deps = { fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => base }), ocr: ocrErrada, visao };
   const c = await CL.iniciar(ITEM.id); let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps }); if (r.concluido) break; }
   assert.strictEqual(r.estado, 'concluido', JSON.stringify(r));

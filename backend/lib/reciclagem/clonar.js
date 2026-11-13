@@ -210,13 +210,13 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
           while (cl.visao.length < cl.n && resta() > 14000) {
             const i = cl.visao.length; const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`);
             const r = await (deps.visao || Visao.chamar)({ imagem: Buffer.from(arq.dados), handle, legenda: i === 0 ? cl.legenda_original : null, prazoMs: Math.min(30000, resta() - 9000) });
-            cl.visao.push({ elementos: r.dados.elementos, legenda: String(r.dados.legenda || '').trim(), provedor: r.provedor || null, modelo: r.modelo || null });
+            cl.visao.push({ textos: r.dados.textos || [], assinaturas: r.dados.assinaturas || [], legenda: String(r.dados.legenda || '').trim(), provedor: r.provedor || null, modelo: r.modelo || null });
           }
           if (cl.visao.length < cl.n) break;
           const slides = [];
           for (const [i, s] of cl.slides.entries()) {
-            const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`); const m = await require('sharp')(Buffer.from(arq.dados)).rotate().metadata();
-            const blocos = Visao.blocosDaVisao(cl.visao[i], { largura: m.autoOrient?.width || m.width, altura: m.autoOrient?.height || m.height, trechos: s.paragrafos || [] });
+            const { blocos, faltando } = Visao.blocosDaVisao({ textos: cl.visao[i].textos, assinaturas: cl.visao[i].assinaturas }, { trechos: s.paragrafos || [] });
+            if (faltando.length) cl.faltando = [...(cl.faltando || []), ...faltando.map((f) => `slide ${i + 1}: "${f.slice(0, 60)}"`)];
             const textos = blocos.filter((b) => b.novo).map((b) => b.novo);
             slides.push({ titulo: (textos[0] || '').slice(0, 160), texto: textos.slice(1).join(' ').slice(0, 700), blocos });
           }
@@ -258,7 +258,7 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
         const copia = M.clone(c); (copia.claims || []).forEach((k) => { k.revisao = { ...(k.revisao || {}), confirmada_por_pedro: true }; });
         const bl = G.avaliar(copia, { conta: M.ACCOUNT_PIN }).bloqueios;
         const naoCabe = c.arte.renders.filter((r) => r.metrics?.cabe === false).length;
-        cl.aviso = [naoCabe ? `${naoCabe} slide(s) com texto grande demais: encurte antes de aprovar.` : null, ...bl.map((b) => b.titulo)].filter(Boolean).join(' · ') || null;
+        cl.aviso = [cl.faltando?.length ? `Texto que não consegui trocar na imagem (confira antes de aprovar): ${cl.faltando.slice(0, 4).join('; ')}` : null, naoCabe ? `${naoCabe} slide(s) com texto grande demais: encurte antes de aprovar.` : null, ...bl.map((b) => b.titulo)].filter(Boolean).join(' · ') || null;
         c.status = 'em_revisao'; c.studio = { estado: 'pronto', concluido_em: new Date().toISOString(), origem: 'clone' };
         cl.estado = 'concluido'; cl.concluido_em = new Date().toISOString();
         await a.arquivos.apagar(conta(), Array.from({ length: cl.n || 0 }, (_, i) => `clone_orig:${c.id}:${i}`)).catch(() => {}); // o original baixado não fica guardado
