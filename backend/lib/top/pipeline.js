@@ -22,7 +22,9 @@ const ROTULO = { ler: 'Lendo a matéria', fatos: 'Separando os fatos e conferind
 const REGUA = { gatilhos_min: 5, nota_min: 7.5, nucleo_min: 2 };
 // Formatos que o pipeline produz: carrossel reportagem, carrossel tweet, post estático (1–2 imagens + legenda longa) e
 // ensaio (texto corrido em slides escuros, variante do tweet).
-const FORMATOS = ['tweet', 'reportagem', 'estatico', 'ensaio'];
+// 'reportagem' (fundo azul-marinho) foi retirado da produção a pedido do Pedro: ainda renderiza conteúdo antigo, mas não é mais criado.
+const FORMATOS = ['tweet', 'estatico', 'ensaio'];
+const RETIRADOS = ['reportagem'];
 const LEASE_MS = 70000; const MAX_TENTATIVAS = 3;
 
 function regua() {
@@ -53,7 +55,7 @@ async function criar({ url = null, texto = null, titulo = '', origem = 'manual',
   if (url && !u) throw erro('Link inválido.', 'LINK_INVALIDO');
   const modoOk = MODOS.includes(modo) ? modo : null;
   if (!u && String(texto || '').trim().length < (PROPRIOS.includes(modoOk) ? 200 : 300)) throw erro(PROPRIOS.includes(modoOk) ? 'Escreva pelo menos 200 caracteres: a ferramenta só usa o que você contar.' : 'Envie o link da matéria ou cole um texto com pelo menos 300 caracteres.', 'ENTRADA');
-  const fmt = FORMATOS.includes(formato) ? formato : null;
+  const fmt = FORMATOS.includes(formato) ? formato : (RETIRADOS.includes(formato) ? 'tweet' : null);
   // Post estático é um conteúdo `formato: 'estatico'` (1 ou 2 imagens); os demais continuam carrossel.
   const c = M.novoConteudo({ titulo: String(titulo || '').slice(0, 140) || (fmt === 'estatico' ? 'Post em preparação' : 'Carrossel em preparação'), origem: u ? { tipo: 'link', url: u } : { tipo: 'texto' }, formato: fmt === 'estatico' ? 'estatico' : 'carrossel' });
   c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modoOk }, tentativas: {}, erros: [], criado_em: agoraISO() };
@@ -115,7 +117,7 @@ E.angulo = async (c, ctx) => {
   c.top.angulo = { empreendedor, enviar_para: /^(seu|sua|seus|suas|quem)\b/i.test(enviarPara) ? enviarPara : 'seu sócio', gatilhos: { contradicao: n('contradicao'), bolso: n('bolso'), numero: n('numero'), personagem: n('personagem') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240), imagem: { busca: String(dados?.imagem?.busca || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80), pessoa_central: dados?.imagem?.pessoa_central === true, lugar_brasil: dados?.imagem?.lugar_brasil ? String(dados.imagem.lugar_brasil).slice(0, 80) : null } };
   c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
   // Formato visual: o pedido de quem criou (piloto alterna para variar o feed) vence; senão a escolha do editor.
-  c.top.formato = c.top.entrada?.formato || (dados?.formato === 'tweet' ? 'tweet' : 'reportagem');
+  c.top.formato = c.top.entrada?.formato || 'tweet';
   if (semMateria(c)) { if (!c.top.angulo.tese) throw Object.assign(erro('Não saiu uma tese a partir do briefing.', 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' }); return; }
   if (empreendedor === 0) throw Object.assign(erro('A pauta não muda nada para quem empreende (público do perfil): fica de fora.', 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
   const nucleo = Math.max(c.top.angulo.gatilhos.bolso, c.top.angulo.gatilhos.contradicao);

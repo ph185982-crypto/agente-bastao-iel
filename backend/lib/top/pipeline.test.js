@@ -49,6 +49,9 @@ const deps = async (ia) => ({
 const novo = () => arm._definir(Object.assign(arm.memoria(), { duravel: true }));
 const ler = async (id) => (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, id)).doc;
 
+// 'reportagem' (fundo azul) não é mais criado, mas conteúdo antigo ainda renderiza: estes testes forçam o formato no documento.
+const comReportagem = async (c) => { const a = arm.armazem(); const r = await a.conteudos.obter(ACCOUNT.ig_id, c.id); r.doc.top.entrada.formato = 'reportagem'; await a.conteudos.salvar(ACCOUNT.ig_id, c.id, r.doc, r.rev); return c; };
+
 test('fato só vale com trecho literal da matéria e números dentro do trecho', () => {
   const r = K.verificarFatos(FATOS.fatos, MATERIA);
   assert.deepStrictEqual(r.fatos.map((f) => f.id_ia), ['a', 'b', 'c']);
@@ -59,7 +62,7 @@ test('fato só vale com trecho literal da matéria e números dentro do trecho',
 
 test('do link ao "Para aprovar": versão vencedora, foto com crédito, arte de todos os slides e portões liberados', async () => {
   novo(); const ia = iaFalsa();
-  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const c = await comReportagem(await T.criar({ url: 'https://exemplo.test/materia' }));
   const r = await T.executarTudo(c.id, { deps: await deps(ia) });
   assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
   const doc = await ler(c.id);
@@ -237,7 +240,7 @@ test('consertos sem IA: declaração ganha "Segundo …", legenda perde número 
   const ia = iaFalsa({ roteiros: [r0, r0] }); const d = await deps(ia);
   const arteReal = require('../arte'); let chamadas = 0;
   d.arte = { renderizarSlide: async (s, o) => { chamadas++; const r = await arteReal.renderizarSlide(s, o); if (/[.!?]\s+\S/.test(String(s.texto || '')) && s.layout === 'rep_manchete') r.metrics = { ...r.metrics, cabe: false }; return r; } };
-  const c = await T.criar({ url: 'https://exemplo.test/materia' });
+  const c = await comReportagem(await T.criar({ url: 'https://exemplo.test/materia' }));
   const r = await T.executarTudo(c.id, { deps: d });
   assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
   const v = M.versaoAtiva(await ler(c.id));

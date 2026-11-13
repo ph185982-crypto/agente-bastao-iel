@@ -18,11 +18,11 @@ const PADRAO = Object.freeze({
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
   // 'auto' reparte as vagas pelo placar real (envios por mil de cada formato, com 20% de teste); sem dado suficiente, faz o rodízio dos quatro.
-  formato_padrao: 'auto', // 'auto' | 'reportagem' (visual da marca) | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
+  formato_padrao: 'auto', // 'auto' | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
 });
 // Formatos que o piloto pode pedir ao pipeline; 'alterna' roda tweet → ensaio → estatico para o feed variar.
-const FORMATOS_PILOTO = ['reportagem', 'tweet', 'estatico', 'ensaio', 'alterna', 'auto'];
-const FORMATOS_AUTO = ['tweet', 'reportagem', 'estatico', 'ensaio'];
+const FORMATOS_PILOTO = ['tweet', 'estatico', 'ensaio', 'alterna', 'auto'];
+const FORMATOS_AUTO = ['tweet', 'estatico', 'ensaio'];
 const RODIZIO = ['tweet', 'ensaio', 'estatico'];
 const proximoDoRodizio = (ultimo) => RODIZIO[(RODIZIO.indexOf(ultimo) + 1) % RODIZIO.length]; // desconhecido (-1) → tweet
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -284,7 +284,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       if (historia) { /* a vaga desta rodada foi para a linha própria */ } else if (pauta) {
         // Formato padrão do feed: "reportagem" (o visual da marca). Dá para mudar em config.piloto (formato_padrao);
         // "alterna" faz o rodízio tweet → ensaio → estatico a cada pauta.
-        const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto';
+        const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto'; // 'reportagem' salvo antes vira 'auto'
         const ultimoFmt = [...est.criados].reverse().find((x) => x.formato)?.formato;
         let fmt = formato === 'alterna' ? proximoDoRodizio(ultimoFmt) : formato;
         if (formato === 'auto') {
