@@ -87,3 +87,16 @@ test('IA gratuita sem cota: o clone espera (não vira erro) e segue quando a cot
   for (let k = 0; k < 4 && !r.concluido; k++) r = await CL.passo(c.id, { deps: { ...g, ocr, pedirJson: async () => ({ dados: TRAD }) } });
   assert.strictEqual(r.estado, 'concluido');
 });
+
+test('copiar usa as imagens já guardadas na coleta (sem chamar a Graph) e a lista só mostra carrossel e imagem', async () => {
+  novo();
+  const imgs = await Promise.all([slideImg('#a55'), slideImg('#5a5')]);
+  await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, midias: ['https://cdn.test/a.jpg', 'https://cdn.test/b.jpg'], legenda: 'You lose 30% of profit.' });
+  await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, 'rc_11aa11bb22cc33dd', { ...ITEM, id: 'rc_11aa11bb22cc33dd', permalink: 'https://www.instagram.com/reel/R/', tipo: 'reel', vl: 9 });
+  const lista = await C.listar({ soImagens: true, dias: 7 });
+  assert.deepStrictEqual(lista.itens.map((i) => i.tipo), ['carrossel'], 'reel fora da lista');
+  let graphChamada = false;
+  const deps = { graph: async () => { graphChamada = true; return {}; }, fetch: async (u) => ({ ok: true, status: 200, arrayBuffer: async () => imgs[u.endsWith('a.jpg') ? 0 : 1] }), ocr, pedirJson: async () => ({ dados: { slides: [{ i: 0, titulo: 'Você perde 30% do lucro', texto: '' }, { i: 1, titulo: 'Passo um', texto: 'Separe as contas.' }], legenda: 'Você perde 30% do lucro.' } }) };
+  const c = await CL.iniciar(ITEM.id); let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps }); if (r.concluido) break; }
+  assert.strictEqual(r.estado, 'concluido', JSON.stringify(r)); assert.strictEqual(r.slides, 2); assert.strictEqual(graphChamada, false);
+});
