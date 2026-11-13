@@ -62,7 +62,7 @@ test('coleta do Instagram: 1 chamada por conta, conta recusada só registra o er
   const g = graphFalsa({ hormozi: { seguidores: 5000000, posts: [post('h1'), post('h2', { curtidas: 9000 }), post('h3'), post('h4', { horas: 5, curtidas: 90000 })] }, joeljota: { seguidores: 6500000, posts: [post('j1', { comentarios: 100 }), post('j2', { comentarios: 100 }), post('j3', { comentarios: 900, tipo: 'VIDEO', produto: 'REELS', views: 2000000 })] } });
   const r = await C.coletarInstagram({ contas: contasTeste(['hormozi', 'recusada', 'joeljota']).instagram, graph: g.graph, igId: '17841', agora: AGORA });
   assert.strictEqual(g.chamadas.length, 3, 'uma chamada por conta');
-  assert.ok(g.chamadas.every((c) => c.caminho === '17841' && /media\.limit\(40\)\{like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,media_url,thumbnail_url,children\.limit\(20\)\{media_type,media_url\}\}/.test(c.fields)));
+  assert.ok(g.chamadas.every((c) => c.caminho === '17841' && /media\.limit\(50\)\{like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,media_url,thumbnail_url,children\.limit\(20\)\{media_type,media_url\}\}/.test(c.fields)));
   const recusada = r.contas.find((c) => c.handle === 'recusada');
   assert.strictEqual(recusada.ok, false); assert.match(recusada.erro, /permissão/);
   assert.strictEqual(r.contas.filter((c) => c.ok).length, 2);
@@ -228,9 +228,9 @@ test('item sem tese não recicla; contas: curadas + adicionadas − removidas, h
   assert.ok(c.instagram.some((x) => x.handle === 'novaconta' && x.adicionada && x.pais === 'BR'));
   assert.ok(!c.instagram.some((x) => x.handle === 'garyvee')); assert.ok(!c.instagram.some((x) => x.handle === 'inválido!'));
   assert.strictEqual(c.instagram.filter((x) => x.handle === 'hormozi').length, 1, 'não duplica');
-  assert.strictEqual(c.instagram.length, Contas.INSTAGRAM.length, '40 − 1 removida + 1 nova');
+  assert.strictEqual(c.instagram.length, Contas.INSTAGRAM.length, '80 − 1 removida + 1 nova');
   assert.ok(c.youtube.some((x) => x.canal === '@canalnovo')); assert.ok(!c.youtube.some((x) => x.canal === '@garyvee' || x.canal === 'lixo'));
-  assert.strictEqual(Contas.INSTAGRAM.length, 40); assert.strictEqual(Contas.YOUTUBE.length, 20);
+  assert.strictEqual(Contas.INSTAGRAM.length, 80); assert.strictEqual(Contas.YOUTUBE.length, 20);
   await Contas.salvarConfig({ instagram: { remover: ['hormozi'] } });
   assert.ok(!(await Contas.carregar()).instagram.some((x) => x.handle === 'hormozi'));
 });
@@ -253,9 +253,9 @@ test('rota: lista ordenada por VL, tendências, contas e reciclar reel pela API'
     assert.strictEqual(r.total, 2); assert.strictEqual(r.itens[0].vl, 7.5); assert.strictEqual(r.itens[0].legenda, 'texto de terceiro'); assert.ok(r.estado.mecanismos.historia);
     r = await (await fetch(`${base}?mecanismo=polemica&idioma=pt`)).json(); assert.strictEqual(r.total, 1);
     r = await (await fetch(`${base}/tendencias`)).json(); assert.strictEqual(r.tendencias[0].titulo, 'lavanderia'); assert.ok(r.tendencias[0].itens.includes(ITEM.id), 'tendência cruzada com o item pela ponte ("lavanderia de bairro")');
-    r = await (await fetch(`${base}/contas`)).json(); assert.strictEqual(r.instagram.length, 40);
+    r = await (await fetch(`${base}/contas`)).json(); assert.strictEqual(r.instagram.length, 80);
     const put = await fetch(`${base}/contas`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ instagram: { remover: ['garyvee'] } }) });
-    assert.strictEqual(put.status, 200); assert.strictEqual((await put.json()).instagram.length, 39);
+    assert.strictEqual(put.status, 200); assert.strictEqual((await put.json()).instagram.length, 79);
     const rec = await fetch(`${base}/${ITEM.id}/reciclar`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ formato: 'reel' }) });
     assert.strictEqual(rec.status, 201); const j = await rec.json(); assert.ok(j.id && /Se você tem um negócio pequeno/.test(j.roteiro)); assert.strictEqual(j.rotulo, 'reel');
     assert.strictEqual((await fetch(`${base}/${ITEM.id}/reciclar`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ formato: 'x' }) })).status, 400);

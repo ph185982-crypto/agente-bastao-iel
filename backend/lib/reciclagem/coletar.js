@@ -27,14 +27,14 @@ const TIPO = 'reciclagem';                 // itens, um documento por post (id d
 const TIPO_ESTADO = 'reciclagem_estado';   // documento único com a última coleta, tendências e controle do push
 const MATURIDADE_H = 72;
 const RETENCAO_DIAS = 30;
-const MAX_CONTAS = 40;
-const LIMITE_MIDIAS = 40;
+const MAX_CONTAS = 70;                     // 1 chamada por conta; 3 coletas por dia, em rodízio
+const LIMITE_MIDIAS = 50;
 const LOTE_IA = 15;
 const MAX_CLASSIFICAR = 45;                // 3 lotes por coleta
 const VL_CANDIDATO = 1.5;                  // abaixo disso nem entra no armazém
 const VL_CLASSIFICAR = 2;
 const VL_ALTA = 3;
-const MAX_GUARDAR = 300;
+const MAX_GUARDAR = 600;
 const COTA_YOUTUBE = 300;
 const TRENDS_URL = 'https://trends.google.com/trending/rss?geo=BR';
 
@@ -92,7 +92,7 @@ function normalizarMidiaIg(m) {
   if (!m?.permalink || !m?.timestamp) return null;
   return { permalink: String(m.permalink), publicado_em: String(m.timestamp), tipo: tipoIg(m), curtidas: num(m.like_count), comentarios: num(m.comments_count), visualizacoes: num(m.view_count), n_slides: Array.isArray(m.children?.data) ? m.children.data.length || null : null, midias: (Array.isArray(m.children?.data) && m.children.data.length ? m.children.data : [m]).filter((x) => x.media_type === 'IMAGE' && x.media_url).map((x) => String(x.media_url)).slice(0, 20), legenda: String(m.caption || '').trim().slice(0, 2200) };
 }
-async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxContas = MAX_CONTAS, orcamentoMs = 40000, concorrencia = 4 } = {}) {
+async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxContas = MAX_CONTAS, orcamentoMs = 40000, concorrencia = 7 } = {}) {
   const lista = (contas || []).slice(0, maxContas); const itens = []; const resumo = []; const inicio = Date.now(); let parcial = false;
   const fila = [...lista];
   const trabalhador = async () => {

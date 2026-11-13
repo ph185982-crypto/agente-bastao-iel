@@ -7,7 +7,7 @@
   'use strict';
   const ST = {
     carregando: false, carregou: false, erro: null, itens: [], total: 0, estado: null, tendencias: null, tela: 'lista',
-    filtro: { mecanismo: '', idioma: '', min_vl: '3', dias: '7' }, menu: null, ocupado: {}, roteiro: null, producao: null,
+    filtro: { mecanismo: '', idioma: '', min_vl: '2', dias: '30' }, menu: null, ocupado: {}, roteiro: null, producao: null,
     contas: null, contasForm: { handle: '', nome: '', pais: 'BR', idioma: 'pt', por_que: '', canal: '', canal_nome: '', canal_pais: 'BR', canal_idioma: 'pt' }, contasAlterado: false, autoriza: null, autForm: {},
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
