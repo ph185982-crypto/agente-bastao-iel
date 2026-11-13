@@ -7,9 +7,9 @@ const sharp = require('sharp');
 // Provedores gratuitos com visão. Os nomes de modelo mudam: além da lista fixa, cada um descobre na hora os modelos que
 // aceitam imagem (Gemini: todo "flash"; Groq: llama-4/vision/scout/maverick; OpenRouter: entrada de imagem e preço zero).
 const MODELOS = [
-  { provedor: 'gemini', env: 'GEMINI_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta/openai', modelos: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'], descobrir: (m) => /flash/i.test(m.id) && !/image|tts|audio|live|embed/i.test(m.id) },
   { provedor: 'groq', env: 'GROQ_API_KEY', base: 'https://api.groq.com/openai/v1', modelos: [], descobrir: (m) => /llama-4|vision|scout|maverick|-vl/i.test(m.id) },
   { provedor: 'openrouter', env: 'OPENROUTER_API_KEY', base: 'https://openrouter.ai/api/v1', modelos: [], descobrir: (m) => (m.architecture?.input_modalities || []).includes('image') && /:free$/.test(m.id) },
+  { provedor: 'gemini', env: 'GEMINI_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta/openai', modelos: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'], descobrir: (m) => /flash/i.test(m.id) && !/image|tts|audio|live|embed/i.test(m.id) },
 ];
 const _descobertos = new Map();
 async function modelosDe(m, f) {
@@ -47,6 +47,7 @@ async function chamar({ imagem, handle, legenda, fetch: f = globalThis.fetch, pr
         const r = await f(`${m.base}/chat/completions`, { method: 'POST', signal: AbortSignal.timeout(prazoMs), headers: { Authorization: `Bearer ${process.env[m.env]}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model: modelo, messages: msgs, temperature: 0.1, max_tokens: 2500, response_format: { type: 'json_object' }, ...(/^gemini-3/.test(modelo) ? { reasoning_effort: 'low' } : {}) }) });
         const corpo = await r.text();
+        if (!r.ok && [401, 403].includes(r.status)) { erros.push(`${m.provedor} ${r.status}: ${corpo.replace(/\s+/g, ' ').slice(0, 120)}`); break; } // provedor fechado: pula os outros modelos dele
         if (!r.ok) { if (r.status === 429) cota = true; erros.push(`${m.provedor}/${modelo} ${r.status}: ${corpo.replace(/\s+/g, ' ').slice(0, 120)}`); continue; }
         const txt = JSON.parse(corpo)?.choices?.[0]?.message?.content || '';
         const ini = txt.indexOf('{'); const fim = txt.lastIndexOf('}');
