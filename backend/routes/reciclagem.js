@@ -66,5 +66,19 @@ router.post('/:id/reciclar', limita({ max: 6, janelaMs: 60000, nome: 'reciclagem
   res.status(201).json(r);
 }));
 
+// ── Clone autorizado (tradução fiel, mesma estrutura) ───────────────────────────
+const Clonar = require('../lib/reciclagem/clonar');
+router.post('/:id/autorizacao', limita({ max: 20, janelaMs: 60000, nome: 'reciclagem-autorizacao' }), rota(async (req, res) => {
+  res.status(201).json(await Clonar.autorizar(exigeId(req.params.id), req.body || {}));
+}));
+router.post('/:id/clonar', limita({ max: 6, janelaMs: 60000, nome: 'reciclagem-clonar' }), rota(async (req, res) => {
+  const c = await Clonar.iniciar(exigeId(req.params.id));
+  res.status(201).json(await Clonar.passo(c.id, { orcamentoMs: 40000 }));
+}));
+router.post('/clone/:cid/passo', limita({ max: 40, janelaMs: 60000, nome: 'reciclagem-clone-passo' }), rota(async (req, res) => {
+  const cid = String(req.params.cid); if (!/^c_[a-f0-9]{6,16}$/.test(cid)) throw Object.assign(new Error('Identificador inválido.'), { status: 400, code: 'ENTRADA' });
+  res.json(await Clonar.passo(cid, { orcamentoMs: 45000 }));
+}));
+
 module.exports = router;
 module.exports._internos = { estado, coletar };
