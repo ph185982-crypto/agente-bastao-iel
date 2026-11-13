@@ -18,6 +18,7 @@ const PADRAO = Object.freeze({
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
   // 'auto' reparte as vagas pelo placar real (envios por mil de cada formato, com 20% de teste); sem dado suficiente, faz o rodízio dos quatro.
+  roteiros_dia: 10, // roteiros de Reels aprovados pelos fiscais por dia (aba Vídeos); 0 desliga
   formato_padrao: 'auto', // 'auto' | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
 });
 // Formatos que o piloto pode pedir ao pipeline; 'alterna' roda tweet → ensaio → estatico para o feed variar.
@@ -39,7 +40,7 @@ function validar(patch = {}) {
   const out = {};
   if ('ativo' in patch) { if (typeof patch.ativo !== 'boolean') throw erro('ativo deve ser verdadeiro ou falso.'); out.ativo = patch.ativo; }
   const inteiro = (k, min, max) => { if (!(k in patch)) return; const n = Number(patch[k]); if (!Number.isInteger(n) || n < min || n > max) throw erro(`${k} deve ser um inteiro de ${min} a ${max}.`); out[k] = n; };
-  inteiro('meta_dia', 1, 15); inteiro('reserva', 0, 5); inteiro('candidatos_max_dia', 1, 30);
+  inteiro('meta_dia', 1, 15); inteiro('reserva', 0, 5); inteiro('candidatos_max_dia', 1, 30); inteiro('roteiros_dia', 0, 15);
   for (const k of ['inicio_producao', 'fim_producao']) if (k in patch) { if (!HORA.test(patch[k])) throw erro(`${k} deve estar no formato HH:MM.`); out[k] = patch[k]; }
   if ('formato_padrao' in patch) { if (!FORMATOS_PILOTO.includes(patch.formato_padrao)) throw erro(`formato_padrao deve ser ${FORMATOS_PILOTO.slice(0, -1).join(', ')} ou auto.`); out.formato_padrao = patch.formato_padrao; }
   for (const k of ['horarios', 'janelas_aprovacao']) if (k in patch) {
@@ -160,6 +161,10 @@ function proximaAcao(cfg, est, { agora, dia, hora, removidos = new Set(), semPau
   else if (est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora) c.push(Date.parse(est.ia_pausa_ate));
   else if (semPauta) c.push(Math.ceil((agora + 15 * 60000) / (30 * 60000)) * 30 * 60000); // fila de pautas vazia: olha de novo em ~30 min
   else c.push(agora + 5 * 60000);
+  // Roteiros de Reels ainda faltando hoje: volta em poucos minutos (cada rodada faz 1 a 3 chamadas de IA).
+  const metaRt = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia;
+  const rt = est.roteiros; const rtPausa = rt?.pausa_ate && Date.parse(rt.pausa_ate) > agora;
+  if (metaRt > 0 && hora >= '05:00' && hora <= '22:30' && !rtPausa && (rt?.dia !== dia || require('../roteiros').pendente(rt, metaRt))) c.push(agora + 3 * 60000);
   return Math.min(...c);
 }
 
@@ -303,6 +308,15 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       } else { r.sem_pauta = true; r.avisos.push('Sem pauta nova agora (fila vazia ou descoberta adiada).'); }
     } catch (e) { r.avisos.push(`Criação falhou: ${String(e.message).slice(0, 160)}`); }
   }
+  // 5) Roteiros de Reels: roteirista + fiscais avançam com o tempo que sobrou (IA gratuita; nada é publicado).
+  const metaRoteiros = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia;
+  if (metaRoteiros > 0 && !iaPausada && hora >= '05:00' && hora <= '22:30' && restante() > 16000 && !deps.semRoteiros) {
+    try {
+      const rt = await (deps.roteiros || require('../roteiros').avancar)(est, { agora, dia, meta: metaRoteiros, orcamentoMs: restante() - 4000 });
+      if (rt.salvos?.length || rt.descartados?.length || rt.fases?.length) r.roteiros = { salvos: rt.salvos?.length || 0, descartados: rt.descartados?.length || 0, fases: rt.fases?.length || 0 };
+      if (rt.erro) r.avisos.push(`Roteiros: ${rt.erro}`);
+    } catch (e) { r.avisos.push(`Roteiros falharam: ${String(e.message).slice(0, 120)}`); }
+  }
   r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos, semPauta: !!r.sem_pauta });
   est.ultima_rodada = { ...r, avisos: r.avisos.slice(0, 6) };
   await gravarRodada(est, removidos);
@@ -340,6 +354,20 @@ async function registrarDecisao(id, decisao) {
   if (x) { x.decidido = decisao; await gravarEstado(est); }
 }
 
+// "Gerar roteiros agora" (aba Vídeos): roda só a fábrica de roteiros, respeitando a trava da rodada.
+async function avancarRoteiros({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {}) {
+  const a = armazem(); if (!a?.duravel) throw erro('Os roteiros precisam do banco de dados no servidor.', 503);
+  const cfg = await config(); const est = await lerEstado();
+  if (est.rodando_ate && Date.parse(est.rodando_ate) > Date.now()) return { ocupado: true, motivo: 'O piloto está rodando agora; os roteiros avançam nessa rodada.' };
+  const dia = diaSP(agora);
+  const meta = Math.max(Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia, 1);
+  await gravarEstado({ ...est, rodando_ate: new Date(Date.now() + orcamentoMs + 15000).toISOString() });
+  let r;
+  try { r = await (deps.avancar || require('../roteiros').avancar)(est, { agora, dia, meta, orcamentoMs }); }
+  finally { const atual = await lerEstado(); await gravarEstado({ ...atual, roteiros: est.roteiros, rodando_ate: null }); }
+  return { ...r, resumo: require('../roteiros').resumo(est, { dia }) };
+}
+
 async function resumoDoDia({ agora = Date.now() } = {}) {
   const cfg = await config(); const est = await lerEstado(); const dia = diaSP(agora);
   const hoje = (est.criados || []).filter((x) => x.dia === dia);
@@ -349,9 +377,10 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
     hoje: { criados: hoje.length, em_producao: cont((x) => x.estado === 'em_andamento'), prontos: cont((x) => x.estado === 'concluida' && !x.decidido), aprovados: cont((x) => x.decidido === 'aprovado'), descartados_regua: cont((x) => ['descartada', 'abaixo_da_regua', 'erro'].includes(x.estado)) },
     itens: hoje.map((x) => ({ id: x.id, titulo: x.titulo || '', estado: x.estado, nota: x.nota ?? null, decidido: x.decidido || null })),
     agenda: (est.agenda || []).slice(0, 20), proximo_horario: proximoHorario(cfg, (est.agenda || []).map((x) => x.publicar_em), agora),
+    roteiros: require('../roteiros').resumo(est, { dia }),
     ultima_rodada: est.ultima_rodada || null, guardado: !!armazem()?.duravel,
     ia_paga: process.env.IA_OPENAI === '1' && process.env.OPENAI_API_KEY ? await require('../gastoIa').resumo({ agora }).catch(() => null) : null,
   };
 }
 
-module.exports = { proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
+module.exports = { avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };

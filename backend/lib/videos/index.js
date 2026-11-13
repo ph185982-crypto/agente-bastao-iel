@@ -95,6 +95,8 @@ async function criar({ titulo, estilo, opcoes, roteiro_id, roteiro_texto } = {})
   c.studio = { estado: 'video', etapa: 'envio' };
   log(c, 'Vídeo criado; aguardando o arquivo.');
   await a.conteudos.salvar(conta(), c.id, c, 0);
+  // Gravou com um roteiro da fábrica: o cartão do roteiro sai da aba (o vídeo novo leva o texto junto).
+  if (c.video.roteiro_id && ehVideo(c.video.roteiro_id)) await require('../roteiros').arquivar(c.video.roteiro_id, 'gravado').catch(() => {});
   return c;
 }
 
@@ -399,7 +401,8 @@ function resumo(c) {
   const v = M.versaoAtiva(c);
   return { id: c.id, titulo: c.titulo, estado: c.video.estado, status: c.status, criado_em: c.created_at, atualizado_em: c.updated_at, estilo: c.video.estilo,
     poster: c.video.resultado?.poster_url || null, url: c.video.resultado?.url || null, duracao_s: c.video.resultado?.duracao_s ?? c.video.origem?.duracao_s ?? null,
-    legenda: c.video.legenda_ig?.texto || null, hashtags: c.video.legenda_ig?.hashtags || [], hash: v?.hash || null, erro: c.video.estado === 'erro' ? c.video.worker?.erro || null : null, tentativas: c.video.worker?.tentativas || 0 };
+    legenda: c.video.legenda_ig?.texto || null, hashtags: c.video.legenda_ig?.hashtags || [], hash: v?.hash || null, erro: c.video.estado === 'erro' ? c.video.worker?.erro || null : null, tentativas: c.video.worker?.tentativas || 0,
+    ...(c.video.estado === 'roteiro' ? { roteiro_texto: c.video.roteiro_texto || '', duracao_estimada_s: c.video.duracao_estimada_s ?? null, roteiro: c.video.roteiro || null } : {}) };
 }
 function publico(c) {
   const d = M.clone(c);
