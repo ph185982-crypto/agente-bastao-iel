@@ -81,11 +81,48 @@ function diagramar(b, texto, info) {
   return { f, tam, linhas, centrado, largura };
 }
 
+// Encolhe a caixa de apagar até a "tinta" da assinatura: linhas que atravessam a caixa inteira (moldura, divisória)
+// não contam, e fica só o maior bloco de tinta. Assim apaga o logo e o @ sem comer o desenho em volta.
+function refinarApagar(raw, info, b) {
+  const borda = [];
+  for (let x = b.x0; x <= b.x1; x += 2) { borda.push(pixel(raw, info, x, b.y0), pixel(raw, info, x, b.y1)); }
+  for (let y = b.y0; y <= b.y1; y += 2) { borda.push(pixel(raw, info, b.x0, y), pixel(raw, info, b.x1, y)); }
+  const fundo = [0, 1, 2].map((c) => mediana(borda.map((p) => p[c])));
+  const tinta = (x, y) => dist(pixel(raw, info, x, y), fundo) > 60;
+  const larg = b.x1 - b.x0 + 1;
+  const linha = []; // tinta por linha, sem as linhas que atravessam (> 80% da largura)
+  for (let y = b.y0; y <= b.y1; y++) { let n = 0; for (let x = b.x0; x <= b.x1; x++) if (tinta(x, y)) n++; linha.push(n > larg * 0.8 ? 0 : n); }
+  // Grupos de linhas com tinta; fica o de mais tinta.
+  // Logo e @ costumam ter um respiro entre eles: buraco de até 15% da altura da caixa ainda é a mesma assinatura.
+  const buraco = Math.max(6, Math.round((b.y1 - b.y0) * 0.15));
+  let melhor = null; let ini = -1; let massa = 0; let vazio = 0;
+  for (let i = 0; i <= linha.length; i++) {
+    const n = i < linha.length ? linha[i] : 0;
+    if (n > 0) { if (ini < 0) ini = i; massa += n; vazio = 0; }
+    else if (ini >= 0 && (++vazio > buraco || i === linha.length)) { const fim = i - vazio; if (!melhor || massa > melhor.massa) melhor = { a: ini, b: fim, massa }; ini = -1; massa = 0; vazio = 0; }
+  }
+  if (!melhor || melhor.massa < 8) return null;
+  const ya = b.y0 + melhor.a; const yb = b.y0 + melhor.b;
+  let xa = b.x1; let xb = b.x0;
+  for (let y = ya; y <= yb; y++) for (let x = b.x0; x <= b.x1; x++) if (tinta(x, y)) { if (x < xa) xa = x; if (x > xb) xb = x; }
+  const pad = 6;
+  return { x0: Math.max(0, xa - pad), y0: Math.max(0, ya - pad), x1: Math.min(info.width - 1, xb + pad), y1: Math.min(info.height - 1, yb + pad), fundo };
+}
+
 // Monta o SVG com a pintura das caixas e o texto novo (contornos).
 function svgTroca(blocos, info, raw) {
   let rects = ''; let textos = ''; const trocados = [];
+  // Assinatura do autor (@, nome, logo, rosto, marca d'água): só apaga, com a cor do fundo em volta.
+  for (const b of blocos.filter((x) => x.apagar)) {
+    const x0 = Math.max(0, b.x0); const y0 = Math.max(0, b.y0); const x1 = Math.min(info.width - 1, b.x1); const y1 = Math.min(info.height - 1, b.y1);
+    if (x1 <= x0 || y1 <= y0) continue;
+    const r = refinarApagar(raw, info, { x0, y0, x1, y1 });
+    if (!r) continue;
+    rects += `<rect x="${r.x0}" y="${r.y0}" width="${r.x1 - r.x0}" height="${r.y1 - r.y0}" fill="${hex(r.fundo)}"/>`;
+    trocados.push({ original: b.texto, apagado: true });
+  }
   for (const b of blocos) {
-    if (!b.novo || !ehTexto(b)) continue;
+    if (b.apagar || !b.novo || (!b.visao && !ehTexto(b))) continue;
     const { fundo, texto: corTexto, pad } = cores(raw, info, b);
     const d = diagramar(b, b.novo, info);
     const alto = d.linhas.length * d.tam * 1.18;
@@ -125,4 +162,4 @@ async function encaixar45(buf) {
   return s.resize(W45, H45, { fit: 'contain', background: { r: fundo[0], g: fundo[1], b: fundo[2] } }).flatten({ background: { r: fundo[0], g: fundo[1], b: fundo[2] } }).jpeg({ quality: 90 }).toBuffer();
 }
 
-module.exports = { ehTexto, cores, quebrar, diagramar, substituir, encaixar45 };
+module.exports = { refinarApagar, ehTexto, cores, quebrar, diagramar, substituir, encaixar45 };

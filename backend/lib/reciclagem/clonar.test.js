@@ -148,3 +148,30 @@ test('troca de texto: ignora ruído do desenho e encaixa a tradução na caixa',
   const d = TT.diagramar({ x0: 100, x1: 980, y0: 120, y1: 190, altura_linha: 70 }, 'Ficando bom em algo:', { width: 1080, height: 1350 });
   assert.strictEqual(d.linhas.length, 1); assert.strictEqual(d.centrado, true);
 });
+
+test('cópia com IA que enxerga: usa o texto conferido na imagem (não o da OCR) e apaga a assinatura do autor', async () => {
+  novo();
+  const base = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#ffffff' } })
+    .composite([{ input: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect x="200" y="300" width="200" height="40" fill="#111"/><rect x="40" y="1150" width="1000" height="4" fill="#111"/><circle cx="540" cy="1240" r="40" fill="#963"/><rect x="480" y="1290" width="120" height="20" fill="#111"/></svg>'), top: 0, left: 0 }]).jpeg().toBuffer();
+  await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, tipo: 'imagem', midias: ['https://cdn.test/a.jpg'], legenda: 'Follow @codiesanchez for more.' });
+  // A OCR leu errado ("4 shot"); a IA de visão confere ("1 shot").
+  const ocrErrada = async () => ({ text: '4 shot', linhas: [{ texto: '4 shot', altura: 40, y0: 300, y1: 340, confianca: 91 }], trechos: [{ texto: '4 shot', x0: 200, y0: 300, x1: 400, y1: 340, altura_linha: 40, confianca: 91, n_linhas: 1 }] });
+  const chamadas = [];
+  const visao = async (o) => { chamadas.push(o); return { provedor: 'teste', dados: { elementos: [
+    { box: [222, 185, 252, 370], original: '1 shot', tipo: 'texto', traducao: '1 arremesso' },
+    { box: [880, 420, 980, 580], original: '@codiesanchez', tipo: 'assinatura', traducao: '' },
+  ], legenda: 'Siga @codiesanchez para mais.' } }; };
+  const deps = { fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => base }), ocr: ocrErrada, visao };
+  const c = await CL.iniciar(ITEM.id); let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps }); if (r.concluido) break; }
+  assert.strictEqual(r.estado, 'concluido', JSON.stringify(r));
+  assert.strictEqual(chamadas.length, 1); assert.strictEqual(chamadas[0].handle, 'codiesanchez');
+  const doc = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id)).doc; const v = M.versaoAtiva(doc);
+  assert.strictEqual(doc.titulo, '1 arremesso');
+  assert.ok(!/codiesanchez.*para mais/i.test(v.legenda), 'o @ do autor sai da legenda traduzida');
+  const img = await arm.armazem().arquivos.obter(ACCOUNT.ig_id, `img:${v.slides[0].imagem_id}`);
+  const { data, info } = await sharp(Buffer.from(img.dados)).raw().toBuffer({ resolveWithObject: true });
+  const px = (x, y) => { const i = (y * info.width + x) * info.channels; return [data[i], data[i + 1], data[i + 2]]; };
+  assert.ok(px(540, 1240).every((c0) => c0 > 220), 'o logo/rosto do autor foi apagado');
+  assert.ok(px(540, 1300).every((c0) => c0 > 220), 'o @ do autor foi apagado');
+  assert.ok(px(540, 1152).every((c0) => c0 < 80), 'a linha da moldura continua');
+});

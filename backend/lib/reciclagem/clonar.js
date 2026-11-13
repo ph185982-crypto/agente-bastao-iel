@@ -202,11 +202,33 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
         
         cl.etapa = 'traduzir';
       } else if (cl.etapa === 'traduzir') {
-        cl.traducao = await traduzir(cl.slides, cl.legenda_original, { pedirJson: deps.pedirJson });
+        const Visao = require('./visaoTexto');
+        if (deps.visao || (!deps.pedirJson && Visao.disponivel())) {
+          // Leitura com IA que enxerga: texto conferido na imagem (sem erro de OCR), tradução e assinatura do autor marcada.
+          cl.visao = cl.visao || [];
+          const handle = String(item?.conta?.handle || '').replace(/^@/, '');
+          while (cl.visao.length < cl.n && resta() > 14000) {
+            const i = cl.visao.length; const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`);
+            const r = await (deps.visao || Visao.chamar)({ imagem: Buffer.from(arq.dados), handle, legenda: i === 0 ? cl.legenda_original : null, prazoMs: Math.min(30000, resta() - 9000) });
+            cl.visao.push({ elementos: r.dados.elementos, legenda: String(r.dados.legenda || '').trim(), provedor: r.provedor || null, modelo: r.modelo || null });
+          }
+          if (cl.visao.length < cl.n) break;
+          const slides = [];
+          for (const [i, s] of cl.slides.entries()) {
+            const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`); const m = await require('sharp')(Buffer.from(arq.dados)).rotate().metadata();
+            const blocos = Visao.blocosDaVisao(cl.visao[i], { largura: m.autoOrient?.width || m.width, altura: m.autoOrient?.height || m.height, trechos: s.paragrafos || [] });
+            const textos = blocos.filter((b) => b.novo).map((b) => b.novo);
+            slides.push({ titulo: (textos[0] || '').slice(0, 160), texto: textos.slice(1).join(' ').slice(0, 700), blocos });
+          }
+          const tirarAutor = (t) => String(t || '').replace(new RegExp(`@?${handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), '').replace(/[ \t]{2,}/g, ' ').trim();
+          cl.traducao = { fiel: true, visao: true, slides, legenda: (handle ? tirarAutor(cl.visao[0]?.legenda) : cl.visao[0]?.legenda) || cl.legenda_original || '' };
+        } else {
+          cl.traducao = await traduzir(cl.slides, cl.legenda_original, { pedirJson: deps.pedirJson });
+        }
         // Cópia fiel: escreve a tradução em cima da imagem original, no lugar de cada parágrafo (sem IA).
         if (cl.traducao.fiel) {
           for (const [i, t] of cl.traducao.slides.entries()) {
-            if (!t.blocos.some((b) => b.novo)) continue;
+            if (!t.blocos.some((b) => b.novo || b.apagar)) continue;
             const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`); if (!arq) continue;
             const { buffer, trocados } = await TT.substituir(Buffer.from(arq.dados), t.blocos);
             if (!trocados.length) continue;
