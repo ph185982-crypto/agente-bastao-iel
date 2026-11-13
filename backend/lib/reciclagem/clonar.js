@@ -41,9 +41,20 @@ async function autorizar(itemId, { autor, canal, data, prova, credito } = {}, { 
 }
 
 // ── Buscar o original ───────────────────────────────────────────────────────
+// Caminho rápido: as imagens que a coleta já guardou (links do CDN do Instagram, válidos por alguns dias). Se algum
+// link venceu, cai na busca pela Graph.
+async function baixarGuardadas(item, f) {
+  if (!item.midias?.length) return null;
+  try {
+    const imagens = [];
+    for (const u of item.midias.slice(0, MAX_SLIDES)) { const r = await f(u); if (!r.ok) return null; imagens.push(Buffer.from(await r.arrayBuffer())); }
+    return { legenda: String(item.legenda || ''), imagens };
+  } catch { return null; }
+}
 async function buscarOriginal(item, { graph, igId, fetch: f = globalThis.fetch } = {}) {
   if (item.rede !== 'instagram') throw erro('Por enquanto o clone é só para posts do Instagram.', 409, 'REDE');
   if (!['carrossel', 'imagem'].includes(item.tipo)) throw erro('Por enquanto o clone é só para carrossel e post de imagem (reel ainda não).', 409, 'TIPO');
+  const guardadas = await baixarGuardadas(item, f); if (guardadas) return guardadas;
   const meta = require('../meta');
   const g = graph || meta.graph; const ig = igId || meta.config().igId;
   const h = String(item.conta?.handle || '').replace(/^@/, '');

@@ -62,7 +62,7 @@ test('coleta do Instagram: 1 chamada por conta, conta recusada só registra o er
   const g = graphFalsa({ hormozi: { seguidores: 5000000, posts: [post('h1'), post('h2', { curtidas: 9000 }), post('h3'), post('h4', { horas: 5, curtidas: 90000 })] }, joeljota: { seguidores: 6500000, posts: [post('j1', { comentarios: 100 }), post('j2', { comentarios: 100 }), post('j3', { comentarios: 900, tipo: 'VIDEO', produto: 'REELS', views: 2000000 })] } });
   const r = await C.coletarInstagram({ contas: contasTeste(['hormozi', 'recusada', 'joeljota']).instagram, graph: g.graph, igId: '17841', agora: AGORA });
   assert.strictEqual(g.chamadas.length, 3, 'uma chamada por conta');
-  assert.ok(g.chamadas.every((c) => c.caminho === '17841' && /media\.limit\(40\)\{like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,children\.limit\(20\)\{media_type\}\}/.test(c.fields)));
+  assert.ok(g.chamadas.every((c) => c.caminho === '17841' && /media\.limit\(40\)\{like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,media_url,thumbnail_url,children\.limit\(20\)\{media_type,media_url\}\}/.test(c.fields)));
   const recusada = r.contas.find((c) => c.handle === 'recusada');
   assert.strictEqual(recusada.ok, false); assert.match(recusada.erro, /permissão/);
   assert.strictEqual(r.contas.filter((c) => c.ok).length, 2);
@@ -70,7 +70,7 @@ test('coleta do Instagram: 1 chamada por conta, conta recusada só registra o er
   const viral = r.itens.find((i) => i.permalink.includes('h2'));
   assert.strictEqual(viral.vl, 9); assert.strictEqual(viral.conta.handle, 'hormozi'); assert.strictEqual(viral.rede, 'instagram');
   assert.strictEqual(r.itens.find((i) => i.permalink.includes('j3')).tipo, 'reel');
-  assert.ok(r.itens.every((i) => i.legenda.length <= 500), 'legenda guardada só para classificar, truncada');
+  assert.ok(r.itens.every((i) => i.legenda.length <= 2200), 'legenda original guardada, até 2.200 caracteres');
 });
 
 test('coleta para na hora se o token da Meta expirou (não gasta as outras chamadas)', async () => {
@@ -124,7 +124,7 @@ test('classificação em lote (15 por chamada): mecanismo normalizado, tese que 
   assert.strictEqual(r.itens[0].mecanismo, 'historia'); assert.strictEqual(r.itens[1].mecanismo, 'lista_erros'); assert.strictEqual(r.itens[3].mecanismo, 'numero');
   assert.strictEqual(r.itens[2].tese, null, 'tese copiada da legenda não entra'); assert.match(r.itens[2].avisos_ia[0], /copiava/);
   assert.ok(r.itens[0].tese && r.itens[0].classificado_em);
-  assert.ok(r.itens.every((i) => i.legenda === null), 'depois de classificar, a legenda de terceiro é apagada');
+  assert.ok(r.itens.every((i) => typeof i.legenda === 'string'), 'a legenda original continua guardada (o app mostra e a cópia usa)');
   assert.strictEqual(C.normalizarMecanismo('Polêmica'), 'polemica'); assert.strictEqual(C.normalizarMecanismo('qualquer coisa'), null);
 });
 
@@ -145,7 +145,7 @@ test('dedupe por permalink, classificação preservada e retenção de 30 dias',
   r = await C.guardar([item(5)], { agora: AGORA });
   assert.deepStrictEqual(r, { novos: 0, atualizados: 1, removidos: 0, guardados: 1 });
   doc = await C.obter(id);
-  assert.strictEqual(doc.vl, 5, 'métrica atualizada'); assert.strictEqual(doc.tese, 'tese', 'classificação preservada'); assert.strictEqual(doc.legenda, null, 'legenda não volta depois de classificado');
+  assert.strictEqual(doc.vl, 5, 'métrica atualizada'); assert.strictEqual(doc.tese, 'tese', 'classificação preservada'); assert.strictEqual(doc.legenda, 'leg', 'a legenda volta na próxima coleta');
   // 31 dias depois o item sai sozinho
   r = await C.guardar([], { agora: AGORA + 31 * 86400000 });
   assert.strictEqual(r.removidos, 1); assert.strictEqual(await C.obter(id), null);
@@ -166,7 +166,7 @@ test('coleta completa: guarda, classifica, avisa no celular UMA vez por dia e re
   assert.strictEqual(avisos.length, 1, 'segunda coleta no mesmo dia não avisa de novo'); assert.strictEqual(r2.atualizados, 1); assert.strictEqual(r2.chamadas_ia, 0, 'já classificado: não gasta IA');
   const est = await C.lerEstado(); assert.strictEqual(est.ultima_coleta.origem, 'manual'); assert.ok(est.lidas_em.hormozi);
   const lista = await C.listar({ dias: 7, min_vl: 3, agora: AGORA });
-  assert.strictEqual(lista.total, 1); assert.strictEqual(lista.itens[0].tema, 'oferta boa vende sozinha'); assert.strictEqual(lista.itens[0].legenda, undefined, 'a API nunca devolve a legenda de terceiro');
+  assert.strictEqual(lista.total, 1); assert.strictEqual(lista.itens[0].tema, 'oferta boa vende sozinha'); assert.ok(typeof lista.itens[0].legenda === 'string', 'a API devolve a legenda original para o card');
   assert.strictEqual((await C.listar({ mecanismo: 'historia', agora: AGORA })).total, 0);
   assert.strictEqual((await C.listar({ idioma: 'en', agora: AGORA })).total, 1);
 });
@@ -250,7 +250,7 @@ test('rota: lista ordenada por VL, tendências, contas e reciclar reel pela API'
   const base = `http://127.0.0.1:${srv.address().port}/api/reciclagem`;
   try {
     let r = await (await fetch(`${base}?dias=7&min_vl=3`)).json();
-    assert.strictEqual(r.total, 2); assert.strictEqual(r.itens[0].vl, 7.5); assert.strictEqual(r.itens[0].legenda, undefined); assert.ok(r.estado.mecanismos.historia);
+    assert.strictEqual(r.total, 2); assert.strictEqual(r.itens[0].vl, 7.5); assert.strictEqual(r.itens[0].legenda, 'texto de terceiro'); assert.ok(r.estado.mecanismos.historia);
     r = await (await fetch(`${base}?mecanismo=polemica&idioma=pt`)).json(); assert.strictEqual(r.total, 1);
     r = await (await fetch(`${base}/tendencias`)).json(); assert.strictEqual(r.tendencias[0].titulo, 'lavanderia'); assert.ok(r.tendencias[0].itens.includes(ITEM.id), 'tendência cruzada com o item pela ponte ("lavanderia de bairro")');
     r = await (await fetch(`${base}/contas`)).json(); assert.strictEqual(r.instagram.length, 40);

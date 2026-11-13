@@ -24,7 +24,7 @@
   const TIPO = { reel: 'Reel', carrossel: 'Carrossel', imagem: 'Imagem', video: 'Vídeo', short: 'Short' };
 
   // ── Dados ───────────────────────────────────────────────────────────────────
-  const query = () => { const f = ST.filtro; const p = new URLSearchParams({ dias: f.dias, min_vl: f.min_vl }); if (f.mecanismo) p.set('mecanismo', f.mecanismo); if (f.idioma) p.set('idioma', f.idioma); return p.toString(); };
+  const query = () => { const f = ST.filtro; const p = new URLSearchParams({ dias: f.dias, min_vl: f.min_vl, so_imagens: '1' }); if (f.mecanismo) p.set('mecanismo', f.mecanismo); if (f.idioma) p.set('idioma', f.idioma); return p.toString(); };
   async function carregar(ctx, forcar) {
     const f = forcar && typeof forcar === 'object' ? forcar.forcar : forcar;
     if (ST.carregando || (ST.carregou && !f)) return;
@@ -116,6 +116,13 @@
       <label class="rc2-sel">VL mínimo <select data-action="rc2-sel" data-k="min_vl">${['1.5', '2', '3', '5'].map((v) => `<option value="${v}" ${f.min_vl === v ? 'selected' : ''}>${v.replace('.', ',')}×</option>`).join('')}</select></label>
       <label class="rc2-sel">Período <select data-action="rc2-sel" data-k="dias">${[['7', '7 dias'], ['14', '14 dias'], ['30', '30 dias']].map(([v, r]) => `<option value="${v}" ${f.dias === v ? 'selected' : ''}>${r}</option>`).join('')}</select></label></div></div>`;
   }
+  // Galeria do post original (deslize para o lado) e a legenda original, para ver o conteúdo antes de copiar.
+  function galeria(i) {
+    const ms = (i.midias || []).filter((u) => /^(https:\/\/|data:image\/)/.test(u));
+    const fotos = ms.length ? `<div class="rc2-galeria" role="region" aria-label="Imagens do post (deslize para o lado)" tabindex="0">${ms.map((u, k) => `<img src="${esc(u)}" alt="Slide ${k + 1} de ${ms.length}" loading="lazy" referrerpolicy="no-referrer" onerror="this.classList.add('quebrada')">`).join('')}</div>${ms.length > 1 ? `<p class="rc2-meta">${ms.length} imagens · deslize para o lado</p>` : ''}` : '<p class="rc2-meta">Imagens aparecem a partir da próxima coleta.</p>';
+    const leg = i.legenda ? `<details class="rc2-legenda"><summary>Legenda original</summary><p>${esc(i.legenda)}</p></details>` : '';
+    return fotos + leg;
+  }
   function cartao(i) {
     const oc = ST.ocupado[i.id]; const menu = ST.menu === i.id; const c = i.conta || {};
     const metricas = [i.curtidas != null ? `${num(i.curtidas)} curtidas` : null, i.comentarios != null ? `${num(i.comentarios)} comentários` : null, i.visualizacoes != null ? `${num(i.visualizacoes)} views` : null, i.seguidores != null ? `${num(i.seguidores)} seguidores` : null].filter(Boolean).join(' · ');
@@ -125,13 +132,14 @@
       <div class="rc2-corpo">
         <div class="rc2-conta"><b>@${esc(c.handle || '?')}</b><span>${esc(c.nome && c.nome !== c.handle ? c.nome : '')}</span><span class="rc2-tag suave">${esc(PAIS[c.pais] || c.pais || '?')} · ${esc(IDIOMA[c.idioma] || c.idioma || '?')}</span><span class="rc2-tag suave">${esc(i.rede === 'youtube' ? 'YouTube' : 'Instagram')} · ${esc(TIPO[i.tipo] || i.tipo || '')}</span></div>
         <p class="rc2-metrica">${esc(metricas || 'sem métricas públicas')} · ${dia(i.publicado_em)}</p>
+        ${galeria(i)}
         ${i.tema ? `<h3>${esc(i.tema)}</h3>` : '<h3 class="rc2-mudo">Ainda sem tema (a IA classifica na próxima coleta)</h3>'}
         <div class="rc2-tags">${i.mecanismo ? `<span class="rc2-tag mec ${esc(i.mecanismo)}">${esc(MEC[i.mecanismo] || i.mecanismo)}</span>` : ''}${i.em_alta ? '<span class="rc2-tag alta">em alta</span>' : ''}${i.vl_views != null && i.vl_views >= 3 && i.tipo === 'reel' ? `<span class="rc2-tag suave">views ${vlFmt(i.vl_views)}</span>` : ''}</div>
         ${i.tese ? `<dl class="rc2-dl"><div><dt>Tese</dt><dd>${esc(i.tese)}</dd></div>${i.ponte_pedro ? `<div><dt>Ponte para o Pedro</dt><dd>${esc(i.ponte_pedro)}</dd></div>` : ''}</dl>` : ''}
         <div class="rc2-acoes">
-          ${i.tese ? `<button class="rc2-btn laranja" data-action="rc2-menu" data-id="${esc(i.id)}" aria-expanded="${menu}" ${oc ? 'disabled' : ''}>${oc ? (oc === 'reel' ? 'Escrevendo o roteiro…' : 'Enviando para produção…') : 'Reciclar como…'}</button>` : ''}
+          ${i.rede === 'instagram' && ['carrossel', 'imagem'].includes(i.tipo) ? `<button class="rc2-btn laranja" data-action="rc2-clonar" data-id="${esc(i.id)}" ${oc ? 'disabled' : ''}>${oc === 'clone' ? 'Copiando…' : 'Copiar'}</button>` : ''}
+          ${i.tese ? `<button class="rc2-btn" data-action="rc2-menu" data-id="${esc(i.id)}" aria-expanded="${menu}" ${oc ? 'disabled' : ''}>${oc ? (oc === 'reel' ? 'Escrevendo o roteiro…' : 'Enviando para produção…') : 'Reciclar como…'}</button>` : ''}
           <a class="rc2-btn fantasma" href="${esc(link(i.permalink))}" target="_blank" rel="noopener noreferrer">Ver post original ↗</a>
-          ${i.rede === 'instagram' && ['carrossel', 'imagem'].includes(i.tipo) ? `<button class="rc2-btn" data-action="rc2-clonar" data-id="${esc(i.id)}" ${oc ? 'disabled' : ''}>${oc === 'clone' ? 'Clonando…' : 'Clonar traduzido (mesmo formato)'}</button>` : ''}
         </div>
         ${menu ? `<div class="rc2-menu" role="group" aria-label="Formato"><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel">Carrossel</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel" data-e="1">Carrossel na mesma estrutura</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="estatico">Post estático</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="reel">Roteiro de reel</button><p class="rc2-meta">Só a tese e a estrutura (nº de slides e tipo de gancho) são reaproveitadas; texto, exemplos e fotos são seus. Para republicar um conteúdo de terceiros como está, é preciso a autorização do autor, fora da ferramenta. Carrossel e post passam pelos mesmos filtros de fatos e anti-IA e vão para “Aprovar”.</p></div>` : ''}
         ${ST.autoriza === i.id ? formAutorizacao(i) : ''}
@@ -159,13 +167,13 @@
     ST.ocupado[id] = 'clone'; ST.autoriza = null; ctx.render();
     try {
       let r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/clonar`, { method: 'POST', body: {} });
-      ST.producao = { id: r.id, titulo: 'Clone traduzido', rotulo: 'Lendo os slides…' }; ctx.render();
+      ST.producao = { id: r.id, titulo: 'Copiando o post', rotulo: 'Lendo os slides…' }; ctx.render();
       for (let k = 0; k < 40 && !r.concluido; k++) {
         await new Promise((x) => setTimeout(x, r.erro?.codigo === 'COTA_IA' ? 20000 : 1500));
         try { r = await ctx.api(`/api/reciclagem/clone/${encodeURIComponent(r.id)}/passo`, { method: 'POST', body: {} }); } catch (e) { if (e.status === 429) continue; throw e; }
-        ST.producao = { id: r.id, titulo: 'Clone traduzido', rotulo: { buscar: 'Buscando o post…', ler: `Lendo os slides (${r.lidos}/${r.slides || '?'})…`, traduzir: r.erro?.codigo === 'COTA_IA' ? 'IA gratuita sem cota: esperando…' : 'Traduzindo…', arte: 'Desenhando…', fim: 'Conferindo…' }[r.etapa] || '…' }; ctx.render();
+        ST.producao = { id: r.id, titulo: 'Copiando o post', rotulo: { buscar: 'Buscando o post…', ler: `Lendo os slides (${r.lidos}/${r.slides || '?'})…`, traduzir: r.erro?.codigo === 'COTA_IA' ? 'IA gratuita sem cota: esperando…' : 'Traduzindo…', arte: 'Desenhando…', fim: 'Conferindo…' }[r.etapa] || '…' }; ctx.render();
       }
-      if (r.estado === 'concluido') ctx.toast(r.aviso ? `Clone pronto em “Aprovar”. Atenção: ${r.aviso}` : 'Clone pronto. Veja em “Aprovar”.');
+      if (r.estado === 'concluido') ctx.toast(r.aviso ? `Cópia pronta em “Aprovar”. Atenção: ${r.aviso}` : 'Cópia pronta. Veja em “Aprovar”.');
       else if (r.estado === 'erro') ctx.toast(`O clone parou: ${r.motivo}`);
       else ctx.toast('O clone continua no servidor; aparece em “Aprovar” quando terminar.');
       const item = ST.itens.find((x) => x.id === id); if (item) item.reciclado = [...(item.reciclado || []), { formato: 'clone', conteudo_id: r.id, em: new Date().toISOString() }];

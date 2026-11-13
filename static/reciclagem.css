@@ -112,3 +112,11 @@
 .rc2-aut input, .rc2-aut select, .rc2-aut textarea { width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--pd-linha, #DFDCD0); background: #fff; font: 400 16px/1.4 var(--pd-texto, system-ui); color: var(--pd-tinta, #18191D); }
 .rc2-aut textarea { resize: vertical; min-height: 88px; }
 .rc2-aut input:focus-visible, .rc2-aut select:focus-visible, .rc2-aut textarea:focus-visible { outline: 3px solid var(--pd-azul, #2448FF); outline-offset: 2px; }
+/* Galeria do post original: rola para o lado, um slide por vez */
+.rc2-galeria { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 8px 0 4px; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+.rc2-galeria img { flex: 0 0 82%; max-width: 82%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 12px; scroll-snap-align: start; background: var(--pd-papel-2, #ECEAE1); }
+.rc2-galeria img.quebrada { visibility: hidden; }
+.rc2-galeria:focus-visible { outline: 3px solid var(--pd-azul, #2448FF); outline-offset: 2px; }
+.rc2-legenda { margin: 6px 0; }
+.rc2-legenda summary { cursor: pointer; font: 600 14px var(--pd-texto, system-ui); min-height: 44px; display: flex; align-items: center; }
+.rc2-legenda p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.45; margin: 4px 0 0; }

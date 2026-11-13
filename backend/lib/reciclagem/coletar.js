@@ -15,8 +15,8 @@
 //   para Reels, visualizações ÷ seguidores com a mesma lógica (curtidas podem estar ocultas).
 //   VL ≥ 3 = viral para aquela conta; VL ≥ 5 = outlier forte.
 //
-// Princípio do projeto: nunca copiamos nem traduzimos texto de terceiros. A legenda entra na IA só como DADO, para
-// classificar tema, mecanismo e tese neutra; depois de classificado o item, a legenda é apagada do armazém.
+// A legenda original fica guardada para o Pedro ver o post no app e para a cópia traduzida (decisão dele, 15/11/2026).
+// Na classificação ela entra na IA só como DADO, para tirar tema, mecanismo e tese.
 const crypto = require('crypto');
 const { armazem } = require('../armazem');
 const { ACCOUNT } = require('../account');
@@ -90,7 +90,7 @@ function pontuar(posts, seguidores, { agora = Date.now() } = {}) {
 const tipoIg = (m) => (m.media_product_type === 'REELS' || m.media_type === 'VIDEO' ? 'reel' : m.media_type === 'CAROUSEL_ALBUM' ? 'carrossel' : 'imagem');
 function normalizarMidiaIg(m) {
   if (!m?.permalink || !m?.timestamp) return null;
-  return { permalink: String(m.permalink), publicado_em: String(m.timestamp), tipo: tipoIg(m), curtidas: num(m.like_count), comentarios: num(m.comments_count), visualizacoes: num(m.view_count), n_slides: Array.isArray(m.children?.data) ? m.children.data.length || null : null, legenda: String(m.caption || '').replace(/\s+/g, ' ').trim().slice(0, 500) };
+  return { permalink: String(m.permalink), publicado_em: String(m.timestamp), tipo: tipoIg(m), curtidas: num(m.like_count), comentarios: num(m.comments_count), visualizacoes: num(m.view_count), n_slides: Array.isArray(m.children?.data) ? m.children.data.length || null : null, midias: (Array.isArray(m.children?.data) && m.children.data.length ? m.children.data : [m]).filter((x) => x.media_type === 'IMAGE' && x.media_url).map((x) => String(x.media_url)).slice(0, 20), legenda: String(m.caption || '').trim().slice(0, 2200) };
 }
 async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxContas = MAX_CONTAS, orcamentoMs = 40000, concorrencia = 4 } = {}) {
   const lista = (contas || []).slice(0, maxContas); const itens = []; const resumo = []; const inicio = Date.now(); let parcial = false;
@@ -100,7 +100,7 @@ async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxCo
       if (Date.now() - inicio > orcamentoMs) { parcial = true; return; }
       const c = fila.shift(); const h = c.handle;
       try {
-        const campos = `business_discovery.username(${h}){username,followers_count,media.limit(${LIMITE_MIDIAS}){like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,children.limit(20){media_type}}}`;
+        const campos = `business_discovery.username(${h}){username,followers_count,media.limit(${LIMITE_MIDIAS}){like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,media_url,thumbnail_url,children.limit(20){media_type,media_url}}}`;
         const d = await graph('GET', igId, { fields: campos });
         const bd = d?.business_discovery || {}; const seguidores = num(bd.followers_count);
         const posts = (bd.media?.data || []).map(normalizarMidiaIg).filter(Boolean);
@@ -239,7 +239,7 @@ async function classificar(itens, { pedirJson, lote = LOTE_IA } = {}) {
         const avisos = [];
         if (tese && copiaLegenda(tese, it.legenda)) { avisos.push('tese descartada: copiava a legenda original'); tese = null; }
         if (tema && (palavras(tema).length < 2 || palavras(tema).length > 8)) avisos.push('tema fora do tamanho pedido');
-        saida.push({ ...it, tema: tema || null, mecanismo: normalizarMecanismo(r.mecanismo), tese, ponte_pedro: r.ponte_pedro ? String(r.ponte_pedro).replace(/\s+/g, ' ').trim().slice(0, 260) : null, classificado_em: iso(Date.now()), avisos_ia: avisos, legenda: null });
+        saida.push({ ...it, tema: tema || null, mecanismo: normalizarMecanismo(r.mecanismo), tese, ponte_pedro: r.ponte_pedro ? String(r.ponte_pedro).replace(/\s+/g, ' ').trim().slice(0, 260) : null, classificado_em: iso(Date.now()), avisos_ia: avisos });
       });
     } catch (e) {
       erros.push(String(e.message).slice(0, 160));
@@ -271,8 +271,9 @@ async function guardar(itens, { agora = Date.now(), retencaoDias = RETENCAO_DIAS
       ...(ant || {}), id, rede: i.rede, conta: i.conta, permalink: i.permalink, publicado_em: i.publicado_em, tipo: i.tipo,
       curtidas: i.curtidas, comentarios: i.comentarios, visualizacoes: i.visualizacoes, seguidores: i.seguidores, er: i.er, visualizacoes_por_seguidor: i.visualizacoes_por_seguidor,
       n_slides: i.n_slides ?? ant?.n_slides ?? null,
+      midias: i.midias?.length ? i.midias : (ant?.midias || []), midias_em: i.midias?.length ? iso(agora) : (ant?.midias_em || null),
       vl_er: i.vl_er, vl_views: i.vl_views, vl: i.vl, mediana_er: i.mediana_er, n_base: i.n_base,
-      legenda: ant?.classificado_em ? null : (i.legenda || ant?.legenda || null), // texto de terceiro só até classificar
+      legenda: i.legenda || ant?.legenda || null, // legenda original: aparece no card para o Pedro ver o post antes de copiar
       tema: ant?.tema ?? null, mecanismo: ant?.mecanismo ?? null, tese: ant?.tese ?? null, ponte_pedro: ant?.ponte_pedro ?? null, classificado_em: ant?.classificado_em ?? null,
       coletado_em: iso(agora), primeira_coleta_em: ant?.primeira_coleta_em || iso(agora), reciclado: ant?.reciclado || [],
     };
@@ -338,11 +339,11 @@ async function coletar({ deps = {}, origem = 'manual', agora = Date.now() } = {}
 }
 
 // ── Leitura para a API ───────────────────────────────────────────────────────────
-const visao = (d) => { const { legenda, ...resto } = d; void legenda; return { ...resto, vl: d.vl ?? null, em_alta: (d.vl ?? 0) >= VL_ALTA }; };
-async function listar({ dias = 7, min_vl = 0, mecanismo = null, idioma = null, rede = null, limite = 100, agora = Date.now() } = {}) {
+const visao = (d) => ({ ...d, vl: d.vl ?? null, em_alta: (d.vl ?? 0) >= VL_ALTA });
+async function listar({ dias = 7, min_vl = 0, mecanismo = null, idioma = null, rede = null, limite = 100, soImagens = false, agora = Date.now() } = {}) {
   if (!disponivel()) return { itens: [], total: 0, sem_banco: true };
   const d = Math.min(30, Math.max(1, Number(dias) || 7)); const minVl = Math.max(0, Number(min_vl) || 0); const limiteMs = agora - d * 86400000;
-  const todos = (await listarDocs()).filter((x) => Date.parse(x.publicado_em || x.coletado_em) >= limiteMs && (x.vl ?? 0) >= minVl && (!mecanismo || x.mecanismo === mecanismo) && (!idioma || x.conta?.idioma === idioma) && (!rede || x.rede === rede));
+  const todos = (await listarDocs()).filter((x) => Date.parse(x.publicado_em || x.coletado_em) >= limiteMs && (x.vl ?? 0) >= minVl && (!mecanismo || x.mecanismo === mecanismo) && (!idioma || x.conta?.idioma === idioma) && (!rede || x.rede === rede) && (!soImagens || (x.rede === 'instagram' && ['carrossel', 'imagem'].includes(x.tipo))));
   todos.sort((a, b) => (b.vl ?? 0) - (a.vl ?? 0) || Date.parse(b.publicado_em) - Date.parse(a.publicado_em));
   return { itens: todos.slice(0, Math.min(300, Math.max(1, Number(limite) || 100))).map(visao), total: todos.length };
 }

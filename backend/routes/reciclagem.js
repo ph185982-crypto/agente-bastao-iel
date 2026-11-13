@@ -27,7 +27,7 @@ async function estado() {
 // Lista ordenada por VL. Filtros: dias (1–30), min_vl, mecanismo, idioma, rede.
 router.get('/', rota(async (req, res) => {
   const q = req.query || {};
-  const r = await Coletar.listar({ dias: q.dias, min_vl: q.min_vl, mecanismo: Contas.MECANISMOS[q.mecanismo] ? q.mecanismo : null, idioma: Contas.IDIOMAS.includes(q.idioma) ? q.idioma : null, rede: ['instagram', 'youtube'].includes(q.rede) ? q.rede : null, limite: q.limite });
+  const r = await Coletar.listar({ dias: q.dias, min_vl: q.min_vl, mecanismo: Contas.MECANISMOS[q.mecanismo] ? q.mecanismo : null, idioma: Contas.IDIOMAS.includes(q.idioma) ? q.idioma : null, rede: ['instagram', 'youtube'].includes(q.rede) ? q.rede : null, limite: q.limite, soImagens: q.so_imagens === '1' });
   res.json({ ...r, estado: await estado() });
 }));
 
