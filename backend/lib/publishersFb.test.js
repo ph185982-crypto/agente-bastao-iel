@@ -81,8 +81,8 @@ test('mesmas regras de aprovação e pausa; erro da Meta vira mensagem e permite
   assert.strictEqual((await PUB.facebook.publish(c.id, { hash: c.revisao.hash_aprovado, base: 'http://x' })).estado, 'publicada');
 });
 
-test('LinkedIn: só o esqueleto — não publica e diz que não está implementado', async () => {
+test('LinkedIn: no registro de publicadores, sem conexão não publica e explica o que falta', async () => {
   assert.strictEqual(await PUB.linkedin.canPublish('x'), false);
-  await assert.rejects(() => PUB.linkedin.publish('x'), (e) => e.code === 'NAO_IMPLEMENTADO' && e.status === 501);
+  await assert.rejects(() => PUB.linkedin.publish('x'), (e) => e.code === 'NAO_CONECTADO' && e.status === 409);
   assert.deepStrictEqual(Object.keys(PUB.PUBLICADORES).sort(), ['facebook', 'instagram', 'linkedin']);
 });
