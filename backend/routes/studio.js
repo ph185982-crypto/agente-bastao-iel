@@ -49,6 +49,18 @@ async function publicarEmSegundoPlano(c){
   M.registrar(doc,'sistema','publicacao',p.estado==='publicada'?'Publicado no Instagram':doc.studio.erro||'A publicação não terminou.');
   await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,doc,reg.rev);
   await require('../lib/push').notificar({corpo:p.estado==='publicada'?'Publicado! Seu conteúdo já está no Instagram.':`A publicação precisa de atenção: ${doc.studio.erro||'tente novamente no app'}`,tag:`publicacao-${c.id}`}).catch(()=>{});
+  // LinkedIn: o mesmo conteúdo aprovado sai também lá, se a conexão estiver ligada. Falha no LinkedIn não desfaz o Instagram.
+  if(p.estado==='publicada'&&doc.formato!=='reels')await publicarNoLinkedIn(c.id,p.hash_versao).catch(e=>console.error('[linkedin]',e.message));
+}
+async function publicarNoLinkedIn(id,hash){
+  const L=require('../lib/linkedin');const cfg=await L.lerCfg();if(!cfg.ativo||!cfg.token)return null;
+  let r=null;let falha=null;try{r=await L.publicar(id,{hash});}catch(e){falha=e.message;}
+  const reg=await studio.ler(id);const d=reg.doc;
+  d.publicacoes=[...(d.publicacoes||[]).filter(x=>x.network!=='linkedin'),{network:'linkedin',status:falha?'erro':(r?.estado||'publicada'),post_id:r?.ig_media_id||null,permalink:r?.permalink||null,published_at:r?.publicada_em||null,erro:falha}];
+  M.registrar(d,'sistema','publicacao',falha?`LinkedIn: ${falha}`:'Publicado no LinkedIn');
+  await armazem().conteudos.salvar(ACCOUNT.ig_id,id,d,reg.rev);
+  await require('../lib/push').notificar({corpo:falha?`O LinkedIn não recebeu o post: ${falha}`:'Publicado também no LinkedIn.',tag:`linkedin-${id}`}).catch(()=>{});
+  return r;
 }
 router.post('/worker/:id',async(req,res)=>{
   try{const {job}=req.body||{};if(!job||!studio.confere(req.params.id,job,req.get('x-studio-token')))return res.status(403).json({error:'Chamada de produção inválida.'});
