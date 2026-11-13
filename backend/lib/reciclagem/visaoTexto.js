@@ -10,6 +10,9 @@ const MODELOS = [
   { provedor: 'groq', env: 'GROQ_API_KEY', base: 'https://api.groq.com/openai/v1', modelos: [], descobrir: (m) => /llama-4|vision|scout|maverick|-vl/i.test(m.id) },
   { provedor: 'openrouter', env: 'OPENROUTER_API_KEY', base: 'https://openrouter.ai/api/v1', modelos: [], descobrir: (m) => (m.architecture?.input_modalities || []).includes('image') && /:free$/.test(m.id) },
   { provedor: 'gemini', env: 'GEMINI_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta/openai', modelos: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'], descobrir: (m) => /flash/i.test(m.id) && !/image|tts|audio|live|embed/i.test(m.id) },
+  // Último recurso, PAGO (autorizado com teto mensal em gastoIa): só quando nenhum gratuito com visão responde.
+  // Uma imagem custa frações de centavo; o gasto entra no registro e respeita o teto do mês.
+  { provedor: 'openai', env: 'OPENAI_API_KEY', base: 'https://api.openai.com/v1', modelos: ['gpt-5.4-mini'], pago: true, descobrir: () => false },
 ];
 const _descobertos = new Map();
 async function modelosDe(m, f) {
@@ -40,16 +43,22 @@ async function chamar({ imagem, handle, legenda, fetch: f = globalThis.fetch, pr
   const url = `data:image/jpeg;base64,${jpg.toString('base64')}`;
   const msgs = [{ role: 'system', content: SISTEMA(handle) }, { role: 'user', content: [{ type: 'text', text: legenda ? `LEGENDA ORIGINAL:\n${String(legenda).slice(0, 2000)}` : 'Sem legenda (devolva "legenda": "").' }, { type: 'image_url', image_url: { url } }] }];
   const erros = []; let cota = false; const t0 = Date.now();
+  const pagoOk = async () => { if (process.env.IA_OPENAI !== '1') return false; try { return await require('../gastoIa').podeGastar(); } catch { return false; } };
   for (const m of MODELOS.filter((x) => process.env[x.env])) {
+    if (m.pago && !(await pagoOk())) continue;
     for (const modelo of await modelosDe(m, f)) {
       if (Date.now() - t0 > prazoMs * 1.5) break;
       try {
         const r = await f(`${m.base}/chat/completions`, { method: 'POST', signal: AbortSignal.timeout(prazoMs), headers: { Authorization: `Bearer ${process.env[m.env]}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: modelo, messages: msgs, temperature: 0.1, max_tokens: 2500, response_format: { type: 'json_object' }, ...(/^gemini-3/.test(modelo) ? { reasoning_effort: 'low' } : {}) }) });
+          body: JSON.stringify(m.provedor === 'openai'
+            ? { model: modelo, messages: msgs, max_completion_tokens: 6000, reasoning_effort: 'low', response_format: { type: 'json_object' } }
+            : { model: modelo, messages: msgs, temperature: 0.1, max_tokens: 2500, response_format: { type: 'json_object' }, ...(/^gemini-3/.test(modelo) ? { reasoning_effort: 'low' } : {}) }) });
         const corpo = await r.text();
         if (!r.ok && [401, 403].includes(r.status)) { erros.push(`${m.provedor} ${r.status}: ${corpo.replace(/\s+/g, ' ').slice(0, 120)}`); break; } // provedor fechado: pula os outros modelos dele
         if (!r.ok) { if (r.status === 429) cota = true; erros.push(`${m.provedor}/${modelo} ${r.status}: ${corpo.replace(/\s+/g, ' ').slice(0, 120)}`); continue; }
-        const txt = JSON.parse(corpo)?.choices?.[0]?.message?.content || '';
+        const json = JSON.parse(corpo);
+        if (m.pago && json.usage) { try { await require('../gastoIa').registrar(json.model || modelo, json.usage, { etapa: 'clone_visao' }); } catch { /* registro é cortesia */ } }
+        const txt = json?.choices?.[0]?.message?.content || '';
         const ini = txt.indexOf('{'); const fim = txt.lastIndexOf('}');
         const dados = JSON.parse(txt.slice(ini, fim + 1));
         if (!Array.isArray(dados?.elementos)) throw new Error('resposta sem "elementos"');
