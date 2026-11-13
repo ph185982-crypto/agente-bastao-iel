@@ -100,7 +100,7 @@ async function traduzir(slides, legenda, { pedirJson } = {}) {
   const por = new Map((Array.isArray(dados?.slides) ? dados.slides : []).map((x) => [Number(x.i), x]));
   return {
     slides: slides.map((s, i) => ({ titulo: String(por.get(i)?.titulo ?? '').trim().slice(0, 160), texto: String(por.get(i)?.texto ?? '').trim().slice(0, 700) })),
-    legenda: String(dados?.legenda || '').trim().slice(0, 1900),
+    legenda: (String(dados?.legenda || '').trim() || String(legenda || '').trim()).slice(0, 1900), // IA devolveu vazio: fica a original
   };
 }
 
