@@ -8,9 +8,10 @@ import { collectBatch } from "@/lib/collector";
 import { processWebhookQueue } from "@/lib/webhooks";
 import { runAlerts } from "@/lib/alerts/engine";
 import { runApprovedQueue } from "@/lib/executor/executor";
+import { runDailyAgent } from "@/lib/ai/agent";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300; // Fluid compute (Hobby permite até 300 s)
 
 async function refreshTokens() {
   const db = adminDb();
@@ -46,11 +47,14 @@ const JOBS: Record<string, () => Promise<unknown>> = {
     webhooks: await processWebhookQueue(20_000),
     execute: await runApprovedQueue(10_000),
   }),
+  // Fase 2: agente de IA + relatório diário (um cliente por vez)
+  "ai-daily": () => runDailyAgent(200_000),
   // "daily": fallback diário da Vercel Cron
   daily: async () => ({
     tokens: await refreshTokens(),
     collect: await collectBatch(35_000),
     alerts: await runAlerts(),
+    ai: await runDailyAgent(150_000),
   }),
 };
 

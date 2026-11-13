@@ -115,8 +115,8 @@ export interface MarketplaceAdapter {
 
   // OAuth
   buildAuthorizationUrl(params: { state: string; redirectUri: string; codeChallenge?: string }): string;
-  exchangeCode(params: { code: string; redirectUri: string; codeVerifier?: string }): Promise<TokenSet>;
-  refreshToken(refreshToken: string): Promise<TokenSet>;
+  exchangeCode(params: { code: string; redirectUri: string; codeVerifier?: string; extra?: Record<string, string> }): Promise<TokenSet>;
+  refreshToken(refreshToken: string, externalUserId?: string): Promise<TokenSet>;
 
   // Leitura
   getSeller(token: string, externalUserId: string): Promise<SellerProfile>;

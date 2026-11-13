@@ -46,6 +46,7 @@ export interface CampaignLite {
   external_id: string;
   name: string | null;
   status: string | null;
+  budget?: number | null;
   metrics_7d: { cost?: number | null; revenue?: number | null; roas?: number | null } | null;
 }
 

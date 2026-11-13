@@ -35,7 +35,8 @@ O plano Hobby da Vercel só permite cron **diário**; por isso as rotinas freque
 | `tick` | a cada 5 min | renova tokens que vencem em < 1 h, processa webhooks, executa aprovadas |
 | `collect` | a cada 30 min | coleta 1 conta por vez (a mais desatualizada), até 45 s por chamada |
 | `alerts` | a cada 30 min | avalia regras, abre/resolve alertas, envia e-mail |
-| `daily` | 1×/dia (Vercel Cron) | fallback: tokens + coleta + alertas |
+| `ai-daily` | 7h–8h (Brasília) | agente de IA + relatório diário, um cliente por vez |
+| `daily` | 1×/dia (Vercel Cron) | fallback: tokens + coleta + alertas + IA |
 
 ### Mercado Livre
 - Refresh token é de **uso único**: cada renovação salva o novo token; trava otimista evita corrida.
@@ -48,6 +49,24 @@ proposta → aprovada → executada / simulada / falhou (ou rejeitada / bloquead
 Modos por tipo de ação (global e por cliente): automático, pedir aprovação (padrão), bloqueado.
 Limites diários de variação de preço/verba, simulação global e por ação, pausa geral e log de
 auditoria com antes/depois.
+
+### Fase 2 — agente de IA e relatório diário
+`src/lib/ai/`: provedor configurável (`AI_PROVIDER`, hoje Anthropic via SDK oficial, saída
+estruturada validada com zod e fallback em caso de recusa). Todo dia o agente lê snapshots,
+anúncios, perguntas, campanhas, alertas e ações recentes de cada cliente e devolve resumo,
+diagnóstico e ações. As ações passam por travas (IDs precisam existir nos dados, sem duplicatas,
+nada bloqueado) e entram na fila do executor com justificativa (`source = ia`). O relatório diário
+(números calculados pelo sistema + leitura da IA) fica em **Relatórios**, pronto para copiar ou
+enviar no WhatsApp. Sem `ANTHROPIC_API_KEY`, o relatório sai só com números.
+
+### Fase 3 — autonomia e Shopee
+- Tipos de ação em modo **automático** executam sozinhos dentro dos limites diários, respeitando
+  a pausa geral, a simulação e um teto de ações automáticas por cliente/dia (acima dele, volta a
+  pedir aprovação). Regras podem propor ações (ex.: ROAS abaixo da meta → corte de verba).
+  O painel mostra o que foi feito automaticamente nas últimas 24 h, e o relatório também.
+- `ShopeeAdapter`: assinatura v2, autorização de loja, tokens (refresh sempre salvo), leitura de
+  anúncios e pedidos e escrita de preço/estoque/listagem. Fica ativo quando `SHOPEE_PARTNER_ID` e
+  `SHOPEE_PARTNER_KEY` existem. Pontos `VERIFICAR` devem ser validados na documentação oficial.
 
 ## Variáveis de ambiente
 Veja `.env.example`. Segredos (`ML_CLIENT_SECRET`, `ENCRYPTION_KEY`, `RESEND_API_KEY`,

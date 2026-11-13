@@ -11,6 +11,7 @@ import { runAlerts, ensureDefaultRules } from "@/lib/alerts/engine";
 import { decideAction, executeAction, proposeAction } from "@/lib/executor/executor";
 import { ACTION_TYPES } from "@/lib/executor/policy";
 import type { ActionType } from "@/lib/marketplaces/types";
+import { runAgentForClient } from "@/lib/ai/agent";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const back = (fd: FormData, fallback: string) => {
@@ -65,6 +66,8 @@ export async function updateClient(fd: FormData) {
       contact_phone: str(fd, "contact_phone") || null,
       notes: str(fd, "notes") || null,
       active: fd.get("active") === "on",
+      ai_enabled: fd.get("ai_enabled") === "on",
+      ai_instructions: str(fd, "ai_instructions") || null,
     })
     .eq("id", id);
   if (error) flash(`/clientes/${id}`, error.message, "erro");
@@ -72,10 +75,11 @@ export async function updateClient(fd: FormData) {
   flash(`/clientes/${id}`, "Dados salvos.");
 }
 
-export async function generateAuthLink(clientId: string): Promise<{ url?: string; error?: string }> {
+export async function generateAuthLink(clientId: string, marketplace = "mercadolivre"): Promise<{ url?: string; error?: string }> {
   await requireAdmin();
   try {
-    const { url } = await createAuthorizationLink(clientId, "mercadolivre");
+    if (!["mercadolivre", "shopee"].includes(marketplace)) throw new Error("Marketplace inválido");
+    const { url } = await createAuthorizationLink(clientId, marketplace);
     return { url };
   } catch (e) {
     return { error: errMsg(e) };
@@ -128,7 +132,7 @@ export async function saveRule(fd: FormData) {
   }
   const db = await userDb();
   const { error } = await db.from("alert_rules").upsert(
-    { client_id: clientId, rule_type: ruleType, enabled: fd.get("enabled") === "on", params, severity: str(fd, "severity") || "warning" },
+    { client_id: clientId, rule_type: ruleType, enabled: fd.get("enabled") === "on", params, severity: str(fd, "severity") || "warning", propose_action: fd.get("propose_action") === "on" },
     { onConflict: "client_id,rule_type" },
   );
   const path = `/clientes/${clientId}`;
@@ -173,6 +177,8 @@ export async function saveSettings(fd: FormData) {
     global_pause: fd.get("global_pause") === "on",
     dry_run: fd.get("dry_run") === "on",
     alert_email: str(fd, "alert_email") || null,
+    ai_enabled: fd.get("ai_enabled") === "on",
+    max_auto_actions_per_day: Math.max(0, Math.floor(Number(str(fd, "max_auto_actions_per_day") || 20))),
     updated_at: new Date().toISOString(),
   };
   await db.from("settings").update(after).eq("id", true);
@@ -301,4 +307,26 @@ export async function runAlertsNow(fd: FormData) {
   }
   revalidatePath("/alertas");
   flash(back(fd, "/alertas"), msg);
+}
+
+// ───────────── IA (Fase 2) ─────────────
+export async function runAgentNow(fd: FormData) {
+  await requireAdmin();
+  const clientId = str(fd, "client_id");
+  const path = back(fd, `/clientes/${clientId}`);
+  let msg = "";
+  try {
+    const r: any = await runAgentForClient(clientId, { force: true });
+    msg = r.skipped
+      ? `Nada a analisar: ${r.reason ?? "já processado"}.`
+      : r.error
+        ? `Relatório gerado só com números (IA: ${r.error}).`
+        : `Análise concluída: ${r.proposed} ação(ões) proposta(s)${r.dropped ? `, ${r.dropped} descartada(s) pelas travas` : ""}.`;
+  } catch (e) {
+    flash(path, errMsg(e), "erro");
+  }
+  revalidatePath(path);
+  revalidatePath("/aprovacoes");
+  revalidatePath("/relatorios");
+  flash(path, msg);
 }

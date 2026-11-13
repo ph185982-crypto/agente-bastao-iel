@@ -18,10 +18,11 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
     adminDb().from("job_runs").select("job, status, started_at, details").order("started_at", { ascending: false }).limit(12),
   ]);
   const missing = missingConfig();
-  const optional = ["RESEND_API_KEY", "ALERT_EMAIL_FROM", "ALERT_EMAIL_TO", "ANTHROPIC_API_KEY"].filter((k) => !process.env[k]);
+  const optional = ["RESEND_API_KEY", "ALERT_EMAIL_FROM", "ALERT_EMAIL_TO", "ANTHROPIC_API_KEY", "SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY"].filter((k) => !process.env[k]);
   const urls = [
     ["Redirect URI (callback OAuth)", redirectUri()],
     ["URL de notificações (webhook)", `${appUrl()}/api/webhooks/mercadolivre`],
+    ["Shopee · Redirect URL (Fase 3)", redirectUri("shopee")],
   ];
   return (
     <>
@@ -32,6 +33,8 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
       <form action={saveSettings} className="card stack">
         <label className="check"><input type="checkbox" name="global_pause" defaultChecked={settings?.global_pause} /> Pausa geral (nenhuma escrita é executada)</label>
         <label className="check"><input type="checkbox" name="dry_run" defaultChecked={settings?.dry_run} /> Modo simulação global (dry-run): aprova e registra, mas não altera nada no marketplace</label>
+        <label className="check"><input type="checkbox" name="ai_enabled" defaultChecked={settings?.ai_enabled !== false} /> Agente de IA diário ligado</label>
+        <div className="field"><label htmlFor="ma">Máximo de ações automáticas por cliente/dia (acima disso, vira pedido de aprovação)</label><input id="ma" name="max_auto_actions_per_day" inputMode="numeric" defaultValue={settings?.max_auto_actions_per_day ?? 20} /></div>
         <div className="field"><label htmlFor="ae">E-mail para alertas</label><input id="ae" name="alert_email" type="email" defaultValue={settings?.alert_email ?? ""} placeholder="(usa ALERT_EMAIL_TO se vazio)" /></div>
         <Submit className="btn">Salvar</Submit>
       </form>

@@ -52,7 +52,20 @@ export async function proposeAction(input: ProposeInput) {
     before = { erro_leitura: err instanceof Error ? err.message : String(err) };
   }
 
-  const status = policy.mode === "blocked" ? "blocked" : policy.mode === "auto" ? "approved" : "proposed";
+  // Fase 3: autonomia com teto diário por cliente — acima do teto, a ação volta a pedir aprovação.
+  let mode = policy.mode;
+  if (mode === "auto") {
+    const { data: settings } = await db.from("settings").select("max_auto_actions_per_day").single();
+    const cap = Number(settings?.max_auto_actions_per_day ?? 20);
+    const { count } = await db
+      .from("actions")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", input.clientId)
+      .eq("decided_by", "auto")
+      .gte("created_at", `${spDate()}T00:00:00-03:00`);
+    if ((count ?? 0) >= cap) mode = "approval";
+  }
+  const status = mode === "blocked" ? "blocked" : mode === "auto" ? "approved" : "proposed";
   const { data: action, error } = await db
     .from("actions")
     .insert({
@@ -66,7 +79,7 @@ export async function proposeAction(input: ProposeInput) {
       status,
       dry_run: input.dryRun ?? false,
       before_state: before,
-      ...(policy.mode === "auto" ? { decided_by: "auto", decided_at: new Date().toISOString() } : {}),
+      ...(mode === "auto" ? { decided_by: "auto", decided_at: new Date().toISOString() } : {}),
     })
     .select("*")
     .single();
@@ -77,7 +90,7 @@ export async function proposeAction(input: ProposeInput) {
     event: status === "blocked" ? "blocked" : "proposed",
     actor: input.actor,
     before_state: before,
-    details: { type: input.type, target: input.targetId, payload: input.payload, mode: policy.mode },
+    details: { type: input.type, target: input.targetId, payload: input.payload, mode, policy_mode: policy.mode },
   });
   if (status === "approved") return executeAction(action.id, "auto");
   return action;

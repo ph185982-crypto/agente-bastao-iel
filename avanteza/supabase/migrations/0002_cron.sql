@@ -16,7 +16,7 @@ begin
     url := base || '/api/cron/' || job,
     headers := jsonb_build_object('Authorization', 'Bearer ' || secret, 'Content-Type', 'application/json'),
     body := '{}'::jsonb,
-    timeout_milliseconds := 60000
+    timeout_milliseconds := 300000
   );
 end $$;
 revoke all on function avanteza.call_job(text) from public, anon, authenticated;
@@ -25,3 +25,6 @@ select cron.unschedule(jobname) from cron.job where jobname like 'avanteza-%';
 select cron.schedule('avanteza-tick',    '*/5 * * * *',  $$select avanteza.call_job('tick')$$);    -- tokens, webhooks, execução
 select cron.schedule('avanteza-collect', '7,37 * * * *', $$select avanteza.call_job('collect')$$); -- coleta (1 conta por vez)
 select cron.schedule('avanteza-alerts',  '20,50 * * * *', $$select avanteza.call_job('alerts')$$); -- motor de alertas
+
+-- Fase 2: agente de IA e relatório diário (≈ 7h–8h de Brasília; várias chamadas cobrem todos os clientes)
+select cron.schedule('avanteza-ai-daily', '5,20,35,50 10,11 * * *', $$select avanteza.call_job('ai-daily')$$);

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { userDb } from "@/lib/supabase/server";
 import { addDays, spDate } from "@/lib/dates";
-import { brl, int, pct, dec, REPUTATION_LABEL, ago } from "@/lib/format";
+import { brl, int, pct, dec, REPUTATION_LABEL, ago, STATUS_LABEL } from "@/lib/format";
+import { ACTION_LABEL } from "@/lib/executor/policy";
 import { Flash } from "@/components/Flash";
 import { togglePause } from "@/app/actions";
 import { Submit } from "@/components/Submit";
@@ -21,6 +22,14 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     db.from("actions").select("client_id").eq("status", "proposed"),
     db.from("settings").select("global_pause").maybeSingle(),
   ]);
+  const { data: autoDone } = await db
+    .from("actions")
+    .select("id, action_type, target_id, status, client_id, clients(name)")
+    .eq("decided_by", "auto")
+    .in("status", ["executed", "simulated", "failed"])
+    .gte("executed_at", new Date(Date.now() - 86400_000).toISOString())
+    .order("executed_at", { ascending: false })
+    .limit(20);
   const S = (snaps.data ?? []) as Snap[];
   const sumRange = (accIds: string[], a: string, b: string, k: "revenue" | "orders_count") =>
     S.filter((s) => accIds.includes(s.account_id) && s.snapshot_date >= a && s.snapshot_date <= b).reduce((t, s) => t + Number(s[k] ?? 0), 0);
@@ -57,6 +66,27 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         <Link href="/aprovacoes" className="kpi" style={{ textDecoration: "none" }}><div className="label">Aprovações</div><div className="value">{int(approvals.data?.length ?? 0)}</div><div className="small muted">aguardando você</div></Link>
         <Link href="/alertas" className="kpi" style={{ textDecoration: "none" }}><div className="label">Alertas abertos</div><div className="value">{int(alerts.data?.length ?? 0)}</div><div className="small muted">{(alerts.data ?? []).filter((a) => a.severity === "critical").length} críticos</div></Link>
       </div>
+
+      <div className="btn-row" style={{ marginTop: 12 }}>
+        <Link href="/relatorios" className="btn btn-sm btn-ghost">Relatórios do dia</Link>
+        <Link href="/auditoria" className="btn btn-sm btn-ghost">Auditoria</Link>
+      </div>
+
+      {(autoDone ?? []).length > 0 && (
+        <>
+          <h2>Feito automaticamente (24 h)</h2>
+          <div className="card">
+            <ul className="list">
+              {(autoDone ?? []).map((a: any) => (
+                <li key={a.id} className="row">
+                  <span><strong>{ACTION_LABEL[a.action_type as keyof typeof ACTION_LABEL] ?? a.action_type}</strong> · {a.clients?.name} · <span className="mono">{a.target_id}</span></span>
+                  <span className={`pill ${a.status === "executed" ? "pill-ok" : a.status === "failed" ? "pill-danger" : "pill-sand"}`}>{STATUS_LABEL[a.status]}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
 
       <h2>Clientes</h2>
       {(clients.data ?? []).length === 0 && (

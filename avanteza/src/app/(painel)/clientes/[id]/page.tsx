@@ -8,7 +8,9 @@ import { Submit } from "@/components/Submit";
 import { Bars } from "@/components/Bars";
 import { AuthLinkBox } from "@/components/AuthLinkBox";
 import { ProposeForm } from "@/components/ProposeForm";
-import { collectNow, disconnectAccount, saveRule, savePolicy, updateClient } from "@/app/actions";
+import { collectNow, disconnectAccount, saveRule, savePolicy, updateClient, runAgentNow } from "@/app/actions";
+import { CopyButton } from "@/components/CopyButton";
+import { enabledMarketplaces, MARKETPLACE_LABEL } from "@/lib/marketplaces";
 import { RULE_LABEL, DEFAULT_RULES, type RuleType } from "@/lib/alerts/rules";
 import { ACTION_LABEL, ACTION_TYPES } from "@/lib/executor/policy";
 
@@ -16,7 +18,7 @@ const PARAM_FIELDS: Record<RuleType, { key: string; label: string }[]> = {
   reputation_drop: [{ key: "claims_rate_increase", label: "Aumento de reclamações (ex.: 0.005 = 0,5 p.p.)" }],
   listing_paused: [],
   out_of_stock: [],
-  roas_below: [{ key: "min_roas", label: "ROAS mínimo (7 dias)" }, { key: "min_cost", label: "Custo mínimo para avaliar (R$)" }],
+  roas_below: [{ key: "min_roas", label: "ROAS mínimo (7 dias)" }, { key: "min_cost", label: "Custo mínimo para avaliar (R$)" }, { key: "cut_pct", label: "Corte de verba proposto (%)" }],
   unanswered_question: [{ key: "hours", label: "Horas sem resposta" }],
   sales_drop: [{ key: "drop_pct", label: "Queda máxima (%) vs. semana anterior" }, { key: "min_prev_orders", label: "Pedidos mínimos na semana anterior" }],
 };
@@ -41,7 +43,7 @@ export default async function Cliente({
   const none = ["00000000-0000-0000-0000-000000000000"];
   const ids = accIds.length ? accIds : none;
 
-  const [snaps, listings, questions, campaigns, rules, policies, actions, alerts] = await Promise.all([
+  const [snaps, listings, questions, campaigns, rules, policies, actions, alerts, report] = await Promise.all([
     db.from("daily_snapshots").select("*").in("account_id", ids).gte("snapshot_date", addDays(today, -14)).order("snapshot_date"),
     db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d, permalink").in("account_id", ids).order("sold_quantity", { ascending: false }).limit(300),
     db.from("questions").select("*").in("account_id", ids).eq("status", "UNANSWERED").order("date_created").limit(50),
@@ -50,6 +52,7 @@ export default async function Cliente({
     db.from("action_policies").select("*").or(`client_id.is.null,client_id.eq.${id}`),
     db.from("actions").select("*").eq("client_id", id).order("created_at", { ascending: false }).limit(20),
     db.from("alerts").select("*").eq("client_id", id).eq("status", "open").order("created_at", { ascending: false }).limit(20),
+    db.from("ai_reports").select("*").eq("client_id", id).order("report_date", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
   // KPIs agregados (todas as contas do cliente)
@@ -124,7 +127,7 @@ export default async function Cliente({
                 <div>
                   <strong>{a.nickname ?? a.external_user_id}</strong>{" "}
                   <span className={`pill ${a.status === "active" ? "pill-ok" : "pill-danger"}`}>{a.status === "active" ? "Ativa" : a.status === "disabled" ? "Desconectada" : "Reautorizar"}</span>
-                  <div className="small muted">Mercado Livre · ID {a.external_user_id} · token até {dt(a.token_expires_at)} · coleta {ago(a.last_collected_at)}</div>
+                  <div className="small muted">{MARKETPLACE_LABEL[a.marketplace as "mercadolivre" | "shopee"] ?? a.marketplace} · ID {a.external_user_id} · token até {dt(a.token_expires_at)} · coleta {ago(a.last_collected_at)}</div>
                   {a.last_error && <div className="small down">{a.last_error}</div>}
                 </div>
                 {a.status === "active" && (
@@ -146,7 +149,7 @@ export default async function Cliente({
           ))}
         </ul>
         <div style={{ marginTop: 12 }}>
-          <AuthLinkBox clientId={id} clientName={client.name} />
+          <AuthLinkBox clientId={id} clientName={client.name} marketplaces={enabledMarketplaces()} />
         </div>
       </div>
 
@@ -168,6 +171,31 @@ export default async function Cliente({
           </div>
         </>
       )}
+
+      {/* Agente de IA e relatório diário */}
+      <h2>Análise do dia</h2>
+      <div className="card">
+        {report.data ? (
+          <>
+            <div className="row">
+              <span className="small muted">Relatório de {report.data.report_date.split("-").reverse().join("/")}{report.data.proposed_count ? ` · ${report.data.proposed_count} ação(ões) proposta(s)` : ""}</span>
+              <CopyButton text={report.data.report_text ?? ""} label="Copiar relatório" />
+            </div>
+            {report.data.summary && <p style={{ marginTop: 8 }}>{report.data.summary}</p>}
+            {report.data.error && <p className="small muted">{report.data.error}</p>}
+            <Link href="/relatorios" className="small">Ver relatório completo ›</Link>
+          </>
+        ) : (
+          <p className="muted">Ainda sem relatório. A rotina roda todo dia às 7h–8h (Brasília).</p>
+        )}
+        {activeAccs.length > 0 && (
+          <form action={runAgentNow} style={{ marginTop: 10 }}>
+            <input type="hidden" name="client_id" value={id} />
+            <input type="hidden" name="back" value={back} />
+            <Submit className="btn btn-sm">Gerar análise agora</Submit>
+          </form>
+        )}
+      </div>
 
       {/* Perguntas */}
       <h2>Perguntas sem resposta ({(questions.data ?? []).length})</h2>
@@ -276,6 +304,9 @@ export default async function Cliente({
                   <input name={`p_${f.key}`} inputMode="decimal" defaultValue={String((r.params as Record<string, unknown>)?.[f.key] ?? def.params[f.key] ?? "")} />
                 </div>
               ))}
+              {def.rule_type === "roas_below" && (
+                <label className="check small"><input type="checkbox" name="propose_action" defaultChecked={Boolean((r as { propose_action?: boolean }).propose_action)} /> Propor corte de verba automaticamente</label>
+              )}
               <div className="field">
                 <label>Severidade</label>
                 <select name="severity" defaultValue={r.severity}>
@@ -332,6 +363,8 @@ export default async function Cliente({
         </div>
         <div className="field"><label>E-mail</label><input name="contact_email" type="email" defaultValue={client.contact_email ?? ""} /></div>
         <div className="field"><label>Observações</label><textarea name="notes" defaultValue={client.notes ?? ""} /></div>
+        <div className="field"><label>Instruções para a IA (contexto do negócio, margens, o que evitar)</label><textarea name="ai_instructions" defaultValue={client.ai_instructions ?? ""} placeholder="Ex.: margem mínima de 18%; não baixar preço da linha premium; tom formal nas respostas." /></div>
+        <label className="check"><input type="checkbox" name="ai_enabled" defaultChecked={client.ai_enabled !== false} /> Agente de IA ativo para este cliente</label>
         <label className="check"><input type="checkbox" name="active" defaultChecked={client.active} /> Cliente ativo</label>
         <Submit className="btn btn-sm">Salvar dados</Submit>
       </form>

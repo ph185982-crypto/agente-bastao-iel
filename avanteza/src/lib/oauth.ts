@@ -7,13 +7,14 @@ import { getAdapter } from "./marketplaces";
 export const STATE_TTL_DAYS = 7;
 
 export function redirectUri(marketplace = "mercadolivre"): string {
-  return envOptional("ML_REDIRECT_URI") ?? `${appUrl()}/api/auth/${marketplace}/callback`;
+  if (marketplace === "mercadolivre" && envOptional("ML_REDIRECT_URI")) return envOptional("ML_REDIRECT_URI")!;
+  return `${appUrl()}/api/auth/${marketplace}/callback`;
 }
 
 /** Gera o link de autorização para enviar ao cliente (state único contra CSRF; PKCE opcional). */
 export async function createAuthorizationLink(clientId: string, marketplace = "mercadolivre") {
   const state = randomToken(24);
-  const usePkce = envOptional("ML_USE_PKCE") === "true";
+  const usePkce = marketplace === "mercadolivre" && envOptional("ML_USE_PKCE") === "true";
   const verifier = usePkce ? randomToken(48) : null;
   const challenge = verifier ? createHash("sha256").update(verifier).digest("base64url") : undefined;
   const { error } = await adminDb().from("oauth_states").insert({

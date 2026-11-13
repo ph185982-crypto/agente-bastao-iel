@@ -73,7 +73,7 @@ export async function refreshAccount(acc: AccountRow, force = false): Promise<st
   }
 
   try {
-    const tokens = await getAdapter(acc.marketplace).refreshToken(decrypt(locked.refresh_token_enc));
+    const tokens = await getAdapter(acc.marketplace).refreshToken(decrypt(locked.refresh_token_enc), acc.external_user_id);
     await saveTokens(acc.id, tokens);
     return tokens.accessToken;
   } catch (err) {
