@@ -100,3 +100,19 @@ test('copiar usa as imagens já guardadas na coleta (sem chamar a Graph) e a lis
   const c = await CL.iniciar(ITEM.id); let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps }); if (r.concluido) break; }
   assert.strictEqual(r.estado, 'concluido', JSON.stringify(r)); assert.strictEqual(r.slides, 2); assert.strictEqual(graphChamada, false);
 });
+
+test('post só de foto (a leitura só acha ruído): cada slide sai com a imagem original inteira, sem texto', async () => {
+  novo();
+  const imgs = await Promise.all([slideImg('#a55'), slideImg('#5a5')]);
+  await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, midias: ['https://cdn.test/a.jpg', 'https://cdn.test/b.jpg'], legenda: 'É isso aí 🏁' });
+  const ruido = async () => ({ text: 'ASP ; - Y. $', linhas: [{ texto: 'ASP ; - Y. $', altura: 30, y0: 100, y1: 130, confianca: 45 }] });
+  const deps = { fetch: async (u) => ({ ok: true, status: 200, arrayBuffer: async () => imgs[u.endsWith('a.jpg') ? 0 : 1] }), ocr: ruido, pedirJson: async () => ({ dados: { slides: [{ i: 0, titulo: '', texto: '' }, { i: 1, titulo: '', texto: '' }], legenda: 'É isso aí 🏁' } }) };
+  const c = await CL.iniciar(ITEM.id); let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps }); if (r.concluido) break; }
+  assert.strictEqual(r.estado, 'concluido', JSON.stringify(r)); assert.strictEqual(r.aviso, null);
+  const doc = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id)).doc; const v = M.versaoAtiva(doc);
+  assert.deepStrictEqual(v.slides.map((s) => s.layout), ['foto_inteira', 'foto_inteira']);
+  assert.ok(v.slides.every((s) => /_inteira$/.test(s.imagem_id)));
+  assert.strictEqual(doc.titulo, 'Cópia de @codiesanchez: caixa');
+  const png = (await require('../arte').renderizarSlide(v.slides[0], { imagem: imgs[0] })).png;
+  const m = await sharp(png).metadata(); assert.deepStrictEqual([m.width, m.height], [1080, 1350]);
+});

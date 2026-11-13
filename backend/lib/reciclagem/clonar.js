@@ -116,6 +116,8 @@ function montar(c, item) {
       claims.push({ id, texto: txt.replace(/\*/g, '').slice(0, 400), tipo: 'fato', natureza: 'fato', central: true, estado: 'sustentada', evidencias: [`e_${id}`], valores: M.extrairNumeros(txt).map((n) => ({ valor: n.valor })), risco: 'baixo', revisao: {}, origem: 'clone' });
       evidencias.push({ id: `e_${id}`, tipo: 'secundaria', autoridade: 'autor_original', correspondencia: 'integral', relacao: 'sustenta', trecho: cl.slides[i].texto_ocr.slice(0, 600), origem: aut.autor, titulo: `Post original de ${aut.autor}`, url: item.permalink, consultada_em: cl.lido_em, fonte_principal: true });
     }
+    // Sem texto traduzido (post de foto, ou a leitura só achou ruído): o slide é a imagem original inteira.
+    if (!txt.replace(/\*/g, '').trim()) return { id: `s${i + 1}`, funcao: i === 0 ? 'capa' : 'explicacao', layout: 'foto_inteira', tema_visual: 'foto', titulo: null, texto: '', imagem_id: cl.slides[i].inteira_id || cl.slides[i].foto_id || null, claim_ids: [] };
     return { id: `s${i + 1}`, funcao: i === 0 ? 'capa' : 'explicacao', layout: 'tweet', tema_visual: 'tweet', titulo: null, texto: txt || ' ', imagem_id: cl.slides[i].foto_id || null, claim_ids };
   });
   // Números da legenda: ligados à legenda original (também material autorizado).
@@ -125,7 +127,7 @@ function montar(c, item) {
     evidencias.push({ id: 'e_kL', tipo: 'secundaria', autoridade: 'autor_original', correspondencia: 'integral', relacao: 'sustenta', trecho: String(cl.legenda_original || '').slice(0, 600), origem: aut.autor, titulo: `Legenda original de ${aut.autor}`, url: item.permalink, consultada_em: cl.lido_em, fonte_principal: true });
   }
   c.claims = claims; c.evidencias = evidencias;
-  c.imagens = cl.slides.filter((s) => s.foto_id).map((s) => ({ id: s.foto_id, tipo: 'foto_autorizada', autor: aut.autor, licenca: `Uso autorizado por ${aut.autor} (${aut.canal}, ${aut.data})`, exige_credito: false, origem: item.permalink }));
+  c.imagens = cl.slides.flatMap((s) => [s.foto_id, s.inteira_id]).filter(Boolean).map((fid) => ({ id: fid })).map((s) => ({ id: s.id, tipo: 'foto_autorizada', autor: aut.autor, licenca: `Uso autorizado por ${aut.autor} (${aut.canal}, ${aut.data})`, exige_credito: false, origem: item.permalink }));
   const legenda = [cl.traducao.legenda, aut.credito].filter(Boolean).join('\n\n').slice(0, 2200);
   M.criarVersao(c, { slides, legenda, legenda_claim_ids: claims.map((k) => k.id), cta: '', hashtags: [] }, { quem: 'sistema', rotulo: `clone autorizado de ${aut.autor}` });
 }
@@ -138,7 +140,7 @@ async function iniciar(itemId, { agora = Date.now() } = {}) {
   const h = `@${String(item.conta?.handle || 'autor').replace(/^@/, '')}`;
   item.autorizacao = item.autorizacao || { autor: h, canal: 'combinado pelo Pedro', data: new Date(agora).toISOString().slice(0, 10), prova: null, credito: `Conteúdo original de ${h}.` };
   await db().radar.salvar(conta(), Coletar.TIPO, item.id, item);
-  const c = M.novoConteudo({ titulo: `Clone autorizado: ${item.conta?.handle || ''} ${item.tema || ''}`.trim().slice(0, 140), formato: 'carrossel', origem: { tipo: 'clone_autorizado', url: item.permalink } });
+  const c = M.novoConteudo({ titulo: `Cópia de @${String(item.conta?.handle || '').replace(/^@/, '')}${item.tema ? `: ${item.tema}` : ''}`.slice(0, 140), formato: 'carrossel', origem: { tipo: 'clone_autorizado', url: item.permalink } });
   c.clone = { item_id: item.id, etapa: 'buscar', estado: 'em_andamento', autorizacao: item.autorizacao, slides: [], criado_em: new Date(agora).toISOString(), erros: [] };
   c.studio = { estado: 'gerando', origem: 'clone' };
   await db().conteudos.salvar(conta(), c.id, c, 0);
@@ -165,14 +167,16 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
           const i = cl.slides.length; const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`);
           const s = await lerSlide(Buffer.from(arq.dados), { ocr: deps.ocr });
           let foto_id = null; if (s.foto) { foto_id = `clone_${c.id}_${i}`; await a.arquivos.salvar(conta(), `img:${foto_id}`, s.foto, 'image/jpeg'); }
-          cl.slides.push({ titulo: s.titulo, corpo: s.corpo, texto_ocr: s.texto_ocr, foto_id });
+          // A imagem inteira também fica: slide sem texto de verdade (só foto) sai igual ao original.
+          const inteira_id = `clone_${c.id}_${i}_inteira`; await a.arquivos.salvar(conta(), `img:${inteira_id}`, await require('sharp')(Buffer.from(arq.dados)).rotate().resize({ width: 1080, height: 1350, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer(), 'image/jpeg');
+          cl.slides.push({ titulo: s.titulo, corpo: s.corpo, texto_ocr: s.texto_ocr, foto_id, inteira_id });
         }
         if (cl.slides.length < cl.n) break;
-        if (!cl.slides.some((s) => s.titulo || s.corpo)) throw erro('Não consegui ler texto nas imagens deste post.', 422, 'SEM_TEXTO');
+        
         cl.etapa = 'traduzir';
       } else if (cl.etapa === 'traduzir') {
         cl.traducao = await traduzir(cl.slides, cl.legenda_original, { pedirJson: deps.pedirJson });
-        c.titulo = (cl.traducao.slides[0]?.titulo || cl.traducao.slides[0]?.texto || c.titulo).replace(/\*/g, '').slice(0, 140);
+        c.titulo = (cl.traducao.slides[0]?.titulo || cl.traducao.slides[0]?.texto || c.titulo || '').replace(/\*/g, '').slice(0, 140) || c.titulo;
         montar(c, item); cl.arte_indice = 0; c.arte = { renders: [] };
         cl.etapa = 'arte';
       } else if (cl.etapa === 'arte') {
@@ -198,7 +202,7 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
         c.status = 'em_revisao'; c.studio = { estado: 'pronto', concluido_em: new Date().toISOString(), origem: 'clone' };
         cl.estado = 'concluido'; cl.concluido_em = new Date().toISOString();
         await a.arquivos.apagar(conta(), Array.from({ length: cl.n || 0 }, (_, i) => `clone_orig:${c.id}:${i}`)).catch(() => {}); // o original baixado não fica guardado
-        M.registrar(c, 'sistema', 'clone', `Clone autorizado de ${cl.autorizacao.autor} pronto para aprovar.`);
+        M.registrar(c, 'sistema', 'clone', `Cópia de ${cl.autorizacao.autor} pronta para aprovar.`);
       }
     }
   } catch (e) {
