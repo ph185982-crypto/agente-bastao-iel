@@ -8,7 +8,10 @@
 // privada fica FECHADA com "configuração necessária" (503): nada que consuma
 // IA, leia URLs ou guarde dados roda aberto. Só no computador de quem
 // desenvolve (sem VERCEL) a ausência do código deixa a API aberta.
-// APP_ACCESS_MODE=public permite acesso sem código por escolha explícita do dono.
+// APP_ACCESS_MODE=public permite acesso sem código por escolha explícita do dono (publicar continua exigindo código).
+// APP_ACCESS_MODE=public_total é a escolha do dono de NÃO ter código nenhum: qualquer pessoa com o endereço usa tudo,
+// inclusive aprovar e publicar no Instagram. Nesse modo ninguém cria código pelo app (senão um visitante criaria o dele
+// e tomaria a ferramenta); para proteger de novo, o dono troca a variável na Vercel.
 // Com o app aberto ao público, o dono pode criar o código pelo próprio app (POST /api/auth/definir): o código vira
 // hash scrypt no banco e, a partir daí, o app fica protegido (sem precisar mexer na Vercel). APP_ACCESS_CODE da Vercel,
 // se existir, continua valendo junto (é o caminho de recuperação se o código do app for esquecido).
@@ -46,7 +49,8 @@ const hashCodigo = (codigo, sal) => crypto.scryptSync(String(codigo), Buffer.fro
 
 const envValido = () => code().length >= MIN_CODIGO;
 const codigoValido = () => envValido() || !!dono;
-const acessoPublico = () => process.env.APP_ACCESS_MODE === 'public' && !dono;
+const semCodigoTotal = () => process.env.APP_ACCESS_MODE === 'public_total';
+const acessoPublico = () => semCodigoTotal() || (process.env.APP_ACCESS_MODE === 'public' && !dono);
 const secret = () => crypto.createHash('sha256').update(`pico|${envValido() ? code() : dono?.hash || ''}|${process.env.APP_TOKEN_SALT || ''}`).digest();
 const protegido = () => !acessoPublico() && codigoValido();
 
@@ -185,7 +189,7 @@ function registrarRotas(app) {
   r.get('/status', async (req, res) => {
     await carregarDono();
     const est = estadoAcesso();
-    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : aberto(est) });
+    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, sem_codigo_total: semCodigoTotal(), authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : aberto(est) });
   });
   r.post('/login', async (req, res) => {
     await carregarDono();
@@ -215,6 +219,7 @@ function registrarRotas(app) {
     try {
       const a = require('./armazem').armazem();
       if (!a?.duravel) return res.status(503).json({ error: 'Sem banco de dados no servidor para guardar o código.', code: 'SEM_ARMAZEM' });
+      if (semCodigoTotal()) return res.status(409).json({ error: 'O dono escolheu usar a ferramenta sem código. Para proteger de novo, troque APP_ACCESS_MODE na Vercel.', code: 'SEM_CODIGO_TOTAL' });
       await carregarDono(true);
       if (estadoAcesso() !== 'aberto_publico') return res.status(409).json({ error: 'O app já tem código de acesso. Entre com ele.', code: 'JA_PROTEGIDO' });
       const codigo = String(req.body?.code || '');
@@ -231,4 +236,4 @@ function registrarRotas(app) {
   app.use('/api/auth', r);
 }
 
-module.exports = { exigeAcesso, limita, unica, registrarRotas, protegido, estadoAcesso, carregarDono, sign, verify, codigoConfere, MIN_CODIGO, _zerarDono: () => { dono = null; donoEm = 0; } };
+module.exports = { exigeAcesso, limita, unica, registrarRotas, protegido, estadoAcesso, semCodigoTotal, carregarDono, sign, verify, codigoConfere, MIN_CODIGO, _zerarDono: () => { dono = null; donoEm = 0; } };

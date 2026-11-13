@@ -190,6 +190,7 @@ async function criarContainers({ id, hash, slides, legenda, base, c }) {
 async function exigirAcessoProtegido() {
   const A = require('./access');
   await A.carregarDono();
+  if (A.semCodigoTotal()) return; // o dono escolheu não ter código nenhum (APP_ACCESS_MODE=public_total): publicar segue liberado
   if ((process.env.VERCEL || process.env.NODE_ENV === 'production') && A.estadoAcesso() === 'aberto_publico') {
     throw new ErroPub('ACESSO_ABERTO', 'Publicar exige código de acesso: o app está aberto ao público. Crie o seu código em Perfil → "Criar meu código" (10+ caracteres) e aprove de novo.', 403);
   }
