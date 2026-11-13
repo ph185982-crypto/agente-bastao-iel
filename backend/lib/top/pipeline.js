@@ -321,9 +321,13 @@ E.painel = async (c, ctx) => {
   const v = c.top.versoes[c.top.escolha.versao];
   const dasMentes = v.capas.map((k, i) => (String(k.mecanismo).startsWith('mente:') ? i : -1)).filter((i) => i >= 0);
   const ordem = [...new Set([...(c.top.escolha.capas || []), 0, 1, ...dasMentes])].filter((n) => n < v.capas.length).slice(0, 8);
+  let soOpina = true;
+  try { const cal = ctx.deps.placar !== undefined ? ctx.deps.placar?.calibracao?.painel : (await armazem().config.obter(conta())).meu_placar?.calibracao?.painel; soOpina = !(cal && cal.acerta === true); } catch { /* sem placar: o painel só opina */ }
   const r = await PN.avaliar({ capas: ordem.map((i) => v.capas[i].texto), slides: v.telas.map((t) => [t.titulo, t.texto].filter(Boolean).join(' — ')), legenda: v.legenda, tese: c.top.angulo?.tese || '' }, { ia: ctx.ia, personas });
   if (!r.ok) {
-    // Todo roteiro passa pelo painel: cota esgotada (429) espera a cota voltar; outra falha da IA tenta mais uma vez antes de seguir sem a nota.
+    // Painel que barra (calibrado contra o resultado real): cota esgotada (429) espera a cota voltar; outra falha da IA tenta mais uma vez antes de seguir sem a nota.
+    // Painel que só opina não segura a produção: sem cota de IA gratuita, a peça segue sem a nota dele.
+    if (soOpina) { c.top.painel = { ativo: true, falhou: r.motivo, pulado: true }; return; }
     if (r.erro_ia && (r.erro_ia.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(r.erro_ia.message)) || (c.top.tentativas.painel || 0) < 1)) throw r.erro_ia;
     c.top.painel = { ativo: true, falhou: r.motivo }; return;
   }
@@ -334,8 +338,6 @@ E.painel = async (c, ctx) => {
   // batiam com o texto ("fala de grandes corporações" num post sobre IPCA; "memes" onde não havia meme), depois de 12 a
   // 14 chamadas de IA cada. Ele só volta a barrar quando o placar provar que a nota acompanha envios e salvos reais
   // (10+ posts medidos e correlação positiva).
-  let soOpina = true;
-  try { const cal = ctx.deps.placar !== undefined ? ctx.deps.placar?.calibracao?.painel : (await armazem().config.obter(conta())).meu_placar?.calibracao?.painel; soOpina = !(cal && cal.acerta === true); } catch { /* sem placar: o painel só opina */ }
   if (r.nota < cfg.minimo && soOpina) c.top.painel.so_opina = true;
   if (r.nota < cfg.minimo && !soOpina) {
     const motivo = `O painel de audiência deu ${r.nota.toFixed(1)} (mínimo ${cfg.minimo}). ${r.objecoes.map((o) => `${o.quem}: "${o.texto}"`).join(' · ')}`.slice(0, 380);
