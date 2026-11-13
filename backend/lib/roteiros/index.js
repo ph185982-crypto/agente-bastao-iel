@@ -244,6 +244,8 @@ function estadoDoDia(est, dia, agora) {
 
 const pendente = (r, meta = META_DIA) => !!r && (r.rascunho || (r.feitos < meta && r.comecados < TENTATIVAS_DIA));
 
+// Limite por minuto (TPM/RPM) zera logo: volta em 4 min. Cota do dia ou sem crédito: 45 min.
+function pausaMin(e) { const m = `${e?.code || ''} ${e?.message || ''}`; return /per minute|\bTPM\b|\bRPM\b|por minuto/i.test(m) && !/per day|\bTPD\b|\bRPD\b|di[aá]ri/i.test(m) ? 4 : 45; }
 function ehCota(e) { return /cota|quota|rate.?limit|429|too many|limite di[aá]rio|sem_credito|indispon/i.test(`${e?.code || ''} ${e?.message || ''}`); }
 
 async function chamarIA({ sistema, usuario, maxTokens, temperatura, etapa, deps, restanteMs }) {
@@ -317,7 +319,7 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
       }
       R.rascunho = null; // fase desconhecida: recomeça
     } catch (e) {
-      if (ehCota(e)) { R.pausa_ate = new Date(agora + 45 * 60000).toISOString(); out.pausado = true; out.erro = String(e.message).slice(0, 140); break; }
+      if (ehCota(e)) { R.pausa_ate = new Date(agora + pausaMin(e) * 60000).toISOString(); out.pausado = true; out.erro = String(e.message).slice(0, 140); break; }
       // Falha avulsa (JSON ruim, prazo): conta a tentativa e segue; na terceira falha da mesma fase, descarta.
       const x = R.rascunho; out.erro = String(e.message).slice(0, 140);
       if (x) { x.falhas = (x.falhas || 0) + 1; if (x.falhas >= 3) { R.descartados += 1; R.rascunho = null; } }
@@ -333,4 +335,4 @@ function resumo(est, { dia } = {}) {
   return { meta: META_DIA, feitos: hoje ? R.feitos || 0 : 0, descartados: hoje ? R.descartados || 0 : 0, comecados: hoje ? R.comecados || 0 : 0, em_producao: R.rascunho ? { formato: R.rascunho.formato, tema: R.rascunho.pauta?.tema, fase: R.rascunho.fase, tentativa: R.rascunho.tentativa } : null, pausa_ate: R.pausa_ate || null, ultimos: R.ultimos || [], ultimos_descartes: R.ultimos_descartes || [] };
 }
 
-module.exports = { META_DIA, TENTATIVAS_DIA, ROTACAO, pautas, escolherPauta, escolherFormato, promptRoteirista, promptFiscal, normalizar, textoFalado, fiscalCodigo, numerosSemFonte, lerNotas, veredito, feedbackDe, salvarRoteiro, arquivar, arquivarVelhos, estadoDoDia, pendente, avancar, resumo };
+module.exports = { pausaMin, META_DIA, TENTATIVAS_DIA, ROTACAO, pautas, escolherPauta, escolherFormato, promptRoteirista, promptFiscal, normalizar, textoFalado, fiscalCodigo, numerosSemFonte, lerNotas, veredito, feedbackDe, salvarRoteiro, arquivar, arquivarVelhos, estadoDoDia, pendente, avancar, resumo };
