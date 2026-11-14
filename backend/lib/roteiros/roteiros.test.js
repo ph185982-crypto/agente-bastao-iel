@@ -174,3 +174,10 @@ test('piloto desligado (sem carrossel do zero): os roteiros continuam rodando', 
   const r = await Pi.rodada({ agora: AGORA, orcamentoMs: 60000, deps: { semLimpeza: true, roteiros: async (est, o) => { chamou = true; est.roteiros = { dia: o.dia, feitos: 0, descartados: 0, comecados: 1, formatos: {}, usadas: [], rascunho: null }; return { salvos: [], descartados: [], fases: ['x'] }; } } });
   assert.ok(chamou); assert.match(r.motivo, /roteiros/);
 });
+
+test('roteiro que cita a marca/perfil de onde veio a pauta é reprovado pelo código', () => {
+  const r = R.normalizar({ ...BOM, payoff: 'O podcast diário da Conta Azul ensina a resolver isso.' });
+  const p = R.fiscalCodigo(r, { texto: 'x', autor: ['contaazul', 'Conta Azul'] }).problemas;
+  assert.ok(p.some((x) => x.criterio === 14 && x.eliminar));
+  assert.ok(!R.fiscalCodigo(R.normalizar(BOM), { texto: 'x', autor: ['contaazul', 'Conta Azul'] }).problemas.length, 'a palavra "conta" sozinha não reprova');
+});
