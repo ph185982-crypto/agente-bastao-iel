@@ -228,9 +228,9 @@ test('item sem tese não recicla; contas: curadas + adicionadas − removidas, h
   assert.ok(c.instagram.some((x) => x.handle === 'novaconta' && x.adicionada && x.pais === 'BR'));
   assert.ok(!c.instagram.some((x) => x.handle === 'garyvee')); assert.ok(!c.instagram.some((x) => x.handle === 'inválido!'));
   assert.strictEqual(c.instagram.filter((x) => x.handle === 'hormozi').length, 1, 'não duplica');
-  assert.strictEqual(c.instagram.length, Contas.INSTAGRAM.length, '80 − 1 removida + 1 nova');
+  assert.strictEqual(c.instagram.length, Contas.INSTAGRAM.length, '74 − 1 removida + 1 nova');
   assert.ok(c.youtube.some((x) => x.canal === '@canalnovo')); assert.ok(!c.youtube.some((x) => x.canal === '@garyvee' || x.canal === 'lixo'));
-  assert.strictEqual(Contas.INSTAGRAM.length, 80); assert.strictEqual(Contas.YOUTUBE.length, 20);
+  assert.strictEqual(Contas.INSTAGRAM.length, 74); assert.strictEqual(Contas.YOUTUBE.length, 20);
   await Contas.salvarConfig({ instagram: { remover: ['hormozi'] } });
   assert.ok(!(await Contas.carregar()).instagram.some((x) => x.handle === 'hormozi'));
 });
@@ -253,9 +253,9 @@ test('rota: lista ordenada por VL, tendências, contas e reciclar reel pela API'
     assert.strictEqual(r.total, 2); assert.strictEqual(r.itens[0].vl, 7.5); assert.strictEqual(r.itens[0].legenda, 'texto de terceiro'); assert.ok(r.estado.mecanismos.historia);
     r = await (await fetch(`${base}?mecanismo=polemica&idioma=pt`)).json(); assert.strictEqual(r.total, 1);
     r = await (await fetch(`${base}/tendencias`)).json(); assert.strictEqual(r.tendencias[0].titulo, 'lavanderia'); assert.ok(r.tendencias[0].itens.includes(ITEM.id), 'tendência cruzada com o item pela ponte ("lavanderia de bairro")');
-    r = await (await fetch(`${base}/contas`)).json(); assert.strictEqual(r.instagram.length, 80);
+    r = await (await fetch(`${base}/contas`)).json(); assert.strictEqual(r.instagram.length, 74);
     const put = await fetch(`${base}/contas`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ instagram: { remover: ['garyvee'] } }) });
-    assert.strictEqual(put.status, 200); assert.strictEqual((await put.json()).instagram.length, 79);
+    assert.strictEqual(put.status, 200); assert.strictEqual((await put.json()).instagram.length, 73);
     const rec = await fetch(`${base}/${ITEM.id}/reciclar`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ formato: 'reel' }) });
     assert.strictEqual(rec.status, 201); const j = await rec.json(); assert.ok(j.id && /Se você tem um negócio pequeno/.test(j.roteiro)); assert.strictEqual(j.rotulo, 'reel');
     assert.strictEqual((await fetch(`${base}/${ITEM.id}/reciclar`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ formato: 'x' }) })).status, 400);
