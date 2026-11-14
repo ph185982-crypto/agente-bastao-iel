@@ -495,6 +495,14 @@ class Pedido15Nov(unittest.TestCase):
         # pontuação do roteiro: "básicas:" separa a lista
         self.assertIn('duas coisas básicas: produto', texto)
 
+    def test_legenda_corrige_palavra_trocada_entre_trechos_certos(self):
+        # produção (14/11, 2ª versão): "o lucro da prática pagava a produção" — ele leu "primeira venda"
+        falado = self.ROT.split(' da seguinte.')[0].replace('da primeira venda pagava', 'da prática pagava')
+        out, rel = L.alinhar_com_roteiro(self._pal(falado), self.ROT)
+        texto = ' '.join(p['w'] for p in out)
+        self.assertIn('o lucro da primeira venda pagava a produção', texto)
+        self.assertNotIn('prática pagava', texto)
+
     def test_legenda_mantem_improviso_e_fala_diferente(self):
         falado = self.ROT.replace('sua empresa', 'seu negócio') + ' Valeu demais, até amanhã pessoal.'
         out, rel = L.alinhar_com_roteiro(self._pal(falado), self.ROT)

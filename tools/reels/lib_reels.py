@@ -854,7 +854,7 @@ def _ancoras(ops):
     return sol
 
 
-def alinhar_com_roteiro(palavras, roteiro, parecido_min=0.55, parecido_entre=0.45, max_bloco=4, max_sobra=6):
+def alinhar_com_roteiro(palavras, roteiro, parecido_min=0.55, parecido_entre=0.35, max_bloco=4, max_sobra=6):
     """Confere cada palavra do Whisper com o roteiro que o Pedro leu no teleprompter e devolve (palavras, relatório).
     - Palavra igual (sem acento/pontuação): fica com a grafia do roteiro (acento, maiúscula e pontuação certos — a
       pontuação também separa as frases do vídeo).
@@ -883,8 +883,10 @@ def alinhar_com_roteiro(palavras, roteiro, parecido_min=0.55, parecido_entre=0.4
                 rel['iguais'] += i2 - i1; j_ult = max(j_ult, j2)
         elif op == 'replace':
             nt, nr = i2 - i1, j2 - j1
+            # entre duas âncoras do roteiro, quem lê o teleprompter falou o roteiro: o Whisper é que errou ("prática"
+            # no lugar de "primeira venda"); improviso de verdade fica bem diferente (parecença < 0,3) e é mantido
             entre = (k - 1) in sol and (k + 1) in sol
-            limite = parecido_entre if (entre and nt == nr) else parecido_min
+            limite = parecido_entre if (entre and abs(nt - nr) <= 1 and max(nt, nr) <= 3) else parecido_min
             sim = _parecido(' '.join(tn[i1:i2]), ' '.join(rn[j1:j2]))
             if nt <= max_bloco and nr <= max_bloco + 1 and abs(nt - nr) <= 1 and sim >= limite:
                 base = {x: v for x, v in pal[i1].items() if x not in ('t0', 't1', 'w')}

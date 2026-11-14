@@ -44,7 +44,8 @@ async function carrosselDoVideo(id, { deps = {} } = {}) {
   }
   const frases = (v.video.transcricao?.frases || []).map((f) => f.texto);
   if (palavras(frases.join(' ')).length < 15) throw falha('O vídeo tem pouca fala para virar carrossel.', 422, 'POUCO_TEXTO');
-  const paginas = paginasDoVideo({ titulo: v.titulo, frases });
+  // capa: o gancho do plano visual (curto e forte) quando existe; senão o título do vídeo
+  const paginas = paginasDoVideo({ titulo: v.video.plano?.gancho || v.titulo, frases });
   const TT = deps.trocaTexto || require('../reciclagem/trocaTexto');
   const arte = deps.arte || require('../arte');
   const sharp = deps.sharp || require('sharp');
@@ -54,7 +55,7 @@ async function carrosselDoVideo(id, { deps = {} } = {}) {
   c.imagens = [];
   for (const [i, pg] of paginas.entries()) {
     const pid = `vc_${c.id}_${i}`;
-    await a.arquivos.salvar(conta(), `img:${pid}`, await TT.paginaTexto(pg, { assinatura: ACCOUNT.handle, fundo: 'preto' }), 'image/jpeg');
+    await a.arquivos.salvar(conta(), `img:${pid}`, await TT.paginaTexto(pg, { assinatura: ACCOUNT.handle, fundo: 'preto', ...(i === 0 ? { tamanhoMax: 120 } : {}) }), 'image/jpeg');
     c.imagens.push({ id: pid, tipo: 'tipografica', origem: `vídeo ${v.id}`, exige_credito: false });
     slides.push({ id: `s${i + 1}`, funcao: i === 0 ? 'capa' : i === paginas.length - 1 ? 'cta' : 'explicacao', layout: 'foto_inteira', tema_visual: 'foto', titulo: null, texto: '', imagem_id: pid, claim_ids: [] });
   }
