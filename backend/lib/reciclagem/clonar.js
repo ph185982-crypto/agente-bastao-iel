@@ -82,7 +82,11 @@ const TT = require('./trocaTexto');
 
 async function lerSlide(buf, { ocr, sharp = require('sharp') } = {}) {
   const meta = await sharp(buf).metadata();
-  const r = await (ocr || require('../lerPrint').lerLinhas)(buf);
+  // Imagem gigante (3.000 px+) a leitura erra: lê numa cópia de até 1.400 px de largura e devolve as caixas na escala original.
+  const escala = !ocr && meta.width > 1400 ? meta.width / 1400 : 1;
+  const r0 = await (ocr || require('../lerPrint').lerLinhas)(escala > 1 ? await sharp(buf).resize({ width: 1400 }).toBuffer() : buf);
+  const esc = (o) => (escala > 1 ? { ...o, x0: Math.round(o.x0 * escala), x1: Math.round(o.x1 * escala), y0: Math.round(o.y0 * escala), y1: Math.round(o.y1 * escala), altura: o.altura != null ? Math.round(o.altura * escala) : o.altura, altura_linha: o.altura_linha != null ? Math.round(o.altura_linha * escala) : o.altura_linha } : o);
+  const r = { ...r0, linhas: (r0.linhas || []).map(esc), trechos: r0.trechos ? r0.trechos.map(esc) : r0.trechos, paragrafos: r0.paragrafos ? r0.paragrafos.map(esc) : r0.paragrafos };
   const linhas = (r.linhas || []).filter((l) => (l.confianca ?? 100) >= 40);
   const sep = require('../lerCarrossel').separarTelaDeCarrossel({ linhas, text: r.text });
   const faixa = faixaSemTexto(linhas, meta.height || 1350);
@@ -262,7 +266,7 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
               slides.push({ titulo: textosPt[0].texto.slice(0, 160), texto: textosPt.slice(1).map((t) => t.texto).join(' ').slice(0, 700), blocos: [], pagina: textosPt });
               continue;
             }
-            const { blocos, faltando } = Visao.blocosDaVisao({ textos: cl.visao[i].textos, assinaturas: cl.visao[i].assinaturas }, { trechos: s.paragrafos || [] });
+            const { blocos, faltando } = Visao.blocosDaVisao({ textos: cl.visao[i].textos, assinaturas: cl.visao[i].assinaturas }, { trechos: s.paragrafos || [], manterIguais: cl.modo !== 'nosso' });
             if (faltando.length) cl.faltando = [...(cl.faltando || []), ...faltando.map((f) => `slide ${i + 1}: "${f.slice(0, 60)}"`)];
             // Título e texto na ordem de leitura da IA (não na ordem das caixas).
             const textos = textosPt.map((t) => t.texto);

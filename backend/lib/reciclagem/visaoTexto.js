@@ -85,7 +85,7 @@ const POSICOES = ['topo-esquerda', 'topo-centro', 'topo-direita', 'meio-esquerda
 // Junta a resposta da IA com as caixas da OCR (pixels da imagem original). A posição vem SEMPRE da OCR: a IA só corrige o
 // texto e traduz. Cada trecho da OCR é casado com o texto da IA mais parecido ("4 shot" ↔ "1 shot").
 // Devolve { blocos, faltando }: blocos para trocaTexto ({x0,y0,x1,y1,altura_linha,texto,novo} ou {apagar, posicao}).
-function blocosDaVisao(dados, { trechos = [] } = {}) {
+function blocosDaVisao(dados, { trechos = [], ...opcoes } = {}) {
   const textos = (Array.isArray(dados?.textos) ? dados.textos : []).slice(0, 40).map((t) => ({ original: limpa(t?.original), traducao: limpa(t?.traducao) })).filter((t) => t.original);
   const porTexto = new Map(); const juntos = [];
   for (const tr of trechos) {
@@ -117,7 +117,10 @@ function blocosDaVisao(dados, { trechos = [] } = {}) {
     if (usados.has(k)) continue;
     const ocr = porTexto.get(k);
     const mudou = t.traducao && norm(t.traducao) !== norm(t.original);
-    if (!ocr) { if (mudou) faltando.push(t.original); continue; }
+    // A leitura precisa ter achado quase todo o texto: trocar com a caixa de uma palavra só ("mundo") apaga a palavra e joga a frase fora do lugar.
+    const cobertura = ocr ? ocr.reduce((a, o) => a + norm(o.texto).length, 0) / Math.max(1, norm(t.original).length) : 0;
+    if (!ocr || cobertura < 0.6) { if (mudou) faltando.push(t.original); continue; }
+    if (!mudou && opcoes.manterIguais) continue; // formato original: texto que não muda fica intacto (letra e cor do post)
     // Texto que não muda (já em português, número, nome) também é reescrito: todo texto da cópia sai na fonte e na cor da marca.
     const caixa = { x0: Math.min(...ocr.map((o) => o.x0)), x1: Math.max(...ocr.map((o) => o.x1)), y0: Math.min(...ocr.map((o) => o.y0)), y1: Math.max(...ocr.map((o) => o.y1)) };
     const altura_linha = Math.round(ocr.reduce((a, o) => a + (o.altura_linha || o.y1 - o.y0), 0) / ocr.length);
