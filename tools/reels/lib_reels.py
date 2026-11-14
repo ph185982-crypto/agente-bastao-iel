@@ -8,6 +8,7 @@ Convenções:
 - "trechos" é a lista ordenada e sem sobreposição dos intervalos do original que FICAM no vídeo final.
 - Depois de `remapear_tempos`, cada palavra ganha `n0`/`n1`: o tempo dela no vídeo final.
 """
+import difflib
 import json
 import math
 import re
@@ -19,7 +20,7 @@ import unicodedata
 MULETAS = {'é', 'éé', 'ééé', 'hã', 'ã', 'hum', 'ahn', 'né', 'hm', 'hmm', 'ahm', 'eh', 'ééh'}
 PAUSA_MULETA = 0.15       # muleta só sai se estiver isolada por pausa ≥ 150 ms dos dois lados
 MARGEM_SILENCIO = 0.15    # sobra de silêncio que fica em cada lado da fala
-PROTEGER_INICIO = 1.0     # nunca cortar o 1º segundo
+PROTEGER_INICIO = 1.0     # sem transcrição (corte por silêncio): nunca cortar o 1º segundo
 RETOMADA_MIN_PALAVRAS = 3
 RETOMADA_JANELA = 6.0
 ZOOMS_PUNCH_IN = (1.0, 1.08)   # punch-in discreto: 12% chamava atenção demais
@@ -257,6 +258,7 @@ def detectar_retomadas(palavras, min_palavras=RETOMADA_MIN_PALAVRAS, janela=RETO
 # Cortes pelas PALAVRAS (não pelo volume): gravação baixa (rua, celular longe) tem fala abaixo de -35 dB e o corte por
 # silêncio apagava frases inteiras. Aqui só sai o vão ENTRE palavras, e fica um respiro para soar humano.
 FOLGA_INICIO = 0.12     # antes da 1ª palavra do trecho
+FOLGA_PRIMEIRA = 0.25   # antes da 1ª palavra do VÍDEO: o vídeo começa já na fala (sem segundo mudo), sem comer a 1ª sílaba
 FOLGA_FIM = 0.20        # depois da última (o Whisper costuma cortar o fim da palavra)
 PAUSA_MAX = 0.55        # vão maior que isso é encurtado
 RESPIRO = 0.30          # quanto do vão fica no meio da frase
@@ -264,14 +266,14 @@ RESPIRO_FRASE = 0.45    # quanto fica no fim de frase (ponto final): pausa natur
 
 
 def trechos_por_palavras(palavras, duracao, folga_ini=FOLGA_INICIO, folga_fim=FOLGA_FIM, pausa_max=PAUSA_MAX,
-                         respiro=RESPIRO, respiro_frase=RESPIRO_FRASE):
+                         respiro=RESPIRO, respiro_frase=RESPIRO_FRASE, folga_primeira=FOLGA_PRIMEIRA):
     """Palavras com t0/t1 → trechos mantidos. Nunca corta dentro de palavra; vão longo vira respiro curto."""
     duracao = float(duracao)
     pal = sorted((p for p in palavras if p.get('t1', 0) > p.get('t0', 0)), key=lambda p: p['t0'])
     if not pal:
         return [(0.0, duracao)]
     trechos = []
-    ini = max(0.0, pal[0]['t0'] - folga_ini)
+    ini = max(0.0, pal[0]['t0'] - max(folga_ini, folga_primeira))
     for a, b in zip(pal, pal[1:]):
         vao = b['t0'] - a['t1']
         if vao <= pausa_max:
@@ -310,7 +312,8 @@ def montar_trechos(duracao, silencios=(), palavras=(), remover_pausas=True, remo
         cortes += rt
     if cortes:
         mantidos = subtrair_intervalos(mantidos, cortes)
-    mantidos = proteger_inicio(mantidos, duracao)
+    if not (remover_pausas and palavras):   # com as palavras, o vídeo começa na 1ª fala (o segundo mudo do início derrubava a retenção)
+        mantidos = proteger_inicio(mantidos, duracao)
     mantidos = limpar_trechos(mantidos)
     if not mantidos:
         mantidos = [(0.0, duracao)]
@@ -809,3 +812,110 @@ def roteiro_incompleto(roteiro, palavras, minimo=0.35):
             pos = i + 3
     original = (roteiro or '').split()
     return {'cobertura_final': round(cobertura, 2), 'parou_em': ' '.join(original[max(0, pos - 5):pos]), 'faltou': ' '.join(original[pos:pos + 8])}
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Legenda conferida com o roteiro do teleprompter (sem IA)
+# ----------------------------------------------------------------------------------------------------------------------
+# Frases que o Whisper inventa em áudio cortado ou mudo (vêm das legendas com que ele foi treinado).
+ALUCINACOES = re.compile(r'legendas? (pela|por) comunidade|amara\.?org|obrigad[oa] por assistir|inscreva-se no canal|legendado por', re.I)
+
+
+def _tok(w):
+    """Palavra comparável: minúscula, sem acento e sem pontuação ('Anúncio,' → 'anuncio')."""
+    return sem_acentos(normalizar(w)).replace('-', '')
+
+
+def _parecido(a, b):
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _repartir(t0, t1, novas, base):
+    """Distribui o tempo [t0, t1] entre as palavras `novas` pelo tamanho de cada uma (a fala dura mais nas longas)."""
+    pesos = [len(_tok(w)) + 1 for w in novas]
+    total = float(sum(pesos)) or 1.0
+    out, acum = [], t0
+    for w, peso in zip(novas, pesos):
+        fim = acum + (t1 - t0) * peso / total
+        out.append(dict(base, t0=round(acum, 3), t1=round(fim, 3), w=w, corrigida=True))
+        acum = fim
+    return out
+
+
+def _ancoras(ops):
+    """Blocos 'equal' confiáveis: 2+ palavras seguidas, ou 1 palavra sem salto no roteiro. Palavra comum isolada ('em',
+    'da') que o difflib casa com um ponto distante do roteiro não conta como âncora."""
+    sol, pi, pj = set(), 0, 0
+    for k, (op, i1, i2, j1, j2) in enumerate(ops):
+        if op != 'equal':
+            continue
+        if i2 - i1 >= 2 or (j1 - pj) <= (i1 - pi) + 2:
+            sol.add(k); pi, pj = i2, j2
+    return sol
+
+
+def alinhar_com_roteiro(palavras, roteiro, parecido_min=0.55, parecido_entre=0.45, max_bloco=4, max_sobra=6):
+    """Confere cada palavra do Whisper com o roteiro que o Pedro leu no teleprompter e devolve (palavras, relatório).
+    - Palavra igual (sem acento/pontuação): fica com a grafia do roteiro (acento, maiúscula e pontuação certos — a
+      pontuação também separa as frases do vídeo).
+    - Trecho curto trocado pelo Whisper e parecido com o roteiro ('anos caros' no lugar de 'anúncio caro'): vira o
+      texto do roteiro, no mesmo tempo da fala. Entre duas palavras certas, aceita parecença um pouco menor.
+    - Palavra dita fora do roteiro (improviso, 'e' a mais): fica como o Whisper ouviu.
+    - Depois da última palavra que bate com o roteiro, se o roteiro não terminou: até `max_sobra` palavras saem (é o
+      Whisper completando uma gravação cortada, como o 'prática…' que ninguém falou); sobra maior é improviso e fica.
+      Frases-fantasma conhecidas ('Legendas pela comunidade Amara.org') saem sempre."""
+    rot = [w for w in (roteiro or '').split() if _tok(w)]
+    pal = [p for p in (palavras or []) if _tok(p.get('w'))]
+    rel = {'corrigidas': [], 'removidas': [], 'iguais': 0}
+    if len(rot) < 5 or not pal:
+        return list(palavras or []), rel
+    tn, rn = [_tok(p['w']) for p in pal], [_tok(w) for w in rot]
+    ops = difflib.SequenceMatcher(None, tn, rn, autojunk=False).get_opcodes()
+    sol = _ancoras(ops)
+    out = []          # (palavra, origem) — origem: 'igual' (âncora) | 'corrigida' | 'fala'
+    j_ult = 0
+    for k, (op, i1, i2, j1, j2) in enumerate(ops):
+        if op == 'equal':
+            origem = 'igual' if k in sol else 'fala'
+            for d in range(i2 - i1):
+                out.append((dict(pal[i1 + d], w=rot[j1 + d]) if k in sol else dict(pal[i1 + d]), origem))
+            if k in sol:
+                rel['iguais'] += i2 - i1; j_ult = max(j_ult, j2)
+        elif op == 'replace':
+            nt, nr = i2 - i1, j2 - j1
+            entre = (k - 1) in sol and (k + 1) in sol
+            limite = parecido_entre if (entre and nt == nr) else parecido_min
+            sim = _parecido(' '.join(tn[i1:i2]), ' '.join(rn[j1:j2]))
+            if nt <= max_bloco and nr <= max_bloco + 1 and abs(nt - nr) <= 1 and sim >= limite:
+                base = {x: v for x, v in pal[i1].items() if x not in ('t0', 't1', 'w')}
+                base['p'] = min(p.get('p', 1.0) for p in pal[i1:i2])
+                novas = _repartir(pal[i1]['t0'], pal[i2 - 1]['t1'], rot[j1:j2], base)
+                out += [(n, 'corrigida') for n in novas]
+                rel['corrigidas'].append({'de': ' '.join(p['w'] for p in pal[i1:i2]), 'para': ' '.join(rot[j1:j2]), 't0': pal[i1]['t0']})
+                j_ult = max(j_ult, j2) if entre else j_ult
+            else:
+                out += [(dict(p), 'fala') for p in pal[i1:i2]]
+        elif op == 'delete':
+            out += [(dict(p), 'fala') for p in pal[i1:i2]]
+        # 'insert': palavra do roteiro que não foi dita → nada a fazer
+    ult = max((i for i, (_, o) in enumerate(out) if o == 'igual'), default=-1)
+    roteiro_terminou = j_ult >= len(rot) - 3
+    sobra = len(out) - 1 - ult
+    cortar_sobra = ult >= 0 and not roteiro_terminou and 0 < sobra <= max_sobra
+    final = []
+    for i, (p, origem) in enumerate(out):
+        fantasma = ALUCINACOES.search(p['w']) is not None
+        if fantasma or (cortar_sobra and i > ult):
+            rel['removidas'].append({'w': p['w'], 't0': p['t0'], 'motivo': 'frase-fantasma do Whisper' if fantasma else 'depois do fim da fala (gravação cortada)'})
+            continue
+        final.append(p)
+    # frase-fantasma em várias palavras ("Legendas pela comunidade Amara.org"): confere o texto corrido também
+    texto = ' '.join(p['w'] for p in final)
+    m = ALUCINACOES.search(texto)
+    if m and not ALUCINACOES.search(roteiro or ''):
+        ini = len(texto[:m.start()].split())
+        n = len(m.group(0).split())
+        for p in final[ini:ini + n]:
+            rel['removidas'].append({'w': p['w'], 't0': p['t0'], 'motivo': 'frase-fantasma do Whisper'})
+        final = final[:ini] + final[ini + n:]
+    return final, rel

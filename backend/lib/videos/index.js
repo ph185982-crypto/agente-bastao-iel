@@ -26,7 +26,7 @@ const pushLib = require('../push');
 const LEASE_MS = 30 * 60 * 1000;
 const MAX_TENTATIVAS = 2;
 const ESTILOS = ['hormozi', 'beast', 'caixa'];
-const OPCOES_PADRAO = { broll: true, musica: false, punch_in: true, remover_pausas: true, remover_muletas: true };
+const OPCOES_PADRAO = { broll: true, musica: false, sons: true, punch_in: true, remover_pausas: true, remover_muletas: true };
 const TIPOS_PERMITIDOS = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v', 'video/3gpp', 'video/x-matroska', 'image/jpeg'];
 const TAMANHO_MAXIMO = 600 * 1024 * 1024;
 const REPO_WORKER = 'ph185982-crypto/agente-bastao-iel';
@@ -419,4 +419,5 @@ module.exports = {
   criar, registrarEnvio, urlDoSinal, marcarFila, proximoJob, registrarResultado, registrarErro, refazer, apagar, faxina, listar, obter, resumo, publico,
   gerarLegenda, problemasDaLegenda, limparLegenda, tokenDoWorker, registrarUploadConcluido, restricoesToken, dispararWorker, exigirBlob, pathnameValido,
   ESTILOS, OPCOES_PADRAO, TIPOS_PERMITIDOS, TAMANHO_MAXIMO, LEASE_MS, MAX_TENTATIVAS, MSG_SEM_BLOB, PREFIXO,
+  _ler: ler, _gravar: gravar,   // plano visual (./plano.js) guarda o plano no documento do vídeo
 };
