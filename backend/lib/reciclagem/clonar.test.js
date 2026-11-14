@@ -174,3 +174,9 @@ test('cópia com IA que enxerga: usa o texto conferido na imagem (não o da OCR)
   assert.ok(px(540, 1300).every((c0) => c0 > 220), 'o @ do autor foi apagado');
   assert.ok(px(540, 1152).every((c0) => c0 < 80), 'a linha da moldura continua');
 });
+
+test('cópia usa as cores da marca no texto traduzido: grafite em fundo claro, branco em fundo escuro', () => {
+  const TT = require('./trocaTexto');
+  assert.deepStrictEqual(TT.corDaMarca([250, 250, 250]), [15, 20, 25]);
+  assert.deepStrictEqual(TT.corDaMarca([20, 30, 60]), [255, 255, 255]);
+});

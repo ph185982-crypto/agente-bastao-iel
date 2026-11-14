@@ -10,7 +10,12 @@ const opentype = require('opentype.js');
 
 const ASSETS = path.join(__dirname, '..', '..', 'assets');
 const _f = {};
-const fonte = (peso) => (_f[peso] ||= opentype.loadSync(path.join(ASSETS, peso === 'negrito' ? 'Inter-Bold.ttf' : 'Inter-SemiBold.ttf')));
+// Padrão da marca em TODO conteúdo (decisão do Pedro, 14/11/2026): Inter Bold nos títulos e Inter Regular no corpo,
+// as mesmas fontes dos carrosséis da ferramenta (arteTweet: iNegrito / iCorpo).
+const fonte = (peso) => (_f[peso] ||= opentype.loadSync(path.join(ASSETS, peso === 'negrito' ? 'Inter-Bold.ttf' : 'Inter-Regular.ttf')));
+// Cores da marca para o texto: grafite do formato tweet sobre fundo claro, branco do ensaio sobre fundo escuro.
+const MARCA = { escuro: [15, 20, 25], claro: [255, 255, 255] };
+const corDaMarca = (fundo) => (0.299 * fundo[0] + 0.587 * fundo[1] + 0.114 * fundo[2] > 140 ? MARCA.escuro : MARCA.claro);
 
 const W45 = 1080; const H45 = 1350;
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
@@ -162,7 +167,7 @@ function svgTroca(blocos, info, raw) {
   }
   for (const b of blocos) {
     if (b.apagar || !b.novo || (!b.visao && !ehTexto(b))) continue;
-    const { fundo, texto: corTexto, pad } = cores(raw, info, b);
+    const { fundo, pad } = cores(raw, info, b); const corTexto = corDaMarca(fundo); // nunca a cor do post original
     const d = diagramar(b, b.novo, info);
     const alto = d.linhas.length * d.tam * 1.18;
     const y0 = (b.y0 + b.y1) / 2 - alto / 2;
@@ -208,4 +213,4 @@ async function encaixar45(buf) {
   return s.resize(W45, H45, { fit: 'contain', background: { r: fundo[0], g: fundo[1], b: fundo[2] } }).flatten({ background: { r: fundo[0], g: fundo[1], b: fundo[2] } }).jpeg({ quality: 90 }).toBuffer();
 }
 
-module.exports = { acharSelo, refinarApagar, ehTexto, cores, quebrar, diagramar, substituir, encaixar45 };
+module.exports = { corDaMarca, MARCA, acharSelo, refinarApagar, ehTexto, cores, quebrar, diagramar, substituir, encaixar45 };
