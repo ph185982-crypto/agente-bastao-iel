@@ -303,3 +303,32 @@ test('lista "pendentes": reciclado e descartado saem; descartado não volta numa
   const r2 = await C.coletarAlgumas({ deps: { graph, igId: '1', contas: { instagram: [{ handle: 'a' }, { handle: 'b' }] } }, n: 1 });
   assert.deepStrictEqual(r2.contas, ['b'], 'rodízio: a próxima é a lida há mais tempo');
 });
+
+test('leitura leve: freia pela cota da Meta, lê hashtag a cada 4 rodadas e bloqueia 1 dia se a Meta negar a hashtag', async () => {
+  const arm = require('../armazem'); arm._definir(Object.assign(arm.memoria(), { duravel: true }));
+  const C = require('./coletar');
+  const contas = { instagram: ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((handle) => ({ handle })) };
+  const agora = Date.now(); const ts = new Date(agora - 3600000).toISOString();
+  const graph = async (m, caminho) => {
+    if (caminho === 'ig_hashtag_search') return { data: [{ id: 'h1' }] };
+    if (caminho === 'h1/top_media') return { data: [{ permalink: 'https://www.instagram.com/p/T1/', timestamp: ts, media_type: 'CAROUSEL_ALBUM', like_count: 9000, comments_count: 10, children: { data: [{ media_type: 'IMAGE', media_url: 'https://x/1.jpg' }] } }, { permalink: 'https://www.instagram.com/p/T2/', timestamp: ts, media_type: 'IMAGE', media_url: 'https://x/2.jpg', like_count: 1000, comments_count: 1 }] };
+    return { business_discovery: { followers_count: 1000, media: { data: [] } } };
+  };
+  let uso = { pct: 10 };
+  const r1 = await C.coletarAlgumas({ deps: { graph, igId: '1', contas, uso: () => uso }, agora });
+  assert.strictEqual(r1.contas.length, 2); assert.strictEqual(r1.proximas, 3, 'com folga, lê mais na próxima');
+  uso = { pct: 70 };
+  const r2 = await C.coletarAlgumas({ deps: { graph, igId: '1', contas, uso: () => uso }, agora: agora + 31000 });
+  assert.strictEqual(r2.contas.length, 3); assert.strictEqual(r2.proximas, 1, 'cota alta: 1 conta por rodada');
+  uso = { pct: 20 };
+  await C.coletarAlgumas({ deps: { graph, igId: '1', contas, uso: () => uso }, agora: agora + 62000 });
+  const r4 = await C.coletarAlgumas({ deps: { graph, igId: '1', contas, uso: () => uso }, agora: agora + 93000 });
+  assert.ok(r4.hashtag, 'quarta rodada lê uma hashtag'); assert.strictEqual(r4.novos, 2);
+  const lista = await C.listar({ dias: 30, soImagens: true });
+  assert.ok(lista.itens.some((i) => i.conta.handle.startsWith('#')));
+  uso = { pct: 90, regain_min: 15 };
+  const r5 = await C.coletarAlgumas({ deps: { graph, igId: '1', contas, uso: () => uso }, agora: agora + 124000 });
+  assert.ok(r5.pausa_ate, 'acima de 85%: pausa');
+  const r6 = await C.coletarAlgumas({ deps: { graph, igId: '1', contas, uso: () => uso }, agora: agora + 155000 });
+  assert.strictEqual(r6.lidas, 0); assert.ok(r6.pausado_ate);
+});

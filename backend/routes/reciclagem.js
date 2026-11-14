@@ -68,7 +68,7 @@ router.post('/:id/reciclar', limita({ max: 6, janelaMs: 60000, nome: 'reciclagem
 
 // ── Clone autorizado (tradução fiel, mesma estrutura) ───────────────────────────
 const Clonar = require('../lib/reciclagem/clonar');
-router.post('/coletar-uma', limita({ max: 4, janelaMs: 60000, nome: 'reciclagem-leve' }), rota(async (req, res) => { res.json(await Coletar.coletarAlgumas({ n: 1 })); }));
+router.post('/coletar-uma', limita({ max: 4, janelaMs: 60000, nome: 'reciclagem-leve' }), rota(async (req, res) => { res.json(await Coletar.coletarAlgumas()); }));
 router.post('/:id/descartar', limita({ max: 60, janelaMs: 60000, nome: 'reciclagem-descartar' }), rota(async (req, res) => {
   const r = await Coletar.descartar(exigeId(req.params.id)); if (!r) throw Object.assign(new Error('Item não encontrado.'), { status: 404, code: 'NAO_ENCONTRADO' }); res.json(r);
 }));
