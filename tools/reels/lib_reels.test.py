@@ -146,7 +146,7 @@ class PunchIn(unittest.TestCase):
 
     def test_planejar_zoom_alterna_e_fades_so_nas_emendas(self):
         segs = L.planejar_segmentos([(0, 6), (8, 12)], inicios_frases=[0, 3, 8])
-        self.assertEqual([s['zoom'] for s in segs], [1.0, 1.12, 1.0])
+        self.assertEqual([s['zoom'] for s in segs], [1.0, 1.08, 1.0])
         self.assertEqual([(s['fade_in'], s['fade_out']) for s in segs], [(True, False), (False, True), (True, True)])
 
     def test_sem_punch_in(self):
@@ -188,13 +188,10 @@ class Enquadramento(unittest.TestCase):
         self.assertEqual((x, y), (65, 116))
 
     def test_rotacao(self):
-        self.assertEqual(L.filtro_rotacao(-90), 'transpose=1')
-        self.assertEqual(L.filtro_rotacao(90), 'transpose=2')
-        self.assertEqual(L.filtro_rotacao(180), 'transpose=1,transpose=1')
-        self.assertEqual(L.filtro_rotacao(0), '')
+        # a rotação fica com o ffmpeg (autorotate): o filtro manual não existe mais (girava duas vezes no worker)
+        self.assertEqual(L.filtro_rotacao(-90), '')
+        self.assertEqual(L.filtro_rotacao_legado(-90), 'transpose=1')
 
-
-class Legendas(unittest.TestCase):
     def setUp(self):
         p = palavras('O governo gastou mais do que arrecadou pelo décimo ano seguido.', 0.0)
         self.pal = L.remapear_tempos(p, [(0, 100)])
@@ -285,6 +282,40 @@ class Texto(unittest.TestCase):
         p = L.montar_initial_prompt('palavra ' * 300)
         self.assertEqual(len(p.split()), 200 + len('É… tipo, né? Hã, então, assim…'.split()))
         self.assertTrue(L.montar_initial_prompt('').startswith('É…'))
+
+
+
+
+# ── Montagem dinâmica e cortes pelas palavras (14/11/2026) ─────────────────────────────────────────────────────────
+class Montagem(unittest.TestCase):
+    def test_cortes_pelas_palavras_nao_apagam_fala_baixa(self):
+        pal = [{'t0': 1.7, 't1': 2.0, 'w': 'Você'}, {'t0': 2.1, 't1': 2.4, 'w': 'não.'}, {'t0': 4.0, 't1': 4.5, 'w': 'Uma'}, {'t0': 4.55, 't1': 5.0, 'w': 'marca'}]
+        tr = L.trechos_por_palavras(pal, 10)
+        assert len(tr) == 2
+        for p in pal:   # toda palavra inteira dentro de um trecho
+            assert any(a <= p['t0'] and p['t1'] <= b for a, b in tr), p
+        # o vão de 1,6 s virou respiro curto, não sumiu nem ficou inteiro
+        assert 0.3 <= (tr[0][1] - 2.4) + (4.0 - tr[1][0]) <= 0.6
+
+
+    def test_montagem_alterna_layouts_e_gancho_e_rosto(self):
+        import lib_montagem as M
+        frases = [{'n0': i * 3.0, 'n1': i * 3.0 + 2.8, 'texto': t} for i, t in enumerate(
+            ['Você não precisa de investidor', 'O preço caiu 30%', 'Ela focou no cliente', 'A marca cresceu muito', 'Faça isso hoje'])]
+        b = M.planejar_blocos(frases, 15)
+        assert b[0]['layout'] == 'rosto'
+        assert all(b[i]['layout'] != b[i + 1]['layout'] for i in range(len(b) - 1))
+        assert abs(b[-1]['t1'] - 15) < 1e-6 and b[0]['t0'] == 0
+        assert M.palavra_chave('O preço caiu 30%') == '30%'
+        ass = M.ass_graficos(b, 'topo')
+        assert 'PlayResY: 960' in ass and '\\clip(' in ass
+
+
+    def test_legenda_muda_de_lugar_com_o_layout(self):
+        import lib_montagem as M
+        b = [{'t0': 0, 't1': 2, 'layout': 'rosto'}, {'t0': 2, 't1': 4, 'layout': 'dividida'}]
+        pos = M.posicao_legenda(b)
+        assert '1360' in pos(1.0) and '960' in pos(3.0)
 
 
 if __name__ == '__main__':

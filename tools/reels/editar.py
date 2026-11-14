@@ -27,7 +27,8 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import lib_reels as L  # noqa: E402
+import lib_reels as L
+import lib_montagem as M  # noqa: E402
 
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 FONTES = os.path.join(RAIZ, 'backend', 'assets')
@@ -85,9 +86,12 @@ def sondar(entrada):
             rot = float(sd['rotation'])
     if not rot and (v.get('tags') or {}).get('rotate'):
         rot = -float(v['tags']['rotate'])   # a tag antiga tem o sinal invertido em relação ao side_data
-    filtro = L.filtro_rotacao(rot)
+    filtro = ''   # a rotação fica com o ffmpeg (autorotate): girar na mão dependia do sinal do ffprobe, que muda por versão
     w, h = int(v['width']), int(v['height'])
-    if filtro.startswith('transpose') and filtro.count('transpose') == 1:
+    dims = dimensoes_reais(entrada)
+    if dims:
+        w, h = dims
+    elif int(round(abs(rot))) % 180 == 90:
         w, h = h, w
     dur = float(info.get('format', {}).get('duration') or v.get('duration') or 0)
     fps = 30.0
@@ -95,6 +99,18 @@ def sondar(entrada):
         n, d = v['avg_frame_rate'].split('/')
         fps = float(n) / float(d) if float(d) else 30.0
     return {'largura': w, 'altura': h, 'duracao': dur, 'rotacao': rot, 'filtro_rotacao': filtro, 'tem_audio': a is not None, 'fps': fps}
+
+
+def dimensoes_reais(entrada):
+    """Largura x altura do 1º quadro como o ffmpeg o entrega (já girado). Lê o cabeçalho do PNG; None se falhar."""
+    try:
+        png = subprocess.run(['ffmpeg', '-loglevel', 'error', '-i', entrada, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', '-'],
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=60).stdout
+        if png[:8] == b'\x89PNG\r\n\x1a\n':
+            return int.from_bytes(png[16:20], 'big'), int.from_bytes(png[20:24], 'big')
+    except Exception:
+        pass
+    return None
 
 
 def extrair_audio(entrada, wav, tem_audio):
@@ -144,7 +160,7 @@ def amostrar_rostos(entrada, sonda, fps_amostra=3, largura_amostra=480):
     w, h = sonda['largura'], sonda['altura']
     hs = int(round(largura_amostra * h / w / 2) * 2)
     vf = ','.join(x for x in [sonda['filtro_rotacao'], f'fps={fps_amostra}', f'scale={largura_amostra}:{hs}', 'format=gray'] if x)
-    p = subprocess.run(['ffmpeg', '-loglevel', 'error', '-noautorotate', '-i', entrada, '-vf', vf, '-f', 'rawvideo', '-'],
+    p = subprocess.run(['ffmpeg', '-loglevel', 'error', '-i', entrada, '-vf', vf, '-f', 'rawvideo', '-'],
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     quadros = np.frombuffer(p.stdout, dtype=np.uint8)
     n = len(quadros) // (largura_amostra * hs)
@@ -257,11 +273,134 @@ def _filtros_segmentos(segmentos, centros, sonda, com_video=True):
     return partes, None, '[ac]'
 
 
+def _filtros_montagem(segmentos, centros, sonda):
+    """Como _filtros_segmentos, mas cada trecho sai em DOIS enquadramentos do mesmo instante: tela cheia 1080x1920
+    (com punch-in) e meia tela 1080x960 (rosto para a tela dividida). Devolve (filtros, [vF], [vH], [ac])."""
+    partes = []
+    for i, (seg, (cx, cy)) in enumerate(zip(segmentos, centros)):
+        a, b = seg['a'], seg['b']; dur = b - a
+        w, h, x, y = L.geometria_crop(sonda['largura'], sonda['altura'], seg['zoom'], cx, cy)
+        wm, hm, xm, ym = L.geometria_crop(sonda['largura'], sonda['altura'], 1.0, cx, max(0.0, cy - 0.04), L.LARGURA, M.METADE)
+        partes.append(f"[0:v]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS,fps=30,split[s{i}a][s{i}b]")
+        partes.append(f"[s{i}a]scale={w}:{h}:flags=bicubic,crop={L.LARGURA}:{L.ALTURA}:{x}:{y},setsar=1[f{i}]")
+        partes.append(f"[s{i}b]scale={wm}:{hm}:flags=bicubic,crop={L.LARGURA}:{M.METADE}:{xm}:{ym},setsar=1[h{i}]")
+        acad = [f"atrim=start={a:.3f}:end={b:.3f}", 'asetpts=PTS-STARTPTS']
+        if seg['fade_in']:
+            acad.append('afade=t=in:st=0:d=0.01')
+        if seg['fade_out'] and dur > 0.03:
+            acad.append(f"afade=t=out:st={max(0, dur - 0.01):.3f}:d=0.01")
+        partes.append(f"[0:a]{','.join(acad)}[a{i}]")
+    n = len(segmentos)
+    partes.append(''.join(f"[f{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[vF]")
+    partes.append(''.join(f"[h{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[vH]")
+    partes.append(''.join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[ac]")
+    return partes, '[vF]', '[vH]', '[ac]'
+
+
+def trilha_whoosh(caminho, instantes, duracao, volume=0.18, sr=48000):
+    """Gera (sem arquivo de terceiros) um 'whoosh' de 0,28 s em cada troca de layout: ruído filtrado com envelope."""
+    import numpy as np
+    import wave
+    n = int(duracao * sr) + sr
+    trilha = np.zeros(n, dtype=np.float32)
+    d = int(0.28 * sr)
+    rng = np.random.default_rng(7)
+    ruido = rng.standard_normal(d).astype(np.float32)
+    # passa-baixa móvel simples (média) que vai abrindo: soa como passagem de ar
+    env = np.sin(np.linspace(0, np.pi, d)) ** 2
+    suave = np.convolve(ruido, np.ones(9) / 9, mode='same')
+    w = (suave * env * volume).astype(np.float32)
+    for t in instantes:
+        i = int(max(0.0, t - 0.12) * sr)
+        if i + d < n:
+            trilha[i:i + d] += w
+    pcm = (np.clip(trilha, -1, 1) * 32767).astype(np.int16)
+    with wave.open(caminho, 'wb') as f:
+        f.setnchannels(1); f.setsampwidth(2); f.setframerate(sr); f.writeframes(pcm.tobytes())
+    return caminho
+
+
+def renderizar_montagem(entrada, saida, segmentos, centros, sonda, ass_legenda, blocos, ass_topo, ass_cheio, medido, whoosh=None, brolls_topo=()):
+    """Render da montagem dinâmica em etapas (memória baixa — um grafo único segurava o vídeo inteiro várias vezes):
+    1) vídeo cortado em dois enquadramentos (tela cheia e meia tela) + áudio; 2) quadros animados (topo e cheio);
+    3) um clipe por bloco (rosto / dividida / cartão); 4) junta os clipes, queima as legendas e mistura voz + whoosh."""
+    tmp = os.path.dirname(ass_topo)
+    dur = sum(sg['b'] - sg['a'] for sg in segmentos)
+    fontes_esc = FONTES.replace('\\', '/').replace(':', '\\:').replace("'", "\\'")
+    def esc(p):
+        return p.replace('\\', '/').replace(':', '\\:').replace("'", "\\'")
+    enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', '30']
+    # 1) cortes nos dois enquadramentos
+    cheio, meia, voz = os.path.join(tmp, 'cheio.mp4'), os.path.join(tmp, 'meia.mp4'), os.path.join(tmp, 'voz.wav')
+    # um trecho por comando (busca exata com -ss/-t na entrada): memória constante, qualquer duração de vídeo
+    listas = {'f': [], 'h': [], 'a': []}
+    for i, (seg, (cx, cy)) in enumerate(zip(segmentos, centros)):
+        a, b = seg['a'], seg['b']; d = b - a
+        w, h, x, y = L.geometria_crop(sonda['largura'], sonda['altura'], seg['zoom'], cx, cy)
+        wm, hm, xm, ym = L.geometria_crop(sonda['largura'], sonda['altura'], 1.0, cx, max(0.0, cy - 0.04), L.LARGURA, M.METADE)
+        fo, ho, ao = (os.path.join(tmp, f'seg_{i:03d}.{e}') for e in ('f.mp4', 'h.mp4', 'a.wav'))
+        af = ['afade=t=in:st=0:d=0.03'] if seg['fade_in'] else []
+        if seg['fade_out'] and d > 0.06:
+            af.append(f"afade=t=out:st={max(0, d - 0.03):.3f}:d=0.03")
+        rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', '-ss', f"{a:.3f}", '-t', f"{d:.3f}", '-i', entrada,
+               '-filter_complex', f"[0:v]fps=30,split[a][b];[a]scale={w}:{h}:flags=bicubic,crop={L.LARGURA}:{L.ALTURA}:{x}:{y},setsar=1[f];"
+               f"[b]scale={wm}:{hm}:flags=bicubic,crop={L.LARGURA}:{M.METADE}:{xm}:{ym},setsar=1[h]",
+               '-map', '[f]', '-t', f"{d:.3f}", *enc, fo, '-map', '[h]', '-t', f"{d:.3f}", *enc, ho,
+               '-map', '0:a', '-t', f"{d:.3f}", *(['-af', ','.join(af)] if af else []), '-ar', '48000', '-ac', '2', ao])
+        listas['f'].append(fo); listas['h'].append(ho); listas['a'].append(ao)
+    for chave, destino in (('f', cheio), ('h', meia), ('a', voz)):
+        lst = os.path.join(tmp, f'lista_{chave}.txt')
+        with open(lst, 'w') as fl:
+            fl.write(''.join(f"file '{n}'\n" for n in listas[chave]))
+        rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', destino])
+    # 2) quadros animados
+    topo, cartao = os.path.join(tmp, 'topo.mp4'), os.path.join(tmp, 'cartao.mp4')
+    entradas = ['-f', 'lavfi', '-i', f"color=c=0x18191D:s={L.LARGURA}x{M.METADE}:r=30:d={dur + 0.5:.3f}"]
+    grafo = ["[0:v]format=yuv420p,drawbox=x=0:y=0:w=iw:h=6:color=0xFDE047@1:t=fill[g0]"]; atual = '[g0]'
+    for k, b in enumerate(brolls_topo):
+        entradas += ['-i', b['arquivo']]
+        d0 = b['t1'] - b['t0']
+        grafo.append(f"[{k + 1}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,scale={L.LARGURA}:{M.METADE}:force_original_aspect_ratio=increase,"
+                     f"crop={L.LARGURA}:{M.METADE},eq=brightness=-0.08,format=yuv420p,setpts=PTS+{b['t0']:.3f}/TB[br{k}]")
+        grafo.append(f"{atual}[br{k}]overlay=0:0:eof_action=pass:enable='between(t,{b['t0']:.3f},{b['t1']:.3f})'[g{k + 1}]"); atual = f"[g{k + 1}]"
+    grafo.append(f"{atual}ass=filename='{esc(ass_topo)}':fontsdir='{fontes_esc}'[gout]")
+    rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *entradas, '-filter_complex', ';'.join(grafo), '-map', '[gout]', '-t', f"{dur:.3f}", *enc, topo])
+    if any(b['layout'] == 'cartao' for b in blocos):
+        rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', '-f', 'lavfi', '-i', f"color=c=0x18191D:s={L.LARGURA}x{L.ALTURA}:r=30:d={dur + 0.5:.3f}",
+               '-vf', f"format=yuv420p,ass=filename='{esc(ass_cheio)}':fontsdir='{fontes_esc}'", '-t', f"{dur:.3f}", *enc, cartao])
+    # 3) um clipe por bloco (corte exato por trim, sem depender de keyframe)
+    lista = os.path.join(tmp, 'blocos.txt'); nomes = []
+    for i, b in enumerate(blocos):
+        out = os.path.join(tmp, f'bloco_{i:03d}.mp4'); d = b['t1'] - b['t0']
+        cort = f"trim=start={b['t0']:.3f}:end={b['t1']:.3f},setpts=PTS-STARTPTS"
+        if b['layout'] == 'dividida':
+            cmd = ['-i', topo, '-i', meia, '-filter_complex', f"[0:v]{cort}[t];[1:v]{cort}[h];[t][h]vstack,setsar=1,format=yuv420p[v]", '-map', '[v]']
+        elif b['layout'] == 'cartao':
+            cmd = ['-i', cartao, '-filter_complex', f"[0:v]{cort},setsar=1,format=yuv420p[v]", '-map', '[v]']
+        else:
+            cmd = ['-i', cheio, '-filter_complex', f"[0:v]{cort},setsar=1,format=yuv420p[v]", '-map', '[v]']
+        rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *cmd, '-t', f"{d:.3f}", *enc, out])
+        nomes.append(out)
+    with open(lista, 'w') as f:
+        f.write(''.join(f"file '{n}'\n" for n in nomes))
+    # 4) junta, legenda e áudio final
+    entradas = ['-f', 'concat', '-safe', '0', '-i', lista, '-i', voz]
+    if whoosh:
+        entradas += ['-i', whoosh]
+        a_f = f"[1:a]{filtro_loudnorm(medido)}[vz];[2:a]aresample=48000[wh];[vz][wh]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+    else:
+        a_f = f"[1:a]{filtro_loudnorm(medido)}[aout]"
+    rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *entradas, '-filter_complex',
+           f"[0:v]fps=30,format=yuv420p,ass=filename='{esc(ass_legenda)}':fontsdir='{fontes_esc}'[vout];{a_f}",
+           '-map', '[vout]', '-map', '[aout]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-r', '30', '-pix_fmt', 'yuv420p',
+           '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', '-shortest', saida])
+
+
 def medir_loudness(entrada, segmentos, centros, sonda, tmp):
     """Passo 1 do loudnorm: mede o áudio JÁ cortado (sem renderizar vídeo). Devolve o dict medido ou None."""
     filtros, _, ac = _filtros_segmentos(segmentos, centros, sonda, com_video=False)
     filtros.append(f"{ac}loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json[aout]")
-    err = rodar(['ffmpeg', '-hide_banner', '-nostats', '-noautorotate', '-i', entrada, '-filter_complex', ';'.join(filtros),
+    err = rodar(['ffmpeg', '-hide_banner', '-nostats', '-i', entrada, '-filter_complex', ';'.join(filtros),
                  '-map', '[aout]', '-f', 'null', '-'])
     m = re.search(r'\{[^{}]*"input_i"[^{}]*\}', err, re.S)
     if not m:
@@ -286,7 +425,7 @@ def filtro_loudnorm(medido):
 def renderizar(entrada, saida, segmentos, centros, sonda, ass, brolls, medido, musica=None):
     """Render único: trechos → crop/punch-in → b-roll → legendas → x264; áudio com loudnorm (2º passo) e AAC."""
     filtros, vc, ac = _filtros_segmentos(segmentos, centros, sonda)
-    entradas = ['-noautorotate', '-i', entrada]
+    entradas = ['-i', entrada]
     filtros.append(f"{vc}fps=30,format=yuv420p[vb0]")
     atual = '[vb0]'
     for k, b in enumerate(brolls):
@@ -376,16 +515,35 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
                 avisos.append('nenhum rosto detectado: enquadramento central')
         centros = L.centro_por_segmento(amostras, segmentos, padrao=0.5) if amostras else [(0.5, 0.5)] * len(segmentos)
 
-        # 6. b-roll
+        # 5. montagem dinâmica: plano frase a frase (rosto / tela dividida / cartão), sem IA
+        montagem = bool(opcoes.get('montagem', True)) and bool(palavras_rm)
+        blocos = []
+        if montagem:
+            por_seg = {}
+            for p in palavras_rm:
+                f = por_seg.setdefault(p.get('seg', 0), {'n0': p['n0'], 'n1': p['n1'], 'palavras': []})
+                f['n1'] = p['n1']; f['palavras'].append({'n0': p['n0'], 'w': p['w'].strip()})
+            frases_m = [dict(f, texto=' '.join(x['w'] for x in f['palavras'])) for f in sorted(por_seg.values(), key=lambda f: f['n0'])]
+            blocos = M.planejar_blocos(frases_m, dur_final)
+            log('montagem: ' + ' | '.join(f"{b['t0']:.1f}-{b['t1']:.1f} {b['layout']}:{b['chave']}" for b in blocos))
+
+        # 6. b-roll (Pexels): na montagem entra no quadro de cima de metade das telas divididas
         cron.etapa('broll')
-        brolls = []
+        brolls = []; brolls_topo = []
+        chave_px = os.environ.get('PEXELS_API_KEY', '').strip() or ('__app__' if os.environ.get('BROLL_URL') else '')
         if opcoes.get('broll'):
-            chave = os.environ.get('PEXELS_API_KEY', '').strip() or ('__app__' if os.environ.get('BROLL_URL') else '')
-            if not chave:
+            if not chave_px:
                 avisos.append('b-roll pulado: sem PEXELS_API_KEY')
+            elif montagem:
+                divididas = [b for b in blocos if b['layout'] == 'dividida']
+                pontos = [{'inicio': b['t0'], 'duracao': round(b['t1'] - b['t0'], 3), 'texto': b['texto'], 'consulta': L.palavra_chave(b['texto']), 'bloco': b}
+                          for b in divididas[1::2]]
+                for r in (baixar_broll(pontos, tmp, chave_px, avisos) if pontos else []):
+                    r['bloco']['broll'] = True
+                    brolls_topo.append({'arquivo': r['arquivo'], 't0': r['bloco']['t0'], 't1': r['bloco']['t1'], 'consulta': r['consulta'], 'pexels_id': r.get('pexels_id')})
             else:
                 pontos = L.pontos_broll(frases, dur_final)
-                brolls = baixar_broll(pontos, tmp, chave, avisos) if pontos else []
+                brolls = baixar_broll(pontos, tmp, chave_px, avisos) if pontos else []
         musica = None
         if opcoes.get('musica'):
             faixas = sorted(f for f in (os.listdir(PASTA_MUSICA) if os.path.isdir(PASTA_MUSICA) else []) if f.lower().endswith(('.mp3', '.ogg', '.wav', '.m4a')))
@@ -394,10 +552,14 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             else:
                 avisos.append('música pulada: nenhuma faixa CC0 em tools/reels/musica/')
 
-        # 7. legendas
+        # 7. legendas (mudam de lugar conforme o layout) e quadros animados
         cron.etapa('legendas')
         ass = os.path.join(pasta, 'legendas.ass')
-        open(ass, 'w', encoding='utf-8').write(L.gerar_ass(palavras_rm, estilo))
+        open(ass, 'w', encoding='utf-8').write(L.gerar_ass(palavras_rm, estilo, posicao=M.posicao_legenda(blocos) if montagem else None))
+        if montagem:
+            ass_topo = os.path.join(tmp, 'quadros_topo.ass'); ass_cheio = os.path.join(tmp, 'quadros_cheio.ass')
+            open(ass_topo, 'w', encoding='utf-8').write(M.ass_graficos(blocos, 'topo'))
+            open(ass_cheio, 'w', encoding='utf-8').write(M.ass_graficos(blocos, 'cheio'))
 
         # 9a. loudness (passo 1)
         cron.etapa('loudnorm_medida')
@@ -414,10 +576,15 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         if not sonda['tem_audio']:
             # cria uma faixa muda para o grafo de áudio não quebrar
             mudo = os.path.join(tmp, 'mudo.mp4')
-            rodar(['ffmpeg', '-y', '-loglevel', 'error', '-noautorotate', '-i', entrada, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+            rodar(['ffmpeg', '-y', '-loglevel', 'error', '-i', entrada, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
                    '-shortest', '-c:v', 'copy', '-c:a', 'aac', mudo])
             entrada = mudo
-        renderizar(entrada, final, segmentos, centros, sonda, ass, brolls, medido, musica)
+        if montagem:
+            whoosh = trilha_whoosh(os.path.join(tmp, 'whoosh.wav'), M.trocas(blocos), dur_final) if opcoes.get('sons', True) else None
+            renderizar_montagem(entrada, final, segmentos, centros, sonda, ass, blocos, ass_topo, ass_cheio, medido, whoosh, brolls_topo)
+            brolls = [{'inicio': b['t0'], 'duracao': round(b['t1'] - b['t0'], 2), 'consulta': b['consulta'], 'pexels_id': b.get('pexels_id')} for b in brolls_topo]
+        else:
+            renderizar(entrada, final, segmentos, centros, sonda, ass, brolls, medido, musica)
 
         # 10. poster + resultado
         cron.etapa('poster')
@@ -431,6 +598,7 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             'detalhes_cortes': {k: v for k, v in detalhes.items() if k != 'cortes_palavras'}, 'duracao_original_s': round(sonda['duracao'], 2),
             'broll': [{'inicio': b['inicio'], 'duracao': b['duracao'], 'consulta': b['consulta'], 'pexels_id': b.get('pexels_id')} for b in brolls],
             'modelo_whisper': tr.get('modelo'), 'tempos_s': cron.tempos, 'avisos': avisos,
+            'montagem': [{'t0': b['t0'], 't1': b['t1'], 'layout': b['layout'], 'chave': b['chave'], 'icone': b['icone'], 'broll': bool(b.get('broll'))} for b in blocos],
         }
         json.dump(resultado, open(os.path.join(pasta, 'resultado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         log(f"pronto: {final} ({resultado['duracao_s']}s, {resultado['palavras']} palavras, {resultado['cortes']} cortes)")
