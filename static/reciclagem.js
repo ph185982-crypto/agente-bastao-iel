@@ -137,9 +137,14 @@
         <div class="rc2-tags">${i.mecanismo ? `<span class="rc2-tag mec ${esc(i.mecanismo)}">${esc(MEC[i.mecanismo] || i.mecanismo)}</span>` : ''}${i.em_alta ? '<span class="rc2-tag alta">em alta</span>' : ''}${i.vl_views != null && i.vl_views >= 3 && i.tipo === 'reel' ? `<span class="rc2-tag suave">views ${vlFmt(i.vl_views)}</span>` : ''}</div>
         ${i.tese ? `<dl class="rc2-dl"><div><dt>Tese</dt><dd>${esc(i.tese)}</dd></div>${i.ponte_pedro ? `<div><dt>Ponte para o Pedro</dt><dd>${esc(i.ponte_pedro)}</dd></div>` : ''}</dl>` : ''}
         <div class="rc2-acoes">
-          ${i.rede === 'instagram' && ['carrossel', 'imagem'].includes(i.tipo) ? `<button class="rc2-btn laranja" data-action="rc2-clonar" data-id="${esc(i.id)}" ${oc ? 'disabled' : ''}>${oc === 'clone' ? 'Copiando…' : 'Copiar'}</button>` : ''}
+          ${i.rede === 'instagram' && ['carrossel', 'imagem'].includes(i.tipo) ? `<button class="rc2-btn laranja" data-action="rc2-clonar-menu" data-id="${esc(i.id)}" aria-expanded="${ST.menuClone === i.id}" ${oc ? 'disabled' : ''}>${oc === 'clone' ? 'Reciclando…' : 'Reciclar'}</button>` : ''}
           ${i.tese ? `<button class="rc2-btn" data-action="rc2-menu" data-id="${esc(i.id)}" aria-expanded="${menu}" ${oc ? 'disabled' : ''}>${oc ? (oc === 'reel' ? 'Escrevendo o roteiro…' : 'Enviando para produção…') : 'Reciclar como…'}</button>` : ''}
           <a class="rc2-btn fantasma" href="${esc(link(i.permalink))}" target="_blank" rel="noopener noreferrer">Ver post original ↗</a>
+          ${ST.menuClone === i.id && !oc ? `<div class="rc2-clone-opcoes" role="group" aria-label="Como reciclar">
+            <button class="rc2-opcao" data-action="rc2-clonar" data-id="${esc(i.id)}" data-modo="original"><b>Formato original</b><small>Mesmo visual do post (cores e layout), só traduzido. Tira a assinatura do autor e põe o seu @.</small></button>
+            <button class="rc2-opcao" data-action="rc2-clonar" data-id="${esc(i.id)}" data-modo="nosso" data-fundo="branco"><b>Nosso formato · fundo branco</b><small>Pega o texto, traduz se precisar e monta no seu padrão. Sem custo de IA quando já está em português.</small></button>
+            <button class="rc2-opcao preto" data-action="rc2-clonar" data-id="${esc(i.id)}" data-modo="nosso" data-fundo="preto"><b>Nosso formato · fundo preto</b><small>O mesmo, com fundo preto e texto branco.</small></button>
+          </div>` : ''}
         </div>
         ${menu ? `<div class="rc2-menu" role="group" aria-label="Formato"><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel">Carrossel</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel" data-e="1">Carrossel na mesma estrutura</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="estatico">Post estático</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="reel">Roteiro de reel</button><p class="rc2-meta">Só a tese e a estrutura (nº de slides e tipo de gancho) são reaproveitadas; texto, exemplos e fotos são seus. Para republicar um conteúdo de terceiros como está, é preciso a autorização do autor, fora da ferramenta. Carrossel e post passam pelos mesmos filtros de fatos e anti-IA e vão para “Aprovar”.</p></div>` : ''}
         ${ST.autoriza === i.id ? formAutorizacao(i) : ''}
@@ -162,11 +167,11 @@
       <label>Crédito na legenda (opcional)<input data-rc2-aut="credito" value="${esc(f.credito || '')}" maxlength="160" placeholder="Conteúdo original de @autor, traduzido e publicado com autorização."></label>
       <button type="button" class="rc2-btn laranja" data-action="rc2-autorizar" data-id="${esc(i.id)}">Registrar autorização</button> <button type="button" class="rc2-btn fantasma" data-action="rc2-clone-fechar">Cancelar</button></form>`;
   }
-  async function clonar(ctx, id) {
+  async function clonar(ctx, id, opcoes = {}) {
     if (ST.ocupado[id]) return;
     ST.ocupado[id] = 'clone'; ST.autoriza = null; ctx.render();
     try {
-      let r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/clonar`, { method: 'POST', body: {} });
+      let r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/clonar`, { method: 'POST', body: { modo: opcoes.modo || 'original', fundo: opcoes.fundo || 'branco' } });
       ST.producao = { id: r.id, titulo: 'Copiando o post', rotulo: 'Lendo os slides…' }; ctx.render();
       for (let k = 0; k < 40 && !r.concluido; k++) {
         await new Promise((x) => setTimeout(x, r.erro?.codigo === 'COTA_IA' ? 20000 : 1500));
@@ -259,7 +264,8 @@
           try { const a = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/autorizacao`, { method: 'POST', body: corpo }); if (item) item.autorizacao = a; ctx.toast('Autorização registrada.'); } catch (e) { ctx.toast(e.message); }
           ctx.render(); break;
         }
-        case 'rc2-clonar': await clonar(ctx, id); break;
+        case 'rc2-clonar-menu': ST.menuClone = ST.menuClone === id ? null : id; ctx.render(); break;
+        case 'rc2-clonar': ST.menuClone = null; await clonar(ctx, id, { modo: el.dataset.modo || 'original', fundo: el.dataset.fundo || 'branco' }); break;
         case 'rc2-reciclar': await reciclar(ctx, id, el.dataset.f, el.dataset.e === '1'); break;
         case 'rc2-fechar': ST.roteiro = null; ctx.render(); break;
         case 'rc2-copiar': { const r = ST.roteiro; if (r) { try { await navigator.clipboard.writeText(r.roteiro); ctx.toast('Roteiro copiado.'); } catch { ctx.toast('Não consegui copiar. Selecione o texto.'); } } break; }

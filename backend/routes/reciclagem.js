@@ -72,7 +72,8 @@ router.post('/:id/autorizacao', limita({ max: 20, janelaMs: 60000, nome: 'recicl
   res.status(201).json(await Clonar.autorizar(exigeId(req.params.id), req.body || {}));
 }));
 router.post('/:id/clonar', limita({ max: 6, janelaMs: 60000, nome: 'reciclagem-clonar' }), rota(async (req, res) => {
-  const c = await Clonar.iniciar(exigeId(req.params.id));
+  const b = req.body || {};
+  const c = await Clonar.iniciar(exigeId(req.params.id), { modo: b.modo === 'nosso' ? 'nosso' : 'original', fundo: b.fundo === 'preto' ? 'preto' : 'branco' });
   res.status(201).json(await Clonar.passo(c.id, { orcamentoMs: 40000 }));
 }));
 router.post('/clone/:cid/passo', limita({ max: 40, janelaMs: 60000, nome: 'reciclagem-clone-passo' }), rota(async (req, res) => {

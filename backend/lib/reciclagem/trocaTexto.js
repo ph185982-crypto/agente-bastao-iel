@@ -169,7 +169,7 @@ function acharSelo(raw, info, posicao, protegidas = []) {
 }
 
 // Monta o SVG com a pintura das caixas e o texto novo (contornos).
-function svgTroca(blocos, info, raw) {
+function svgTroca(blocos, info, raw, { corOriginal = false } = {}) {
   let rects = ''; let textos = ''; const trocados = []; const borrar = [];
   // Assinatura do autor (@, nome, logo, rosto, marca d'água): só apaga, com a cor do fundo em volta.
   for (const b of blocos.filter((x) => x.apagar)) {
@@ -183,7 +183,7 @@ function svgTroca(blocos, info, raw) {
   }
   for (const b of blocos) {
     if (b.apagar || !b.novo || (!b.visao && !ehTexto(b))) continue;
-    const { fundo, pad } = cores(raw, info, b); const corTexto = corDaMarca(fundo); // nunca a cor do post original
+    const { fundo, pad, texto: corOrig } = cores(raw, info, b); const corTexto = corOriginal ? corOrig : corDaMarca(fundo); // formato original: cor do post; nosso: cor da marca
     // Negrito ou regular pela espessura do traço do original: mediana das corridas horizontais de tinta ÷ altura da linha
     // (medido nos posts reais: regular ≈ 0,08–0,09; negrito ≈ 0,14).
     const corridas = [];
@@ -224,7 +224,8 @@ function svgAssinatura(raw, info, handle) {
 
 // Página de texto refeita no nosso padrão (pedido do Pedro): fundo branco, texto traduzido em Inter (negrito onde o original
 // era título/destaque), alinhado à esquerda e centralizado na altura, e o nosso @ embaixo. Sem nada do autor.
-async function paginaTexto(paragrafos, { assinatura = null, largura = W45, altura = H45 } = {}) {
+async function paginaTexto(paragrafos, { assinatura = null, largura = W45, altura = H45, fundo = 'branco' } = {}) {
+  const COR_FUNDO = fundo === 'preto' ? '#0B0B0C' : '#FFFFFF'; const COR_TEXTO = fundo === 'preto' ? MARCA.claro : MARCA.escuro;
   // Só o que a Inter desenha (emoji e símbolo viram quadradinho): sai do texto.
   const desenhavel = (t) => [...String(t || '')].filter((ch) => /\s/.test(ch) || fonte('normal').charToGlyph(ch).index !== 0).join('').replace(/\s{2,}/g, ' ').trim();
   const brutos = (paragrafos || []).map((p) => ({ texto: desenhavel(p.texto), negrito: !!p.negrito })).filter((p) => p.texto);
@@ -247,23 +248,23 @@ async function paginaTexto(paragrafos, { assinatura = null, largura = W45, altur
     medida = { linhas, h };
     if (h <= util) break;
   }
-  let y = (altura - medida.h) / 2; let svg = `<rect width="${largura}" height="${altura}" fill="#FFFFFF"/>`;
+  let y = (altura - medida.h) / 2; let svg = `<rect width="${largura}" height="${altura}" fill="${COR_FUNDO}"/>`;
   for (const [i, bl] of medida.linhas.entries()) {
     if (i) y += tam * 0.85;
     const f = fonte(bl.negrito ? 'negrito' : 'normal');
-    for (const l of bl.ls) { y += bl.t * 1.28; svg += `<path d="${f.getPath(l, M, y - bl.t * 0.3, bl.t).toPathData(2)}" fill="${hex(MARCA.escuro)}"/>`; }
+    for (const l of bl.ls) { y += bl.t * 1.28; svg += `<path d="${f.getPath(l, M, y - bl.t * 0.3, bl.t).toPathData(2)}" fill="${hex(COR_TEXTO)}"/>`; }
   }
   if (assinatura) {
     const f = fonte('negrito'); const t = Math.round(altura * 0.024); const w = f.getAdvanceWidth(assinatura, t);
-    svg += `<path d="${f.getPath(assinatura, (largura - w) / 2, altura - Math.round(altura * 0.035), t).toPathData(2)}" fill="${hex(MARCA.escuro)}" opacity="0.85"/>`;
+    svg += `<path d="${f.getPath(assinatura, (largura - w) / 2, altura - Math.round(altura * 0.035), t).toPathData(2)}" fill="${hex(COR_TEXTO)}" opacity="0.85"/>`;
   }
-  return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${largura}" height="${altura}">${svg}</svg>`)).flatten({ background: '#FFFFFF' }).jpeg({ quality: 92 }).toBuffer();
+  return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${largura}" height="${altura}">${svg}</svg>`)).flatten({ background: COR_FUNDO }).jpeg({ quality: 92 }).toBuffer();
 }
 
-async function substituir(buf, blocos, { assinatura = null } = {}) {
+async function substituir(buf, blocos, { assinatura = null, corOriginal = false } = {}) {
   const img = sharp(buf).rotate();
   const { data: raw, info } = await img.clone().removeAlpha().raw().toBuffer({ resolveWithObject: true });
-  const r0 = svgTroca(blocos || [], info, raw); const { trocados, borrar } = r0;
+  const r0 = svgTroca(blocos || [], info, raw, { corOriginal }); const { trocados, borrar } = r0;
   const nossa = svgAssinatura(raw, info, assinatura);
   const svg = nossa ? r0.svg.replace('</svg>', `${nossa}</svg>`) : r0.svg;
   if (!trocados.length && !nossa) return { buffer: await img.jpeg({ quality: 92 }).toBuffer(), trocados };
