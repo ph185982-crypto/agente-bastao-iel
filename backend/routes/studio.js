@@ -100,7 +100,8 @@ router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'})
     const c=await studio.decidir(req.params.id,req.body||{});
     // Carrossel "top" (piloto): aprovar AGENDA no próximo horário da grade; "agora:true" publica na hora como antes.
     if(c.top&&['aprovar','descartar'].includes(req.body.acao))await require('../lib/top/piloto').registrarDecisao(c.id,req.body.acao==='aprovar'?'aprovado':'descartado').catch(()=>{});
-    if(req.body.acao==='aprovar'&&c.top&&!req.body.agora){await require('../lib/top/piloto').agendar(c.id);return res.status(202).json(await studio.ler(c.id));}
+    // Agendar vale para qualquer conteúdo (piloto, cópia da Reciclagem, criado à mão): entra no próximo horário livre.
+    if(req.body.acao==='aprovar'&&!req.body.agora&&(c.top||req.body.agendar)){await require('../lib/top/piloto').agendar(c.id);return res.status(202).json(await studio.ler(c.id));}
     if(req.body.acao==='aprovar'){
       const P=require('../lib/publicador');const cfg=await P.config();if(cfg.publish_paused)return res.status(409).json({error:'As publicações estão pausadas. Libere em Perfil para publicar.',code:'PAUSADO'});
       const reg=await studio.ler(c.id);reg.doc.studio={...(reg.doc.studio||{}),job:require('crypto').randomUUID(),estado:'publicando',etapa:'publicacao',polls:0};

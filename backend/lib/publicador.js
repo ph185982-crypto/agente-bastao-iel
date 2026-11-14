@@ -214,7 +214,7 @@ async function iniciar(id, { hash, base } = {}) {
   const pubs = await a.publicacoes.listar(conta());
   const desde = Date.now() - 24 * 3600e3;
   const feitas = pubs.filter((p) => ['publicada', 'publicando_final', 'aguardando_processamento', 'iniciada'].includes(p.estado) && Date.parse(p.iniciada_em) >= desde && p.content_id !== id).length;
-  if (feitas >= cfg.daily_publish_cap) throw new ErroPub('LIMITE_DIARIO', `Limite diário atingido (${feitas}/${cfg.daily_publish_cap}). O item fica aprovado e sai no próximo ciclo.`, 429);
+  void feitas; // sem limite próprio de posts por dia (pedido do Pedro, 14/11/2026): vale só a cota real da Meta, conferida abaixo.
 
   await conferirConta();
   const cota = await cotaMeta().catch(() => null);

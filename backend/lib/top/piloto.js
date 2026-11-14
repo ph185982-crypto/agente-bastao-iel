@@ -66,25 +66,34 @@ async function gravarEstado(e) { const a = armazem(); if (a?.duravel) await a.co
 
 // ── Agenda ──────────────────────────────────────────────────────────────────────
 // Próximo horário livre da grade, a partir de agora + 10 min (hoje ou nos próximos dias).
+// Sem limite de posts por dia: se a grade do dia já está toda ocupada, o post entra num horário extra do mesmo dia
+// (de 30 em 30 min entre 08:00 e 22:30, a pelo menos 25 min de outro post) em vez de empurrar para amanhã.
 function proximoHorario(cfg, ocupados, agora) {
+  const livre = (t, folga) => !ocupados.some((o) => Math.abs(Date.parse(o) - t) < folga);
   let dia = diaSP(agora);
-  for (let d = 0; d < 7; d++, dia = proximoDia(dia)) {
+  for (let d = 0; d < 30; d++, dia = proximoDia(dia)) {
+    let cheia = false;
     for (const h of cfg.horarios) {
       const t = instante(dia, h);
       if (t < agora + 10 * 60000) continue;
-      if (ocupados.some((o) => Math.abs(Date.parse(o) - t) < 60000)) continue;
+      if (!livre(t, 60000)) { cheia = true; continue; }
       return new Date(t).toISOString();
+    }
+    if (cheia) {
+      for (let m = 8 * 60; m <= 22 * 60 + 30; m += 30) {
+        const t = instante(dia, `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+        if (t >= agora + 10 * 60000 && livre(t, 25 * 60000)) return new Date(t).toISOString();
+      }
     }
   }
   return null;
 }
 
-// Chamado pela aprovação: o conteúdo já está aprovado (studio.decidir). Grava o horário no conteúdo e na agenda.
 async function agendar(id, { agora = Date.now() } = {}) {
   const a = armazem(); const cfg = await config(); const est = await lerEstado();
   const agenda = (est.agenda || []).filter((x) => x.id !== id);
   const quando = proximoHorario(cfg, agenda.map((x) => x.publicar_em), agora);
-  if (!quando) throw erro('Não há horário livre na grade dos próximos 7 dias.', 409);
+  if (!quando) throw erro('Não há horário livre nos próximos 30 dias.', 409);
   const reg = await a.conteudos.obter(conta(), id); if (!reg) throw erro('Conteúdo não encontrado.', 404);
   const c = reg.doc;
   c.agenda = { publicar_em: quando, agendado_em: new Date(agora).toISOString() };

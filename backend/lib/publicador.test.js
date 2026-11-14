@@ -139,15 +139,14 @@ test('só publica a versão aprovada: não aprovado, hash diferente, edição de
   assert.strictEqual(chamou(/POST/).length, 0, 'nada foi enviado à Meta em nenhum desses casos');
 });
 
-test('pausar publicações, limite diário e cota da Meta barram antes de enviar', async () => {
+test('pausar publicações e cota da Meta barram antes de enviar (sem limite diário próprio)', async () => {
   zera();
   const c = await monta({ conteudo: conteudoAprovado(), encerramento: true });
   await arm.config.salvar(ACCOUNT.ig_id, { publish_paused: true });
   await assert.rejects(() => P.iniciar(c.id, { hash: c.revisao.hash_aprovado, base: basePublica }), (e) => e.code === 'PAUSADO');
   await arm.config.salvar(ACCOUNT.ig_id, { publish_paused: false, daily_publish_cap: 1 });
   await arm.publicacoes.iniciar(ACCOUNT.ig_id, 'outro_conteudo', 'instagram', {});
-  await assert.rejects(() => P.iniciar(c.id, { hash: c.revisao.hash_aprovado, base: basePublica }), (e) => e.code === 'LIMITE_DIARIO' && /1\/1/.test(e.message));
-  await arm.config.salvar(ACCOUNT.ig_id, { daily_publish_cap: 10 });
+  // Sem limite próprio por dia: o cap antigo salvo na configuração não barra mais nada (só a cota real da Meta).
   graph.est.quota = { usado: 100, total: 100 };
   await assert.rejects(() => P.iniciar(c.id, { hash: c.revisao.hash_aprovado, base: basePublica }), (e) => e.code === 'COTA_META');
   assert.strictEqual(chamou(/POST .*\/media/).length, 0);

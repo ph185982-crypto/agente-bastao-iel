@@ -337,8 +337,7 @@
       <button class="es-btn ghost sm" style="margin-top:8px" data-action="cn-saude">Verificar agora</button>
       ${secaoLinkedIn()}
       <div class="es-label">Limites e regras de publicação</div>
-      <label class="es-label" for="cn-cap">Máximo de publicações por dia</label>
-      <input id="cn-cap" class="es-input" type="number" min="1" max="50" value="${esc(cfg.daily_publish_cap ?? 10)}" data-cn-cap ${st.config ? '' : 'disabled'}>
+      <p class="es-text" style="margin:4px 0 8px">Sem limite de publicações por dia: vale só a cota da própria Meta.</p>
       <label class="es-label" for="cn-gcap">Máximo de conteúdos gerados em lote por dia</label>
       <input id="cn-gcap" class="es-input" type="number" min="1" max="50" value="${esc(ctx().state.config.daily_generation_cap ?? 10)}" data-cn-gcap>
       <label class="cn-pausa"><input type="checkbox" data-cn-fb ${cfg.publishers?.facebook ? 'checked' : ''} ${st.config ? '' : 'disabled'}><span>Publicar também na Página do Facebook (opcional)<br><small>Desligado por padrão. Chamada própria, só da versão aprovada. Antes de ligar, confira as permissões na Página de teste (docs/META_SETUP.md). LinkedIn: ainda não implementado.</small></span></label>
