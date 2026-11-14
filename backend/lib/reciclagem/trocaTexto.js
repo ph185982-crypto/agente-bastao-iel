@@ -223,7 +223,7 @@ function svgAssinatura(raw, info, handle) {
 
 // Página de texto refeita no nosso padrão (pedido do Pedro): fundo branco, texto traduzido em Inter (negrito onde o original
 // era título/destaque), alinhado à esquerda e centralizado na altura, e o nosso @ embaixo. Sem nada do autor.
-async function paginaTexto(paragrafos, { assinatura = null, largura = W45, altura = H45, fundo = 'branco' } = {}) {
+async function paginaTexto(paragrafos, { assinatura = null, largura = W45, altura = H45, fundo = 'branco', tamanhoMax = 64 } = {}) {
   const COR_FUNDO = fundo === 'preto' ? '#0B0B0C' : '#FFFFFF'; const COR_TEXTO = fundo === 'preto' ? MARCA.claro : MARCA.escuro;
   // Só o que a Inter desenha (emoji e símbolo viram quadradinho): sai do texto.
   const desenhavel = (t) => [...String(t || '')].filter((ch) => /\s/.test(ch) || fonte('normal').charToGlyph(ch).index !== 0).join('').replace(/\s{2,}/g, ' ').trim();
@@ -236,7 +236,7 @@ async function paginaTexto(paragrafos, { assinatura = null, largura = W45, altur
     else lista.push({ ...p });
   }
   const M = 96; const larg = largura - 2 * M; const util = altura - 2 * 150;
-  let tam = 64; let medida = null;
+  let tam = tamanhoMax; let medida = null;   // capa de carrossel pede letra maior (tamanhoMax)
   for (; tam >= 26; tam -= 2) {
     let h = 0; const linhas = [];
     for (const [i, p] of lista.entries()) {
