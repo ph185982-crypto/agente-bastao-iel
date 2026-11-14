@@ -9,13 +9,15 @@
 const crypto = require('crypto');
 const llmJson = require('../llmJson');
 
-const TIPOS = ['imagem', 'numero', 'lista', 'comparacao', 'grafico', 'frase', 'rosto', 'broll', 'icone', 'fim'];
+const TIPOS = ['imagem', 'numero', 'lista', 'comparacao', 'grafico', 'frase', 'rosto', 'broll', 'icone', 'pessoa', 'celular', 'fim'];
+const CLIMAS = ['calma', 'animada', 'tensa'];
+const VERSAO = 'v2';   // muda quando o plano ganha campos novos: o vídeo refeito pede um plano novo uma vez
 const ICONES = ['dinheiro', 'seta', 'x', 'alvo', 'lampada', 'check', 'relogio', 'estrela', 'pergunta', 'cadeado', 'pessoa', 'grafico'];
 const ROTULOS = ['LIÇÃO', 'REGRA', 'VERDADE', 'ERRO', 'SEGREDO', 'DICA'];
 const MAX_FRASES = 60;
 
 const limpa = (s, n) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
-const hashDe = (titulo, frases) => crypto.createHash('sha1').update(`${titulo}\n${frases.join('\n')}`).digest('hex').slice(0, 16);
+const hashDe = (titulo, frases) => crypto.createHash('sha1').update(`${VERSAO}\n${titulo}\n${frases.join('\n')}`).digest('hex').slice(0, 16);
 
 const SISTEMA = `Você é o diretor de arte dos Reels do @pedro_destrava (empreendedorismo para dono de pequena empresa).
 O formato: fundo escuro, um gráfico animado na parte de cima e o Pedro falando numa janela embaixo, legenda de uma palavra.
@@ -30,11 +32,16 @@ Para CADA frase, escolha a cena que ilustra o SENTIDO da frase (não uma palavra
 - rosto: frase pessoal, emocional ou de ênfase curta: close no rosto do Pedro, sem gráfico. Use poucas vezes.
 - broll: cena forte em tela cheia (no máximo 1 a cada 15 segundos), com "busca" em inglês.
 - icone: ideia abstrata sem número nem objeto concreto. "icone" = um de: ${ICONES.join(', ')}.
+- pessoa: a frase cita pelo nome uma pessoa ou marca FAMOSA (com página na Wikipédia): aparece a foto dela. "pessoa" = o nome exato como está na Wikipédia (ex.: "Steve Jobs", "Magazine Luiza"). Só se o nome está na frase.
+- celular: a frase fala de pesquisar, buscar no Google, mandar mensagem ou ver algo no celular. "texto" = o que aparece digitado na tela (até 40 caracteres, ex.: "como crescer sem investidor").
 - fim: só a última frase, se for a chamada final (salva, comenta, manda para alguém).
 Para todas as cenas: "titulo" = o NOME DA IDEIA em 1 a 3 palavras (ex.: "Sem investidor", "Lucro paga tudo", "2 pilares", "Dono do estoque"); nunca uma palavra solta sem sentido sozinha; não repita título.
 "rotulo" na imagem (opcional): até 3 palavras que ACRESCENTAM informação (um nome, um ano, um número), nunca repetindo o título.
 Regras: a 1ª frase é a abertura: tipo "imagem" com uma "busca" que represente o tema do vídeo inteiro. Varie os tipos (não repita o mesmo tipo 3 vezes seguidas). Não invente número que a frase não diz.
-Responda APENAS JSON: {"cenas":[{"i":0,"tipo":"imagem","titulo":"","busca":"","rotulo":"","destaque":"","itens":[],"esquerda":"","direita":"","direcao":"","icone":""}]} com exatamente uma cena por frase, na mesma ordem.`;
+Além das cenas:
+- "gancho": 3 a 5 palavras de impacto que abrem o vídeo grandes na tela (a promessa ou a tensão do vídeo; ex.: "Sem investidor milionário"). Sem ponto final.
+- "clima": a trilha de fundo que combina com o assunto: "calma" (reflexão, história), "animada" (dica, oportunidade, crescimento) ou "tensa" (erro, alerta, prejuízo).
+Responda APENAS JSON: {"gancho":"","clima":"calma","cenas":[{"i":0,"tipo":"imagem","titulo":"","busca":"","rotulo":"","destaque":"","itens":[],"esquerda":"","direita":"","direcao":"","icone":"","pessoa":"","texto":""}]} com exatamente uma cena por frase, na mesma ordem.`;
 
 function usuario({ titulo, frases }) {
   return `TÍTULO DO VÍDEO: ${limpa(titulo, 140) || '(sem título)'}\nFRASES (uma cena por frase, na ordem):\n${frases.map((f, i) => `${i}. ${f}`).join('\n')}`;
@@ -65,6 +72,13 @@ function normalizarCena(c, frase) {
   if (c.tipo === 'grafico') out.direcao = c.direcao === 'desce' ? 'desce' : 'sobe';
   if (c.tipo === 'frase') { const r = limpa(c.rotulo, 12).toUpperCase(); if (ROTULOS.includes(r)) out.rotulo = r; else delete out.rotulo; }
   if (c.tipo === 'icone' && ICONES.includes(c.icone)) out.icone = c.icone;
+  if (c.tipo === 'pessoa') {
+    // a foto é de quem a frase cita: o sobrenome (ou o nome da marca) precisa estar na frase
+    const nome = limpa(c.pessoa, 60); const ult = nome.split(' ').filter((x) => x.length >= 3).pop() || '';
+    const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (nome && ult && norm(frase).includes(norm(ult))) out.pessoa = nome; else return out.busca ? { tipo: 'imagem', busca: out.busca, ...(out.titulo ? { titulo: out.titulo } : {}) } : (out.titulo ? { tipo: 'icone', titulo: out.titulo } : {});
+  }
+  if (c.tipo === 'celular') { const t = limpa(c.texto, 40); if (t) out.texto = t; }
   if ((c.tipo === 'imagem' || c.tipo === 'broll') && !out.busca) return out.titulo ? { tipo: 'icone', titulo: out.titulo } : {};
   return out;
 }
@@ -78,7 +92,8 @@ function normalizarPlano(d, frases) {
   const vistos = new Set();
   for (const c of cenas) { const k = (c.titulo || '').toLowerCase(); if (!k) continue; if (vistos.has(k)) delete c.titulo; else vistos.add(k); }
   const uteis = cenas.filter((c) => c.tipo).length;
-  return { cenas, uteis };
+  const gancho = limpa(d?.gancho, 40).replace(/[.!]+$/, '');
+  return { cenas, uteis, gancho: gancho && gancho.split(' ').length <= 6 ? gancho : '', clima: CLIMAS.includes(d?.clima) ? d.clima : 'calma' };
 }
 
 async function gerar({ titulo, frases }, { pedir } = {}) {
@@ -98,14 +113,14 @@ async function planoDoVideo(id, { titulo, frases } = {}, { deps = {} } = {}) {
   let reg = null;
   if (id) { try { reg = await V._ler(id); } catch { reg = null; } }
   const salvo = reg?.doc?.video?.plano;
-  if (salvo && salvo.hash === hash && Array.isArray(salvo.cenas) && salvo.cenas.length === fr.length) return { cenas: salvo.cenas, fonte: 'guardado' };
+  if (salvo && salvo.hash === hash && Array.isArray(salvo.cenas) && salvo.cenas.length === fr.length) return { cenas: salvo.cenas, gancho: salvo.gancho || '', clima: salvo.clima || 'calma', fonte: 'guardado' };
   if (!deps.pedir && !llmJson.hasLlmKey()) throw Object.assign(new Error('Nenhuma IA gratuita configurada no servidor.'), { status: 503, code: 'SEM_IA' });
   const p = await gerar({ titulo: tit, frases: fr }, { pedir: deps.pedir });
   if (p.uteis < Math.ceil(fr.length / 3)) throw Object.assign(new Error('A IA devolveu um plano vazio.'), { status: 502, code: 'PLANO_VAZIO' });
   if (reg) {
-    try { reg.doc.video.plano = { hash, cenas: p.cenas, ia: p.ia, em: new Date().toISOString() }; await V._gravar(reg.doc, reg.rev); } catch { /* conflito de revisão: o plano volta mesmo assim */ }
+    try { reg.doc.video.plano = { hash, cenas: p.cenas, gancho: p.gancho, clima: p.clima, ia: p.ia, em: new Date().toISOString() }; await V._gravar(reg.doc, reg.rev); } catch { /* conflito de revisão: o plano volta mesmo assim */ }
   }
-  return { cenas: p.cenas, fonte: p.ia || 'ia' };
+  return { cenas: p.cenas, gancho: p.gancho, clima: p.clima, fonte: p.ia || 'ia' };
 }
 
-module.exports = { SISTEMA, TIPOS, ICONES, normalizarCena, normalizarPlano, gerar, planoDoVideo, hashDe, usuario };
+module.exports = { SISTEMA, TIPOS, ICONES, CLIMAS, normalizarCena, normalizarPlano, gerar, planoDoVideo, hashDe, usuario };

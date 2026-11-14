@@ -146,6 +146,10 @@ body.tp-aberto { overflow: hidden; }
 .tp-ajustes label { display: grid; gap: 4px; font-size: 11px; color: #B4B6BE; }
 .tp-ajustes output { color: #fff; font-weight: 800; }
 .tp-ajustes input[type="range"] { width: 100%; accent-color: var(--pd-laranja, #FF7043); min-height: 32px; }
+.tp-ajustes .tp-voz { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: #fff; font-weight: 700; font-size: 12px; }
+.tp-ajustes .tp-voz input { width: 18px; height: 18px; accent-color: var(--pd-laranja, #FF7043); }
+.tp-ajustes .tp-voz small { flex-basis: 100%; color: #B4B6BE; font-weight: 500; font-size: 11px; }
+.tp-crono.on.voz { box-shadow: 0 0 0 2px #22C55E; }
 .tp-editor { position: absolute; inset: 0; z-index: 8; background: rgba(11, 11, 12, .96); padding: calc(20px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; }
 .tp-editor[hidden] { display: none; }
 .tp-editor label { font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #B4B6BE; }

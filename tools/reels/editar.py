@@ -16,6 +16,7 @@ Etapas (docs/VIDEOS_E_RECICLAGEM_SPEC.md → "Worker de edição"):
 Tudo gratuito e de código aberto; roda em CPU."""
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -169,6 +170,7 @@ def detectar_rostos(entrada, sonda, fps_amostra=6, largura_amostra=480):
         return []
     quadros = quadros[:n * largura_amostra * hs].reshape(n, hs, largura_amostra)
     casc = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
+    olho = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_eye.xml'))
     cru = []
     for i, q in enumerate(quadros):
         q = cv2.equalizeHist(np.ascontiguousarray(q))
@@ -176,9 +178,12 @@ def detectar_rostos(entrada, sonda, fps_amostra=6, largura_amostra=480):
         t = round((i + 0.5) / fps_amostra, 3)
         if len(rostos):
             x, y, rw, rh = max(rostos, key=lambda r: r[2] * r[3])
-            cru.append((t, (x + rw / 2) / largura_amostra, (y + rh / 2) / hs, rh / hs))
+            # olhos abertos (para a capa escolher um quadro sem piscada): olhos achados na metade de cima do rosto
+            roi = q[y:y + int(rh * 0.6), x:x + rw]
+            n_olhos = min(2, len(olho.detectMultiScale(roi, scaleFactor=1.1, minNeighbors=6, minSize=(max(8, rw // 8), max(8, rw // 8))))) if roi.size else 0
+            cru.append((t, (x + rw / 2) / largura_amostra, (y + rh / 2) / hs, rh / hs, n_olhos))
         else:
-            cru.append((t, None, None, None))
+            cru.append((t, None, None, None, 0))
     log(f"rosto achado em {sum(1 for c in cru if c[1] is not None)}/{n} amostras")
     return cru
 
@@ -323,6 +328,63 @@ def baixar_broll(pontos, pasta, chave, avisos):
     return out
 
 
+UA_WIKI = 'ReelsEditorBot/1.0 (open-source video editor)'
+LICENCAS_LIVRES = re.compile(r'^\s*(public domain|pd\b|cc0|cc[ -]?by(?:[ -]sa)?(?:[ -][\d.]+)?)', re.I)
+
+
+def _json_url(url, timeout=15):
+    req = urllib.request.Request(url, headers={'User-Agent': UA_WIKI, 'Accept': 'application/json'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode('utf-8'))
+
+
+def _sem_html(t):
+    return re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', str(t or ''))).strip()
+
+
+def baixar_foto(nome, destino, avisos, largura=1200):
+    """Foto de USO LIVRE de pessoa ou marca famosa: a imagem da página na Wikipédia (pt, depois en), só se o arquivo
+    está no Wikimedia Commons com licença livre (domínio público, CC0, CC BY, CC BY-SA). Devolve {arquivo, credito}
+    (crédito exigido pela licença, vai na foto) ou None — aí o editor usa o vídeo de banco ou um ícone.
+    Teste local: REELS_FOTO_LOCAL = caminho de uma imagem (pula a rede)."""
+    if os.environ.get('REELS_FOTO_LOCAL'):
+        shutil.copy(os.environ['REELS_FOTO_LOCAL'], destino)
+        return {'arquivo': destino, 'credito': 'Foto: Teste · CC BY-SA 4.0 (Wikimedia)'}
+    for lang in ('pt', 'en'):
+        try:
+            d = _json_url(f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(nome.strip().replace(' ', '_'))}")
+        except Exception:
+            continue
+        if d.get('type') == 'disambiguation':
+            continue
+        src = (d.get('originalimage') or d.get('thumbnail') or {}).get('source') or ''
+        if '/wikipedia/commons/' not in src:   # imagem só da Wikipédia (ex.: logo em "uso justo"): não é livre
+            continue
+        partes = urllib.parse.urlparse(src).path.split('/')
+        arquivo = urllib.parse.unquote(partes[partes.index('thumb') + 3] if 'thumb' in partes else partes[-1])
+        try:
+            q = urllib.parse.urlencode({'action': 'query', 'format': 'json', 'prop': 'imageinfo', 'iiprop': 'url|extmetadata', 'iiurlwidth': largura, 'titles': f'File:{arquivo}'})
+            info = next(iter(_json_url(f"https://commons.wikimedia.org/w/api.php?{q}")['query']['pages'].values()))['imageinfo'][0]
+        except Exception as e:
+            avisos.append(f"foto de {nome}: licença não conferida ({str(e)[:60]})")
+            return None
+        meta = info.get('extmetadata') or {}
+        licenca = _sem_html((meta.get('LicenseShortName') or {}).get('value'))
+        if not LICENCAS_LIVRES.match(licenca):
+            continue
+        autor = _sem_html((meta.get('Artist') or {}).get('value'))[:40]
+        url = info.get('thumburl') or info.get('url')
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': UA_WIKI})
+            with urllib.request.urlopen(req, timeout=30) as r, open(destino, 'wb') as f:
+                shutil.copyfileobj(r, f, 1024 * 256)
+        except Exception as e:
+            avisos.append(f"foto de {nome}: download falhou ({str(e)[:60]})")
+            return None
+        return {'arquivo': destino, 'credito': f"Foto: {autor + ' · ' if autor else ''}{licenca} (Wikimedia)"}
+    return None
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # 8/9. Render
 # ----------------------------------------------------------------------------------------------------------------------
@@ -387,8 +449,8 @@ def pedir_plano(frases, titulo, avisos):
         return None
     local = os.environ.get('REELS_PLANO_LOCAL')
     if local:
-        cenas = json.load(open(local, encoding='utf-8')).get('cenas')
-        return cenas if isinstance(cenas, list) else None
+        d = json.load(open(local, encoding='utf-8'))
+        return d if isinstance(d.get('cenas'), list) else None
     url = os.environ.get('PLANO_URL')
     if not url:
         return None
@@ -399,8 +461,8 @@ def pedir_plano(frases, titulo, avisos):
             d = json.loads(r.read().decode('utf-8'))
         cenas = d.get('cenas')
         if isinstance(cenas, list) and len(cenas) == len(frases):
-            log(f"plano visual: {len(cenas)} cenas ({d.get('fonte') or 'ia'})")
-            return cenas
+            log(f"plano visual: {len(cenas)} cenas ({d.get('fonte') or 'ia'}){' · gancho: ' + d['gancho'] if d.get('gancho') else ''}{' · clima: ' + d['clima'] if d.get('clima') else ''}")
+            return d
         avisos.append('plano visual veio incompleto: usei as regras automáticas')
     except Exception as e:   # o vídeo sai do mesmo jeito, com as regras de sempre
         avisos.append(f'plano visual indisponível ({str(e)[:90]}): usei as regras automáticas')
@@ -443,14 +505,23 @@ def trilha_efeitos(caminho, eventos, duracao, sr=48000):
     return _wav_mono(caminho, out, sr)
 
 
-def trilha_musical(caminho, duracao, sr=44100, bpm=92):
-    """Trilha de fundo GERADA aqui (não é de ninguém: o Instagram não tem o que silenciar): pad suave em lá menor
-    (Am–F–C–G), baixo nos tempos 1 e 3 e um pulso macio que faz o pad 'respirar'. O volume final e o abaixar sozinho
-    quando há fala ficam na mistura (renderizar_destrava)."""
+# Climas da trilha (o plano visual escolhe pelo assunto; sem plano, "calma"). Acordes em MIDI.
+CLIMAS = {
+    'calma':   {'bpm': 92,  'acordes': [(57, 60, 64, 69), (53, 57, 60, 65), (48, 52, 55, 60), (55, 59, 62, 67)], 'brilho': 0.3, 'kick': 'meio', 'arpejo': False, 'baixo8': False},
+    'animada': {'bpm': 112, 'acordes': [(60, 64, 67, 72), (55, 59, 62, 67), (57, 60, 64, 69), (53, 57, 60, 65)], 'brilho': 0.45, 'kick': 'todo', 'arpejo': True, 'baixo8': False},
+    'tensa':   {'bpm': 84,  'acordes': [(45, 52, 57, 60), (40, 47, 52, 55), (41, 48, 53, 57), (40, 47, 52, 56)], 'brilho': 0.12, 'kick': 'um', 'arpejo': False, 'baixo8': True},
+}
+
+
+def trilha_musical(caminho, duracao, sr=44100, clima='calma'):
+    """Trilha de fundo GERADA aqui (não é de ninguém: o Instagram não tem o que silenciar), em 3 climas: calma (pad em lá
+    menor), animada (dó maior, arpejo e pulso a 112 bpm) e tensa (lá menor escuro, baixo pulsando). O volume final e o
+    abaixar sozinho quando há fala ficam na mistura (renderizar_destrava)."""
     import numpy as np
+    c = CLIMAS.get(clima) or CLIMAS['calma']
     n = int((duracao + 1.0) * sr)
-    beat = 60.0 / bpm; compasso = 4 * beat
-    acordes = [(57, 60, 64, 69), (53, 57, 60, 65), (48, 52, 55, 60), (55, 59, 62, 67)]   # Am, F, C, G (MIDI)
+    beat = 60.0 / c['bpm']; compasso = 4 * beat
+    acordes = c['acordes']
 
     def hz(m):
         return 440.0 * 2 ** ((m - 69) / 12)
@@ -466,22 +537,37 @@ def trilha_musical(caminho, duracao, sr=44100, bpm=92):
         for m in acordes[k % 4]:
             for det in (-0.0012, 0.0012):   # dois osciladores levemente desafinados (coro)
                 ph = 2 * np.pi * hz(m) * (1 + det) * tt
-                seg += (np.sin(ph) + 0.3 * np.sin(2 * ph) + 0.12 * np.sin(3 * ph)).astype(np.float32)
+                seg += (np.sin(ph) + c['brilho'] * np.sin(2 * ph) + 0.4 * c['brilho'] * np.sin(3 * ph)).astype(np.float32)
         pad[i0:i1] += seg * env / 8.0
-    baixo = np.zeros(n, np.float32); kick = np.zeros(n, np.float32); bomba = np.ones(n, np.float32)
+    baixo = np.zeros(n, np.float32); kick = np.zeros(n, np.float32); bomba = np.ones(n, np.float32); arp = np.zeros(n, np.float32)
     for k in range(int(n / sr / beat) + 1):
         i0 = int(k * beat * sr)
         if i0 >= n:
             break
         L_ = min(n - i0, int(0.35 * sr)); tt = np.arange(L_) / sr
         bomba[i0:i0 + L_] *= (1 - 0.3 * np.exp(-tt / 0.12)).astype(np.float32)
-        if k % 2 == 0:
+        bate = c['kick'] == 'todo' or (c['kick'] == 'meio' and k % 2 == 0) or (c['kick'] == 'um' and k % 4 == 0)
+        if bate:
             f = 52 + 60 * np.exp(-tt / 0.03)
             kick[i0:i0 + L_] += (np.sin(2 * np.pi * np.cumsum(f) / sr) * np.exp(-tt / 0.12)).astype(np.float32)
+        ac = acordes[(k // 4) % 4]
+        fb = hz(ac[0] - 12)
+        if c['baixo8']:   # tensa: baixo em colcheias, curto
+            for meia in (0, 1):
+                j0 = i0 + int(meia * beat / 2 * sr); Lb = min(n - j0, int(beat / 2 * 0.9 * sr))
+                if Lb > 0:
+                    tb = np.arange(Lb) / sr
+                    baixo[j0:j0 + Lb] += (np.sin(2 * np.pi * fb * tb) * np.exp(-tb / 0.18) * np.minimum(1, tb / 0.005)).astype(np.float32)
+        elif k % 2 == 0:
             Lb = min(n - i0, int(beat * 1.8 * sr)); tb = np.arange(Lb) / sr
-            fb = hz(acordes[(k // 4) % 4][0] - 12)
             baixo[i0:i0 + Lb] += (np.sin(2 * np.pi * fb * tb) * np.exp(-tb / 0.5) * np.minimum(1, tb / 0.01)).astype(np.float32)
-    mix = pad * bomba * 0.55 + baixo * 0.35 + kick * 0.16
+        if c['arpejo']:   # animada: notas do acorde em colcheias, uma oitava acima
+            for meia in (0, 1):
+                j0 = i0 + int(meia * beat / 2 * sr); La = min(n - j0, int(0.22 * sr))
+                if La > 0:
+                    ta = np.arange(La) / sr; nota = ac[(2 * k + meia) % len(ac)] + 12
+                    arp[j0:j0 + La] += (np.sin(2 * np.pi * hz(nota) * ta) * np.exp(-ta / 0.07) * np.minimum(1, ta / 0.003)).astype(np.float32)
+    mix = pad * bomba * 0.55 + baixo * 0.35 + kick * 0.16 + arp * 0.12
     mix = mix / (np.max(np.abs(mix)) + 1e-9) * 0.6
     return _wav_mono(caminho, mix, sr)
 
@@ -638,10 +724,13 @@ def renderizar_destrava(entrada, saida, segmentos, sonda, blocos, palavras_rm, d
     _, wj, hj = D.escala_janela(sonda['largura'], sonda['altura'], altura_rosto)
     _, wc, hc = D.escala_close(sonda['largura'], sonda['altura'])
     listas = {'j': [], 'c': [], 'a': []}
-    inicios, quadros = [], 0
+    inicios, quadros, t_saida = [], 0, 0.0
     for i, seg in enumerate(segmentos):
         a, b = seg['a'], seg['b']; d = b - a
-        xj, yj = L.chaves_crop(trilha, a, b, wj, hj, J['w'], J['h'] + R, J['w'] / 2, R + D.ROSTO_JANELA * J['h'], topo=R)
+        z = D.zoom_da_cena(blocos, t_saida + d / 2, base=1.0 if seg.get('zoom', 1.0) <= 1.0 else 1.04)
+        t_saida += d
+        wjz, hjz = int(math.ceil(wj * z / 2) * 2), int(math.ceil(hj * z / 2) * 2)
+        xj, yj = L.chaves_crop(trilha, a, b, wjz, hjz, J['w'], J['h'] + R, J['w'] / 2, R + D.ROSTO_JANELA * J['h'], topo=R)
         xc, yc = L.chaves_crop(trilha, a, b, wc, hc, L.LARGURA, L.ALTURA, L.LARGURA / 2, D.ROSTO_CLOSE)
         jo, co, ao = (os.path.join(tmp, f'd{i:03d}.{e}') for e in ('j.mp4', 'c.mp4', 'a.wav'))
         af = ['afade=t=in:st=0:d=0.03'] if seg['fade_in'] else []
@@ -649,7 +738,7 @@ def renderizar_destrava(entrada, saida, segmentos, sonda, blocos, palavras_rm, d
             af.append(f"afade=t=out:st={max(0, d - 0.03):.3f}:d=0.03")
         rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', '-ss', f"{a:.3f}", '-t', f"{d:.3f}", '-i', entrada,
                '-filter_complex', f"[0:v]fps=30,split[x][y];"
-               f"[x]scale={wj}:{hj}:flags=bicubic,pad={wj}:{hj + R}:0:{R}:black,crop={J['w']}:{J['h'] + R}:x='{xj}':y='{yj}',setsar=1[j];"
+               f"[x]scale={wjz}:{hjz}:flags=bicubic,pad={wjz}:{hjz + R}:0:{R}:black,crop={J['w']}:{J['h'] + R}:x='{xj}':y='{yj}',setsar=1[j];"
                f"[y]scale={wc}:{hc}:flags=bicubic,crop={L.LARGURA}:{L.ALTURA}:x='{xc}':y='{yc}',setsar=1[c]",
                '-map', '[j]', '-t', f"{d:.3f}", *enc, jo, '-map', '[c]', '-t', f"{d:.3f}", *enc, co,
                '-map', '0:a', '-t', f"{d:.3f}", *(['-af', ','.join(af)] if af else []), '-ar', '48000', '-ac', '2', ao])
@@ -682,14 +771,17 @@ def renderizar_destrava(entrada, saida, segmentos, sonda, blocos, palavras_rm, d
          f"[bg][jr]overlay={J['x']}:{J['y']}:shortest=0:eof_action=pass[v0]"]
     atual = '[v0]'; k = 5 if cabeca else 4; n = 0
     for br in brolls:
-        b = br['bloco']; d0 = b['t1'] - b['t0']
-        if b['tipo'] in ('imagem', 'titulo'):
-            q = D.INSET_IMAGEM if b['tipo'] == 'imagem' else D.INSET_TITULO
+        b = br['bloco']
+        t_ini = b.get('inset_ini', b['t0']) if b['tipo'] == 'titulo' else b['t0']   # com gancho, a imagem do título entra depois dele
+        d0 = b['t1'] - t_ini
+        if b['tipo'] in ('imagem', 'titulo', 'foto') and d0 > 0.2:
+            q = D.INSET_TITULO if b['tipo'] == 'titulo' else D.INSET_IMAGEM
             mk = _pgm_arredondado(os.path.join(tmp, f'm_ins{n}.pgm'), q['w'], q['h'], q['raio'])
-            entradas += ['-i', br['arquivo'], '-loop', '1', '-framerate', '30', '-t', f"{d0:.3f}", '-i', mk]
-            g.append(f"[{k}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,{_zoom_lento(q['w'], q['h'], d0)},"
-                     f"format=yuva420p[bv{n}];[{k + 1}:v]format=gray[bm{n}];[bv{n}][bm{n}]alphamerge,setpts=PTS+{b['t0']:.3f}/TB[bi{n}]")
-            g.append(f"{atual}[bi{n}]overlay={q['x']}:{q['y']}:eof_action=pass:enable='between(t,{b['t0']:.3f},{b['t1']:.3f})'[v{n + 1}]")
+            fonte = ['-loop', '1', '-framerate', '30', '-t', f"{d0:.3f}", '-i', br['arquivo']] if br.get('foto') else ['-i', br['arquivo']]
+            entradas += fonte + ['-loop', '1', '-framerate', '30', '-t', f"{d0:.3f}", '-i', mk]
+            g.append(f"[{k}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,{_zoom_lento(q['w'], q['h'], d0, 0.10 if br.get('foto') else 0.08)},"
+                     f"format=yuva420p[bv{n}];[{k + 1}:v]format=gray[bm{n}];[bv{n}][bm{n}]alphamerge,setpts=PTS+{t_ini:.3f}/TB[bi{n}]")
+            g.append(f"{atual}[bi{n}]overlay={q['x']}:{q['y']}:eof_action=pass:enable='between(t,{t_ini:.3f},{b['t1']:.3f})'[v{n + 1}]")
             k += 2
         else:   # broll em tela cheia: entra depois dos gráficos (abaixo)
             continue
@@ -805,6 +897,102 @@ def renderizar(entrada, saida, segmentos, centros, sonda, ass, brolls, medido, m
     rodar(cmd)
 
 
+def _fundo_capa(w=1080, h=1920):
+    """Fundo da capa igual ao do vídeo: quase preto, grade de pontos sutil e vinheta (numpy, sem ffmpeg)."""
+    import numpy as np
+    y, x = np.mgrid[0:h, 0:w]
+    base = np.where(((x % 26) < 3) & ((y % 26) < 3), 30, 12).astype(np.float32)
+    d = np.sqrt(((x - w / 2) / (w / 2)) ** 2 + ((y - h / 2) / (h / 2)) ** 2)
+    base *= np.clip(1.1 - 0.45 * d, 0.45, 1.0)
+    img = np.stack([base + 2, base, base], axis=-1)   # BGR levemente azulado (0B0B0E)
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+
+def gerar_capa(entrada, sonda, cru, trechos, texto, destino, tmp, avisos, acento=(67, 112, 255)):
+    """Capa do Reels 1080x1920 (a que aparece no perfil): fundo escuro do formato, o Pedro RECORTADO (segmentação de
+    pessoa, a mesma da cabeça que sai da janela) com brilho na borda, e o texto grande no alto, dentro da área que a grade
+    3:4 do perfil mostra (y 240–1680). Sem recorte disponível, usa o quadro inteiro com degradê. Devolve o caminho ou None."""
+    import cv2
+    import numpy as np
+    try:
+        dentro = lambda t: any(a <= t <= b for a, b in trechos) if trechos else True
+        cand = [c for c in (cru or []) if c[1] is not None and c[3] and dentro(c[0]) and c[0] <= max(1.0, sonda['duracao'] * 0.7)]
+        cand = cand or [c for c in (cru or []) if c[1] is not None and c[3]]
+        # quadro com os dois olhos abertos, rosto grande e no meio (é o que a capa precisa)
+        melhor = max(cand, key=lambda c: (min(2, c[4] if len(c) > 4 else 2), c[3] - abs(c[1] - 0.5) * 0.4)) if cand else None
+        t_q = melhor[0] if melhor else (trechos[0][0] + 0.5 if trechos else 1.0)
+        quadro = os.path.join(tmp, 'capa_quadro.png')
+        rodar(['ffmpeg', '-y', '-loglevel', 'error', '-ss', f'{t_q:.3f}', '-i', entrada, '-frames:v', '1', quadro])
+        img = cv2.imread(quadro)
+        h, w = img.shape[:2]
+        alfa = None
+        try:
+            from ai_edge_litert.interpreter import Interpreter
+            it = Interpreter(model_path=MODELO_PESSOA); it.allocate_tensors()
+            ent, sai = it.get_input_details()[0], it.get_output_details()[0]
+            la, ll = int(ent['shape'][1]), int(ent['shape'][2])
+            x = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), (ll, la), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+            it.set_tensor(ent['index'], x[None]); it.invoke()
+            m = it.get_tensor(sai['index'])[0, :, :, 0]
+            alfa = cv2.GaussianBlur(np.clip((cv2.resize(m, (w, h), interpolation=cv2.INTER_CUBIC) - 0.35) / 0.3, 0, 1), (0, 0), 1.4)
+        except Exception as e:
+            avisos.append(f'capa sem recorte da pessoa ({str(e)[:60]})')
+        cx, cy = ((melhor[1], melhor[2]) if melhor else (0.5, 0.42))
+        rosto_h = (melhor[3] if melhor else 0.3) * h
+        W_, H_ = 1080, 1920
+        # rosto grande (~430 px), mas o quadro sempre cobre a largura da capa: sem borda reta cortando o corpo
+        s = max(430.0 / max(rosto_h, 1.0), W_ / w)
+        nw, nh = int(round(w * s)), int(round(h * s))
+        pessoa = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
+        a_p = cv2.resize(alfa, (nw, nh), interpolation=cv2.INTER_LINEAR) if alfa is not None else None
+        ox = int(round(min(0, max(W_ - nw, 540 - cx * nw))))              # rosto no meio, sem sobrar borda dos lados
+        oy = int(round(1240 - cy * nh))                                   # centro do rosto em y=1240 (abaixo do texto)
+        if oy + nh < H_:                                                  # o corpo vai até o pé da capa
+            oy = H_ - nh
+        tela = _fundo_capa(W_, H_).astype(np.float32)
+        # recorte da pessoa na tela (com as bordas da capa)
+        x0, y0 = max(0, ox), max(0, oy); x1, y1 = min(W_, ox + nw), min(H_, oy + nh)
+        if x1 > x0 and y1 > y0:
+            px0, py0 = x0 - ox, y0 - oy
+            pedaco = pessoa[py0:py0 + (y1 - y0), px0:px0 + (x1 - x0)].astype(np.float32)
+            if a_p is not None:
+                al = a_p[py0:py0 + (y1 - y0), px0:px0 + (x1 - x0)][..., None]
+                # brilho atrás da pessoa (borda na cor de destaque)
+                halo = cv2.GaussianBlur(cv2.dilate(al[..., 0], cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))), (0, 0), 16)[..., None]
+                cor = np.array(acento, np.float32)[None, None, :]
+                reg = tela[y0:y1, x0:x1]
+                reg = reg * (1 - halo * 0.85) + cor * halo * 0.85
+                tela[y0:y1, x0:x1] = reg * (1 - al) + pedaco * al
+            else:   # sem recorte: o quadro inteiro, sumindo no alto
+                deg = np.clip((np.arange(y1 - y0)[:, None, None] + py0 - 260) / 380.0, 0, 1)
+                tela[y0:y1, x0:x1] = tela[y0:y1, x0:x1] * (1 - deg) + pedaco * deg
+        base = os.path.join(tmp, 'capa_base.png')
+        cv2.imwrite(base, np.clip(tela, 0, 255).astype(np.uint8))
+        # texto grande no alto (mesmas fontes do vídeo); a palavra principal na cor de destaque
+        ws = (texto or '').strip().rstrip('.!?').upper().split()
+        fs = 132
+        linhas = D.quebrar(' '.join(ws), fs, 960, fator=0.62)
+        while len(linhas) > 3 and fs > 84:
+            fs -= 12; linhas = D.quebrar(' '.join(ws), fs, 960, fator=0.62)
+        chave = max(range(len(ws)), key=lambda k: (bool(re.search(r'\d', ws[k])), len(D.limpa(ws[k])))) if ws else -1
+        cor_d = '&H00{:02X}{:02X}{:02X}&'.format(*acento)   # BGR → ASS
+        eventos, k = [], 0
+        for i, ln in enumerate(linhas[:4]):
+            partes = []
+            for pw in ln.split():
+                partes.append(f"{{\\c{cor_d}}}{D.esc(pw)}{{\\c&H00FFFFFF&}}" if k == chave else D.esc(pw)); k += 1
+            eventos.append(D._dlg(5, 0, 5, 'Grosso', f"{{\\an8\\pos(540,{300 + i * int(fs * 1.02)})\\fs{fs}\\bord0\\shad0}}" + ' '.join(partes)))
+        ass = os.path.join(tmp, 'capa.ass')
+        open(ass, 'w', encoding='utf-8').write(D.cabecalho() + '\n'.join(eventos) + '\n')
+        fontes_esc = FONTES.replace('\\', '/').replace(':', '\\:').replace("'", "\\'")
+        ass_esc = ass.replace('\\', '/').replace(':', '\\:').replace("'", "\\'")
+        rodar(['ffmpeg', '-y', '-loglevel', 'error', '-i', base, '-vf', f"ass=filename='{ass_esc}':fontsdir='{fontes_esc}'", '-frames:v', '1', '-q:v', '2', destino])
+        return destino
+    except Exception as e:   # a capa é um extra: o vídeo sai mesmo sem ela
+        avisos.append(f'capa não gerada ({str(e)[:90]})')
+        return None
+
+
 def poster(final, destino):
     rodar(['ffmpeg', '-y', '-loglevel', 'error', '-ss', '1', '-i', final, '-frames:v', '1', '-q:v', '2', destino])
 
@@ -900,7 +1088,8 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             chave_tmp = os.environ.get('PEXELS_API_KEY', '').strip() or os.environ.get('BROLL_URL', '') or os.environ.get('REELS_BROLL_LOCAL', '')
             titulo_video = titulo if titulo and not re.match(r'^(v[ií]deo|grava[cç][aã]o) ', titulo, re.I) else ''
             plano = pedir_plano(frases_d, titulo_video, avisos)
-            blocos = D.planejar(frases_d, dur_final, titulo_video, broll=bool(opcoes.get('broll')) and bool(chave_tmp), plano=plano)
+            blocos = D.planejar(frases_d, dur_final, titulo_video, broll=bool(opcoes.get('broll')) and bool(chave_tmp),
+                                plano=(plano or {}).get('cenas'), gancho=(plano or {}).get('gancho') or '')
             log('destrava: ' + ' | '.join(f"{b['t0']:.1f}-{b['t1']:.1f} {b['layout']}/{b['tipo']}:{b.get('cabeca') or b.get('chave', '')}" for b in blocos))
         elif montagem:
             por_seg = {}
@@ -917,6 +1106,14 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         chave_px = os.environ.get('PEXELS_API_KEY', '').strip() or ('__app__' if os.environ.get('BROLL_URL') else '') or ('__local__' if os.environ.get('REELS_BROLL_LOCAL') else '')
         brolls_destrava = []
         if destrava:
+            for b in [x for x in blocos if x['tipo'] == 'foto']:
+                foto = baixar_foto(b['pessoa'], os.path.join(tmp, f"foto_{len(brolls_destrava)}.jpg"), avisos)
+                if foto:
+                    b['credito'] = foto['credito']
+                    brolls_destrava.append({'arquivo': foto['arquivo'], 'bloco': b, 'consulta': b['pessoa'], 'pexels_id': None, 'foto': True})
+                    log(f"foto livre: {b['pessoa']} ({foto['credito']})")
+                else:
+                    D.sem_foto(b)
             pedidos = D.precisa_broll(blocos) if (opcoes.get('broll') and chave_px) else []
             # busca da imagem: a do plano visual (inglês, pelo sentido da frase); sem plano, a palavra-chave traduzida
             pontos = [{'inicio': b['t0'], 'duracao': round(b['t1'] - b['t0'], 3), 'texto': b['texto'],
@@ -929,7 +1126,7 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             for b in blocos:
                 if b['tipo'] in ('titulo', 'imagem', 'broll') and id(b) not in ok:
                     D.sem_broll(b)
-            brolls_destrava = [{'arquivo': r['arquivo'], 'bloco': r['bloco'], 'consulta': r['consulta'], 'pexels_id': r.get('pexels_id')} for r in baixados]
+            brolls_destrava += [{'arquivo': r['arquivo'], 'bloco': r['bloco'], 'consulta': r['consulta'], 'pexels_id': r.get('pexels_id')} for r in baixados]
         elif opcoes.get('broll'):
             if not chave_px:
                 avisos.append('b-roll pulado: sem PEXELS_API_KEY')
@@ -947,7 +1144,7 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         if opcoes.get('musica'):
             # trilha gerada aqui (sem direitos de terceiros); uma faixa CC0 em tools/reels/musica/ vale só no formato simples
             faixas = sorted(f for f in (os.listdir(PASTA_MUSICA) if os.path.isdir(PASTA_MUSICA) else []) if f.lower().endswith(('.mp3', '.ogg', '.wav', '.m4a')))
-            musica = os.path.join(PASTA_MUSICA, faixas[0]) if (faixas and not destrava) else trilha_musical(os.path.join(tmp, 'musica.wav'), dur_final)
+            musica = os.path.join(PASTA_MUSICA, faixas[0]) if (faixas and not destrava) else trilha_musical(os.path.join(tmp, 'musica.wav'), dur_final, clima=(plano or {}).get('clima') or 'calma')
 
         # 7. legendas (mudam de lugar conforme o layout) e quadros animados
         cron.etapa('legendas')
@@ -988,9 +1185,13 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         else:
             renderizar(entrada, final, segmentos, centros, sonda, ass, brolls, medido, musica)
 
-        # 10. poster + resultado
+        # 10. poster + capa + resultado
         cron.etapa('poster')
         poster(final, os.path.join(pasta, 'poster.jpg'))
+        capa = None
+        if destrava:   # capa do Reels: o Pedro recortado + o gancho (ou o título) grande
+            texto_capa = (plano or {}).get('gancho') or titulo_video or ' '.join((frases[0]['texto'] if frases else '').split()[:6])
+            capa = gerar_capa(entrada, sonda, cru, trechos, texto_capa, os.path.join(pasta, 'capa.jpg'), tmp, avisos)
         cron.fechar()
         fim = sondar(final)
         resultado = {
@@ -1003,6 +1204,8 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             'montagem': [{'t0': b['t0'], 't1': b['t1'], 'layout': b['layout'], 'tipo': b.get('tipo'), 'chave': b.get('cabeca') or b.get('chave'), 'icone': b.get('icone'), 'busca': b.get('busca')} for b in blocos],
             'formato': 'destrava' if destrava else ('montagem' if montagem else 'simples'),
             'plano_visual': bool(plano),
+            'capa': 'capa.jpg' if capa else None,
+            'clima_trilha': ((plano or {}).get('clima') or 'calma') if musica else None,
             'legenda_conferida': {'corrigidas': tr.get('conferencia_roteiro', {}).get('corrigidas', []),
                                   'removidas': tr.get('conferencia_roteiro', {}).get('removidas', [])} if tr.get('conferencia_roteiro') else None,
         }

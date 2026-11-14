@@ -186,6 +186,7 @@
       <div class="vd-acoes">
         ${c.estado === 'pronto' && c.url ? `<a class="vd-btn fantasma" href="${esc(c.url)}" download="${esc(nomeArquivo)}" target="_blank" rel="noopener noreferrer" aria-label="Baixar o arquivo de ${esc(c.titulo)}">↓ Baixar${c.tamanho ? ` (${esc(mb(c.tamanho))})` : ''}</a>` : ''}
         ${['pronto', 'erro'].includes(c.estado) && !publicado(c) && !publicando(c) ? `<button class="vd-btn fantasma" data-action="vd-refazer" data-id="${esc(c.id)}" aria-expanded="${ST.refazer === c.id}" ${d}>↻ Refazer</button>` : ''}
+        ${c.estado === 'pronto' ? `<button class="vd-btn fantasma" data-action="vd-carrossel" data-id="${esc(c.id)}" ${d} title="As mesmas ideias do vídeo em páginas no nosso formato, sem IA. Entra em Para aprovar e, aprovado, vai para o Instagram e o LinkedIn.">${oc === 'carrossel' ? '<span class="es-spin"></span> Montando…' : '▦ Virar carrossel'}</button>` : ''}
         ${c.estado === 'roteiro' ? `<button class="vd-btn" data-action="vd-gravar" data-id="${esc(c.id)}">● Gravar com este roteiro</button>` : ''}
         ${c.publicacao && c.publicacao.url ? `<a class="vd-btn fantasma" href="${esc(c.publicacao.url)}" target="_blank" rel="noopener noreferrer">Ver no Instagram ↗</a>` : ''}
         ${!publicando(c) && !publicado(c) ? `<button class="vd-link" data-action="vd-apagar" data-id="${esc(c.id)}" ${d}>${oc === 'apagar' ? 'Apagando…' : 'Apagar vídeo'}</button>` : ''}
@@ -308,6 +309,16 @@
         case 'vd-agendar': if (c) await decidir(ctx, c, 'aprovar', 'agendar'); break;
         case 'vd-descartar': if (c && confirm(`Descartar “${c.titulo}”? O vídeo sai da fila de aprovação.`)) await decidir(ctx, c, 'descartar', 'descartar'); break;
         case 'vd-refazer': ST.refazer = ST.refazer === id ? null : id; if (c && !ST.refazerOpts[id]) ST.refazerOpts[id] = { estilo: c.estilo, opcoes: { ...c.opcoes } }; redesenhar(); break;
+        case 'vd-carrossel': {
+          if (!c || ST.ocupado[id]) break;
+          ST.ocupado[id] = 'carrossel'; redesenhar();
+          try {
+            const r = await ctx.api(`/api/videos/${encodeURIComponent(id)}/carrossel`, { method: 'POST', body: {} });
+            ctx.toast(r.ja_existia ? 'O carrossel deste vídeo já existe: está em “Aprovar”.' : 'Carrossel pronto: veja em “Aprovar”. Aprovado, vai para o Instagram e o LinkedIn.');
+          } catch (e) { ctx.toast(e.message || 'Não consegui montar o carrossel agora.'); }
+          finally { delete ST.ocupado[id]; redesenhar(); }
+          break;
+        }
         case 'vd-refazer-cancelar': ST.refazer = null; delete ST.refazerOpts[id]; redesenhar(); break;
         case 'vd-refazer-estilo': { const o = ST.refazerOpts[id] || (ST.refazerOpts[id] = { estilo: c ? c.estilo : 'hormozi', opcoes: { ...(c ? c.opcoes : OPCOES_PADRAO) } }); o.estilo = el.dataset.estilo; redesenhar(); break; }
         case 'vd-refazer-confirmar': {

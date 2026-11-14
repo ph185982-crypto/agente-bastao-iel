@@ -172,7 +172,9 @@ async function criarContainers({ id, hash, slides, legenda, base, c }) {
   const ig = meta.config().igId;
   if(c?.formato === 'reels'){
     if(c.motion.engine==='local')c.motion.url=`${base.replace(/\/$/,'')}/api/publico/video/${meta.assinarMidia({conteudo:id,hash,indice:0})}.mp4`;
-    const r=await meta.graph('POST',`${ig}/media`,{media_type:'REELS',video_url:c.motion.url,caption:legenda,share_to_feed:true});
+    // capa do Reels (o Pedro recortado + o gancho, feita pelo editor): sem ela, o Instagram usa um quadro qualquer
+    const capa=/^https:\/\//.test(c.motion.capa||'')?{cover_url:c.motion.capa}:{};
+    const r=await meta.graph('POST',`${ig}/media`,{media_type:'REELS',video_url:c.motion.url,caption:legenda,share_to_feed:true,...capa});
     return {tipo:'REELS',creation_id:r.id,filhos:[]};
   }
   if (slides.length === 1) {

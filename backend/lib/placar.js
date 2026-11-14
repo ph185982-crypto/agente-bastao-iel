@@ -152,9 +152,16 @@ async function guardarSerie(posts, a, agora) {
 // Lê os insights, guarda a foto, a série e o placar. Usada pelo botão "Atualizar" e pela coleta diária do piloto.
 async function coletar({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {}) {
   const a = deps.armazem || armazem();
-  const daFerramenta = new Map();
+  const daFerramenta = new Map(); const duracoes = new Map();
   try { (await (deps.listarPublicacoes || (() => require('./publicador').listarPublicacoes()))()).filter((p) => p.estado === 'publicada' && p.ig_media_id).forEach((p) => daFerramenta.set(String(p.ig_media_id), p.content_id)); } catch { /* sem banco: nenhum marcado */ }
-  const snapshot = await (deps.atualizar || MI.atualizar)({ daFerramenta, agora, orcamentoMs });
+  // Reels editados aqui: a duração do vídeo deixa o painel mostrar quanto dele as pessoas assistem
+  if (a?.duravel) {
+    for (const [mid, cid] of daFerramenta) {
+      if (!String(cid || '').startsWith('vd_')) continue;
+      try { const d = (await a.conteudos.obter(conta(), cid))?.doc; const s = d?.motion?.duracao_s || d?.video?.resultado?.duracao_s; if (s) duracoes.set(mid, Number(s)); } catch { /* sem documento: sem porcentagem */ }
+    }
+  }
+  const snapshot = await (deps.atualizar || MI.atualizar)({ daFerramenta, duracoes, agora, orcamentoMs });
   let placar = null; let pontos = 0;
   if (a?.duravel) {
     placar = { ...calcular(snapshot.posts, await fichasDosPosts(snapshot.posts, a)), gerado_em: snapshot.gerado_em, parcial: !!snapshot.parcial };

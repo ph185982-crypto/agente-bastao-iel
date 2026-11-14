@@ -80,6 +80,9 @@ ICONES = [
     ('pessoa', r'client|pessoa|equipe|\btime\b|sóci|funcion|público'),
 ]
 ICONES_NOMES = ('dinheiro', 'seta', 'x', 'alvo', 'lampada', 'check', 'relogio', 'estrela', 'pergunta', 'cadeado', 'pessoa', 'grafico')
+# item de lista anunciado e explicado ao longo do vídeo ("O primeiro erro é…", "O segundo…", "Por último…")
+ORDINAL = re.compile(r'^\W*(?:e\s+)?(?:o\s+|a\s+)?(primeir[oa]|segund[oa]|terceir[oa]|quart[oa]|quint[oa]|por último|por fim|últim[oa])\b', re.I)
+NOMES_ITEM = r'(?:erro|passo|dica|ponto|segredo|coisa|regra|pilar|motivo|h[aá]bito|li[cç][aã]o|forma|maneira|item)'
 ROTULOS_CARTAO = ('LIÇÃO', 'REGRA', 'VERDADE', 'ERRO', 'SEGREDO', 'DICA')
 # ícones neon (contorno), caixa 240x240
 DESENHOS = {
@@ -227,10 +230,19 @@ def _instante_de(rotulo, pal, padrao):
     return padrao
 
 
-def planejar(frases, duracao, titulo='', broll=True, plano=None):
+def rotulo_ordinal(texto, maximo=6):
+    """'O primeiro erro é misturar as contas.' → 'Misturar as contas' (o que vem depois do marcador)."""
+    t = ORDINAL.sub('', texto or '', count=1)
+    t = re.sub(rf'^\s*{NOMES_ITEM}?\s*(?:é|foi|:|,|-|–)?\s*', '', t, flags=re.I).strip(' .,:;!?')
+    w = t.split()
+    return _sem_conjuncao(' '.join(w[:maximo]) + ('…' if len(w) > maximo else '')) if w else ''
+
+
+def planejar(frases, duracao, titulo='', broll=True, plano=None, gancho=''):
     """frases [{n0,n1,texto,palavras:[{n0,n1,w}]}] (tempo final) → blocos contíguos com layout e gráfico.
     `plano` (opcional): uma cena por frase, na mesma ordem ({tipo, titulo, busca, rotulo, destaque, itens, esquerda,
-    direita, direcao, icone}); o que o plano pede só entra se couber nas regras de tempo do formato."""
+    direita, direcao, icone, pessoa, texto}); o que o plano pede só entra se couber nas regras de tempo do formato.
+    `gancho` (opcional): 3–5 palavras que abrem o vídeo grandes, palavra a palavra, antes do título."""
     duracao = float(duracao)
     frases = sorted(frases, key=lambda f: f['n0'])
     if plano:
@@ -283,18 +295,29 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None):
             pode_broll = broll and t0 - ultimo_broll >= 16.0 and 1.5 <= dur <= 3.6 and i > 2 and prev_split
         if i == 0:
             b.update(tipo='titulo', titulo=titulo or texto)
+            g_txt = _txt(gancho, 40)
+            if g_txt and t1 - t0 >= 2.0:   # gancho grande palavra a palavra; depois entram o título e a imagem
+                b.update(gancho=g_txt, gancho_fim=round(min(t0 + 2.4, t0 + (t1 - t0) * 0.55), 3))
+                b['inset_ini'] = b['gancho_fim']
         elif i == n - 1 and (CTA.search(texto) or pt == 'fim'):
             b.update(layout='fim', tipo='fim')
-        elif lista_pendente and len(lista_pendente['itens']) < lista_pendente['n']:
-            itens = itens_da_lista(texto, lista_pendente['n'] - len(lista_pendente['itens'])) or [_sem_conjuncao(texto)]
-            b.update(tipo='lista', lista=lista_pendente, itens_novos=list(itens), ja=list(lista_pendente['itens']))
+        elif lista_pendente and len(lista_pendente['itens']) < lista_pendente['n'] and (not lista_pendente.get('ordinais') or ORDINAL.match(texto)):
+            if lista_pendente.get('ordinais'):   # "O segundo erro é…": o item é o que vem depois do marcador (ou o título do plano)
+                itens = [b.get('cabeca') or rotulo_ordinal(texto) or _sem_conjuncao(texto)]
+            else:
+                itens = itens_da_lista(texto, lista_pendente['n'] - len(lista_pendente['itens'])) or [_sem_conjuncao(texto)]
+            b.update(tipo='lista', lista=lista_pendente, itens_novos=list(itens), ja=list(lista_pendente['itens']), ordinal=bool(lista_pendente.get('ordinais')))
             lista_pendente['itens'] = lista_pendente['itens'] + list(itens)
         elif m:
             g = m.group(1).lower()
             nl = max(2, min(4, int(g) if g.isdigit() else NUM_EXT.get(g, 2)))
             lista = {'n': nl, 'titulo': b.get('cabeca') or f"{m.group(1).capitalize()} {m.group(2).lower()}", 'itens': []}
+            if len(itens_plano) >= 2:      # rótulos curtos do plano ("Acabamento impecável") no lugar da frase falada inteira
+                lista['rotulos'] = list(itens_plano)
             itens = itens_da_lista(texto, nl) if ':' in texto else []
             lista['itens'] = list(itens)            # cópias: a lista cresce nos blocos seguintes sem mexer neste
+            # itens explicados ao longo do vídeo ("O primeiro…", "O segundo…"): o resumo se monta a cada marcador
+            lista['ordinais'] = not itens and sum(1 for j in juntas[i + 1:] if ORDINAL.match(j['texto'])) >= 2
             b.update(tipo='lista', lista=lista, itens_novos=list(itens), ja=[])
             lista_pendente = lista if len(itens) < nl else None
         elif len(itens_plano) >= 2:
@@ -313,6 +336,10 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None):
         elif pt == 'frase' and len(texto.split()) <= 24:
             r = _txt(p.get('rotulo'), 12).upper()
             b.update(tipo='frase', rotulo_cartao=r if r in ROTULOS_CARTAO else None); b.pop('rotulo', None)
+        elif pt == 'pessoa' and _txt(p.get('pessoa'), 60):
+            b.update(tipo='foto', pessoa=_txt(p['pessoa'], 60))
+        elif pt == 'celular':
+            b.update(tipo='celular', busca_tela=_txt(p.get('texto') or b.get('cabeca') or texto, 40))
         elif pt == 'imagem' and broll and b.get('busca'):
             b.update(tipo='imagem'); alterna += 1
         elif pt == 'icone':
@@ -327,7 +354,7 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None):
             b.update(tipo='frase')
         else:
             b.update(tipo=('imagem' if (broll and alterna % 2 == 0) else 'icone')); alterna += 1
-        if b['tipo'] != 'lista':
+        if b['tipo'] != 'lista' and not (lista_pendente and lista_pendente.get('ordinais')):
             lista_pendente = None if b['tipo'] not in ('rosto',) else lista_pendente
         if b.get('cabeca'):
             cabecas.add(_norm(b['cabeca']))
@@ -378,7 +405,28 @@ def _marcas(b):
         out.append((a + 0.12, 'pop'))
     elif tipo == 'imagem' and b.get('rotulo'):
         out.append((a + 0.3, 'pop'))
+    elif tipo in ('foto', 'celular'):
+        out.append((a + 0.3, 'pop'))
+    if tipo == 'titulo' and b.get('gancho'):
+        out += [(round(a + 0.05 + k * PASSO_GANCHO, 3), 'impacto' if k == 0 else 'pop') for k in range(len(_linhas_gancho(b['gancho'])))]
+        out.append((b['gancho_fim'], 'whoosh'))
     return out
+
+
+PASSO_GANCHO = 0.3   # uma linha do gancho a cada 0,3 s
+
+
+def _linhas_gancho(texto):
+    """Gancho em linhas de UMA palavra, bem grandes (só artigo/preposição de 1–2 letras — 'de', 'o' — vai com a seguinte)."""
+    ws = (texto or '').split()
+    linhas, buf = [], []
+    for k, w in enumerate(ws):
+        buf.append(w)
+        if len(limpa(w)) > 2 or k == len(ws) - 1:
+            linhas.append(' '.join(buf)); buf = []
+    if buf:
+        linhas.append(' '.join(buf))
+    return linhas[:5]
 
 
 def precisa_broll(blocos):
@@ -394,6 +442,31 @@ def sem_broll(b):
         b['layout'] = 'rosto'; b['tipo'] = 'rosto'
     elif b['tipo'] == 'titulo':
         b['sem_inset'] = True
+
+
+def sem_foto(b):
+    """Foto livre da pessoa/marca não achada: vídeo de banco se o plano trouxe busca; senão, ícone."""
+    b['tipo'] = 'imagem' if b.get('busca') else 'icone'
+    b['marcas'] = _marcas(b)
+
+
+def bloco_em(blocos, t):
+    for b in blocos:
+        if b['t0'] <= t < b['t1']:
+            return b
+    return blocos[-1] if blocos else None
+
+
+def zoom_da_cena(blocos, t, base=1.0):
+    """Zoom do rosto na janela: mais perto no gancho e nas frases de ênfase (cartão de lição, número gigante)."""
+    b = bloco_em(blocos, t)
+    if not b:
+        return base
+    if b['tipo'] == 'titulo' and b.get('gancho') and t < b.get('gancho_fim', 0):
+        return 1.14
+    if b['tipo'] in ('frase', 'numero'):
+        return 1.10
+    return base
 
 
 def layout_em(blocos, t):
@@ -654,6 +727,10 @@ def graficos_bloco(b):
     ev = []
     cab = b.get('cabeca') or b.get('chave') or ''
     if tipo == 'titulo':
+        if b.get('gancho'):   # abertura: o gancho entra grande, linha a linha; depois vêm o título e a imagem
+            gf = b['gancho_fim']
+            ev += _gancho(b, a, gf)
+            a = gf
         partes = (b.get('titulo') or '').strip().rstrip('.').split()
         corte = max(1, len(partes) - 3) if len(partes) > 4 else max(1, len(partes) // 2)
         l1, l2 = ' '.join(partes[:corte]), ' '.join(partes[corte:])
@@ -683,14 +760,17 @@ def graficos_bloco(b):
                 acende = None
             ev += _ficha(a, z, 210, ys[k], k + 1, acende=acende)
             if k < len(ja):   # itens que já foram ditos ficam acesos
-                ev.append(_dlg(3, a, z, 'Sans', f"{{\\an4\\pos(325,{ys[k]})\\fs54}}" + '\\N'.join(esc(x) for x in quebrar(_curto(ja[k], 7), 54, 650))))
+                ev.append(_dlg(3, a, z, 'Sans', f"{{\\an4\\pos(325,{ys[k]})\\fs54}}" + '\\N'.join(esc(x) for x in quebrar(_curto(_rotulo_item(lista, k, ja[k]), 7), 54, 650))))
         # itens novos acendem palavra a palavra no tempo da fala (os do plano entram inteiros na hora em que são ditos)
         for j, item in enumerate(novos):
             k = len(ja) + j
             if k >= n:
                 break
             t_item = tempos[j] if j < len(tempos) else a
-            ws = [] if b.get('itens_do_plano') else _palavras_do_item(item, pal)
+            curto = (lista.get('rotulos') or [])[k] if k < len(lista.get('rotulos') or []) else None
+            ws = [] if (b.get('itens_do_plano') or curto or b.get('ordinal')) else _palavras_do_item(item, pal)
+            if curto:
+                item = curto
             if ws:
                 ev += _karaoke(b, max(a, ws[0]['n0'] - 0.05), z, 325, ys[k], 54, 650, palavras=_curto_pal(ws, 7), alinhamento=4)
             else:
@@ -730,6 +810,10 @@ def graficos_bloco(b):
         ev += _titulo_secao(b, a, z, b.get('cabeca') or ('Crescimento' if b.get('direcao') != 'desce' else 'Queda'))
         ev += _grafico(b, a, z)
         ev += _karaoke(b, a, z, W // 2, 975, _fs_texto(b['texto'], 48), 900)
+    elif tipo == 'foto':
+        ev += _foto(b, a, z)
+    elif tipo == 'celular':
+        ev += _celular(b, a, z)
     elif tipo == 'imagem':
         ev += _titulo_secao(b, a, z, cab)
         q = INSET_IMAGEM
@@ -740,6 +824,69 @@ def graficos_bloco(b):
             fs = 44; tw = int(len(tag) * fs * 0.6) + 48; tx, ty = q['x'] + 36, q['y'] + q['h'] - 100
             ev += _forma(a + 0.3, z, caixa_arredondada(tx, ty, tw, 68, 14), VERDE, camada=4, glow=False, extra='\\fad(150,0)')
             ev.append(_dlg(5, a + 0.3, z, 'Sans', f"{{\\an4\\pos({tx + 24},{ty + 34})\\fs{fs}\\c{PRETO}\\fad(150,0)}}{tag}"))
+    return ev
+
+
+def _rotulo_item(lista, k, padrao):
+    r = lista.get('rotulos') or []
+    return r[k] if k < len(r) and r[k] else padrao
+
+
+def _gancho(b, a, z):
+    """Gancho da abertura: linhas grandes (Inter Tight), uma a cada PASSO_GANCHO s com 'pop' de escala; a palavra
+    principal (a mais longa ou com número) na cor de destaque. Some rápido antes do título entrar."""
+    linhas = _linhas_gancho(b['gancho'])
+    if not linhas:
+        return []
+    fs = max(96, min(190, int(940 / (0.64 * max(len(l) for l in linhas)))))   # a linha mais longa ocupa ~940 px
+    passo = int(fs * 1.02)
+    y0 = 590 - (len(linhas) - 1) * passo // 2
+    chave = max(range(len(linhas)), key=lambda k: (bool(re.search(r'\d', linhas[k])), len(linhas[k])))
+    ev = []
+    for k, ln in enumerate(linhas):
+        ini = a + 0.05 + k * PASSO_GANCHO
+        if ini >= z - 0.1:
+            break
+        cor = f"\\c{b['acento']}" if k == chave else ''
+        ev.append(_dlg(4, ini, z, 'Grosso', f"{{\\an5\\pos({W // 2},{y0 + k * passo})\\fs{fs}{cor}\\fscx135\\fscy135\\alpha&HFF&\\t(0,90,\\alpha&H00&)\\t(0,170,\\fscx100\\fscy100)\\fad(0,160)}}{esc(ln.upper())}"))
+    return ev
+
+
+def _foto(b, a, z):
+    """Foto de uso livre de pessoa/marca famosa (Wikimedia) na moldura, com o nome numa etiqueta e o crédito da foto."""
+    q = INSET_IMAGEM
+    ev = _titulo_secao(b, a, z, b.get('cabeca') or b.get('pessoa') or '')
+    ev += _forma(a, z, caixa_arredondada(q['x'], q['y'], q['w'], q['h'], q['raio']), b['acento'], camada=2, contorno=3)
+    nome = esc(b.get('rotulo') or b.get('pessoa') or '')
+    if nome and _norm(nome) != _norm(b.get('cabeca')):
+        fs = 44; tw = int(len(nome) * fs * 0.6) + 48; tx, ty = q['x'] + 36, q['y'] + q['h'] - 100
+        ev += _forma(a + 0.3, z, caixa_arredondada(tx, ty, tw, 68, 14), VERDE, camada=4, glow=False, extra='\\fad(150,0)')
+        ev.append(_dlg(5, a + 0.3, z, 'Sans', f"{{\\an4\\pos({tx + 24},{ty + 34})\\fs{fs}\\c{PRETO}\\fad(150,0)}}{nome}"))
+    cred = esc(b.get('credito') or '')
+    if cred:   # crédito exigido pela licença da foto (CC BY / CC BY-SA)
+        ev.append(_dlg(5, a, z, 'Sans', f"{{\\an3\\pos({q['x'] + q['w'] - 24},{q['y'] + q['h'] - 16})\\fs20\\b0\\c&HFFFFFF&\\3c&H000000&\\bord2\\shad0}}{cred}"))
+    return ev
+
+
+def _celular(b, a, z):
+    """Celular desenhado com uma busca sendo digitada (lupa, texto letra a letra, cursor) e a frase na tela."""
+    x0, y0, w, h = 270, 290, 540, 740
+    cor = b['acento']
+    ev = _titulo_secao(b, a, z, b.get('cabeca') or '')
+    ev += _forma(a, z, caixa_arredondada(x0, y0, w, h, 64), BRANCO, camada=2, contorno=5, extra='\\fad(150,0)')
+    ev.append(_dlg(2, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c{BRANCO}\\bord0\\fad(150,0)\\p1}}{caixa_arredondada(x0 + w // 2 - 70, y0 + 22, 140, 26, 13)}{{\\p0}}"))
+    bx, by, bw, bh = x0 + 36, y0 + 90, w - 72, 86
+    ev += _forma(a + 0.15, z, caixa_arredondada(bx, by, bw, bh, 43), cor, camada=2, contorno=3, extra='\\fad(150,0)')
+    ev.append(_dlg(3, a + 0.15, z, 'Forma', f"{{\\pos(0,0)\\an7\\1a&HFF&\\3c{BRANCO}\\bord4\\fad(150,0)\\p1}}{circulo(bx + 44, by + 38, 15)}{{\\p0}}"))
+    ev.append(_dlg(3, a + 0.15, z, 'Forma', f"{{\\pos(0,0)\\an7\\c{BRANCO}\\bord0\\fad(150,0)\\p1}}m {bx + 54} {by + 50} l {bx + 70} {by + 66} l {bx + 64} {by + 72} l {bx + 48} {by + 56}{{\\p0}}"))
+    texto = b.get('busca_tela') or ''
+    fs = 38 if len(texto) <= 22 else 32
+    passos = max(1, min(len(texto), 14)); t_dig = a + 0.35; dur_dig = min(1.4, max(0.6, (z - a) * 0.35))
+    for k in range(1, passos + 1):   # digitando: o texto cresce em até 14 passos
+        n = int(round(len(texto) * k / passos)); ini = t_dig + dur_dig * (k - 1) / passos
+        fim = t_dig + dur_dig * k / passos if k < passos else z
+        ev.append(_dlg(4, ini, fim, 'Sans', f"{{\\an4\\pos({bx + 84},{by + bh // 2})\\fs{fs}\\b0}}{esc(texto[:n])}{'|' if k < passos else ''}"))
+    ev += _karaoke(b, a, z, W // 2, y0 + 430, _fs_texto(b['texto'], 52), w - 90)
     return ev
 
 
@@ -809,10 +956,25 @@ def ass_final(blocos, palavras, duracao):
         ini = p['n0']; fim_p = palavras[i + 1]['n0'] if i + 1 < len(palavras) else min(duracao, p['n1'] + 0.4)
         if fim_p - ini < 0.04:
             continue
-        lay = layout_em(blocos, ini + 0.01)
+        bl = bloco_em(blocos, ini + 0.01)
+        lay = bl['layout'] if bl else 'split'
         y = Y_LEGENDA.get(lay, Y_LEGENDA['split'])
-        linhas.append(_dlg(9, ini, fim_p, 'Legenda', f"{{\\an5\\pos({W // 2},{y})\\fscx92\\fscy92\\t(0,90,\\fscx100\\fscy100)}}{esc(p['w'].strip())}"))
+        cor = f"\\c{AMARELO}" if destaque_legenda(p['w'], bl) else ''
+        linhas.append(_dlg(9, ini, fim_p, 'Legenda', f"{{\\an5\\pos({W // 2},{y}){cor}\\fscx92\\fscy92\\t(0,90,\\fscx100\\fscy100)}}{esc(p['w'].strip())}"))
     return cabecalho() + '\n'.join(linhas) + '\n'
+
+
+def destaque_legenda(w, bloco):
+    """Palavra da legenda que fica colorida: número/valor/porcentagem, ou palavra do título da cena (a ideia da cena)."""
+    lw = limpa(w).lower()
+    if not lw:
+        return False
+    if re.search(r'\d', lw) or '$' in (w or '') or '%' in (w or ''):
+        return True
+    if bloco and bloco.get('cabeca'):
+        ideia = {limpa(x).lower() for x in bloco['cabeca'].split() if len(limpa(x)) >= 4 and limpa(x).lower() not in STOP}
+        return lw in ideia
+    return False
 
 
 def trocas(blocos):
