@@ -33,6 +33,7 @@ function iaFalsa({ roteiro = BOM, ret = NOTAS_RET, ver = NOTAS_VER } = {}) {
   const chamadas = [];
   const pedirJson = async ({ sistema, pago, etapa }) => {
     chamadas.push({ etapa, pago });
+    if (/FISCAL DE QUALIDADE/.test(sistema)) { const r1 = typeof ret === 'function' ? ret(chamadas) : ret; const v1 = typeof ver === 'function' ? ver(chamadas) : ver; return { dados: { notas: { ...r1.notas, ...v1.notas }, problemas: [...(r1.problemas || []), ...(v1.problemas || [])] }, llm: { provider: 'teste' } }; }
     if (/FISCAL DE RETENÇÃO/.test(sistema)) return { dados: typeof ret === 'function' ? ret(chamadas) : ret, llm: { provider: 'teste' } };
     if (/FISCAL DE VERDADE/.test(sistema)) return { dados: typeof ver === 'function' ? ver(chamadas) : ver, llm: { provider: 'teste' } };
     return { dados: typeof roteiro === 'function' ? roteiro(chamadas, sistema) : roteiro, llm: { provider: 'teste' } };
@@ -80,13 +81,13 @@ test('escolherFormato: usa formatos que a fonte sustenta e prefere o menos usado
   assert.strictEqual(h, 'F5');
 });
 
-test('avancar: escreve, passa nos dois fiscais e salva o roteiro na aba Vídeos (IA gratuita apenas)', async () => {
+test('avancar: escreve, passa no fiscal e salva o roteiro na aba Vídeos (IA gratuita apenas)', async () => {
   novo();
   const ia = iaFalsa(); const salvos = [];
   const est = {};
   const r = await R.avancar(est, { agora: AGORA, dia: DIA, meta: 1, orcamentoMs: 600000, deps: { pedirJson: ia.pedirJson, teses: async () => ({ itens: [TESE], total: 1 }), historias: async () => [], noticias: [], salvar: async (c) => { salvos.push(c); return c; } } });
   assert.strictEqual(r.salvos.length, 1);
-  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'fiscal_retencao', 'fiscal_verdade']);
+  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'fiscal_roteiro'], 'um fiscal só: 2 chamadas por roteiro');
   assert.ok(ia.chamadas.every((c) => c.pago === 'nunca'), 'nenhuma chamada paga');
   const c = salvos[0];
   assert.ok(c.id.startsWith('vd_')); assert.strictEqual(c.video.estado, 'roteiro');
@@ -107,8 +108,8 @@ test('avancar: reprovado reescreve uma vez com o parecer; reprovado de novo é d
   const r = await R.avancar(est, { agora: AGORA, dia: DIA, meta: 1, orcamentoMs: 600000, deps: { pedirJson: ia.pedirJson, teses: async () => [TESE], historias: async () => [], noticias: [], salvar: async (x) => x } });
   assert.strictEqual(r.salvos.length, 0);
   assert.strictEqual(est.roteiros.descartados, 1);
-  // retenção derrubou (eliminatório < 5): o fiscal de verdade nem é chamado; reescreve uma vez.
-  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'fiscal_retencao', 'roteiro_video', 'fiscal_retencao']);
+  // reprovado: reescreve uma vez e o fiscal confere de novo; reprovado de novo, descarta.
+  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'fiscal_roteiro', 'roteiro_video', 'fiscal_roteiro']);
 });
 
 test('avancar: número inventado reprova no código sem gastar os fiscais de IA', async () => {
@@ -117,7 +118,7 @@ test('avancar: número inventado reprova no código sem gastar os fiscais de IA'
   let n = 0; const ia = iaFalsa({ roteiro: () => (n++ === 0 ? inventado : BOM) });
   const salvos = []; const est = {};
   await R.avancar(est, { agora: AGORA, dia: DIA, meta: 1, orcamentoMs: 600000, deps: { pedirJson: ia.pedirJson, teses: async () => [TESE], historias: async () => [], noticias: [], salvar: async (c) => { salvos.push(c); return c; } } });
-  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'roteiro_video', 'fiscal_retencao', 'fiscal_verdade']);
+  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'roteiro_video', 'fiscal_roteiro']);
   assert.strictEqual(salvos.length, 1); assert.strictEqual(salvos[0].video.roteiro.tentativas, 2);
 });
 
@@ -152,10 +153,10 @@ test('piloto: rodada chama a fábrica de roteiros e o resumo do dia mostra a met
   let chamou = null;
   await Pi.salvarConfig({ ativo: true });
   const r = await Pi.rodada({ agora: AGORA, orcamentoMs: 60000, deps: { semLimpeza: true, semHistorias: true, descobrir: async () => ({ pautas: [] }), roteiros: async (est, o) => { chamou = o; est.roteiros = { dia: o.dia, feitos: 1, descartados: 0, comecados: 1, formatos: {}, usadas: [], rascunho: null }; return { salvos: [{ id: 'vd_x' }], descartados: [], fases: ['x'] }; } } });
-  assert.ok(chamou, 'a rodada avançou os roteiros'); assert.strictEqual(chamou.meta, 10);
+  assert.ok(chamou, 'a rodada avançou os roteiros'); assert.strictEqual(chamou.meta, 5);
   assert.strictEqual(r.roteiros.salvos, 1);
   const res = await Pi.resumoDoDia({ agora: AGORA });
-  assert.strictEqual(res.roteiros.meta, 10); assert.strictEqual(res.roteiros.feitos, 1);
+  assert.strictEqual(res.roteiros.meta, 5); assert.strictEqual(res.roteiros.feitos, 1);
   assert.throws(() => Pi.validar({ roteiros_dia: 40 }));
   void ACCOUNT;
 });
@@ -164,4 +165,12 @@ test('pausa: limite por minuto volta em 4 min; cota do dia em 45', () => {
   assert.strictEqual(R.pausaMin(new Error('429 Rate limit reached on tokens per minute (TPM): Limit 8000')), 4);
   assert.strictEqual(R.pausaMin(new Error('429 Rate limit reached on tokens per day (TPD)')), 45);
   assert.strictEqual(R.pausaMin(new Error('429 rate limit')), 45);
+});
+
+test('piloto desligado (sem carrossel do zero): os roteiros continuam rodando', async () => {
+  novo();
+  await Pi.salvarConfig({ ativo: false });
+  let chamou = false;
+  const r = await Pi.rodada({ agora: AGORA, orcamentoMs: 60000, deps: { semLimpeza: true, roteiros: async (est, o) => { chamou = true; est.roteiros = { dia: o.dia, feitos: 0, descartados: 0, comecados: 1, formatos: {}, usadas: [], rascunho: null }; return { salvos: [], descartados: [], fases: ['x'] }; } } });
+  assert.ok(chamou); assert.match(r.motivo, /roteiros/);
 });

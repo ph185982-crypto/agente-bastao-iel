@@ -134,7 +134,9 @@ async function reciclarReel(item, { deps = {} } = {}) {
   const r = await roteiroReel(item, { deps });
   const fonte = fonteDe(item);
   const c = M.novoConteudo({ titulo: (r.titulo || `Reel: ${item.tema || 'tese em alta'}`).slice(0, 140), formato: 'reels', origem: { tipo: 'reciclagem', reciclado_de: fonte } });
-  c.video = { estado: 'roteiro', roteiro_texto: r.roteiro_texto, titulo: r.titulo || null, publico: r.publico || null, duracao_estimada_s: r.duracao_estimada_s, palavras: r.palavras, mente: r.mente, vicios: r.vicios, tentativas: r.tentativa, origem: 'reciclagem', gerado_em: new Date().toISOString() };
+  c.id = `vd_${require('crypto').randomBytes(8).toString('hex')}`; // prefixo dos vídeos: aparece na aba Vídeos em "Roteiros para gravar"
+  c.studio = { estado: 'video', etapa: 'roteiro' };
+  c.video = { worker: { tentativas: 0 }, log: [], estado: 'roteiro', roteiro_texto: r.roteiro_texto, titulo: r.titulo || null, publico: r.publico || null, duracao_estimada_s: r.duracao_estimada_s, palavras: r.palavras, mente: r.mente, vicios: r.vicios, tentativas: r.tentativa, origem: 'reciclagem', gerado_em: new Date().toISOString() };
   c.reciclagem = { origem: 'reciclagem', formato: 'reel', reciclado_de: fonte };
   M.registrar(c, 'sistema', 'roteiro', `Roteiro de Reel reciclado da tese "${item.tema || ''}" (mente ${r.mente}, ${r.tentativa} tentativa${r.tentativa > 1 ? 's' : ''})`);
   await (deps.salvarConteudo || salvarConteudo)(c);
