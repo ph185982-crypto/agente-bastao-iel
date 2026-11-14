@@ -29,13 +29,15 @@ async function modelosDe(m, f) {
 const disponivel = () => MODELOS.some((m) => process.env[m.env]);
 
 const SISTEMA = (handle) => `Você olha UMA imagem de um post de Instagram e devolve o texto que aparece nela, para a imagem ser traduzida para o português do Brasil mantendo o desenho original. Você NÃO precisa dizer onde fica cada texto (o sistema já sabe): só o texto certo e a tradução.
+"tipo_pagina": "texto" quando a página é feita de TEXTO sobre fundo liso (tweet, frase, citação, texto escrito à mão, carrossel só de texto, com ou sem a foto/nome do autor no topo); "imagem" quando tem desenho, ilustração, gráfico, tabela, foto ou print que faz parte do conteúdo.
 "textos": cada trecho de texto separado da imagem (título, rótulo, parágrafo, balão), em ordem de leitura:
+- "negrito": true se no original é título, destaque ou está em negrito; false se é texto corrido.
 - "original": EXATAMENTE como aparece. Confira número escrito à mão com atenção (1 e 4, 7 e 1, 0 e 6).
 - "traducao": tradução natural para o português do Brasil, do MESMO tamanho ou mais curta (é texto de imagem). Números e valores iguais (só a pontuação muda: 1,000 → 1.000). Onomatopeia (swish, boom) e nome próprio ficam iguais.
-Não inclua nos "textos" a assinatura do autor.
+Não inclua nos "textos" a assinatura do autor, nem "swipe/arraste", contador de slide ou pedido para seguir.
 "assinaturas": tudo que identifica o autor ou outra marca e precisa SAIR da imagem, inclusive o CABEÇALHO estilo tweet (foto redonda + nome + @ acima do texto: é UMA assinatura só): @${handle || 'autor'}, nome do autor, logo, foto/rosto usado como selo, marca d'água, site, "follow/siga", contador de slide, "swipe/arraste". Para cada uma: "texto" (o que está escrito, ou "logo"/"rosto") e "posicao": uma de topo-esquerda, topo-centro, topo-direita, meio-esquerda, meio-centro, meio-direita, base-esquerda, base-centro, base-direita.
 "legenda": a tradução da LEGENDA ORIGINAL que vier na mensagem (ou ""), sem @ do autor, sem pedido para seguir o autor, sem link dele.
-Responda APENAS JSON: {"textos":[{"original":"","traducao":""}],"assinaturas":[{"texto":"","posicao":"base-centro"}],"legenda":""}`;
+Responda APENAS JSON: {"tipo_pagina":"texto","textos":[{"original":"","traducao":"","negrito":false}],"assinaturas":[{"texto":"","posicao":"base-centro"}],"legenda":""}`;
 
 async function chamar({ imagem, handle, legenda, fetch: f = globalThis.fetch, prazoMs = 30000 }) {
   const jpg = await sharp(imagem).rotate().resize({ width: 1024, height: 1280, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer();

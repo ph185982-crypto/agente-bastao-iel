@@ -210,3 +210,18 @@ test('"gostou do conteúdo? me siga" que a leitura achou sai sempre, mesmo sem a
   assert.strictEqual(blocos.length, 1); assert.strictEqual(blocos[0].apagar, true);
   assert.ok(blocos[0].x1 > 922 + 60, 'pega o ícone ao lado');
 });
+
+test('página só de texto: a cópia refaz a página no nosso padrão (branca, nossa fonte, nosso @), sem nada do original', async () => {
+  novo();
+  const base = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#f0e0d0' } }).jpeg().toBuffer();
+  await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, tipo: 'imagem', midias: ['https://cdn.test/a.jpg'], legenda: 'x' });
+  const ocrVazia = async () => ({ text: '', linhas: [], trechos: [] });
+  const visao = async () => ({ provedor: 'teste', dados: { tipo_pagina: 'texto', textos: [{ original: 'I regret to inform you', traducao: 'Lamento informar', negrito: true }], assinaturas: [], legenda: 'x' } });
+  const c = await CL.iniciar(ITEM.id); let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps: { fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => base }), ocr: ocrVazia, visao } }); if (r.concluido) break; }
+  assert.strictEqual(r.estado, 'concluido', JSON.stringify(r)); assert.strictEqual(r.aviso, null);
+  const doc = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id)).doc; const v = M.versaoAtiva(doc);
+  assert.match(v.slides[0].imagem_id, /_pt$/); assert.strictEqual(doc.clone.slides[0].refeita, true);
+  const img = await arm.armazem().arquivos.obter(ACCOUNT.ig_id, `img:${v.slides[0].imagem_id}`);
+  const { data } = await sharp(Buffer.from(img.dados)).raw().toBuffer({ resolveWithObject: true });
+  assert.ok(data[0] > 245 && data[1] > 245 && data[2] > 245, 'fundo branco, não a cor do original');
+});
