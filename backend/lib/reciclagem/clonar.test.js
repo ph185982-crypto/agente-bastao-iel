@@ -193,3 +193,13 @@ test('página estilo tweet: tira o cabeçalho do autor (foto + nome), centraliza
   let escuro = 0; for (let x = 380; x < 700; x += 2) for (let y = 1270; y < 1310; y += 2) if (px(x, y)[0] < 120) escuro++;
   assert.ok(escuro > 20, 'o nosso @ está embaixo');
 });
+
+test('bloco da leitura com várias frases que a IA separou vira um bloco só, uma frase por linha', () => {
+  const V = require('./visaoTexto');
+  const { blocos } = V.blocosDaVisao({ textos: [{ original: 'A entrega atrasa.', traducao: 'A entrega atrasa.' }, { original: 'O cliente reclama.', traducao: 'O cliente reclama.' }, { original: 'O problema aparece.', traducao: 'O problema aparece.' }] },
+    { trechos: [{ texto: 'A entrega atrasa. O cliente reclama. O problema aparece.', x0: 80, y0: 541, x1: 734, y1: 850, altura_linha: 45, n_linhas: 3 }] });
+  assert.strictEqual(blocos.length, 1);
+  assert.strictEqual(blocos[0].novo, 'A entrega atrasa.\nO cliente reclama.\nO problema aparece.');
+  const TT = require('./trocaTexto');
+  assert.strictEqual(TT.quebrar({ getAdvanceWidth: (t, n) => t.length * n * 0.5 }, blocos[0].novo, 40, 2000).length, 3);
+});

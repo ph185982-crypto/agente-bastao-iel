@@ -55,19 +55,23 @@ function cores(raw, info, b) {
 }
 
 function quebrar(f, texto, tam, largura) {
-  const out = []; let atual = '';
-  for (const w of String(texto).split(/\s+/).filter(Boolean)) {
-    const teste = atual ? `${atual} ${w}` : w;
-    if (!atual || f.getAdvanceWidth(teste, tam) <= largura) atual = teste; else { out.push(atual); atual = w; }
+  const out = [];
+  // "\n" no texto é quebra obrigatória (frases que eram linhas separadas no original).
+  for (const parte of String(texto).split('\n')) {
+    let atual = '';
+    for (const w of parte.split(/\s+/).filter(Boolean)) {
+      const teste = atual ? `${atual} ${w}` : w;
+      if (!atual || f.getAdvanceWidth(teste, tam) <= largura) atual = teste; else { out.push(atual); atual = w; }
+    }
+    if (atual) out.push(atual);
   }
-  if (atual) out.push(atual);
   return out;
 }
 
 // Encaixa a tradução na caixa original: mesmo tamanho de letra, encolhendo até caber (mínimo 55%).
 function diagramar(b, texto, info) {
   // Peso pelo original: tinta densa = negrito (medido: negrito ~0,21, regular ~0,09); sem medida, pelo tamanho da letra.
-  const negrito = b.densidade != null ? b.densidade > 0.15 : (b.altura_linha >= 38 || b.titulo);
+  const negrito = b.traco != null ? b.traco > 0.115 : (b.altura_linha >= 38 || b.titulo);
   const f = fonte(negrito ? 'negrito' : 'normal');
   const centrado = Math.abs(b.x0 - (info.width - b.x1)) < info.width * 0.06 && b.x0 > info.width * 0.06; // margens iguais dos dois lados
   // Largura disponível: a do original, podendo crescer até 12% (texto em português costuma ser mais longo), sem sair da imagem.
@@ -121,7 +125,8 @@ function acharSelo(raw, info, posicao, protegidas = []) {
   const [v, h] = String(posicao).split('-');
   const W = info.width; const H = info.height;
   const ry = v === 'topo' ? [0, 0.22] : v === 'base' ? [0.78, 1] : [0.35, 0.65];
-  const rx = h === 'esquerda' ? [0, 0.62] : h === 'direita' ? [0.38, 1] : [0.2, 0.8]; // cabeçalho (foto + nome + @) costuma passar da metade
+  // Topo e base: a faixa inteira (cabeçalho com foto + nome + @ atravessa a página); o lado só escolhe por onde começar.
+  const rx = v !== 'meio' ? [0, 1] : h === 'esquerda' ? [0, 0.62] : h === 'direita' ? [0.38, 1] : [0.2, 0.8];
   const R = { x0: Math.round(W * rx[0]), x1: Math.round(W * rx[1]) - 1, y0: Math.round(H * ry[0]), y1: Math.round(H * ry[1]) - 1 };
   const borda = [];
   for (let x = R.x0; x <= R.x1; x += 3) borda.push(pixel(raw, info, x, R.y0), pixel(raw, info, x, R.y1));
@@ -179,9 +184,13 @@ function svgTroca(blocos, info, raw) {
   for (const b of blocos) {
     if (b.apagar || !b.novo || (!b.visao && !ehTexto(b))) continue;
     const { fundo, pad } = cores(raw, info, b); const corTexto = corDaMarca(fundo); // nunca a cor do post original
-    let n = 0; let t = 0; const passo = Math.max(1, Math.round((b.x1 - b.x0) / 200));
-    for (let y = Math.max(0, b.y0); y <= Math.min(info.height - 1, b.y1); y += passo) for (let x = Math.max(0, b.x0); x <= Math.min(info.width - 1, b.x1); x += passo) { t++; if (dist(pixel(raw, info, x, y), fundo) > 90) n++; }
-    const d = diagramar({ ...b, densidade: t ? n / t : null }, b.novo, info);
+    // Negrito ou regular pela espessura do traço do original: mediana das corridas horizontais de tinta ÷ altura da linha
+    // (medido nos posts reais: regular ≈ 0,08–0,09; negrito ≈ 0,14).
+    const corridas = [];
+    for (let y = Math.max(0, b.y0); y <= Math.min(info.height - 1, b.y1); y++) { let r = 0; for (let x = Math.max(0, b.x0); x <= Math.min(info.width - 1, b.x1); x++) { if (dist(pixel(raw, info, x, y), fundo) > 90) r++; else { if (r) corridas.push(r); r = 0; } } }
+    corridas.sort((p1, p2) => p1 - p2);
+    const traco = corridas.length >= 20 && b.altura_linha ? corridas[Math.floor(corridas.length / 2)] / b.altura_linha : null;
+    const d = diagramar({ ...b, traco }, b.novo, info);
     const alto = d.linhas.length * d.tam * 1.18;
     // Página de um texto só, sem o cabeçalho do autor: o texto vai para o meio da página (fica só a página branca com ele).
     const unico = blocos.filter((x) => !x.apagar && x.novo).length === 1 && blocos.some((x) => x.apagar && x.posicao && !x.posicao.startsWith('base'));
