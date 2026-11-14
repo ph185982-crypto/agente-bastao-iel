@@ -222,6 +222,35 @@ function svgAssinatura(raw, info, handle) {
   return `<path d="${f.getPath(handle, x, base, tam).toPathData(2)}" fill="${hex(cor)}" opacity="0.85"/>`;
 }
 
+// Página de texto refeita no nosso padrão (pedido do Pedro): fundo branco, texto traduzido em Inter (negrito onde o original
+// era título/destaque), alinhado à esquerda e centralizado na altura, e o nosso @ embaixo. Sem nada do autor.
+async function paginaTexto(paragrafos, { assinatura = null, largura = W45, altura = H45 } = {}) {
+  const lista = (paragrafos || []).map((p) => ({ texto: String(p.texto || '').trim(), negrito: !!p.negrito })).filter((p) => p.texto);
+  const M = 96; const larg = largura - 2 * M; const util = altura - 2 * 150;
+  let tam = 64; let medida = null;
+  for (; tam >= 26; tam -= 2) {
+    let h = 0; const linhas = [];
+    for (const [i, p] of lista.entries()) {
+      const t = p.negrito ? Math.round(tam * 1.08) : tam;
+      const ls = quebrar(fonte(p.negrito ? 'negrito' : 'normal'), p.texto, t, larg);
+      linhas.push({ ls, t, negrito: p.negrito }); h += ls.length * t * 1.28 + (i ? tam * 0.85 : 0);
+    }
+    medida = { linhas, h };
+    if (h <= util) break;
+  }
+  let y = (altura - medida.h) / 2; let svg = `<rect width="${largura}" height="${altura}" fill="#FFFFFF"/>`;
+  for (const [i, bl] of medida.linhas.entries()) {
+    if (i) y += tam * 0.85;
+    const f = fonte(bl.negrito ? 'negrito' : 'normal');
+    for (const l of bl.ls) { y += bl.t * 1.28; svg += `<path d="${f.getPath(l, M, y - bl.t * 0.3, bl.t).toPathData(2)}" fill="${hex(MARCA.escuro)}"/>`; }
+  }
+  if (assinatura) {
+    const f = fonte('negrito'); const t = Math.round(altura * 0.024); const w = f.getAdvanceWidth(assinatura, t);
+    svg += `<path d="${f.getPath(assinatura, (largura - w) / 2, altura - Math.round(altura * 0.035), t).toPathData(2)}" fill="${hex(MARCA.escuro)}" opacity="0.85"/>`;
+  }
+  return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${largura}" height="${altura}">${svg}</svg>`)).flatten({ background: '#FFFFFF' }).jpeg({ quality: 92 }).toBuffer();
+}
+
 async function substituir(buf, blocos, { assinatura = null } = {}) {
   const img = sharp(buf).rotate();
   const { data: raw, info } = await img.clone().removeAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -251,4 +280,4 @@ async function encaixar45(buf) {
   return s.resize(W45, H45, { fit: 'contain', background: { r: fundo[0], g: fundo[1], b: fundo[2] } }).flatten({ background: { r: fundo[0], g: fundo[1], b: fundo[2] } }).jpeg({ quality: 90 }).toBuffer();
 }
 
-module.exports = { corDaMarca, MARCA, acharSelo, refinarApagar, ehTexto, cores, quebrar, diagramar, substituir, encaixar45 };
+module.exports = { paginaTexto, corDaMarca, MARCA, acharSelo, refinarApagar, ehTexto, cores, quebrar, diagramar, substituir, encaixar45 };

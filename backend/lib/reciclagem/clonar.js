@@ -210,11 +210,17 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
           while (cl.visao.length < cl.n && resta() > 14000) {
             const i = cl.visao.length; const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`);
             const r = await (deps.visao || Visao.chamar)({ imagem: Buffer.from(arq.dados), handle, legenda: i === 0 ? cl.legenda_original : null, prazoMs: Math.min(30000, resta() - 9000) });
-            cl.visao.push({ textos: r.dados.textos || [], assinaturas: r.dados.assinaturas || [], legenda: String(r.dados.legenda || '').trim(), provedor: r.provedor || null, modelo: r.modelo || null });
+            cl.visao.push({ tipo_pagina: r.dados.tipo_pagina === 'texto' ? 'texto' : 'imagem', textos: r.dados.textos || [], assinaturas: r.dados.assinaturas || [], legenda: String(r.dados.legenda || '').trim(), provedor: r.provedor || null, modelo: r.modelo || null });
           }
           if (cl.visao.length < cl.n) break;
           const slides = [];
           for (const [i, s] of cl.slides.entries()) {
+            // Página só de texto: refeita no nosso padrão (página branca, nossa fonte, nosso @), sem depender da leitura das caixas.
+            const textosPt = (cl.visao[i].textos || []).map((t) => ({ texto: String(t.traducao || t.original || '').trim(), negrito: !!t.negrito })).filter((t) => t.texto);
+            if (cl.visao[i].tipo_pagina === 'texto' && textosPt.length) {
+              slides.push({ titulo: textosPt[0].texto.slice(0, 160), texto: textosPt.slice(1).map((t) => t.texto).join(' ').slice(0, 700), blocos: [], pagina: textosPt });
+              continue;
+            }
             const { blocos, faltando } = Visao.blocosDaVisao({ textos: cl.visao[i].textos, assinaturas: cl.visao[i].assinaturas }, { trechos: s.paragrafos || [] });
             if (faltando.length) cl.faltando = [...(cl.faltando || []), ...faltando.map((f) => `slide ${i + 1}: "${f.slice(0, 60)}"`)];
             const textos = blocos.filter((b) => b.novo).map((b) => b.novo);
@@ -229,8 +235,13 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
         if (cl.traducao.fiel) {
           for (const [i, t] of cl.traducao.slides.entries()) {
             // Toda página da cópia: tira a assinatura do autor, troca o texto e põe o nosso @ embaixo.
+            const handle = require('../account').ACCOUNT.handle;
+            if (t.pagina) {
+              const pt_id = `clone_${c.id}_${i}_pt`; await a.arquivos.salvar(conta(), `img:${pt_id}`, await TT.paginaTexto(t.pagina, { assinatura: handle }), 'image/jpeg');
+              cl.slides[i].pt_id = pt_id; cl.slides[i].refeita = true; continue;
+            }
             const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`); if (!arq) continue;
-            const { buffer, trocados } = await TT.substituir(Buffer.from(arq.dados), t.blocos, { assinatura: require('../account').ACCOUNT.handle });
+            const { buffer, trocados } = await TT.substituir(Buffer.from(arq.dados), t.blocos, { assinatura: handle });
             const pt_id = `clone_${c.id}_${i}_pt`; await a.arquivos.salvar(conta(), `img:${pt_id}`, await TT.encaixar45(buffer), 'image/jpeg');
             cl.slides[i].pt_id = pt_id; cl.slides[i].trocados = trocados.length;
           }
