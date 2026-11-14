@@ -16,6 +16,11 @@ test('próximo horário: depois de agora + 10 min, pulando ocupados, e vira o di
   assert.strictEqual(Pi.proximoHorario(cfg, [], SP('2026-10-29', '08:55')), new Date(SP('2026-10-29', '12:30')).toISOString());
   assert.strictEqual(Pi.proximoHorario(cfg, [new Date(SP('2026-10-29', '12:30')).toISOString()], SP('2026-10-29', '10:00')), new Date(SP('2026-10-29', '20:00')).toISOString());
   assert.strictEqual(Pi.proximoHorario(cfg, [], SP('2026-10-29', '21:00')), new Date(SP('2026-10-30', '09:00')).toISOString());
+  // Grade do dia toda ocupada: sem limite diário, entra num horário extra do mesmo dia (não empurra para amanhã).
+  const cheia = cfg.horarios.map((h) => new Date(SP('2026-10-29', h)).toISOString());
+  const extra = Pi.proximoHorario(cfg, cheia, SP('2026-10-29', '08:00'));
+  assert.strictEqual(extra.slice(0, 10), '2026-10-29');
+  assert.ok(cheia.every((o) => Math.abs(Date.parse(o) - Date.parse(extra)) >= 25 * 60000));
 });
 
 test('configuração valida horários e limites', async () => {
