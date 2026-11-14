@@ -695,6 +695,23 @@ class Pedido15NovParte2(unittest.TestCase):
         D.sem_foto(foto)                                                    # sem foto livre: vídeo de banco (havia busca)
         self.assertEqual(foto['tipo'], 'imagem')
 
+    def test_nome_de_pessoa_nunca_em_foto_de_banco(self):
+        import lib_destrava as D
+        self.assertTrue(D.nome_proprio('Lele Sadoughi', 'Lele Sadoughi começou a marca de joias dela do zero.'))
+        self.assertFalse(D.nome_proprio('Designer americana', 'Uma designer americana provou isso na prática.'))
+        self.assertFalse(D.nome_proprio('Do zero', 'Lele Sadoughi começou a marca de joias dela do zero.'))
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'Lele Sadoughi começou a marca de joias dela do zero.', 'Fim aqui.'])
+        # produção (14/11): a IA pôs a foto de banco de uma mulher qualquer com o título "Lele Sadoughi"
+        b = D.planejar(frases, dur, 'X', broll=True, plano=[{}, {'tipo': 'imagem', 'titulo': 'Lele Sadoughi', 'busca': 'jewelry woman', 'rotulo': 'Lele Sadoughi'}, {}])
+        img = [x for x in b if x['tipo'] == 'imagem'][0]
+        self.assertNotIn('Lele', img.get('cabeca', '')); self.assertNotIn('rotulo', img)
+        # foto livre não achada → vídeo de banco: o nome sai do título
+        b2 = D.planejar(frases, dur, 'X', broll=True, plano=[{}, {'tipo': 'pessoa', 'titulo': 'Lele Sadoughi', 'pessoa': 'Lele Sadoughi', 'busca': 'jewelry workshop'}, {}])
+        foto = [x for x in b2 if x['tipo'] == 'foto'][0]
+        self.assertEqual(foto['cabeca'], 'Lele Sadoughi')                 # na foto livre DELA, o nome vai
+        D.sem_foto(foto)
+        self.assertEqual(foto['tipo'], 'imagem'); self.assertNotIn('Lele', foto.get('cabeca', ''))
+
     def test_legenda_destaca_numero_e_ideia_da_cena(self):
         import lib_destrava as D
         bl = {'cabeca': 'Lucro paga tudo'}

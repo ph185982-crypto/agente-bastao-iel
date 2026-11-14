@@ -230,6 +230,28 @@ def _instante_de(rotulo, pal, padrao):
     return padrao
 
 
+def nome_proprio(rotulo, texto):
+    """'Lele Sadoughi' (nome de gente/marca citado na frase): todas as palavras do rótulo aparecem com MAIÚSCULA na
+    frase e pelo menos uma não é a 1ª palavra dela. 'Designer americana' não é ('designer' está minúsculo na frase)."""
+    ws = [w for w in (rotulo or '').split() if limpa(w)]
+    if not ws or not all(w[:1].isupper() for w in ws) or all(limpa(w).lower() in STOP for w in ws):
+        return False
+    frase = (texto or '').split()
+    if not all(any(limpa(f) == limpa(w) for f in frase) for w in ws):
+        return False
+    return any(limpa(f) == limpa(w) for f in frase[1:] for w in ws)
+
+
+def _sem_nome_em_foto_de_banco(b):
+    """Foto/vídeo de BANCO não é da pessoa citada: o nome dela não vai como título nem etiqueta (enganaria quem vê)."""
+    if b.get('tipo') not in ('imagem', 'broll', 'titulo'):
+        return
+    if b.get('cabeca') and nome_proprio(b['cabeca'], b.get('texto')):
+        b['cabeca'] = palavra_chave(b.get('texto')) or ''
+    if b.get('rotulo') and nome_proprio(b['rotulo'], b.get('texto')):
+        b.pop('rotulo', None)
+
+
 def rotulo_ordinal(texto, maximo=6):
     """'O primeiro erro é misturar as contas.' → 'Misturar as contas' (o que vem depois do marcador)."""
     t = ORDINAL.sub('', texto or '', count=1)
@@ -373,6 +395,7 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None, gancho=''):
             blocos.append({'t0': ini, 't1': duracao, 'texto': '', 'palavras': [], 'layout': 'fim', 'tipo': 'fim', 'sem_chamada': True,
                            'acento': ROSA, 'chave': '', 'icone': 'estrela'})
     for b in blocos:
+        _sem_nome_em_foto_de_banco(b)
         b['marcas'] = _marcas(b)
     return blocos
 
@@ -447,6 +470,10 @@ def sem_broll(b):
 def sem_foto(b):
     """Foto livre da pessoa/marca não achada: vídeo de banco se o plano trouxe busca; senão, ícone."""
     b['tipo'] = 'imagem' if b.get('busca') else 'icone'
+    if b['tipo'] == 'imagem':
+        b.pop('rotulo', None)
+        if b.get('cabeca') and (nome_proprio(b['cabeca'], b.get('texto')) or _norm(b['cabeca']) == _norm(b.get('pessoa'))):
+            b['cabeca'] = palavra_chave(b.get('texto')) or ''
     b['marcas'] = _marcas(b)
 
 
