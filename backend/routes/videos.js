@@ -105,6 +105,10 @@ router.post('/:id/enviado', limita({ max: 20, janelaMs: 60000, nome: 'videos-env
 router.post('/:id/refazer', limita({ max: 10, janelaMs: 60000, nome: 'videos-refazer' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.refazer(idDe(req), { estilo: b.estilo, opcoes: b.opcoes }); res.json(V.resumo(c)); } catch (e) { erro(res, e); }
 });
+// O vídeo pronto vira carrossel (mesmas ideias, nosso formato, sem IA), só quando o Pedro toca no botão.
+router.post('/:id/carrossel', limita({ max: 6, janelaMs: 60000, nome: 'videos-carrossel' }), async (req, res) => {
+  try { res.json(await require('../lib/videos/carrossel').carrosselDoVideo(idDe(req))); } catch (e) { erro(res, e); }
+});
 router.delete('/:id', limita({ max: 10, janelaMs: 60000, nome: 'videos-apagar' }), async (req, res) => {
   try { res.json(await V.apagar(idDe(req))); } catch (e) { erro(res, e); }
 });

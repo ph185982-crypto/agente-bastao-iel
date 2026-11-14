@@ -622,5 +622,98 @@ class Pedido15Nov(unittest.TestCase):
         self.assertTrue(all(t2 - t1 >= 0.25 for (t1, _), (t2, _) in zip(ev, ev[1:])))   # nada encavalado
 
 
+
+class Pedido15NovParte2(unittest.TestCase):
+    """Segunda leva de 15/11: gancho animado, resumo que se monta, legenda com destaque, zoom na ênfase, foto livre,
+    celular, rótulos curtos da lista e trilha com clima."""
+    def _frases(self, textos):
+        import lib_destrava as D
+        pal, t = [], 0.3
+        for tx in textos:
+            for w in tx.split():
+                pal.append({'n0': round(t, 3), 'n1': round(t + 0.3, 3), 'w': w}); t += 0.36
+            t += 0.3
+        return D.frases_por_pontuacao(pal), pal, t
+
+    def test_gancho_abre_grande_e_a_imagem_do_titulo_entra_depois(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Você não precisa de investidor milionário para criar uma marca gigante.', 'Uma designer provou isso.',
+                                         'Quem manda no estoque manda na empresa.'])
+        b = D.planejar(frases, dur, 'Marca forte', broll=True, gancho='Sem investidor milionário')
+        t = b[0]
+        self.assertEqual(t['gancho'], 'Sem investidor milionário')
+        self.assertGreater(t['gancho_fim'], t['t0']); self.assertEqual(t['inset_ini'], t['gancho_fim'])
+        self.assertEqual(D._linhas_gancho('Sem investidor de verdade'), ['Sem', 'investidor', 'de verdade'])
+        g = D.ass_graficos(b)
+        self.assertIn('INVESTIDOR', g)                                  # gancho em caixa alta, uma palavra por linha
+        self.assertIn('impacto', [k for _, k in t['marcas']])
+        self.assertAlmostEqual(D.zoom_da_cena(b, t['t0'] + 0.5), 1.14)   # rosto mais perto no gancho
+
+    def test_resumo_se_monta_com_marcadores(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases([
+            'Abertura do vídeo sobre erros.', 'Existem três erros que quebram empresas.',
+            'O primeiro erro é misturar as contas.', 'Isso acontece porque o dono paga tudo do mesmo caixa.',
+            'O segundo erro é não ter reserva.', 'Sem reserva qualquer mês ruim vira crise.',
+            'O terceiro erro é crescer no cartão.', 'Fecha aqui com a ideia final.'])
+        b = D.planejar(frases, dur, 'Erros', broll=False)
+        listas = [x for x in b if x['tipo'] == 'lista']
+        self.assertEqual(len(listas), 4)                                 # anúncio + 3 marcadores
+        self.assertEqual([x['itens_novos'] for x in listas[1:]], [['Misturar as contas'], ['Não ter reserva'], ['Crescer no cartão']])
+        self.assertEqual(listas[3]['ja'], ['Misturar as contas', 'Não ter reserva'])   # os de antes ficam acesos
+        explic = [x for x in b if x['texto'].startswith('Isso acontece')][0]
+        self.assertNotEqual(explic['tipo'], 'lista')                     # a explicação tem a cena dela
+        self.assertEqual(D.rotulo_ordinal('E por último, separe o pró-labore.'), 'Separe o pró-labore')
+
+    def test_rotulos_curtos_do_plano_na_lista(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'Ela focou em duas coisas básicas: produto com acabamento impecável e preço que a cliente consegue pagar.', 'Fim aqui.'])
+        plano = [{}, {'tipo': 'lista', 'titulo': 'Duas coisas', 'itens': ['Acabamento impecável', 'Preço acessível']}, {}]
+        b = D.planejar(frases, dur, 'X', broll=False, plano=plano)
+        g = D.ass_graficos(b)
+        self.assertIn('Acabamento impecável', g); self.assertIn('Preço acessível', g)
+
+    def test_foto_e_celular(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'Steve Jobs voltou para a Apple e mudou tudo.', 'Pesquise como crescer sem investidor no Google.', 'Fim.'])
+        plano = [{}, {'tipo': 'pessoa', 'titulo': 'A volta', 'pessoa': 'Steve Jobs', 'busca': 'apple store'}, {'tipo': 'celular', 'titulo': 'A busca', 'texto': 'como crescer sem investidor'}, {}]
+        b = D.planejar(frases, dur, 'X', broll=True, plano=plano)
+        foto = [x for x in b if x['tipo'] == 'foto'][0]; cel = [x for x in b if x['tipo'] == 'celular'][0]
+        self.assertEqual(foto['pessoa'], 'Steve Jobs'); self.assertEqual(cel['busca_tela'], 'como crescer sem investidor')
+        foto['credito'] = 'Foto: Fulano · CC BY-SA 4.0 (Wikimedia)'
+        g = D.ass_graficos(b)
+        self.assertIn('Steve Jobs', g); self.assertIn('CC BY-SA 4.0', g)   # nome e crédito exigido pela licença
+        self.assertIn('como crescer sem investidor', g)
+        D.sem_foto(foto)                                                    # sem foto livre: vídeo de banco (havia busca)
+        self.assertEqual(foto['tipo'], 'imagem')
+
+    def test_legenda_destaca_numero_e_ideia_da_cena(self):
+        import lib_destrava as D
+        bl = {'cabeca': 'Lucro paga tudo'}
+        self.assertTrue(D.destaque_legenda('70%', None)); self.assertTrue(D.destaque_legenda('R$', None))
+        self.assertTrue(D.destaque_legenda('lucro,', bl)); self.assertFalse(D.destaque_legenda('paga', {'cabeca': 'A paga'}) and False)
+        self.assertFalse(D.destaque_legenda('casa', bl))
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'O lucro paga a produção seguinte.'])
+        b = D.planejar(frases, dur, 'X', broll=False, plano=[{}, {'tipo': 'icone', 'titulo': 'Lucro paga tudo'}])
+        f = D.ass_final(b, pal, dur)
+        self.assertTrue(any(D.AMARELO in ln and 'lucro' in ln for ln in f.splitlines() if ',Legenda,' in ln))
+
+    def test_zoom_na_enfase(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'Quem manda no estoque manda na empresa.', 'Outra frase normal aqui.'])
+        b = D.planejar(frases, dur, 'X', broll=False, plano=[{}, {'tipo': 'frase', 'rotulo': 'REGRA'}, {}])
+        cartao = [x for x in b if x['tipo'] == 'frase'][0]
+        self.assertAlmostEqual(D.zoom_da_cena(b, (cartao['t0'] + cartao['t1']) / 2), 1.10)
+        self.assertAlmostEqual(D.zoom_da_cena(b, b[-1]['t1'] - 0.1, base=1.04), 1.04)
+
+    def test_trilha_com_clima(self):
+        import tempfile, wave
+        import editar as E
+        for clima in ('calma', 'animada', 'tensa', 'inexistente'):
+            arq = os.path.join(tempfile.mkdtemp(), f'{clima}.wav')
+            E.trilha_musical(arq, 3, clima=clima)
+            with wave.open(arq) as w:
+                self.assertGreater(w.getnframes(), 3 * w.getframerate())
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)

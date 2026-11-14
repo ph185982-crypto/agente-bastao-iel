@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { pathnames, montarResultado, limparErro } = require('./worker.js');
 
 test('pathnames ficam dentro de videos/<id>/', () => {
-  assert.deepEqual(pathnames('c_123'), { final: 'videos/c_123/final.mp4', poster: 'videos/c_123/poster.jpg' });
+  assert.deepEqual(pathnames('c_123'), { final: 'videos/c_123/final.mp4', poster: 'videos/c_123/poster.jpg', capa: 'videos/c_123/capa.jpg' });
 });
 
 test('montarResultado junta o resultado.json com as URLs do Blob', () => {

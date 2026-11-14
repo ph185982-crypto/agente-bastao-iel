@@ -8,6 +8,7 @@
     aberto: false, el: null, ctx: null, stream: null, rec: null, pedacos: [], mime: '', facing: 'user',
     roteiro: '', roteiro_id: null, titulo: '', estilo: 'hormozi',
     velocidade: 40, tamanho: 34, rolando: false, pos: 0, raf: null, ultimo: 0,
+    voz: true, ac: null, ouvido: null, // rolar com a voz: o texto anda enquanto o Pedro fala e espera quando ele para
     estado: 'preparando', // preparando | pronto | contagem | gravando | previa | enviando | enviado | erro_camera
     inicio: 0, cronoTimer: null, blob: null, urlPrevia: null, wake: null, erro: '', editando: false, upload: null,
   };
@@ -53,6 +54,7 @@
       <div class="tp-ajustes" id="tp-ajustes">
         <label>Velocidade <output id="tp-vel-out">40</output> px/s<input type="range" id="tp-vel" min="20" max="80" step="1" value="40" aria-label="Velocidade do roteiro, de 20 a 80 pixels por segundo"></label>
         <label>Letra <output id="tp-tam-out">34</output> px<input type="range" id="tp-tam" min="22" max="64" step="1" value="34" aria-label="Tamanho da letra do roteiro"></label>
+        <label class="tp-voz"><input type="checkbox" id="tp-voz" checked> Rolar com a voz <small>o texto anda enquanto você fala e espera quando você para</small></label>
       </div>
       <div class="tp-editor" id="tp-editor" hidden>
         <label for="tp-roteiro-edit">Roteiro</label>
@@ -142,9 +144,39 @@
   }
   function pararStream() { if (T.stream) { T.stream.getTracks().forEach((t) => { try { t.stop(); } catch { /* já parou */ } }); T.stream = null; } }
 
+  // ── Rolar com a voz (volume do microfone, sem reconhecimento de fala: funciona no iPhone) ──
+  // O contexto de áudio nasce no toque em "Gravar" (o iPhone só libera áudio dentro de um toque).
+  function prepararOuvido() {
+    if (!T.voz) return;
+    try { const Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return; T.ac = T.ac || new Ctx(); if (T.ac.state === 'suspended') T.ac.resume(); } catch { T.ac = null; }
+  }
+  function ligarOuvido() {
+    T.ouvido = null;
+    try {
+      const faixa = T.stream && T.stream.getAudioTracks()[0];
+      if (!T.voz || !T.ac || !faixa) return;
+      const an = T.ac.createAnalyser(); an.fftSize = 1024;
+      T.ac.createMediaStreamSource(new MediaStream([faixa])).connect(an);
+      T.ouvido = { an, buf: new Float32Array(an.fftSize), piso: 0.01, falandoAte: 0 };
+    } catch { T.ouvido = null; }
+  }
+  function falando(agora) {
+    const o = T.ouvido;
+    if (!T.voz || !o || !T.ac || T.ac.state !== 'running') return true;   // sem ouvido: rola no ritmo fixo
+    o.an.getFloatTimeDomainData(o.buf);
+    let soma = 0; for (let i = 0; i < o.buf.length; i++) soma += o.buf[i] * o.buf[i];
+    const rms = Math.sqrt(soma / o.buf.length);
+    o.piso = rms < o.piso ? o.piso * 0.9 + rms * 0.1 : o.piso * 0.998 + rms * 0.002;   // ruído do ambiente, acompanhado devagar
+    if (rms > Math.max(0.012, o.piso * 2.2)) o.falandoAte = agora + 700;              // segura 0,7 s depois da última sílaba
+    const sim = agora < o.falandoAte;
+    const c = q('#tp-crono'); if (c) c.classList.toggle('voz', sim);
+    return sim;
+  }
+
   // ── Rolagem do roteiro ──────────────────────────────────────────────────────
   function passo(ts) {
     if (!T.rolando) { T.raf = null; return; }
+    if (T.estado === 'gravando' && !falando(ts)) { T.ultimo = ts; T.raf = requestAnimationFrame(passo); return; }   // espera a voz
     const dt = T.ultimo ? Math.min(0.1, (ts - T.ultimo) / 1000) : 0; T.ultimo = ts;
     const t = q('#tp-texto'); const caixa = q('#tp-roteiro');
     if (t && caixa) {
@@ -175,7 +207,7 @@
     // iPhone: conectar no Bluetooth/CarPlay, ligação ou tela bloqueada encerram a câmera/microfone e a gravação para sozinha.
     (T.stream.getTracks() || []).forEach((tr) => { tr.onended = () => { if (T.estado === 'gravando') { T.interrompido = tr.kind === 'audio' ? 'o microfone foi desligado pelo celular' : 'a câmera foi desligada pelo celular'; pararGravacao(); } }; });
     T.rec.start(1000);
-    T.inicio = Date.now(); setEstado('gravando', 'Gravando'); mostrarErro('');
+    T.inicio = Date.now(); setEstado('gravando', 'Gravando'); mostrarErro(''); ligarOuvido();
     clearInterval(T.cronoTimer); T.cronoTimer = setInterval(() => { const c = q('#tp-crono'); if (c) c.lastChild.textContent = mmss(Date.now() - T.inicio); }, 250);
     T.pos = 0; const t = q('#tp-texto'); if (t) t.style.transform = 'translateY(0px)'; rolar(true);
   }
@@ -228,7 +260,7 @@
     const b = ev.target.closest('[data-tp]'); if (!b) return;
     switch (b.dataset.tp) {
       case 'fechar': if (T.estado === 'gravando' && !confirm('Parar e descartar a gravação?')) return; fechar(); break;
-      case 'gravar': fecharDicas(); if (T.estado === 'gravando') pararPeloBotao(); else if (T.estado === 'pronto') contagemEGravar(); break;
+      case 'gravar': fecharDicas(); if (T.estado === 'gravando') pararPeloBotao(); else if (T.estado === 'pronto') { prepararOuvido(); contagemEGravar(); } break;
       case 'dicas-ok': fecharDicas(); break;
       case 'virar': T.facing = T.facing === 'user' ? 'environment' : 'user'; ligarCamera(); break;
       case 'editar': q('#tp-roteiro-edit').value = T.roteiro; q('#tp-editor').hidden = false; T.editando = true; q('#tp-roteiro-edit').focus(); break;
@@ -246,7 +278,9 @@
     if (t.id === 'tp-tam') { T.tamanho = Number(t.value); q('#tp-tam-out').textContent = t.value; const x = q('#tp-texto'); if (x) x.style.fontSize = `${T.tamanho}px`; }
   }
   function aoMudar(ev) {
-    const t = ev.target; if (t.id !== 'tp-arquivo' || !t.files || !t.files[0]) return;
+    const t = ev.target;
+    if (t.id === 'tp-voz') { T.voz = t.checked; try { localStorage.setItem('tp_voz', t.checked ? '1' : '0'); } catch { /* sem armazenamento: vale só agora */ } return; }
+    if (t.id !== 'tp-arquivo' || !t.files || !t.files[0]) return;
     const f = t.files[0]; T.blob = f; if (T.urlPrevia) URL.revokeObjectURL(T.urlPrevia); T.urlPrevia = URL.createObjectURL(f);
     q('#tp-video-previa').src = T.urlPrevia; q('#tp-envio-texto').textContent = `${f.name} · ${(f.size / 1048576).toFixed(1)} MB. Confira e envie para a edição.`;
     setEstado('previa', 'Prévia'); mostrarErro('');
@@ -264,6 +298,8 @@
     T.facing = 'user'; T.blob = null; T.pedacos = []; T.pos = 0; T.rolando = false;
     montar(); aplicarTexto();
     q('#tp-vel').value = String(T.velocidade); q('#tp-vel-out').textContent = String(T.velocidade); q('#tp-tam').value = String(T.tamanho); q('#tp-tam-out').textContent = String(T.tamanho);
+    try { T.voz = localStorage.getItem('tp_voz') !== '0'; } catch { T.voz = true; }
+    q('#tp-voz').checked = T.voz;
     T.el.querySelectorAll('.tp-estilo').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.estilo === T.estilo)));
     document.addEventListener('visibilitychange', aoVisibilidade);
     manterTelaAcesa(); ligarCamera();
@@ -275,6 +311,7 @@
     if (T.rec && T.rec.state !== 'inactive') { try { T.rec.onstop = null; T.rec.stop(); } catch { /* já parou */ } }
     clearInterval(T.cronoTimer); if (T.raf) cancelAnimationFrame(T.raf); T.raf = null; T.rolando = false;
     pararStream(); soltarTela(); document.removeEventListener('visibilitychange', aoVisibilidade);
+    try { if (T.ac) T.ac.close(); } catch { /* já fechado */ } T.ac = null; T.ouvido = null;
     if (T.urlPrevia) { URL.revokeObjectURL(T.urlPrevia); T.urlPrevia = null; }
     if (T.el) { T.el.remove(); T.el = null; }
     document.body.classList.remove('tp-aberto');

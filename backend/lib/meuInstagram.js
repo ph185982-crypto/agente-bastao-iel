@@ -17,7 +17,8 @@
 const meta = require('./meta');
 
 const FEED = ['reach', 'saved', 'shares', 'total_interactions', 'views', 'follows', 'profile_visits'];
-const REEL = ['reach', 'saved', 'shares', 'total_interactions', 'views'];
+// ig_reels_avg_watch_time (ms): tempo médio assistido do Reel — a retenção. Se a Meta recusar, cai no conjunto básico.
+const REEL = ['reach', 'saved', 'shares', 'total_interactions', 'views', 'ig_reels_avg_watch_time'];
 const BASICAS = ['reach', 'saved', 'shares', 'total_interactions', 'views'];
 const JANELA_MADURA_H = 72;
 const MIN_POR_GRUPO = 5;
@@ -32,6 +33,12 @@ const mediana = (arr) => {
 };
 const arred = (n, d = 1) => (n == null ? null : Math.round(n * 10 ** d) / 10 ** d);
 const porMil = (parte, reach, d = 1) => (parte == null || !reach ? null : arred((parte / reach) * 1000, d));
+
+function retencao(mediaMs, duracaoS) {
+  const t = mediaMs == null || !Number.isFinite(Number(mediaMs)) ? null : arred(Number(mediaMs) / 1000, 1);
+  const d = Number(duracaoS) > 0 ? arred(Number(duracaoS), 1) : null;
+  return { tempo_medio_s: t, duracao_s: d, assistido_pct: t != null && d ? Math.min(100, Math.round((t / d) * 100)) : null };
+}
 
 function tipoDe(m) {
   if (m.media_product_type === 'STORY') return null;
@@ -82,7 +89,7 @@ async function paraCadaUm(itens, limite, fn) {
 }
 
 // Lê a conta, os posts dos últimos `dias` e as métricas de cada um.
-async function atualizar({ grafo = meta.graph, igId = meta.config().igId, agora = Date.now(), limite = 60, dias = 90, orcamentoMs = 45000, daFerramenta = new Map() } = {}) {
+async function atualizar({ grafo = meta.graph, igId = meta.config().igId, agora = Date.now(), limite = 60, dias = 90, orcamentoMs = 45000, daFerramenta = new Map(), duracoes = new Map() } = {}) {
   const t0 = Date.now();
   const avisos = [];
   const desde = agora - dias * 86400000;
@@ -115,6 +122,8 @@ async function atualizar({ grafo = meta.graph, igId = meta.config().igId, agora 
       idade_h: Math.round(idadeH), maduro: idadeH >= JANELA_MADURA_H,
       alcance: v.reach ?? null, visualizacoes: v.views ?? null, salvamentos: v.saved ?? null, compartilhamentos: v.shares ?? null,
       interacoes: v.total_interactions ?? null, seguidores_ganhos: v.follows ?? null, visitas_ao_perfil: v.profile_visits ?? null,
+      // retenção do Reel: tempo médio assistido e, nos vídeos editados aqui (duração conhecida), quanto do vídeo isso é
+      ...retencao(v.ig_reels_avg_watch_time, duracoes.get(String(m.id))),
       sem_dados: ins ? ins.indisponiveis : ['todas'], erro_meta: ins?.erro ? (ins.erro.amigavel || null) : null,
       // Post da ferramenta: o registro de publicação diz; sem registro (banco trocado), a legenda denuncia: todo carrossel
       // de notícia da ferramenta termina com "Fonte: X (informações segundo a reportagem)". Sem isso, posts antigos da
@@ -236,4 +245,4 @@ function analisar(posts, { minPorGrupo = MIN_POR_GRUPO, seguidoresDaConta = null
   };
 }
 
-module.exports = { ASSINATURA_FERRAMENTA, atualizar, analisar, medidas, tipoDe, lerValores, insightsDe, mediana, MIN_POR_GRUPO, JANELA_MADURA_H, FEED, REEL };
+module.exports = { retencao, ASSINATURA_FERRAMENTA, atualizar, analisar, medidas, tipoDe, lerValores, insightsDe, mediana, MIN_POR_GRUPO, JANELA_MADURA_H, FEED, REEL };
