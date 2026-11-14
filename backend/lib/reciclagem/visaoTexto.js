@@ -30,7 +30,7 @@ const disponivel = () => MODELOS.some((m) => process.env[m.env]);
 
 const SISTEMA = (handle) => `Você olha UMA imagem de um post de Instagram e devolve o texto que aparece nela, para a imagem ser traduzida para o português do Brasil mantendo o desenho original. Você NÃO precisa dizer onde fica cada texto (o sistema já sabe): só o texto certo e a tradução.
 "tipo_pagina": "texto" quando a página é feita de TEXTO sobre fundo liso (tweet, frase, citação, texto escrito à mão, carrossel só de texto, com ou sem a foto/nome do autor no topo); "imagem" quando tem desenho, ilustração, gráfico, tabela, foto ou print que faz parte do conteúdo.
-"textos": cada trecho de texto separado da imagem (título, rótulo, parágrafo, balão), em ordem de leitura:
+"textos": cada trecho de texto separado da imagem (título, rótulo, parágrafo, balão), em ordem de leitura. Um parágrafo inteiro por elemento: não quebre a mesma frase por linha.
 - "negrito": true se no original é título, destaque ou está em negrito; false se é texto corrido.
 - "original": EXATAMENTE como aparece. Confira número escrito à mão com atenção (1 e 4, 7 e 1, 0 e 6).
 - "traducao": tradução natural para o português do Brasil, do MESMO tamanho ou mais curta (é texto de imagem). Números e valores iguais (só a pontuação muda: 1,000 → 1.000). Onomatopeia (swish, boom) e nome próprio ficam iguais.
