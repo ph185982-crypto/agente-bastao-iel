@@ -290,7 +290,7 @@ async function guardar(itens, { agora = Date.now(), retencaoDias = RETENCAO_DIAS
   const contasLidas = new Set(itens.map((i) => i.conta?.handle || i.conta?.canal).filter(Boolean));
   for (const d of existentes.values()) {
     const vencido = Date.parse(d.publicado_em || d.coletado_em || 0) < limite;
-    const foraDoRecorte = !vistos.has(d.id) && contasLidas.has(d.conta?.handle || d.conta?.canal) && !(d.reciclado || []).length;
+    const foraDoRecorte = !vistos.has(d.id) && contasLidas.has(d.conta?.handle || d.conta?.canal) && !(d.reciclado || []).length && !d.descartado_em; // descartado fica guardado para não voltar
     if (vencido || foraDoRecorte) { await db().radar.apagar(conta(), TIPO, d.id); removidos += 1; }
   }
   return { novos, atualizados, removidos, guardados: candidatos.length };
@@ -300,6 +300,33 @@ async function marcarReciclado(id, { formato, conteudo_id, agora = Date.now() })
   const doc = await obter(id); if (!doc) return null;
   doc.reciclado = [...(doc.reciclado || []), { formato, conteudo_id, em: iso(agora) }].slice(-10);
   await salvarItem(doc); return doc;
+}
+
+// Pedro descartou: sai da lista e não volta nas próximas coletas (o registro fica até vencer os 30 dias).
+async function descartar(id, { agora = Date.now() } = {}) {
+  const doc = await obter(id); if (!doc) return null;
+  doc.descartado_em = iso(agora); await salvarItem(doc); return { id, descartado: true };
+}
+
+// Leitura leve (a aba aberta chama a cada 30 s): as N contas lidas há mais tempo, sem IA, sem YouTube e sem tendências.
+// 1 conta a cada 30 s = 120 chamadas por hora à Meta, dentro do limite de ~200/h do app.
+async function coletarAlgumas({ deps = {}, n = 1, agora = Date.now() } = {}) {
+  db();
+  const meta = deps.meta || require('../meta');
+  if (!deps.graph && meta.faltando().filter((k) => k !== 'PUBLISH_SECRET').length) return { lidas: 0, novos: 0, motivo: 'Instagram não configurado.' };
+  const estado = await lerEstado(); const lidasEm = estado.lidas_em || {};
+  if (estado.leve_ate && Date.parse(estado.leve_ate) > agora) return { lidas: 0, novos: 0, ocupado: true };
+  await salvarEstado({ leve_ate: new Date(agora + 25000).toISOString() });
+  try {
+    const contasAtuais = deps.contas || (await Contas.carregar());
+    const fila = [...(contasAtuais.instagram || [])].sort((a, b) => Date.parse(lidasEm[a.handle] || 0) - Date.parse(lidasEm[b.handle] || 0)).slice(0, Math.max(1, Math.min(3, n)));
+    const r = await coletarInstagram({ contas: fila, graph: deps.graph || meta.graph, igId: deps.igId || meta.config().igId, agora, maxContas: fila.length, orcamentoMs: 20000, concorrencia: fila.length });
+    const g = r.itens.length ? await guardar(r.itens, { agora }) : { novos: 0 };
+    const atual = await lerEstado(); const lidas = { ...(atual.lidas_em || {}) };
+    for (const c of r.contas) lidas[c.handle] = iso(agora); // recusada também anda na fila (senão trava o rodízio nela)
+    await salvarEstado({ lidas_em: lidas, leve_ate: null, ultima_leve: { em: iso(agora), contas: r.contas.map((c) => ({ handle: c.handle, ok: c.ok })), novos: g.novos } });
+    return { lidas: r.contas.filter((c) => c.ok).length, contas: r.contas.map((c) => c.handle), novos: g.novos || 0, limite: r.contas.some((c) => c.tipo === 'limite') };
+  } catch (e) { await salvarEstado({ leve_ate: null }).catch(() => {}); throw e; }
 }
 
 // ── Coleta completa (cron diário ou botão "Atualizar agora") ─────────────────────
@@ -346,10 +373,10 @@ async function coletar({ deps = {}, origem = 'manual', agora = Date.now() } = {}
 
 // ── Leitura para a API ───────────────────────────────────────────────────────────
 const visao = (d) => ({ ...d, vl: d.vl ?? null, em_alta: (d.vl ?? 0) >= VL_ALTA });
-async function listar({ dias = 7, min_vl = 0, mecanismo = null, idioma = null, rede = null, limite = 100, soImagens = false, agora = Date.now() } = {}) {
+async function listar({ dias = 7, min_vl = 0, mecanismo = null, idioma = null, rede = null, limite = 100, soImagens = false, pendentes = false, agora = Date.now() } = {}) {
   if (!disponivel()) return { itens: [], total: 0, sem_banco: true };
   const d = Math.min(30, Math.max(1, Number(dias) || 7)); const minVl = Math.max(0, Number(min_vl) || 0); const limiteMs = agora - d * 86400000;
-  const todos = (await listarDocs()).filter((x) => Date.parse(x.publicado_em || x.coletado_em) >= limiteMs && (x.vl ?? 0) >= minVl && (!mecanismo || x.mecanismo === mecanismo) && (!idioma || x.conta?.idioma === idioma) && (!rede || x.rede === rede) && (!soImagens || (x.rede === 'instagram' && ['carrossel', 'imagem'].includes(x.tipo))));
+  const todos = (await listarDocs()).filter((x) => Date.parse(x.publicado_em || x.coletado_em) >= limiteMs && (x.vl ?? 0) >= minVl && (!mecanismo || x.mecanismo === mecanismo) && (!idioma || x.conta?.idioma === idioma) && (!rede || x.rede === rede) && (!soImagens || (x.rede === 'instagram' && ['carrossel', 'imagem'].includes(x.tipo))) && (!pendentes || (!x.descartado_em && !(x.reciclado || []).length)));
   todos.sort((a, b) => (b.vl ?? 0) - (a.vl ?? 0) || Date.parse(b.publicado_em) - Date.parse(a.publicado_em));
   return { itens: todos.slice(0, Math.min(300, Math.max(1, Number(limite) || 100))).map(visao), total: todos.length };
 }
@@ -360,6 +387,7 @@ async function tendenciasGuardadas() {
 }
 
 module.exports = {
+  descartar, coletarAlgumas,
   TIPO, TIPO_ESTADO, MATURIDADE_H, RETENCAO_DIAS, MAX_CONTAS, LOTE_IA, VL_ALTA, VL_CANDIDATO, VL_CLASSIFICAR, COTA_YOUTUBE, TRENDS_URL,
   mediana, er, maduro, pontuar, idDe, diaBRT,
   coletarInstagram, coletarYoutube, parseTrendsRss, tendencias, cruzar, classificar, normalizarMecanismo, copiaLegenda,

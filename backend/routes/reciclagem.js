@@ -27,7 +27,7 @@ async function estado() {
 // Lista ordenada por VL. Filtros: dias (1–30), min_vl, mecanismo, idioma, rede.
 router.get('/', rota(async (req, res) => {
   const q = req.query || {};
-  const r = await Coletar.listar({ dias: q.dias, min_vl: q.min_vl, mecanismo: Contas.MECANISMOS[q.mecanismo] ? q.mecanismo : null, idioma: Contas.IDIOMAS.includes(q.idioma) ? q.idioma : null, rede: ['instagram', 'youtube'].includes(q.rede) ? q.rede : null, limite: q.limite, soImagens: q.so_imagens === '1' });
+  const r = await Coletar.listar({ dias: q.dias, min_vl: q.min_vl, mecanismo: Contas.MECANISMOS[q.mecanismo] ? q.mecanismo : null, idioma: Contas.IDIOMAS.includes(q.idioma) ? q.idioma : null, rede: ['instagram', 'youtube'].includes(q.rede) ? q.rede : null, limite: q.limite, soImagens: q.so_imagens === '1', pendentes: q.pendentes === '1' });
   res.json({ ...r, estado: await estado() });
 }));
 
@@ -68,6 +68,10 @@ router.post('/:id/reciclar', limita({ max: 6, janelaMs: 60000, nome: 'reciclagem
 
 // ── Clone autorizado (tradução fiel, mesma estrutura) ───────────────────────────
 const Clonar = require('../lib/reciclagem/clonar');
+router.post('/coletar-uma', limita({ max: 4, janelaMs: 60000, nome: 'reciclagem-leve' }), rota(async (req, res) => { res.json(await Coletar.coletarAlgumas({ n: 1 })); }));
+router.post('/:id/descartar', limita({ max: 60, janelaMs: 60000, nome: 'reciclagem-descartar' }), rota(async (req, res) => {
+  const r = await Coletar.descartar(exigeId(req.params.id)); if (!r) throw Object.assign(new Error('Item não encontrado.'), { status: 404, code: 'NAO_ENCONTRADO' }); res.json(r);
+}));
 router.post('/:id/autorizacao', limita({ max: 20, janelaMs: 60000, nome: 'reciclagem-autorizacao' }), rota(async (req, res) => {
   res.status(201).json(await Clonar.autorizar(exigeId(req.params.id), req.body || {}));
 }));
