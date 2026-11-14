@@ -99,6 +99,7 @@ async function baixar(url, destino) {
 function editar(entrada, saida, job, logJob) {
   return new Promise((resolve, reject) => {
     const args = [EDITAR, entrada, saida, '--estilo', job.estilo || 'hormozi', '--opcoes', JSON.stringify(job.opcoes || {})];
+    if (job.titulo && String(job.titulo).trim()) args.push('--titulo', String(job.titulo).slice(0, 140));
     const roteiro = path.join(saida, 'roteiro.txt');
     if (job.roteiro_texto && String(job.roteiro_texto).trim()) {
       fs.writeFileSync(roteiro, String(job.roteiro_texto));

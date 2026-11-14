@@ -180,7 +180,7 @@ async function proximoJob() {
     c.studio = { estado: 'video', etapa: 'edicao' };
     log(c, `Editor pegou o vídeo (tentativa ${c.video.worker.tentativas}).`);
     try { await gravar(c, reg.rev); } catch (e) { if (e.code === 'CONFLITO') continue; throw e; }
-    return { id: c.id, origem: c.video.origem, estilo: c.video.estilo, opcoes: c.video.opcoes, roteiro_texto: c.video.roteiro_texto || '', tentativa: c.video.worker.tentativas, lease_ate: c.video.worker.lease_ate };
+    return { id: c.id, titulo: c.titulo || '', origem: c.video.origem, estilo: c.video.estilo, opcoes: c.video.opcoes, roteiro_texto: c.video.roteiro_texto || '', tentativa: c.video.worker.tentativas, lease_ate: c.video.worker.lease_ate };
   }
   return null;
 }
@@ -402,6 +402,7 @@ function resumo(c) {
   return { id: c.id, titulo: c.titulo, estado: c.video.estado, status: c.status, criado_em: c.created_at, atualizado_em: c.updated_at, estilo: c.video.estilo,
     poster: c.video.resultado?.poster_url || null, url: c.video.resultado?.url || null, duracao_s: c.video.resultado?.duracao_s ?? c.video.origem?.duracao_s ?? null,
     legenda: c.video.legenda_ig?.texto || null, hashtags: c.video.legenda_ig?.hashtags || [], hash: v?.hash || null, erro: c.video.estado === 'erro' ? c.video.worker?.erro || null : null, tentativas: c.video.worker?.tentativas || 0,
+    avisos: (c.video.resultado?.avisos || []).filter((x) => /roteiro|interromp|rosto/.test(x)).slice(0, 3),
     ...(c.video.estado === 'roteiro' ? { roteiro_texto: c.video.roteiro_texto || '', duracao_estimada_s: c.video.duracao_estimada_s ?? null, roteiro: c.video.roteiro || null } : {}) };
 }
 function publico(c) {

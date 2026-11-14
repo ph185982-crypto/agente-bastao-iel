@@ -694,3 +694,27 @@ def filtro_rotacao(rotacao):
     """Rotação fica com o próprio ffmpeg (autorotate, padrão): girar na mão dependia do sinal do ffprobe, que mudou
     entre versões — no worker do GitHub o vídeo saiu de lado/de ponta-cabeça. Mantido só por compatibilidade."""
     return ''
+
+
+def roteiro_incompleto(roteiro, palavras, minimo=0.35):
+    """O vídeo cobre o roteiro até o fim? Compara o último terço do roteiro com o que foi falado. None se está completo."""
+    rw = [normalizar(w) for w in (roteiro or '').split() if normalizar(w)]
+    if len(rw) < 20 or not palavras:
+        return None
+    falado = [normalizar(p['w']) for p in palavras if normalizar(p['w'])]
+    conj = set(falado)
+    # só palavras de conteúdo (5+ letras): "de", "o", "seu" aparecem em qualquer fala e escondiam o corte
+    terco = [w for w in rw[-max(8, len(rw) // 3):] if len(w) >= 5 and w not in STOPWORDS]
+    if len(terco) < 5:
+        return None
+    cobertura = sum(1 for w in terco if w in conj) / len(terco)
+    if cobertura >= minimo:
+        return None
+    # onde parou: a última sequência de 3 palavras do falado que existe no roteiro
+    pos = 0
+    for i in range(len(rw) - 2):
+        tri = rw[i:i + 3]
+        if any(falado[j:j + 3] == tri for j in range(max(0, len(falado) - 12), len(falado) - 2)):
+            pos = i + 3
+    original = (roteiro or '').split()
+    return {'cobertura_final': round(cobertura, 2), 'parou_em': ' '.join(original[max(0, pos - 5):pos]), 'faltou': ' '.join(original[pos:pos + 8])}
