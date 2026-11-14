@@ -223,7 +223,8 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
             }
             const { blocos, faltando } = Visao.blocosDaVisao({ textos: cl.visao[i].textos, assinaturas: cl.visao[i].assinaturas }, { trechos: s.paragrafos || [] });
             if (faltando.length) cl.faltando = [...(cl.faltando || []), ...faltando.map((f) => `slide ${i + 1}: "${f.slice(0, 60)}"`)];
-            const textos = blocos.filter((b) => b.novo).map((b) => b.novo);
+            // Título e texto na ordem de leitura da IA (não na ordem das caixas).
+            const textos = textosPt.map((t) => t.texto);
             slides.push({ titulo: (textos[0] || '').slice(0, 160), texto: textos.slice(1).join(' ').slice(0, 700), blocos });
           }
           const tirarAutor = (t) => String(t || '').replace(new RegExp(`@?${handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), '').replace(/[ \t]{2,}/g, ' ').trim();
