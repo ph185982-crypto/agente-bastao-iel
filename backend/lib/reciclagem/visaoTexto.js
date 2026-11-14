@@ -92,7 +92,10 @@ function blocosDaVisao(dados, { trechos = [] } = {}) {
     // A OCR juntou num bloco várias frases que a IA separou ("A entrega atrasa." / "O cliente reclama." …): o bloco vira um só,
     // com uma frase por linha.
     const dentro = textos.map((t, k) => ({ t, k })).filter(({ t }) => norm(t.original).length >= 4 && norm(tr.texto).includes(norm(t.original)));
-    if (dentro.length >= 2 && dentro.reduce((a, { t }) => a + norm(t.original).length, 0) >= norm(tr.texto).length * 0.6) {
+    // Textos repetidos ("swish" duas vezes) não são frases do mesmo bloco: só junta textos diferentes que somados cabem no bloco.
+    const soma = dentro.reduce((a, { t }) => a + norm(t.original).length, 0);
+    const diferentes = new Set(dentro.map(({ t }) => norm(t.original))).size === dentro.length;
+    if (dentro.length >= 2 && diferentes && soma >= norm(tr.texto).length * 0.6 && soma <= norm(tr.texto).length * 1.2) {
       juntos.push({ tr, ks: dentro.map((x) => x.k) }); continue;
     }
     let melhor = null; let nota = 0;

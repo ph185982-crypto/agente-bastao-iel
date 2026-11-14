@@ -225,3 +225,9 @@ test('página só de texto: a cópia refaz a página no nosso padrão (branca, n
   const { data } = await sharp(Buffer.from(img.dados)).raw().toBuffer({ resolveWithObject: true });
   assert.ok(data[0] > 245 && data[1] > 245 && data[2] > 245, 'fundo branco, não a cor do original');
 });
+
+test('texto repetido ("swish" duas vezes) não vira um bloco "swish swish"', () => {
+  const V = require('./visaoTexto');
+  const { blocos } = V.blocosDaVisao({ textos: [{ original: 'swish', traducao: 'swish' }, { original: 'Reality', traducao: 'Realidade' }, { original: 'swish', traducao: 'swish' }] }, { trechos: [{ texto: 'swish', x0: 970, y0: 820, x1: 1037, y1: 855, altura_linha: 35 }] });
+  assert.ok(blocos.every((b) => b.novo !== 'swish\nswish'));
+});
