@@ -116,17 +116,19 @@ function refinarApagar(raw, info, b) {
 
 // Acha a assinatura do autor pela imagem, na região que a IA indicou ("base-centro"…): o bloco de tinta mais perto
 // da borda indicada, ignorando linhas que atravessam a região (moldura, divisória). A IA nunca dá a posição exata.
-function acharSelo(raw, info, posicao) {
+function acharSelo(raw, info, posicao, protegidas = []) {
   const [v, h] = String(posicao).split('-');
   const W = info.width; const H = info.height;
   const ry = v === 'topo' ? [0, 0.22] : v === 'base' ? [0.78, 1] : [0.35, 0.65];
-  const rx = h === 'esquerda' ? [0, 0.45] : h === 'direita' ? [0.55, 1] : [0.2, 0.8];
+  const rx = h === 'esquerda' ? [0, 0.62] : h === 'direita' ? [0.38, 1] : [0.2, 0.8]; // cabeçalho (foto + nome + @) costuma passar da metade
   const R = { x0: Math.round(W * rx[0]), x1: Math.round(W * rx[1]) - 1, y0: Math.round(H * ry[0]), y1: Math.round(H * ry[1]) - 1 };
   const borda = [];
   for (let x = R.x0; x <= R.x1; x += 3) borda.push(pixel(raw, info, x, R.y0), pixel(raw, info, x, R.y1));
   for (let y = R.y0; y <= R.y1; y += 3) borda.push(pixel(raw, info, R.x0, y), pixel(raw, info, R.x1, y));
   const fundo = [0, 1, 2].map((c) => mediana(borda.map((p) => p[c])));
-  const tinta = (x, y) => dist(pixel(raw, info, x, y), fundo) > 60;
+  // O texto do conteúdo (já casado com a IA) nunca conta como assinatura: protege a caixa de cada um.
+  const protegido = (x, y) => protegidas.some((b) => x >= b.x0 - 6 && x <= b.x1 + 6 && y >= b.y0 - 6 && y <= b.y1 + 6);
+  const tinta = (x, y) => !protegido(x, y) && dist(pixel(raw, info, x, y), fundo) > 60;
   const larg = R.x1 - R.x0 + 1;
   const grupos = (vals, buraco) => { const g = []; let ini = -1; let vazio = 0; let massa = 0;
     for (let i = 0; i <= vals.length; i++) { const n = i < vals.length ? vals[i] : 0;
@@ -141,7 +143,12 @@ function acharSelo(raw, info, posicao) {
   const gc = grupos(cols, Math.max(10, Math.round(W * 0.025)));
   if (!gc.length) return null;
   const meio = (g) => R.x0 + (g.a + g.b) / 2;
-  const gx = h === 'esquerda' ? gc[0] : h === 'direita' ? gc[gc.length - 1] : gc.reduce((a, b) => (Math.abs(meio(b) - W / 2) < Math.abs(meio(a) - W / 2) ? b : a));
+  // Assinatura = foto + nome + @ juntos: parte do bloco da borda indicada e junta os vizinhos próximos (até 8% da largura).
+  let iA = h === 'esquerda' ? 0 : h === 'direita' ? gc.length - 1 : gc.reduce((m, g, i) => (Math.abs(meio(g) - W / 2) < Math.abs(meio(gc[m]) - W / 2) ? i : m), 0);
+  let iB = iA; const junta = W * 0.08;
+  while (iA > 0 && gc[iA].a - gc[iA - 1].b <= junta) iA--;
+  while (iB < gc.length - 1 && gc[iB + 1].a - gc[iB].b <= junta) iB++;
+  const gx = { a: gc[iA].a, b: gc[iB].b };
   const pad = 8;
   const r = { x0: Math.max(0, R.x0 + gx.a - pad), x1: Math.min(W - 1, R.x0 + gx.b + pad), y0: Math.max(0, ya - pad), y1: Math.min(H - 1, yb + pad), fundo };
   // Selo grande demais não é selo (é parte do desenho ou da foto): não mexe.
@@ -149,7 +156,8 @@ function acharSelo(raw, info, posicao) {
   // Fundo liso em volta: pinta; sobre foto: borra.
   const anel = []; for (let x = r.x0; x <= r.x1; x += 2) anel.push(pixel(raw, info, x, r.y0), pixel(raw, info, x, r.y1)); for (let y = r.y0; y <= r.y1; y += 2) anel.push(pixel(raw, info, r.x0, y), pixel(raw, info, r.x1, y));
   const desvio = Math.sqrt(anel.reduce((a, p) => a + dist(p, fundo) ** 2, 0) / Math.max(1, anel.length));
-  return { ...r, liso: desvio < 30 };
+  const desvioRegiao = Math.sqrt(borda.reduce((a, p) => a + dist(p, fundo) ** 2, 0) / Math.max(1, borda.length));
+  return { ...r, liso: desvio < 30 || desvioRegiao < 25 };
 }
 
 // Monta o SVG com a pintura das caixas e o texto novo (contornos).
@@ -157,7 +165,7 @@ function svgTroca(blocos, info, raw) {
   let rects = ''; let textos = ''; const trocados = []; const borrar = [];
   // Assinatura do autor (@, nome, logo, rosto, marca d'água): só apaga, com a cor do fundo em volta.
   for (const b of blocos.filter((x) => x.apagar)) {
-    const r = b.posicao ? acharSelo(raw, info, b.posicao) : (() => {
+    const r = b.posicao ? acharSelo(raw, info, b.posicao, blocos.filter((x) => !x.apagar && x.x1 > x.x0)) : (() => {
       const x0 = Math.max(0, b.x0); const y0 = Math.max(0, b.y0); const x1 = Math.min(info.width - 1, b.x1); const y1 = Math.min(info.height - 1, b.y1);
       return x1 > x0 && y1 > y0 ? refinarApagar(raw, info, { x0, y0, x1, y1 }) : null; })();
     if (!r) continue;
@@ -170,7 +178,9 @@ function svgTroca(blocos, info, raw) {
     const { fundo, pad } = cores(raw, info, b); const corTexto = corDaMarca(fundo); // nunca a cor do post original
     const d = diagramar(b, b.novo, info);
     const alto = d.linhas.length * d.tam * 1.18;
-    const y0 = (b.y0 + b.y1) / 2 - alto / 2;
+    // Página de um texto só, sem o cabeçalho do autor: o texto vai para o meio da página (fica só a página branca com ele).
+    const unico = blocos.filter((x) => !x.apagar && x.novo).length === 1 && blocos.some((x) => x.apagar && x.posicao && !x.posicao.startsWith('base'));
+    const y0 = (unico ? info.height / 2 : (b.y0 + b.y1) / 2) - alto / 2;
     rects += `<rect x="${b.x0 - pad}" y="${b.y0 - pad}" width="${b.x1 - b.x0 + 2 * pad}" height="${b.y1 - b.y0 + 2 * pad}" fill="${hex(fundo)}"/>`;
     // A caixa nova pode ser maior que a original: pinta também a área do texto novo.
     const xs = d.linhas.map((l) => { const w = d.f.getAdvanceWidth(l, d.tam); return { l, w, x: d.centrado ? (b.x0 + b.x1) / 2 - w / 2 : b.x0 }; });
@@ -186,11 +196,25 @@ function svgTroca(blocos, info, raw) {
 }
 
 // Troca o texto na imagem original. `blocos`: parágrafos da OCR com `novo` (tradução) quando é para trocar.
-async function substituir(buf, blocos) {
+// Nosso @ embaixo, centralizado, em todas as páginas da cópia (Inter Bold, cor da marca conforme o fundo).
+function svgAssinatura(raw, info, handle) {
+  if (!handle) return '';
+  const f = fonte('negrito'); const tam = Math.round(info.height * 0.024);
+  const w = f.getAdvanceWidth(handle, tam); const x = (info.width - w) / 2; const base = info.height - Math.round(info.height * 0.035);
+  const area = { x0: Math.max(0, Math.round(x - tam)), x1: Math.min(info.width - 1, Math.round(x + w + tam)), y0: Math.max(0, Math.round(base - tam * 1.3)), y1: Math.min(info.height - 1, Math.round(base + tam * 0.6)) };
+  const amostra = []; for (let xx = area.x0; xx <= area.x1; xx += 4) amostra.push(pixel(raw, info, xx, area.y0), pixel(raw, info, xx, area.y1));
+  const fundo = [0, 1, 2].map((c) => mediana(amostra.map((p) => p[c])));
+  const cor = corDaMarca(fundo);
+  return `<path d="${f.getPath(handle, x, base, tam).toPathData(2)}" fill="${hex(cor)}" opacity="0.85"/>`;
+}
+
+async function substituir(buf, blocos, { assinatura = null } = {}) {
   const img = sharp(buf).rotate();
   const { data: raw, info } = await img.clone().removeAlpha().raw().toBuffer({ resolveWithObject: true });
-  const { svg, trocados, borrar } = svgTroca(blocos || [], info, raw);
-  if (!trocados.length) return { buffer: await img.jpeg({ quality: 92 }).toBuffer(), trocados };
+  const r0 = svgTroca(blocos || [], info, raw); const { trocados, borrar } = r0;
+  const nossa = svgAssinatura(raw, info, assinatura);
+  const svg = nossa ? r0.svg.replace('</svg>', `${nossa}</svg>`) : r0.svg;
+  if (!trocados.length && !nossa) return { buffer: await img.jpeg({ quality: 92 }).toBuffer(), trocados };
   const base = sharp(raw, { raw: { width: info.width, height: info.height, channels: info.channels } });
   const camadas = [];
   for (const r of borrar) {

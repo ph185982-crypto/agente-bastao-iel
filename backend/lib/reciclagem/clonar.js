@@ -228,10 +228,9 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
         // Cópia fiel: escreve a tradução em cima da imagem original, no lugar de cada parágrafo (sem IA).
         if (cl.traducao.fiel) {
           for (const [i, t] of cl.traducao.slides.entries()) {
-            if (!t.blocos.some((b) => b.novo || b.apagar)) continue;
+            // Toda página da cópia: tira a assinatura do autor, troca o texto e põe o nosso @ embaixo.
             const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`); if (!arq) continue;
-            const { buffer, trocados } = await TT.substituir(Buffer.from(arq.dados), t.blocos);
-            if (!trocados.length) continue;
+            const { buffer, trocados } = await TT.substituir(Buffer.from(arq.dados), t.blocos, { assinatura: require('../account').ACCOUNT.handle });
             const pt_id = `clone_${c.id}_${i}_pt`; await a.arquivos.salvar(conta(), `img:${pt_id}`, await TT.encaixar45(buffer), 'image/jpeg');
             cl.slides[i].pt_id = pt_id; cl.slides[i].trocados = trocados.length;
           }

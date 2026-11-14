@@ -33,7 +33,7 @@ const SISTEMA = (handle) => `Você olha UMA imagem de um post de Instagram e dev
 - "original": EXATAMENTE como aparece. Confira número escrito à mão com atenção (1 e 4, 7 e 1, 0 e 6).
 - "traducao": tradução natural para o português do Brasil, do MESMO tamanho ou mais curta (é texto de imagem). Números e valores iguais (só a pontuação muda: 1,000 → 1.000). Onomatopeia (swish, boom) e nome próprio ficam iguais.
 Não inclua nos "textos" a assinatura do autor.
-"assinaturas": tudo que identifica o autor ou outra marca e precisa SAIR da imagem: @${handle || 'autor'}, nome do autor, logo, foto/rosto usado como selo, marca d'água, site, "follow/siga", contador de slide, "swipe/arraste". Para cada uma: "texto" (o que está escrito, ou "logo"/"rosto") e "posicao": uma de topo-esquerda, topo-centro, topo-direita, meio-esquerda, meio-centro, meio-direita, base-esquerda, base-centro, base-direita.
+"assinaturas": tudo que identifica o autor ou outra marca e precisa SAIR da imagem, inclusive o CABEÇALHO estilo tweet (foto redonda + nome + @ acima do texto: é UMA assinatura só): @${handle || 'autor'}, nome do autor, logo, foto/rosto usado como selo, marca d'água, site, "follow/siga", contador de slide, "swipe/arraste". Para cada uma: "texto" (o que está escrito, ou "logo"/"rosto") e "posicao": uma de topo-esquerda, topo-centro, topo-direita, meio-esquerda, meio-centro, meio-direita, base-esquerda, base-centro, base-direita.
 "legenda": a tradução da LEGENDA ORIGINAL que vier na mensagem (ou ""), sem @ do autor, sem pedido para seguir o autor, sem link dele.
 Responda APENAS JSON: {"textos":[{"original":"","traducao":""}],"assinaturas":[{"texto":"","posicao":"base-centro"}],"legenda":""}`;
 

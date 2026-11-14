@@ -180,3 +180,16 @@ test('cópia usa as cores da marca no texto traduzido: grafite em fundo claro, b
   assert.deepStrictEqual(TT.corDaMarca([250, 250, 250]), [15, 20, 25]);
   assert.deepStrictEqual(TT.corDaMarca([20, 30, 60]), [255, 255, 255]);
 });
+
+test('página estilo tweet: tira o cabeçalho do autor (foto + nome), centraliza o texto e põe o nosso @ embaixo', async () => {
+  const TT = require('./trocaTexto');
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="1080" height="1350" fill="#fff"/><circle cx="160" cy="580" r="60" fill="#d6589f"/><rect x="240" y="545" width="300" height="30" fill="#222"/><rect x="100" y="760" width="880" height="60" fill="#222"/><rect x="100" y="840" width="880" height="60" fill="#222"/></svg>';
+  const buf = await sharp(Buffer.from(svg)).jpeg().toBuffer();
+  const { buffer } = await TT.substituir(buf, [{ x0: 100, y0: 760, x1: 980, y1: 900, altura_linha: 60, n_linhas: 2, texto: 'x', novo: 'Ninguém avisa isso.', visao: true }, { apagar: true, posicao: 'meio-esquerda', texto: 'autor' }], { assinatura: '@pedro_destrava' });
+  const { data, info } = await sharp(buffer).raw().toBuffer({ resolveWithObject: true });
+  const px = (x, y) => { const i = (y * info.width + x) * info.channels; return [data[i], data[i + 1], data[i + 2]]; };
+  assert.ok(px(160, 580).every((c0) => c0 > 220), 'a foto do autor saiu');
+  assert.ok(px(400, 560).every((c0) => c0 > 220), 'o nome do autor saiu');
+  let escuro = 0; for (let x = 380; x < 700; x += 2) for (let y = 1270; y < 1310; y += 2) if (px(x, y)[0] < 120) escuro++;
+  assert.ok(escuro > 20, 'o nosso @ está embaixo');
+});
