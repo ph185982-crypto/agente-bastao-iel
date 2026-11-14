@@ -22,7 +22,7 @@ MARGEM_SILENCIO = 0.15    # sobra de silêncio que fica em cada lado da fala
 PROTEGER_INICIO = 1.0     # nunca cortar o 1º segundo
 RETOMADA_MIN_PALAVRAS = 3
 RETOMADA_JANELA = 6.0
-ZOOMS_PUNCH_IN = (1.0, 1.12)
+ZOOMS_PUNCH_IN = (1.0, 1.08)   # punch-in discreto: 12% chamava atenção demais
 LARGURA, ALTURA = 1080, 1920
 MARGEM_V = 560            # legenda acima da interface do Reels
 
@@ -254,11 +254,47 @@ def detectar_retomadas(palavras, min_palavras=RETOMADA_MIN_PALAVRAS, janela=RETO
     return cortes, sorted(indices)
 
 
+# Cortes pelas PALAVRAS (não pelo volume): gravação baixa (rua, celular longe) tem fala abaixo de -35 dB e o corte por
+# silêncio apagava frases inteiras. Aqui só sai o vão ENTRE palavras, e fica um respiro para soar humano.
+FOLGA_INICIO = 0.12     # antes da 1ª palavra do trecho
+FOLGA_FIM = 0.20        # depois da última (o Whisper costuma cortar o fim da palavra)
+PAUSA_MAX = 0.55        # vão maior que isso é encurtado
+RESPIRO = 0.30          # quanto do vão fica no meio da frase
+RESPIRO_FRASE = 0.45    # quanto fica no fim de frase (ponto final): pausa natural
+
+
+def trechos_por_palavras(palavras, duracao, folga_ini=FOLGA_INICIO, folga_fim=FOLGA_FIM, pausa_max=PAUSA_MAX,
+                         respiro=RESPIRO, respiro_frase=RESPIRO_FRASE):
+    """Palavras com t0/t1 → trechos mantidos. Nunca corta dentro de palavra; vão longo vira respiro curto."""
+    duracao = float(duracao)
+    pal = sorted((p for p in palavras if p.get('t1', 0) > p.get('t0', 0)), key=lambda p: p['t0'])
+    if not pal:
+        return [(0.0, duracao)]
+    trechos = []
+    ini = max(0.0, pal[0]['t0'] - folga_ini)
+    for a, b in zip(pal, pal[1:]):
+        vao = b['t0'] - a['t1']
+        if vao <= pausa_max:
+            continue
+        fim_frase = a['w'].rstrip().endswith(('.', '!', '?', ':'))
+        guarda = respiro_frase if fim_frase else respiro
+        # o respiro fica dividido: um pouco depois da palavra, um pouco antes da próxima
+        fim = min(a['t1'] + max(folga_fim, guarda * 0.6), b['t0'])
+        prox = max(b['t0'] - max(folga_ini, guarda * 0.4), fim)
+        trechos.append((ini, fim))
+        ini = prox
+    trechos.append((ini, min(duracao, pal[-1]['t1'] + 0.35)))
+    return [(round(a, 3), round(b, 3)) for a, b in trechos if b - a > 0.05]
+
+
 def montar_trechos(duracao, silencios=(), palavras=(), remover_pausas=True, remover_muletas=True,
                    remover_retomadas=True, margem=MARGEM_SILENCIO):
-    """Junta tudo: silêncios ∪ muletas ∪ repetições ∪ retomadas → trechos mantidos. Devolve (trechos, detalhes)."""
+    """Junta tudo: pausas (pelas palavras; silêncio só sem transcrição) ∪ muletas ∪ repetições ∪ retomadas → trechos."""
     duracao = float(duracao)
-    mantidos = trechos_por_silencio(duracao, silencios, margem) if remover_pausas else [(0.0, duracao)]
+    if remover_pausas and palavras:
+        mantidos = trechos_por_palavras(palavras, duracao)
+    else:
+        mantidos = trechos_por_silencio(duracao, silencios, margem) if remover_pausas else [(0.0, duracao)]
     detalhes = {'silencios': len([s for s in silencios]) if remover_pausas else 0, 'muletas': 0, 'repeticoes': 0, 'retomadas': 0}
     cortes = []
     if remover_muletas and palavras:
@@ -474,9 +510,9 @@ def geometria_crop(largura, altura, zoom=1.0, cx=0.5, cy=0.5, alvo_l=LARGURA, al
     return w, h, x, y
 
 
-def filtro_rotacao(rotacao):
+def filtro_rotacao_legado(rotacao):
     """Rotação do ffprobe (side_data 'rotation', convenção: -90 = gravar deitado precisa girar horário) → filtro."""
-    r = int(round(float(rotacao or 0))) % 360
+    r = int(round(float(rotacao or 0))) % 360  # não usar: o sinal muda entre versões do ffmpeg (5.0 inverteu)
     if r == 270:      # -90
         return 'transpose=1'
     if r == 90:
@@ -560,7 +596,7 @@ def cabecalho_ass(estilo):
     )
 
 
-def eventos_ass(blocos, estilo, sobra=0.35):
+def eventos_ass(blocos, estilo, sobra=0.35, posicao=None):
     """Um Dialogue por palavra ativa: o bloco inteiro aparece e a palavra da vez muda de cor/escala."""
     p = PRESETS[estilo]
     linhas = []
@@ -571,7 +607,10 @@ def eventos_ass(blocos, estilo, sobra=0.35):
             fim_bloco = min(fim_bloco, prox_inicio)
         tam = tamanho_para_bloco(bloco, p)
         tags_bloco = f"\\fs{tam}" if tam != p['tamanho'] else ''     # só quando precisou encolher a fonte
-        prefixo = f"{{{tags_bloco}}}" if tags_bloco else ''
+        pos = posicao(bloco[0]['n0']) if posicao else ''               # montagem dinâmica: legenda muda de lugar com o layout
+        # entrada com "pop": o bloco nasce um pouco menor e cresce em 120 ms
+        pop = '\\fscx86\\fscy86\\t(0,120,\\fscx100\\fscy100)'
+        prefixo = f"{{{pos}{tags_bloco}}}" if (tags_bloco or pos) else ''
         textos = [escapar_ass(x['w'].strip().upper() if p['maiusculas'] else x['w'].strip()) for x in bloco]
         for i, w in enumerate(bloco):
             ini = w['n0']
@@ -584,17 +623,18 @@ def eventos_ass(blocos, estilo, sobra=0.35):
                     partes.append(f"{{\\c{p['cor_ativa']}\\fscx{esc}\\fscy{esc}}}{t}{{\\r{tags_bloco}}}")
                 else:
                     partes.append(t)
-            linhas.append(f"Dialogue: 0,{ass_tempo(ini)},{ass_tempo(fim)},Legenda,,0,0,0,,{prefixo}{' '.join(partes)}")
+            entrada = f"{{{pop}}}" if i == 0 else ''
+            linhas.append(f"Dialogue: 0,{ass_tempo(ini)},{ass_tempo(fim)},Legenda,,0,0,0,,{prefixo}{entrada}{' '.join(partes)}")
     return linhas
 
 
-def gerar_ass(palavras_remapeadas, estilo='hormozi'):
-    """Palavras (n0/n1) → conteúdo completo do arquivo .ass no preset pedido."""
+def gerar_ass(palavras_remapeadas, estilo='hormozi', posicao=None):
+    """Palavras (n0/n1) → conteúdo completo do arquivo .ass no preset pedido. `posicao(t)` → tags \\an/\\pos por bloco."""
     if estilo not in PRESETS:
         raise ValueError(f"estilo desconhecido: {estilo}")
     p = PRESETS[estilo]
     blocos = agrupar_palavras(palavras_remapeadas, p['max_palavras'], p['max_chars'], p['min_palavras'])
-    return cabecalho_ass(estilo) + '\n'.join(eventos_ass(blocos, estilo)) + '\n'
+    return cabecalho_ass(estilo) + '\n'.join(eventos_ass(blocos, estilo, posicao=posicao)) + '\n'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -648,3 +688,9 @@ def escolher_arquivo_pexels(video, altura_min=1080):
 
 def resumo_json(obj):
     return json.dumps(obj, ensure_ascii=False, indent=1)
+
+
+def filtro_rotacao(rotacao):
+    """Rotação fica com o próprio ffmpeg (autorotate, padrão): girar na mão dependia do sinal do ffprobe, que mudou
+    entre versões — no worker do GitHub o vídeo saiu de lado/de ponta-cabeça. Mantido só por compatibilidade."""
+    return ''
