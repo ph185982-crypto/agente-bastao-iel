@@ -66,7 +66,8 @@ function quebrar(f, texto, tam, largura) {
 
 // Encaixa a tradução na caixa original: mesmo tamanho de letra, encolhendo até caber (mínimo 55%).
 function diagramar(b, texto, info) {
-  const negrito = b.altura_linha >= 38 || b.titulo;
+  // Peso pelo original: tinta densa = negrito (medido: negrito ~0,21, regular ~0,09); sem medida, pelo tamanho da letra.
+  const negrito = b.densidade != null ? b.densidade > 0.15 : (b.altura_linha >= 38 || b.titulo);
   const f = fonte(negrito ? 'negrito' : 'normal');
   const centrado = Math.abs(b.x0 - (info.width - b.x1)) < info.width * 0.06 && b.x0 > info.width * 0.06; // margens iguais dos dois lados
   // Largura disponível: a do original, podendo crescer até 12% (texto em português costuma ser mais longo), sem sair da imagem.
@@ -152,12 +153,14 @@ function acharSelo(raw, info, posicao, protegidas = []) {
   const pad = 8;
   const r = { x0: Math.max(0, R.x0 + gx.a - pad), x1: Math.min(W - 1, R.x0 + gx.b + pad), y0: Math.max(0, ya - pad), y1: Math.min(H - 1, yb + pad), fundo };
   // Selo grande demais não é selo (é parte do desenho ou da foto): não mexe.
-  if ((r.x1 - r.x0) * (r.y1 - r.y0) > W * H * 0.06) return null;
+  // Selo grande demais não é selo (é parte do desenho ou da foto): não mexe. Cabeçalho no topo/base pode ser maior (foto + nome + @).
+  if ((r.x1 - r.x0) * (r.y1 - r.y0) > W * H * (v === 'meio' ? 0.06 : 0.14)) return null;
   // Fundo liso em volta: pinta; sobre foto: borra.
   const anel = []; for (let x = r.x0; x <= r.x1; x += 2) anel.push(pixel(raw, info, x, r.y0), pixel(raw, info, x, r.y1)); for (let y = r.y0; y <= r.y1; y += 2) anel.push(pixel(raw, info, r.x0, y), pixel(raw, info, r.x1, y));
   const desvio = Math.sqrt(anel.reduce((a, p) => a + dist(p, fundo) ** 2, 0) / Math.max(1, anel.length));
-  const desvioRegiao = Math.sqrt(borda.reduce((a, p) => a + dist(p, fundo) ** 2, 0) / Math.max(1, borda.length));
-  return { ...r, liso: desvio < 30 || desvioRegiao < 25 };
+  // Liso = quase toda a borda (da caixa ou da região) tem a cor do fundo; foto e degradê ficam abaixo disso e são borrados.
+  const parecido = (lista) => lista.filter((p) => dist(p, fundo) < 30).length / Math.max(1, lista.length);
+  return { ...r, liso: desvio < 30 || parecido(anel) > 0.85 || parecido(borda) > 0.85 };
 }
 
 // Monta o SVG com a pintura das caixas e o texto novo (contornos).
@@ -176,7 +179,9 @@ function svgTroca(blocos, info, raw) {
   for (const b of blocos) {
     if (b.apagar || !b.novo || (!b.visao && !ehTexto(b))) continue;
     const { fundo, pad } = cores(raw, info, b); const corTexto = corDaMarca(fundo); // nunca a cor do post original
-    const d = diagramar(b, b.novo, info);
+    let n = 0; let t = 0; const passo = Math.max(1, Math.round((b.x1 - b.x0) / 200));
+    for (let y = Math.max(0, b.y0); y <= Math.min(info.height - 1, b.y1); y += passo) for (let x = Math.max(0, b.x0); x <= Math.min(info.width - 1, b.x1); x += passo) { t++; if (dist(pixel(raw, info, x, y), fundo) > 90) n++; }
+    const d = diagramar({ ...b, densidade: t ? n / t : null }, b.novo, info);
     const alto = d.linhas.length * d.tam * 1.18;
     // Página de um texto só, sem o cabeçalho do autor: o texto vai para o meio da página (fica só a página branca com ele).
     const unico = blocos.filter((x) => !x.apagar && x.novo).length === 1 && blocos.some((x) => x.apagar && x.posicao && !x.posicao.startsWith('base'));

@@ -101,10 +101,10 @@ function blocosDaVisao(dados, { trechos = [] } = {}) {
     const ocr = porTexto.get(k);
     const mudou = t.traducao && norm(t.traducao) !== norm(t.original);
     if (!ocr) { if (mudou) faltando.push(t.original); continue; }
-    if (!mudou) continue;
+    // Texto que não muda (já em português, número, nome) também é reescrito: todo texto da cópia sai na fonte e na cor da marca.
     const caixa = { x0: Math.min(...ocr.map((o) => o.x0)), x1: Math.max(...ocr.map((o) => o.x1)), y0: Math.min(...ocr.map((o) => o.y0)), y1: Math.max(...ocr.map((o) => o.y1)) };
     const altura_linha = Math.round(ocr.reduce((a, o) => a + (o.altura_linha || o.y1 - o.y0), 0) / ocr.length);
-    blocos.push({ ...caixa, altura_linha, n_linhas: ocr.reduce((a, o) => a + (o.n_linhas || 1), 0), texto: t.original, novo: t.traducao, confianca: 100, visao: true });
+    blocos.push({ ...caixa, altura_linha, n_linhas: ocr.reduce((a, o) => a + (o.n_linhas || 1), 0), texto: t.original, novo: mudou ? t.traducao : t.original, confianca: 100, visao: true });
   }
   for (const a of (Array.isArray(dados?.assinaturas) ? dados.assinaturas : []).slice(0, 6)) {
     const posicao = POSICOES.includes(a?.posicao) ? a.posicao : null; if (!posicao) continue;
