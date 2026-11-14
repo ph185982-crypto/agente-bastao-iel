@@ -319,6 +319,59 @@ class Montagem(unittest.TestCase):
 
 
 
+def _avaliar(expr, t):
+    """Avalia uma expressão do ffmpeg gerada por expr_linear (só usa +, -, *, /, clip e t)."""
+    return eval(expr, {'__builtins__': {}}, {'clip': lambda x, a, b: min(max(x, a), b), 't': t})
+
+
+class Rastreio(unittest.TestCase):
+    """O recorte segue o rosto quadro a quadro (pedido do Pedro: rosto centralizado na janela de baixo)."""
+    def test_trilha_preenche_buracos_e_tira_pico(self):
+        cru = [(i / 6, 0.5, 0.5, 0.3) for i in range(30)]
+        cru[10] = (10 / 6, None, None, None)        # rosto não achado
+        cru[20] = (20 / 6, 0.95, 0.1, 0.3)          # detecção falsa
+        tr = L.trilha_rosto(cru)
+        self.assertEqual(len(tr['t']), 30)
+        self.assertTrue(all(abs(v - 0.5) < 0.01 for v in tr['cx']))
+        self.assertTrue(all(abs(v - 0.5) < 0.01 for v in tr['cy']))
+        self.assertIsNone(L.trilha_rosto([(0.1, None, None, None)]))
+        self.assertIsNone(L.trilha_rosto([]))
+
+    def test_trilha_sem_atraso(self):
+        # rosto andando para a direita em velocidade constante: a suavização não pode atrasar (fase zero)
+        cru = [(i / 6, 0.3 + 0.01 * i, 0.5, 0.3) for i in range(40)]
+        tr = L.trilha_rosto(cru)
+        for i in range(8, 32):
+            self.assertAlmostEqual(tr['cx'][i], 0.3 + 0.01 * i, places=3)
+        self.assertAlmostEqual(L.posicao_na_trilha(tr, 15.5 / 6)[0], 0.455, places=3)
+
+    def test_expressao_linear(self):
+        pts = [(0, 10), (0.25, 10), (0.5, 12.3), (1.0, 8)]
+        e = L.expr_linear(pts)
+        self.assertNotIn(':', e)
+        for t, v in [(-1, 10), (0, 10), (0.25, 10), (0.375, 11.15), (0.5, 12.3), (0.75, 10.15), (1.0, 8), (5, 8)]:
+            self.assertAlmostEqual(_avaliar(e, t), v, places=4)
+        self.assertEqual(L.expr_linear([(0, 3), (1, 3)]), '3.0')
+
+    def test_crop_centraliza_e_respeita_limites(self):
+        tr = L.trilha_rosto([(i / 6, 0.5 + 0.004 * i, 0.5, 0.3) for i in range(60)])
+        larg, alt, cl, ca = 1200, 2000, 948, 750
+        ex, ey = L.chaves_crop(tr, 2.0, 4.0, larg, alt, cl, ca, cl / 2, 150 + 276, topo=150)
+        for tl in (0, 0.5, 1.0, 1.5, 2.0):
+            cx, cy = L.posicao_na_trilha(tr, 2.0 + tl)
+            x, y = _avaliar(ex, tl), _avaliar(ey, tl)
+            self.assertTrue(0 <= x <= larg - cl and 0 <= y <= alt + 150 - ca)
+            self.assertAlmostEqual(cx * larg - x, cl / 2, delta=1.0)           # rosto no centro do recorte
+            self.assertAlmostEqual(cy * alt + 150 - y, 150 + 276, delta=1.0)
+        # rosto colado na borda: o recorte para no limite (não mostra fora da imagem)
+        tr2 = L.trilha_rosto([(i / 6, 0.02, 0.98, 0.3) for i in range(12)])
+        ex2, ey2 = L.chaves_crop(tr2, 0, 1.5, larg, alt, cl, ca, cl / 2, 426, topo=150)
+        self.assertEqual((_avaliar(ex2, 0.7), _avaliar(ey2, 0.7)), (0.0, alt + 150 - ca))
+        # sem rosto: recorte fixo
+        ex3, ey3 = L.chaves_crop(None, 0, 3, larg, alt, cl, ca, cl / 2, 426, topo=150)
+        self.assertNotIn('clip', ex3 + ey3)
+
+
 class Destrava(unittest.TestCase):
     """Formato da referência do Pedro (14/11/2026): gráficos em cima, janela embaixo, legenda de uma palavra."""
     def _pal(self, textos):
@@ -352,6 +405,54 @@ class Destrava(unittest.TestCase):
         f = D.ass_final(b, pal, dur)
         self.assertIn('@PEDRO_DESTRAVA', f)
         self.assertEqual(sum(1 for ln in f.splitlines() if ',Legenda,' in ln), len(pal))   # uma palavra por evento
+        # sem marca d'água lateral (pedido do Pedro, 14/11): o @ só aparece na tela final
+        ini_fim = b[-1]['t0']
+        for ln in f.splitlines():
+            if 'PEDRO_DESTRAVA' in ln:
+                hh, mm, ss = ln.split(',')[1].split(':')
+                self.assertGreaterEqual(int(hh) * 3600 + int(mm) * 60 + float(ss), ini_fim - 0.01, ln)
+
+    def test_sem_marca_lateral_sem_tela_final(self):
+        import lib_destrava as D
+        pal, dur = self._pal(['Você não precisa de investidor.', 'Quem manda no estoque manda na empresa.'])
+        b = D.planejar(D.frases_por_pontuacao(pal), dur, '', broll=False)
+        self.assertNotEqual(b[-1]['layout'], 'fim')   # "quem MANDA no estoque" não é chamada final
+        f = D.ass_final(b, pal, dur)   # vídeo curto (< 8 s) e sem chamada: nenhum @ nem logo
+        self.assertNotIn('PEDRO_DESTRAVA', f)
+        self.assertEqual([ln for ln in f.splitlines() if ln.startswith('Dialogue') and ',Legenda,' not in ln], [])
+
+    def test_graficos_acima_da_legenda_e_da_cabeca(self):
+        import re as _re
+        import lib_destrava as D
+        topo_cabeca = D.JANELA['y'] - D.RECORTE
+        self.assertLess(D.Y_LEGENDA['split'] + 40, topo_cabeca)   # a legenda de uma palavra fica acima da cabeça
+        for q in (D.INSET_IMAGEM, D.INSET_TITULO):
+            self.assertLessEqual(q['y'] + q['h'], D.Y_LEGENDA['split'] - 45)
+        pal, dur = self._pal(['Você não precisa de investidor para crescer.', 'No Brasil, 6 em cada 10 empresas fecham.',
+                              'Ela focou em quatro coisas básicas.', 'Produto, preço, prazo e caixa.',
+                              'Quem manda no estoque manda na empresa.', 'O dinheiro do lucro paga a produção seguinte.'])
+        b = D.planejar(D.frases_por_pontuacao(pal), dur, 'Cresça sem investidor', broll=False)
+        g = D.ass_graficos(b)
+        ys = [int(m) for m in _re.findall(r'\\pos\(\d+,(\d+)\)', g)]
+        self.assertTrue(ys)
+        self.assertLessEqual(max(ys), D.Y_LEGENDA['split'] - 90)
+        for desenho in _re.findall(r'\\p1\}([^{]*)\{', g):   # formas vetoriais (cartões, fichas) também param antes
+            nums = [float(x) for x in desenho.replace('m', ' ').replace('l', ' ').replace('b', ' ').split()]
+            self.assertLessEqual(max(nums[1::2]), D.Y_LEGENDA['split'] - 45, desenho[:60])
+
+    def test_escala_da_janela(self):
+        import lib_destrava as D
+        # selfie de perto (rosto = 1/3 da altura): só a folga de 6% para centralizar, sem aumentar o rosto
+        s, w, h = D.escala_janela(1080, 1920, 0.33)
+        self.assertAlmostEqual(s, D.JANELA['w'] / 1080 * D.ZOOM_JANELA, places=4)
+        self.assertGreater(w, D.JANELA['w']); self.assertEqual(w % 2, 0); self.assertEqual(h % 2, 0)
+        # câmera longe (rosto pequeno, vídeo deitado): aproxima, mas no máximo 2,2× a escala base
+        s2, w2, h2 = D.escala_janela(1920, 1080, 0.12)
+        base = max(D.JANELA['w'] / 1920, D.JANELA['h'] / 1080)
+        self.assertAlmostEqual(s2, base * 2.2, places=4)
+        s3, _, _ = D.escala_janela(1920, 1080, 0.3)
+        self.assertAlmostEqual(s3, 0.62 * D.JANELA['h'] / (0.3 * 1080), places=4)
+        self.assertGreaterEqual(D.escala_janela(1080, 1920, None)[1], D.JANELA['w'])
 
     def test_roteiro_incompleto_avisa(self):
         # caso real (14/11): o iPhone parou a gravação aos 33,6 s e o roteiro tinha ~56 s
