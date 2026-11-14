@@ -38,7 +38,7 @@ async function pautas({ est = {}, deps = {} } = {}) {
     const itens = await (deps.teses || (() => require('../reciclagem/coletar').listar({ dias: 10, limite: 60 })))();
     for (const it of (Array.isArray(itens) ? itens : itens?.itens) || []) {
       if (!it.tese) continue; const chave = `rc:${it.id}`; if (usadas.has(chave)) continue;
-      out.tese.push({ chave, tipo: 'tese', tema: limpa(it.tema || it.tese, 120), texto: [`TESE (viralizou em outra conta; não cite a origem): ${it.tese}`, it.ponte_pedro ? `PONTE PARA O EMPREENDEDOR BRASILEIRO: ${it.ponte_pedro}` : '', it.mecanismo ? `MECANISMO QUE FEZ VIRALIZAR: ${it.mecanismo}` : ''].filter(Boolean).join('\n'), peso: Number(it.vl) || 0, reel: it.tipo === 'reel' ? 1 : 0 });
+      out.tese.push({ chave, tipo: 'tese', tema: limpa(it.tema || it.tese, 120), texto: [`TESE (viralizou em outra conta; não cite a origem): ${it.tese}`, it.ponte_pedro ? `PONTE PARA O EMPREENDEDOR BRASILEIRO: ${it.ponte_pedro}` : '', it.mecanismo ? `MECANISMO QUE FEZ VIRALIZAR: ${it.mecanismo}` : ''].filter(Boolean).join('\n'), peso: Number(it.vl) || 0, reel: it.tipo === 'reel' ? 1 : 0, autor: [it.conta?.handle, it.conta?.nome].filter((x) => x && String(x).replace(/^[@#]/, '').length >= 4).map((x) => String(x).replace(/^[@#]/, '').replace(/\(.*\)/, '').trim()) }); // handle e nome inteiros ("Conta Azul", não "Conta")
     }
     out.tese.sort((a, b) => (b.reel - a.reel) || (b.peso - a.peso)); // tese de reel viral primeiro: virou vídeo uma vez, vira de novo
   } catch { /* fonte fora do ar: as outras cobrem */ }
@@ -141,6 +141,11 @@ function fiscalCodigo(r, pauta) {
   const vic = Mentes.AI.vicios([falado]); const m = falado.match(VICIOS_ROTEIRO);
   if (vic.length + (m ? 1 : 0) >= 2) p.push({ criterio: 15, motivo: `vícios de IA: ${[...vic.slice(0, 3).map((v) => v.nome), m ? `"${m[0]}"` : null].filter(Boolean).join(', ')}` });
   if (/[\u{1F300}-\u{1FAFF}]|#\w/u.test(falado)) p.push({ criterio: 15, motivo: 'emoji ou hashtag no roteiro falado' });
+  // A pauta veio de um post de outra conta: o roteiro não cita nem promove essa conta, marca ou produto.
+  const autores = (pauta.autor || []).map((a) => a.toLowerCase()).filter((a) => a.length >= 4);
+  const normal = (t) => ` ${String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()} `;
+  const marca = autores.find((a) => normal(falado).includes(normal(a)));
+  if (marca || /\b(podcast|canal|perfil|newsletter) d[aoe]s? [A-Z]/.test(falado)) p.push({ criterio: 14, eliminar: true, motivo: `cita ou promove marca/perfil de terceiros${marca ? ` (${marca})` : ''}: o roteiro é do Pedro, sem divulgar outra conta` });
   const sem = numerosSemFonte(r, pauta);
   if (sem.length) p.push({ criterio: 8, eliminar: true, motivo: `número que não está na pauta: ${sem.slice(0, 4).join(', ')} (número inventado reprova)` });
   return { problemas: p, palavras: total, duracao_s: Math.round(total / S.PALAVRAS_POR_S) };

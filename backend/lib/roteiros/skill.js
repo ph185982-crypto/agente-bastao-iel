@@ -39,6 +39,8 @@ Público: dono de pequena empresa, MEI, quem vende em marketplace, autônomo no 
 9. POLÍTICA SEM PERDER ALCANCE: o Instagram não recomenda conteúdo político a quem não segue. Liberdade econômica entra pelo BOLSO do empreendedor (imposto, burocracia, taxa, prazo); sem nome de político, partido ou eleição no gancho e no [TELA]. Crítica firme, com fato, sem ataque pessoal.
 10. DURAÇÃO é consequência: ideia simples 30–45 s (80–120 palavras); explicação ou história 50–75 s (130–195 palavras).
 
+11. NUNCA cite, recomende ou divulgue marca, empresa, perfil, podcast, curso ou produto de terceiros (nem o autor do post que inspirou a pauta). O roteiro é do Pedro.
+
 VÍCIOS DE IA PROIBIDOS: "vamos lá", "bora", "se liga", "você sabia que", "não é só X, é Y", "não se trata de", "mais do que", "no mundo de hoje", "cada vez mais", "vale lembrar", "é importante", "descubra", "o guia definitivo", "jornada", "alavancar", "e o melhor de tudo", "mas não para por aí", "em resumo", "spoiler", travessão, emoji, hashtag, tríade enfeitada, frase-lição genérica no fim, "estudos mostram" sem dizer quem, número redondo sem fonte.`;
 
 // Checklist do documento (seção 3). ★ = eliminatório.
