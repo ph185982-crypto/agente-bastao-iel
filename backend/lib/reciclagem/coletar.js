@@ -308,9 +308,27 @@ async function descartar(id, { agora = Date.now() } = {}) {
   doc.descartado_em = iso(agora); await salvarItem(doc); return { id, descartado: true };
 }
 
-// Leitura leve (a aba aberta chama a cada 30 s): as N contas lidas há mais tempo, sem IA, sem YouTube e sem tendências.
-// 1 conta a cada 30 s = 120 chamadas por hora à Meta, dentro do limite de ~200/h do app.
-async function coletarAlgumas({ deps = {}, n = 1, agora = Date.now() } = {}) {
+// ── Hashtags (busca oficial da Meta: top posts da hashtag, inclusive de contas que não vigiamos) ─────────────
+// Limite da Meta: 30 hashtags diferentes por semana por conta. A lista fica em 20.
+const HASHTAGS = ['empreendedorismo', 'empreendedor', 'negocios', 'mei', 'pequenasempresas', 'marketingdigital', 'vendas', 'educacaofinanceira', 'financas', 'gestao',
+  'lideranca', 'ecommerce', 'entrepreneur', 'entrepreneurship', 'smallbusiness', 'business', 'marketing', 'sales', 'personalfinance', 'leadership'];
+const IDIOMA_TAG = (t) => (/^(entrepreneur|entrepreneurship|smallbusiness|business|marketing|sales|personalfinance|leadership)$/.test(t) ? 'en' : 'pt');
+async function lerHashtag(tag, { graph, igId, estado, agora = Date.now() }) {
+  const ids = { ...(estado.hashtag_ids || {}) };
+  if (!ids[tag]) { const r = await graph('GET', 'ig_hashtag_search', { user_id: igId, q: tag }); ids[tag] = r?.data?.[0]?.id || null; }
+  if (!ids[tag]) return { itens: [], ids };
+  const d = await graph('GET', `${ids[tag]}/top_media`, { user_id: igId, limit: 50, fields: 'id,caption,media_type,comments_count,like_count,permalink,timestamp,media_url,children{media_type,media_url}' });
+  const posts = (d?.data || []).map(normalizarMidiaIg).filter((p) => p && ['carrossel', 'imagem'].includes(p.tipo)); // top da hashtag já é o que está bombando: sem esperar 72 h
+  // Sem dono nem seguidores no retorno: o índice é a curtida do post ÷ a mediana das curtidas do top da hashtag (mínimo 2: já é top).
+  const curt = posts.map((p) => p.curtidas || 0).sort((a, b) => a - b); const med = curt[Math.floor(curt.length / 2)] || 1;
+  const itens = posts.map((p) => ({ ...p, rede: 'instagram', vl: Math.max(2, Math.round(((p.curtidas || 0) / med) * 10) / 10), vl_er: null, vl_views: null, er: null, seguidores: null,
+    conta: { handle: `#${tag}`, nome: `#${tag} (top da hashtag)`, pais: '??', idioma: IDIOMA_TAG(tag) } }));
+  return { itens, ids };
+}
+
+// Leitura leve (a aba aberta chama a cada 30 s): contas em rodízio + uma hashtag a cada 4 rodadas, sem IA.
+// Quantas contas por rodada depende da cota que a própria Meta informa: até 5 com folga, 1 quando passa de 60%, pausa acima de 85%.
+async function coletarAlgumas({ deps = {}, n = null, agora = Date.now() } = {}) {
   db();
   const meta = deps.meta || require('../meta');
   if (!deps.graph && meta.faltando().filter((k) => k !== 'PUBLISH_SECRET').length) return { lidas: 0, novos: 0, motivo: 'Instagram não configurado.' };
@@ -318,14 +336,33 @@ async function coletarAlgumas({ deps = {}, n = 1, agora = Date.now() } = {}) {
   if (estado.leve_ate && Date.parse(estado.leve_ate) > agora) return { lidas: 0, novos: 0, ocupado: true };
   await salvarEstado({ leve_ate: new Date(agora + 25000).toISOString() });
   try {
+    if (estado.leve_pausa_ate && Date.parse(estado.leve_pausa_ate) > agora) { await salvarEstado({ leve_ate: null }); return { lidas: 0, novos: 0, pausado_ate: estado.leve_pausa_ate }; }
+    const graph = deps.graph || meta.graph; const igId = deps.igId || meta.config().igId;
+    const rodada = (estado.leve_rodadas || 0) + 1;
     const contasAtuais = deps.contas || (await Contas.carregar());
-    const fila = [...(contasAtuais.instagram || [])].sort((a, b) => Date.parse(lidasEm[a.handle] || 0) - Date.parse(lidasEm[b.handle] || 0)).slice(0, Math.max(1, Math.min(3, n)));
-    const r = await coletarInstagram({ contas: fila, graph: deps.graph || meta.graph, igId: deps.igId || meta.config().igId, agora, maxContas: fila.length, orcamentoMs: 20000, concorrencia: fila.length });
+    const qtd = Math.max(1, Math.min(5, n || estado.leve_n || 2));
+    const fila = [...(contasAtuais.instagram || [])].sort((a, b) => Date.parse(lidasEm[a.handle] || 0) - Date.parse(lidasEm[b.handle] || 0)).slice(0, qtd);
+    const r = await coletarInstagram({ contas: fila, graph, igId, agora, maxContas: fila.length, orcamentoMs: 20000, concorrencia: fila.length });
+    // A cada 4 rodadas, uma hashtag (a lida há mais tempo). Sem permissão na Meta: tenta de novo só no dia seguinte.
+    let tag = null; let erroTag = null; let ids = estado.hashtag_ids || {}; const tagsEm = { ...(estado.hashtags_em || {}) };
+    const tagLiberada = !estado.hashtag_bloqueio_ate || Date.parse(estado.hashtag_bloqueio_ate) < agora;
+    if (rodada % 4 === 0 && tagLiberada && !deps.semHashtag) {
+      tag = [...HASHTAGS].sort((a, b) => Date.parse(tagsEm[a] || 0) - Date.parse(tagsEm[b] || 0))[0];
+      try { const h = await lerHashtag(tag, { graph, igId, estado, agora }); ids = h.ids; r.itens.push(...h.itens); tagsEm[tag] = iso(agora); }
+      catch (e) { erroTag = String(e?.meta?.mensagem_original || e.message).slice(0, 200); }
+    }
     const g = r.itens.length ? await guardar(r.itens, { agora }) : { novos: 0 };
     const atual = await lerEstado(); const lidas = { ...(atual.lidas_em || {}) };
     for (const c of r.contas) lidas[c.handle] = iso(agora); // recusada também anda na fila (senão trava o rodízio nela)
-    await salvarEstado({ lidas_em: lidas, leve_ate: null, ultima_leve: { em: iso(agora), contas: r.contas.map((c) => ({ handle: c.handle, ok: c.ok })), novos: g.novos } });
-    return { lidas: r.contas.filter((c) => c.ok).length, contas: r.contas.map((c) => c.handle), novos: g.novos || 0, limite: r.contas.some((c) => c.tipo === 'limite') };
+    // Freio pela cota que a Meta informa nos cabeçalhos.
+    const u = (deps.uso || meta.uso || (() => ({})))(); const pct = u.pct;
+    const limite = r.contas.some((c) => c.tipo === 'limite');
+    const proxN = limite || (pct != null && pct >= 60) ? 1 : pct != null && pct < 30 ? Math.min(5, qtd + 1) : qtd;
+    const pausa = limite || (pct != null && pct >= 85) ? new Date(agora + Math.max(10, u.regain_min || 0) * 60000).toISOString() : null;
+    await salvarEstado({ lidas_em: lidas, leve_ate: null, leve_n: proxN, leve_rodadas: rodada, leve_pausa_ate: pausa, hashtag_ids: ids, hashtags_em: tagsEm,
+      ...(erroTag ? { hashtag_bloqueio_ate: new Date(agora + 86400000).toISOString(), hashtag_erro: erroTag } : tag ? { hashtag_erro: null } : {}),
+      ultima_leve: { em: iso(agora), contas: r.contas.map((c) => ({ handle: c.handle, ok: c.ok })), hashtag: tag, erro_hashtag: erroTag, uso_meta_pct: pct, proximas: proxN, novos: g.novos } });
+    return { lidas: r.contas.filter((c) => c.ok).length, contas: r.contas.map((c) => c.handle), hashtag: tag, erro_hashtag: erroTag, novos: g.novos || 0, uso_meta_pct: pct, proximas: proxN, pausa_ate: pausa, limite };
   } catch (e) { await salvarEstado({ leve_ate: null }).catch(() => {}); throw e; }
 }
 
@@ -387,7 +424,7 @@ async function tendenciasGuardadas() {
 }
 
 module.exports = {
-  descartar, coletarAlgumas,
+  descartar, coletarAlgumas, lerHashtag, HASHTAGS,
   TIPO, TIPO_ESTADO, MATURIDADE_H, RETENCAO_DIAS, MAX_CONTAS, LOTE_IA, VL_ALTA, VL_CANDIDATO, VL_CLASSIFICAR, COTA_YOUTUBE, TRENDS_URL,
   mediana, er, maduro, pontuar, idDe, diaBRT,
   coletarInstagram, coletarYoutube, parseTrendsRss, tendencias, cruzar, classificar, normalizarMecanismo, copiaLegenda,
