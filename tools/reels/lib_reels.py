@@ -510,6 +510,97 @@ def geometria_crop(largura, altura, zoom=1.0, cx=0.5, cy=0.5, alvo_l=LARGURA, al
     return w, h, x, y
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# Rastreio do rosto quadro a quadro: o recorte acompanha o rosto dentro de cada trecho (não fica parado no centro médio)
+# ----------------------------------------------------------------------------------------------------------------------
+def _interp(xs, ys, x):
+    """Interpolação linear com as pontas seguras (igual a numpy.interp). `xs` crescente."""
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    lo, hi = 0, len(xs) - 1
+    while hi - lo > 1:
+        meio = (lo + hi) // 2
+        if xs[meio] <= x:
+            lo = meio
+        else:
+            hi = meio
+    if xs[hi] == xs[lo]:
+        return ys[lo]
+    return ys[lo] + (ys[hi] - ys[lo]) * (x - xs[lo]) / (xs[hi] - xs[lo])
+
+
+def trilha_rosto(cru, sigma_s=0.5, mediana=5):
+    """`cru` = [(t, cx|None, cy|None, ...)] no tempo ORIGINAL, cx/cy normalizados 0..1 (None = rosto não achado).
+    Devolve {'t', 'cx', 'cy'}: buracos preenchidos por interpolação (pontas seguras), picos de detecção falsa tirados
+    (mediana móvel) e movimento suave SEM atraso (gaussiana de fase zero, σ = sigma_s s), como um operador de câmera
+    calmo. None se nenhuma amostra tem rosto."""
+    ts = [float(c[0]) for c in cru]
+    if not ts:
+        return None
+
+    def serie(k):
+        pts = [(float(c[0]), float(c[k])) for c in cru if c[k] is not None]
+        if not pts:
+            return None
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        v = [_interp(xs, ys, t) for t in ts]
+        h = mediana // 2
+        if h and len(v) > 2:
+            pad = [v[0]] * h + v + [v[-1]] * h
+            v = [sorted(pad[i:i + 2 * h + 1])[h] for i in range(len(v))]
+        dt = (ts[-1] - ts[0]) / (len(ts) - 1) if len(ts) > 1 else 0
+        if dt <= 0:
+            return [round(x, 5) for x in v]
+        s = max(0.5, sigma_s / dt)
+        r = int(3 * s)
+        nucleo = [math.exp(-0.5 * (j / s) ** 2) for j in range(-r, r + 1)]
+        soma = sum(nucleo)
+        pad = [v[0]] * r + v + [v[-1]] * r
+        return [round(sum(nucleo[j] * pad[i + j] for j in range(2 * r + 1)) / soma, 5) for i in range(len(v))]
+
+    cx, cy = serie(1), serie(2)
+    if cx is None or cy is None:
+        return None
+    return {'t': ts, 'cx': cx, 'cy': cy}
+
+
+def posicao_na_trilha(trilha, t):
+    """(cx, cy) do rosto no instante t (tempo original), interpolado na trilha."""
+    return _interp(trilha['t'], trilha['cx'], t), _interp(trilha['t'], trilha['cy'], t)
+
+
+def expr_linear(pontos, casas=1):
+    """[(t, v)] com t crescente → expressão do ffmpeg na variável t, linear por partes e segura antes do 1º e depois do
+    último ponto: v0 + Σ Δv·clip((t − tᵢ)/(tᵢ₊₁ − tᵢ), 0, 1). Vai entre aspas simples no filtro (tem vírgulas)."""
+    vals = [(float(t), round(float(v), casas)) for t, v in pontos]
+    out = [f"{vals[0][1]:.{casas}f}"]
+    for (ta, va), (tb, vb) in zip(vals, vals[1:]):
+        dv = round(vb - va, casas)
+        if abs(dv) < 0.5 * 10 ** -casas or tb - ta <= 1e-6:
+            continue
+        out.append(f"{'+' if dv > 0 else '-'}{abs(dv):.{casas}f}*clip((t-{ta:.3f})/{tb - ta:.3f},0,1)")
+    return ''.join(out)
+
+
+def chaves_crop(trilha, a, b, larg, alt, corte_l, corte_a, alvo_x, alvo_y, topo=0, passo=0.25):
+    """Recorte que segue o rosto no trecho [a, b] da fonte (tempo original). A fonte já escalada mede larg×alt e ganha
+    `topo` linhas de preenchimento em cima (a cabeça pode passar da borda de cima); o recorte mede corte_l×corte_a e
+    põe o rosto em (alvo_x, alvo_y) dele, sempre dentro dos limites. Sem trilha: rosto suposto em (0,5; 0,45).
+    Devolve (expr_x, expr_y) no tempo LOCAL do segmento (0 = início dele)."""
+    n = max(1, int(math.ceil((b - a) / passo - 1e-9)))
+    px, py = [], []
+    for k in range(n + 1):
+        t = a + (b - a) * k / n
+        cx, cy = posicao_na_trilha(trilha, t) if trilha else (0.5, 0.45)
+        x = min(max(cx * larg - alvo_x, 0), max(0, larg - corte_l))
+        y = min(max(cy * alt + topo - alvo_y, 0), max(0, alt + topo - corte_a))
+        px.append((t - a, x))
+        py.append((t - a, y))
+    return expr_linear(px), expr_linear(py)
+
+
 def filtro_rotacao_legado(rotacao):
     """Rotação do ffprobe (side_data 'rotation', convenção: -90 = gravar deitado precisa girar horário) → filtro."""
     r = int(round(float(rotacao or 0))) % 360  # não usar: o sinal muda entre versões do ffmpeg (5.0 inverteu)

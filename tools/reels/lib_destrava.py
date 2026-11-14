@@ -3,20 +3,47 @@
 Tela 1080x1920:
   - SPLIT (a maior parte do tempo): fundo quase preto com grade de pontos; em cima, gráficos animados com brilho
     (título com fonte mista, fichas numeradas, cartão de "regra", número gigante, ícone neon, vídeo em moldura brilhante);
-    embaixo, o Pedro numa janela de cantos arredondados (x 66, y 1400, 948x520). Legenda: UMA palavra por vez na emenda.
-  - ROSTO: close do Pedro em tela cheia (a cada ~10 s, frases curtas) — legenda e @ mudam de lugar.
+    embaixo, o Pedro numa janela de cantos arredondados (x 66, y 1320, 948x600), com o rosto centralizado (o recorte
+    segue o rosto quadro a quadro) e a CABEÇA SAINDO pela borda de cima da janela (recorte da pessoa nas 150 linhas
+    acima dela: dá profundidade, como na referência). Legenda: UMA palavra por vez, logo acima da cabeça.
+  - ROSTO: close do Pedro em tela cheia (a cada ~10 s, frases curtas), rosto no alto e legenda embaixo do queixo.
   - BROLL: cena de banco de imagens em tela cheia (no máximo 1 a cada ~16 s).
   - FIM: na frase de chamada final ("salva…", "comenta…"), tudo escurece, entra a chamada + logo do Instagram + @.
+Sem marca d'água lateral: o @ aparece só na tela final (pedido do Pedro em 14/11).
 Os textos dos gráficos "acendem" palavra a palavra no tempo da fala (cinza → branco), como na referência.
 """
+import math
 import re
 
 W, H = 1080, 1920
-JANELA = {'x': 66, 'y': 1400, 'w': 948, 'h': 520, 'raio': 40}
-INSET_IMAGEM = {'x': 140, 'y': 370, 'w': 800, 'h': 780, 'raio': 36}
-INSET_TITULO = {'x': 170, 'y': 440, 'w': 740, 'h': 640, 'raio': 36}
-Y_LEGENDA = {'split': 1290, 'rosto': 1160, 'broll': 1160, 'fim': 1290}
+JANELA = {'x': 66, 'y': 1320, 'w': 948, 'h': 600, 'raio': 40}
+RECORTE = 150          # linhas acima da janela por onde a cabeça "sai" (só a pessoa aparece ali)
+ROSTO_JANELA = 0.46    # centro do rosto a 46% da altura da janela: olhos no terço de cima, queixo dentro, cabelo sai
+ROSTO_CLOSE = 760      # no close em tela cheia, centro do rosto em y=760 (legenda cabe embaixo do queixo)
+ZOOM_JANELA = 1.06     # folga de 6% para centralizar o rosto na horizontal sem deixá-lo grande demais
+ZOOM_CLOSE = 1.22
+INSET_IMAGEM = {'x': 140, 'y': 340, 'w': 800, 'h': 720, 'raio': 36}
+INSET_TITULO = {'x': 170, 'y': 400, 'w': 740, 'h': 620, 'raio': 36}
+Y_LEGENDA = {'split': 1125, 'rosto': 1250, 'broll': 1160, 'fim': 1125}
 HANDLE = '@PEDRO_DESTRAVA'
+
+
+def escala_janela(largura, altura, altura_rosto=None):
+    """Escala da fonte para a janela de baixo → (s, largura_escalada, altura_escalada).
+    Cobre a janela (a faixa do recorte, acima dela, pode ser preenchimento) com 6% de folga para centralizar; se o
+    rosto é pequeno (câmera longe), aproxima até ele ocupar ~62% da altura da janela (no máximo 2,2× a escala base).
+    `altura_rosto` = altura do rosto ÷ altura do quadro (mediana do vídeo)."""
+    base = max(JANELA['w'] / largura, JANELA['h'] / altura)
+    s = base * ZOOM_JANELA
+    if altura_rosto:
+        s = max(s, min(0.62 * JANELA['h'] / (altura_rosto * altura), base * 2.2))
+    return s, int(math.ceil(largura * s / 2) * 2), int(math.ceil(altura * s / 2) * 2)
+
+
+def escala_close(largura, altura):
+    """Escala do close em tela cheia → (s, largura_escalada, altura_escalada): cobre 1080x1920 com zoom de 22%."""
+    s = max(W / largura, H / altura) * ZOOM_CLOSE
+    return s, int(math.ceil(largura * s / 2) * 2), int(math.ceil(altura * s / 2) * 2)
 
 # cores ASS (&HAABBGGRR)
 BRANCO = '&H00FFFFFF&'; CINZA = '&H00606066&'; CINZA_LINHA = '&H00403A3A&'
@@ -30,7 +57,8 @@ então tá né vai vou foi ser ter tem era está estão estava você vocês dela
 cada todo toda todos todas outro outra mesmo mesma coisa coisas fazer faz fez qualquer'''.split())
 NEGOCIO = r'dinheir|marca|client|preç|lucr|investi|empres|negóci|negoci|venda|produto|imposto|caixa|loja|custo|margem|salári|dívida|crédito|juros|sucesso|qualidade|estratég|foco|resultado|milh|bilh|cresc|gigant|riqueza|liberdade|governo|taxa|multa|lição|segredo|estoque|sócio|socio|fundo|anúnci|anunci|venda'
 VERBO = r'(ar|er|ir|ou|eu|iu|ava|ando|endo|indo|ado|ido|aram|eram|iram|amos|emos|imos)$'
-CTA = re.compile(r'\b(salva|salve|comenta|comente|manda|mande|compartilha|compartilhe|segue|siga|link na bio|marca alguém|marque)\b', re.I)
+# chamada final: verbos de ação com o objeto típico ("quem MANDA no estoque" e "SEGUE o lucro" não são chamada)
+CTA = re.compile(r'\b(salva|salve|comenta|comente|compartilha|compartilhe|link na bio|marca (algu[eé]m|um amigo|uma amiga|quem)|marque|me segue|me siga|segue (o|meu) perfil|siga (o|meu) perfil|(manda|mande|envia|envie) (esse|este|isso|pra|para|pro|pros|pras))\b', re.I)
 CONTAGEM = re.compile(r'\b(duas|dois|tr[eê]s|quatro|cinco|[2-5])\s+(coisas|passos|erros|dicas|regras|pilares|segredos|motivos|formas|maneiras|pontos|li[cç][oõ]es|h[aá]bitos)\b', re.I)
 NUM_EXT = {'duas': 2, 'dois': 2, 'três': 3, 'tres': 3, 'quatro': 4, 'cinco': 5}
 REGRA = re.compile(r'\b(quem|segredo|regra|li[cç][aã]o|nunca|sempre|manda|verdade|liberdade|garante)\b', re.I)
@@ -341,7 +369,7 @@ def _ficha(a, z, cx, cy, n, cor=AMARELO, r=62):
 
 
 def graficos_bloco(b):
-    """Eventos ASS dos gráficos de um bloco SPLIT (área de cima, y 110–1240)."""
+    """Eventos ASS dos gráficos de um bloco SPLIT (área de cima, y 110–1070: abaixo vêm a legenda, a cabeça e a janela)."""
     a, z, tipo = b['t0'], b['t1'], b['tipo']
     ev = []
     if tipo == 'titulo':
@@ -354,14 +382,14 @@ def graficos_bloco(b):
         lw = min(W - 140, int(len(l2) * fs2 * 0.42)); x0 = W // 2 - lw // 2
         ev.append(_dlg(2, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c{b['acento']}\\bord0\\clip({x0},300,{x0},320)\\t(450,900,\\clip({x0},300,{x0 + lw},320))\\p1}}m {x0} 306 l {x0 + lw} 306 l {x0 + lw} 312 l {x0} 312{{\\p0}}"))
         if b.get('sem_inset'):
-            ev += _icone(b, a, z, W // 2, 760, tam=1.7)
+            ev += _icone(b, a, z, W // 2, 720, tam=1.7)
         else:
             q = INSET_TITULO
             ev += _forma(a, z, caixa_arredondada(q['x'], q['y'], q['w'], q['h'], q['raio']), b['acento'], camada=2, contorno=3)
     elif tipo == 'lista':
         lista = b['lista']; n = lista['n']
         ev += _titulo_secao(b, a, z, lista['titulo'])
-        ys = {2: [600, 900], 3: [520, 760, 1000], 4: [470, 680, 890, 1100]}[n]
+        ys = {2: [560, 840], 3: [480, 700, 920], 4: [430, 620, 810, 1000]}[n]
         ja = b.get('ja') or []
         for k in range(n):
             ev += _ficha(a, z, 200, ys[k], k + 1)
@@ -380,23 +408,23 @@ def graficos_bloco(b):
             else:
                 ev.append(_dlg(3, a, z, 'Sans', f"{{\\an4\\pos(300,{ys[k]})\\fs50{ENTRA}}}" + '\\N'.join(esc(x) for x in quebrar(_curto(item, 7), 50, 620))))
     elif tipo == 'frase':
-        x0, y0, w, h = 150, 330, 780, 860
+        x0, y0, w, h = 150, 300, 780, 760
         ev += _forma(a, z, caixa_arredondada(x0, y0, w, h, 18), BRANCO, camada=2, contorno=3, extra='\\fad(200,0)')
         rotulo = 'REGRA' if re.search(r'\bquem\b|regra|manda|sempre|nunca', b['texto'], re.I) else 'LIÇÃO'
         ev.append(_dlg(3, a, z, 'Sans', f"{{\\an5\\pos({W // 2},{y0 + 80})\\fs44\\fsp3{ENTRA}}}{rotulo}"))
-        for yy, ww in [(y0 + 160, 600), (y0 + 210, 420), (y0 + 260, 560), (y0 + 650, 640), (y0 + 700, 380), (y0 + 750, 560)]:
+        for yy, ww in [(y0 + 150, 600), (y0 + 200, 420), (y0 + 250, 560), (y0 + 560, 640), (y0 + 610, 380), (y0 + 660, 560)]:
             ev.append(_dlg(2, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c{CINZA_LINHA}\\bord0\\fad(250,0)\\p1}}{caixa_arredondada(x0 + 90, yy, ww, 14, 7)}{{\\p0}}"))
-        ev += _karaoke(b, a, z, W // 2, y0 + 455, 54, w - 140)
+        ev += _karaoke(b, a, z, W // 2, y0 + 405, 54, w - 140)
     elif tipo == 'numero':
         num = palavra_chave(b['texto']) if re.search(r'\d', b['texto']) else (b.get('chave') or '')
         fsn = 260 if len(num) <= 4 else 190 if len(num) <= 7 else 140
-        ev.append(_dlg(1, a, z, 'Grosso', f"{{\\an5\\pos({W // 2},{560})\\fs{fsn}\\c{b['acento']}\\blur26\\1a&H50&}}{esc(num)}"))
-        ev.append(_dlg(2, a, z, 'Grosso', f"{{\\an5\\pos({W // 2},{560})\\fs{fsn}\\fscx60\\fscy60\\t(0,260,\\fscx100\\fscy100)\\fad(120,0)}}{esc(num)}"))
-        ev += _karaoke(b, a, z, W // 2, 900, 50, 880)
+        ev.append(_dlg(1, a, z, 'Grosso', f"{{\\an5\\pos({W // 2},{520})\\fs{fsn}\\c{b['acento']}\\blur26\\1a&H50&}}{esc(num)}"))
+        ev.append(_dlg(2, a, z, 'Grosso', f"{{\\an5\\pos({W // 2},{520})\\fs{fsn}\\fscx60\\fscy60\\t(0,260,\\fscx100\\fscy100)\\fad(120,0)}}{esc(num)}"))
+        ev += _karaoke(b, a, z, W // 2, 860, 50, 880)
     elif tipo == 'icone':
         ev += _titulo_secao(b, a, z, b.get('chave') or '')
-        ev += _icone(b, a, z, W // 2, 610, tam=1.6)
-        ev += _karaoke(b, a, z, W // 2, 990, 50, 880)
+        ev += _icone(b, a, z, W // 2, 580, tam=1.6)
+        ev += _karaoke(b, a, z, W // 2, 940, 50, 880)
     elif tipo == 'imagem':
         ev += _titulo_secao(b, a, z, b.get('chave') or '')
         q = INSET_IMAGEM
@@ -446,17 +474,8 @@ def _logo_instagram(a, z, cx, cy, tam, cor=BRANCO, camada=6, glow=False):
 
 
 def ass_final(blocos, palavras, duracao):
-    """Camada de cima: legenda de UMA palavra por vez, @ do Pedro (muda de lugar com o layout) e a tela final."""
-    linhas = []
-    # @ do Pedro
-    for b in blocos:
-        a, z = b['t0'], b['t1']
-        if b['layout'] == 'split':
-            linhas += _logo_instagram(a, z, 990, 400, 44)
-            linhas.append(_dlg(6, a, z, 'Sans', f"{{\\an6\\pos(1034,456)\\fs21\\fsp1}}{HANDLE}"))
-        elif b['layout'] in ('rosto', 'broll'):
-            linhas += _logo_instagram(a, z, 110, 1075, 50)
-            linhas.append(_dlg(6, a, z, 'Sans', f"{{\\an4\\pos(80,1150)\\fs24\\fsp1}}{HANDLE}"))
+    """Camada de cima: legenda de UMA palavra por vez e a tela final (chamada + logo do Instagram + @)."""
+    linhas = []   # sem marca d'água lateral (pedido do Pedro): o @ fica só na tela final
     # tela final (chamada): escurece tudo, chamada no alto, logo grande e @
     fim = next((b for b in blocos if b['layout'] == 'fim'), None)
     if fim:
@@ -481,7 +500,7 @@ def ass_final(blocos, palavras, duracao):
         if fim_p - ini < 0.04:
             continue
         lay = layout_em(blocos, ini + 0.01)
-        y = Y_LEGENDA.get(lay, 1290)
+        y = Y_LEGENDA.get(lay, Y_LEGENDA['split'])
         linhas.append(_dlg(9, ini, fim_p, 'Legenda', f"{{\\an5\\pos({W // 2},{y})\\fscx92\\fscy92\\t(0,90,\\fscx100\\fscy100)}}{esc(p['w'].strip())}"))
     return cabecalho() + '\n'.join(linhas) + '\n'
 

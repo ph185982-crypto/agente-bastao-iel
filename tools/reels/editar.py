@@ -153,9 +153,9 @@ def transcrever(wav, duracao, roteiro, modelo=None):
 # ----------------------------------------------------------------------------------------------------------------------
 # 4. Rosto
 # ----------------------------------------------------------------------------------------------------------------------
-def amostrar_rostos(entrada, sonda, fps_amostra=3, largura_amostra=480):
-    """Lê o vídeo a 3 fps em tons de cinza (via ffmpeg, já com a rotação aplicada) e acha o maior rosto por quadro.
-    Devolve [(t, cx, cy)] suavizados; cx/cy normalizados em 0..1."""
+def detectar_rostos(entrada, sonda, fps_amostra=6, largura_amostra=480):
+    """Lê o vídeo a 6 fps em tons de cinza (via ffmpeg, já com a rotação aplicada) e acha o maior rosto por quadro.
+    Devolve as amostras CRUAS [(t, cx, cy, altura)] (tudo normalizado 0..1; None quando não achou rosto)."""
     import cv2
     import numpy as np
     w, h = sonda['largura'], sonda['altura']
@@ -169,24 +169,105 @@ def amostrar_rostos(entrada, sonda, fps_amostra=3, largura_amostra=480):
         return []
     quadros = quadros[:n * largura_amostra * hs].reshape(n, hs, largura_amostra)
     casc = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml'))
-    cxs, cys = [], []
-    for q in quadros:
+    cru = []
+    for i, q in enumerate(quadros):
         q = cv2.equalizeHist(np.ascontiguousarray(q))
         rostos = casc.detectMultiScale(q, scaleFactor=1.1, minNeighbors=5, minSize=(36, 36))
+        t = round((i + 0.5) / fps_amostra, 3)
         if len(rostos):
             x, y, rw, rh = max(rostos, key=lambda r: r[2] * r[3])
-            cxs.append((x + rw / 2) / largura_amostra)
-            cys.append((y + rh / 2) / hs)
+            cru.append((t, (x + rw / 2) / largura_amostra, (y + rh / 2) / hs, rh / hs))
         else:
-            cxs.append(None)
-            cys.append(None)
-    achados = sum(1 for c in cxs if c is not None)
-    log(f"rosto achado em {achados}/{n} amostras")
-    if achados == 0:
+            cru.append((t, None, None, None))
+    log(f"rosto achado em {sum(1 for c in cru if c[1] is not None)}/{n} amostras")
+    return cru
+
+
+def amostrar_rostos(entrada, sonda, cru=None):
+    """Centros do rosto suavizados [(t, cx, cy)] (zona morta + passo máximo), para os formatos com crop fixo por trecho.
+    Usa as amostras cruas de `detectar_rostos` (lê o vídeo se não vierem)."""
+    cru = detectar_rostos(entrada, sonda) if cru is None else cru
+    if not any(c[1] is not None for c in cru):
         return []
-    scx = L.suavizar_centros(cxs)
-    scy = L.suavizar_centros(cys, inicial=0.45)
-    return [((i + 0.5) / fps_amostra, scx[i], scy[i]) for i in range(n)]
+    scx = L.suavizar_centros([c[1] for c in cru])
+    scy = L.suavizar_centros([c[2] for c in cru], inicial=0.45)
+    return [(c[0], scx[i], scy[i]) for i, c in enumerate(cru)]
+
+
+MODELO_PESSOA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'modelos', 'selfie_segmenter.tflite')
+
+
+def mascara_cabeca(janela, destino, largura, altura, faixa, inicios, avisos):
+    """Máscara (cinza, 0–255) da faixa de `faixa` linhas no TOPO do vídeo da janela estendida: ali só aparece a pessoa
+    que atravessa a borda de cima da janela (a cabeça "sai" da janela, como na referência).
+    Segmentação de pessoa local e gratuita: MediaPipe selfie_segmenter (Apache 2.0) no LiteRT, ~6 ms por quadro em CPU.
+    Só fica o que está ligado à pessoa DENTRO da janela (nada solto no fundo); o topo da faixa esmaece; a máscara é
+    suavizada no tempo e zera a cada corte (`inicios` = índice do 1º quadro de cada trecho). Devolve o caminho ou None."""
+    try:
+        import cv2
+        import numpy as np
+        from ai_edge_litert.interpreter import Interpreter
+    except Exception as e:   # sem a biblioteca: o vídeo sai igual, só sem a cabeça para fora
+        avisos.append(f'recorte da cabeça desligado (segmentação indisponível: {str(e)[:80]})')
+        return None
+    if not os.path.exists(MODELO_PESSOA):
+        avisos.append('recorte da cabeça desligado: modelo de segmentação não encontrado')
+        return None
+    it = Interpreter(model_path=MODELO_PESSOA, num_threads=max(1, os.cpu_count() or 1))
+    it.allocate_tensors()
+    ent, sai = it.get_input_details()[0], it.get_output_details()[0]
+    lado_a, lado_l = int(ent['shape'][1]), int(ent['shape'][2])
+    ler = subprocess.Popen(['ffmpeg', '-loglevel', 'error', '-i', janela, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    gravar = subprocess.Popen(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'gray', '-s', f'{largura}x{faixa}',
+                               '-framerate', '30', '-i', '-', '-c:v', 'ffv1', destino], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    tam = largura * altura * 3
+    inicios = set(inicios)
+    esmaece = np.clip(np.arange(faixa, dtype=np.float32) / 24.0, 0, 1)[:, None]   # topo da faixa some aos poucos
+    nucleo = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    vazio = np.zeros((faixa, largura), np.uint8).tobytes()
+    media, i, com_cabeca = None, 0, 0
+    try:
+        while True:
+            buf = ler.stdout.read(tam)
+            if len(buf) < tam:
+                break
+            q = np.frombuffer(buf, np.uint8).reshape(altura, largura, 3)
+            x = cv2.resize(q, (lado_l, lado_a), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+            it.set_tensor(ent['index'], x[None])
+            it.invoke()
+            m = it.get_tensor(sai['index'])[0, :, :, 0]
+            media = m if (media is None or i in inicios) else 0.6 * m + 0.4 * media   # tira o tremor sem arrastar
+            # mapa em alta (bicúbico: sem degraus), alfa suave na borda da pessoa
+            mm = cv2.resize(media, (largura, altura), interpolation=cv2.INTER_CUBIC)[:faixa + 8]
+            alfa = np.clip((mm[:faixa] - 0.35) / 0.3, 0, 1)
+            # só o que está ligado à pessoa dentro da janela (limiar baixo: a área mantida contém a borda suave inteira)
+            b = (mm > 0.2).astype(np.uint8)
+            _, rot = cv2.connectedComponents(b, connectivity=8)
+            na_borda = np.unique(rot[faixa:][b[faixa:] > 0])
+            na_borda = na_borda[na_borda > 0]
+            if len(na_borda):
+                ligado = cv2.dilate(np.isin(rot[:faixa], na_borda).astype(np.uint8), nucleo).astype(np.float32)
+                ligado = cv2.GaussianBlur(ligado, (0, 0), 2.0)
+                alfa = np.clip(cv2.GaussianBlur(alfa * ligado, (0, 0), 1.2), 0, 1) * esmaece
+                gravar.stdin.write((alfa * 255).astype(np.uint8).tobytes())
+                com_cabeca += 1
+            else:
+                gravar.stdin.write(vazio)
+            i += 1
+    finally:
+        try:
+            gravar.stdin.close()
+        except Exception:
+            pass
+        gravar.wait()
+        ler.stdout.close()
+        ler.wait()
+    log(f"recorte da cabeça: {i} quadros, cabeça fora da janela em {com_cabeca}")
+    if gravar.returncode != 0 or i == 0:
+        avisos.append('recorte da cabeça desligado: a máscara não foi gerada')
+        return None
+    return destino
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -421,50 +502,66 @@ def _fundo_destrava(caminho):
     return caminho
 
 
-def renderizar_destrava(entrada, saida, segmentos, centros, sonda, blocos, palavras_rm, dur, tmp, brolls, whoosh=None):
-    """Formato Destrava: fundo escuro com gráficos em cima e o Pedro numa janela embaixo; close em tela cheia e cena de
-    banco nos blocos certos; legenda de uma palavra; tela final. Render em etapas (memória constante)."""
+def renderizar_destrava(entrada, saida, segmentos, sonda, blocos, palavras_rm, dur, tmp, brolls, whoosh=None, trilha=None,
+                        altura_rosto=None, avisos=None):
+    """Formato Destrava: fundo escuro com gráficos em cima e o Pedro numa janela embaixo, com o rosto centralizado (o
+    recorte segue o rosto quadro a quadro) e a cabeça saindo pela borda de cima; close em tela cheia e cena de banco nos
+    blocos certos; legenda de uma palavra; tela final. Render em etapas (memória constante)."""
+    avisos = [] if avisos is None else avisos
     fontes_esc = FONTES.replace('\\', '/').replace(':', '\\:').replace("'", "\\'")
     def esc(p):
         return p.replace('\\', '/').replace(':', '\\:').replace("'", "\\'")
     enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', '30']
-    J = D.JANELA
-    # 1) cortes em dois enquadramentos: janela (948x520, rosto + ombros) e close (1080x1920, zoom 1,22)
+    J, R = D.JANELA, D.RECORTE
+    # 1) cortes em dois enquadramentos que seguem o rosto: janela ESTENDIDA (948x(150+600): a faixa de cima é por onde a
+    #    cabeça sai; a fonte ganha 150 linhas pretas em cima para o rosto poder ficar no centro mesmo no alto do quadro)
+    #    e close (1080x1920, zoom 1,22, rosto no alto).
+    _, wj, hj = D.escala_janela(sonda['largura'], sonda['altura'], altura_rosto)
+    _, wc, hc = D.escala_close(sonda['largura'], sonda['altura'])
     listas = {'j': [], 'c': [], 'a': []}
-    for i, (seg, (cx, cy)) in enumerate(zip(segmentos, centros)):
+    inicios, quadros = [], 0
+    for i, seg in enumerate(segmentos):
         a, b = seg['a'], seg['b']; d = b - a
-        wj, hj, xj, yj = L.geometria_crop(sonda['largura'], sonda['altura'], 1.0, cx, min(1.0, cy + 0.03), J['w'], J['h'])
-        wc, hc, xc, yc = L.geometria_crop(sonda['largura'], sonda['altura'], 1.22, cx, cy)
+        xj, yj = L.chaves_crop(trilha, a, b, wj, hj, J['w'], J['h'] + R, J['w'] / 2, R + D.ROSTO_JANELA * J['h'], topo=R)
+        xc, yc = L.chaves_crop(trilha, a, b, wc, hc, L.LARGURA, L.ALTURA, L.LARGURA / 2, D.ROSTO_CLOSE)
         jo, co, ao = (os.path.join(tmp, f'd{i:03d}.{e}') for e in ('j.mp4', 'c.mp4', 'a.wav'))
         af = ['afade=t=in:st=0:d=0.03'] if seg['fade_in'] else []
         if seg['fade_out'] and d > 0.06:
             af.append(f"afade=t=out:st={max(0, d - 0.03):.3f}:d=0.03")
         rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', '-ss', f"{a:.3f}", '-t', f"{d:.3f}", '-i', entrada,
-               '-filter_complex', f"[0:v]fps=30,split[x][y];[x]scale={wj}:{hj}:flags=bicubic,crop={J['w']}:{J['h']}:{xj}:{yj},setsar=1[j];"
-               f"[y]scale={wc}:{hc}:flags=bicubic,crop={L.LARGURA}:{L.ALTURA}:{xc}:{yc},setsar=1[c]",
+               '-filter_complex', f"[0:v]fps=30,split[x][y];"
+               f"[x]scale={wj}:{hj}:flags=bicubic,pad={wj}:{hj + R}:0:{R}:black,crop={J['w']}:{J['h'] + R}:x='{xj}':y='{yj}',setsar=1[j];"
+               f"[y]scale={wc}:{hc}:flags=bicubic,crop={L.LARGURA}:{L.ALTURA}:x='{xc}':y='{yc}',setsar=1[c]",
                '-map', '[j]', '-t', f"{d:.3f}", *enc, jo, '-map', '[c]', '-t', f"{d:.3f}", *enc, co,
                '-map', '0:a', '-t', f"{d:.3f}", *(['-af', ','.join(af)] if af else []), '-ar', '48000', '-ac', '2', ao])
         listas['j'].append(jo); listas['c'].append(co); listas['a'].append(ao)
+        inicios.append(quadros); quadros += max(1, int(round(d * 30)))
     janela, close, voz = os.path.join(tmp, 'janela.mp4'), os.path.join(tmp, 'close.mp4'), os.path.join(tmp, 'voz.wav')
     for chave, destino in (('j', janela), ('c', close), ('a', voz)):
         lst = os.path.join(tmp, f'lista_{chave}.txt')
         with open(lst, 'w') as fl:
             fl.write(''.join(f"file '{n}'\n" for n in listas[chave]))
         rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', destino])
-    # 2) peças fixas
+    # 2) peças fixas + máscara da cabeça (só com rosto achado: sem rosto não há o que tirar da janela)
     fundo = _fundo_destrava(os.path.join(tmp, 'fundo.png'))
     m_jan = _pgm_arredondado(os.path.join(tmp, 'm_jan.pgm'), J['w'], J['h'], J['raio'])
+    cabeca = mascara_cabeca(janela, os.path.join(tmp, 'cabeca.mkv'), J['w'], J['h'] + R, R, inicios, avisos) if (trilha and R) else None
     ass_g = os.path.join(tmp, 'graficos.ass'); ass_f = os.path.join(tmp, 'final.ass')
     open(ass_g, 'w', encoding='utf-8').write(D.ass_graficos(blocos))
     open(ass_f, 'w', encoding='utf-8').write(D.ass_final(blocos, palavras_rm, dur))
     if os.environ.get('REELS_DEPURAR'):
         shutil.copy(ass_g, os.path.join(os.path.dirname(saida), 'graficos.ass'))
-    # 3) composição única, em fluxo (sem divisões que seguram o vídeo na memória)
+    # 3) composição única, em fluxo (sem divisões que seguram o vídeo na memória). Janela e máscara andam quadro a quadro
+    #    (setpts=N/30: a máscara foi feita lendo a janela na mesma ordem).
     entradas = ['-loop', '1', '-framerate', '30', '-t', f"{dur:.3f}", '-i', fundo, '-i', janela, '-i', close,
                 '-loop', '1', '-framerate', '30', '-t', f"{dur:.3f}", '-i', m_jan]
-    g = [f"[0:v]format=yuv420p[bg]", f"[1:v]format=yuva420p[jv];[3:v]format=gray[jm];[jv][jm]alphamerge[jr]",
+    if cabeca:
+        entradas += ['-i', cabeca]
+    g = [f"[0:v]format=yuv420p[bg]",
+         f"[1:v]setpts=N/(30*TB){',split[je][jt];[je]' if cabeca else ','}crop={J['w']}:{J['h']}:0:{R},format=yuva420p[jv];"
+         f"[3:v]format=gray[jm];[jv][jm]alphamerge[jr]",
          f"[bg][jr]overlay={J['x']}:{J['y']}:shortest=0:eof_action=pass[v0]"]
-    atual = '[v0]'; k = 4; n = 0
+    atual = '[v0]'; k = 5 if cabeca else 4; n = 0
     for br in brolls:
         b = br['bloco']; d0 = b['t1'] - b['t0']
         if b['tipo'] in ('imagem', 'titulo'):
@@ -480,6 +577,11 @@ def renderizar_destrava(entrada, saida, segmentos, centros, sonda, blocos, palav
         atual = f"[v{n + 1}]"; n += 1
     g.append(f"{atual}ass=filename='{esc(ass_g)}':fontsdir='{fontes_esc}'[vg]")
     atual = '[vg]'
+    # cabeça saindo da janela: a faixa de cima do vídeo estendido, só onde está a pessoa, por cima dos gráficos e da borda
+    if cabeca:
+        g.append(f"[jt]crop={J['w']}:{R}:0:0,format=yuva420p[ct];[4:v]setpts=N/(30*TB),format=gray[cm];[ct][cm]alphamerge[cb];"
+                 f"{atual}[cb]overlay={J['x']}:{J['y'] - R}:eof_action=pass[vk]")
+        atual = '[vk]'
     # close em tela cheia nos blocos 'rosto'
     rostos = [b for b in blocos if b['layout'] == 'rosto']
     if rostos:
@@ -627,15 +729,20 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         # 4. enquadramento
         cron.etapa('enquadramento')
         horizontal = sonda['largura'] > sonda['altura']
-        amostras = []
+        amostras, cru = [], []
         if horizontal or opcoes.get('montagem', True):   # formato destrava/montagem: a janela e o close seguem o rosto
             try:
-                amostras = amostrar_rostos(entrada, sonda)
+                cru = detectar_rostos(entrada, sonda)
+                amostras = amostrar_rostos(entrada, sonda, cru=cru)
             except Exception as e:
                 avisos.append(f'detecção de rosto falhou: {str(e)[:120]}')
             if not amostras:
                 avisos.append('nenhum rosto detectado: enquadramento central')
         centros = L.centro_por_segmento(amostras, segmentos, padrao=0.5) if amostras else [(0.5, 0.5)] * len(segmentos)
+        # formato destrava: trilha do rosto quadro a quadro (o recorte acompanha o rosto) e o tamanho típico do rosto
+        trilha = L.trilha_rosto(cru) if amostras else None
+        alturas = sorted(c[3] for c in cru if c[3])
+        altura_rosto = alturas[len(alturas) // 2] if alturas else None
 
         # 5. montagem: formato 'destrava' (padrão, referência do Pedro de 14/11) ou a montagem v2; sem IA
         montagem = bool(opcoes.get('montagem', True)) and bool(palavras_rm)
@@ -729,7 +836,8 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             entrada = mudo
         if destrava:
             whoosh = trilha_whoosh(os.path.join(tmp, 'whoosh.wav'), D.trocas(blocos), dur_final, volume=0.12) if opcoes.get('sons', True) else None
-            renderizar_destrava(entrada, final, segmentos, centros, sonda, blocos, palavras_rm, dur_final, tmp, brolls_destrava, whoosh)
+            renderizar_destrava(entrada, final, segmentos, sonda, blocos, palavras_rm, dur_final, tmp, brolls_destrava, whoosh,
+                                trilha=trilha, altura_rosto=altura_rosto, avisos=avisos)
             brolls = [{'inicio': r['bloco']['t0'], 'duracao': round(r['bloco']['t1'] - r['bloco']['t0'], 2), 'consulta': r['consulta'], 'pexels_id': r.get('pexels_id')} for r in brolls_destrava]
         elif montagem:
             whoosh = trilha_whoosh(os.path.join(tmp, 'whoosh.wav'), M.trocas(blocos), dur_final) if opcoes.get('sons', True) else None

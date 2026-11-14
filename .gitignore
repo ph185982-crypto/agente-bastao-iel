@@ -26,3 +26,7 @@ dist/
 .env.local
 .env.*.local
 previas/
+
+# Python: bytecode gerado (não versionar)
+__pycache__/
+*.pyc
