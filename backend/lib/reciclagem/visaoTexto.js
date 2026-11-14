@@ -118,6 +118,13 @@ function blocosDaVisao(dados, { trechos = [] } = {}) {
     const altura_linha = Math.round(ocr.reduce((a, o) => a + (o.altura_linha || o.y1 - o.y0), 0) / ocr.length);
     blocos.push({ ...caixa, altura_linha, n_linhas: ocr.reduce((a, o) => a + (o.n_linhas || 1), 0), texto: t.original, novo: mudou ? t.traducao : t.original, confianca: 100, visao: true });
   }
+  // Pedido de "siga / salve / compartilhe" do autor que a leitura achou: sai sempre, mesmo se a IA não marcou (com o ícone ao lado).
+  const CTA_AUTOR = /(me siga|siga (o|a|meu|minha|para|pra)|follow|gostou do conte|salve (esse|este)|compartilhe|arrasta|arraste|swipe|link na bio|comente)/i;
+  for (const tr of trechos) {
+    if (!CTA_AUTOR.test(tr.texto || '')) continue;
+    const h = Math.max(12, tr.y1 - tr.y0); const lado = Math.round(h * 3);
+    blocos.push({ apagar: true, x0: tr.x0 - lado, x1: tr.x1 + lado, y0: tr.y0 - Math.round(h * 0.6), y1: tr.y1 + Math.round(h * 0.6), texto: limpa(tr.texto, 80) });
+  }
   for (const a of (Array.isArray(dados?.assinaturas) ? dados.assinaturas : []).slice(0, 6)) {
     const posicao = POSICOES.includes(a?.posicao) ? a.posicao : null; if (!posicao) continue;
     if (!blocos.some((b) => b.apagar && b.posicao === posicao)) blocos.push({ apagar: true, posicao, texto: limpa(a?.texto, 80) || '(assinatura)' });
