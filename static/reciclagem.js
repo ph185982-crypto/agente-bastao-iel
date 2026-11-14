@@ -25,7 +25,7 @@
   const TIPO = { reel: 'Reel', carrossel: 'Carrossel', imagem: 'Imagem', video: 'Vídeo', short: 'Short' };
 
   // ── Dados ───────────────────────────────────────────────────────────────────
-  const query = () => { const f = ST.filtro; const p = new URLSearchParams({ dias: f.dias, min_vl: f.min_vl, so_imagens: '1' }); if (f.mecanismo) p.set('mecanismo', f.mecanismo); if (f.idioma) p.set('idioma', f.idioma); return p.toString(); };
+  const query = () => { const f = ST.filtro; const p = new URLSearchParams({ dias: f.dias, min_vl: f.min_vl, so_imagens: '1', pendentes: '1' }); /* reciclado ou descartado não aparece mais */ if (f.mecanismo) p.set('mecanismo', f.mecanismo); if (f.idioma) p.set('idioma', f.idioma); return p.toString(); };
   async function carregar(ctx, forcar) {
     const f = forcar && typeof forcar === 'object' ? forcar.forcar : forcar;
     if (ST.carregando || (ST.carregou && !f)) return;
@@ -141,6 +141,7 @@
           ${i.rede === 'instagram' && ['carrossel', 'imagem'].includes(i.tipo) ? `<button class="rc2-btn laranja" data-action="rc2-clonar-menu" data-id="${esc(i.id)}" aria-expanded="${ST.menuClone === i.id}" ${oc ? 'disabled' : ''}>${oc === 'clone' ? 'Reciclando…' : 'Reciclar'}</button>` : ''}
           ${i.tese ? `<button class="rc2-btn" data-action="rc2-menu" data-id="${esc(i.id)}" aria-expanded="${menu}" ${oc ? 'disabled' : ''}>${oc ? (oc === 'reel' ? 'Escrevendo o roteiro…' : 'Enviando para produção…') : 'Reciclar como…'}</button>` : ''}
           <a class="rc2-btn fantasma" href="${esc(link(i.permalink))}" target="_blank" rel="noopener noreferrer">Ver post original ↗</a>
+          <button class="rc2-btn fantasma" data-action="rc2-descartar" data-id="${esc(i.id)}" aria-label="Descartar este post da lista" ${oc ? 'disabled' : ''}>✕ Descartar</button>
           ${ST.menuClone === i.id && !oc ? `<div class="rc2-clone-opcoes" role="group" aria-label="Como reciclar">
             <button class="rc2-opcao" data-action="rc2-clonar" data-id="${esc(i.id)}" data-modo="original"><b>Formato original</b><small>Mesmo visual do post (cores e layout), só traduzido. Tira a assinatura do autor e põe o seu @.</small></button>
             <button class="rc2-opcao" data-action="rc2-clonar" data-id="${esc(i.id)}" data-modo="nosso" data-fundo="branco"><b>Nosso formato · fundo branco</b><small>Pega o texto, traduz se precisar e monta no seu padrão. Sem custo de IA quando já está em português.</small></button>
@@ -182,6 +183,7 @@
       if (r.estado === 'concluido') ctx.toast(r.aviso ? `Cópia pronta em “Aprovar”. Atenção: ${r.aviso}` : 'Cópia pronta. Veja em “Aprovar”.');
       else if (r.estado === 'erro') ctx.toast(`O clone parou: ${r.motivo}`);
       else ctx.toast('O clone continua no servidor; aparece em “Aprovar” quando terminar.');
+      if (r.estado !== 'erro') ST.itens = ST.itens.filter((x) => x.id !== id); // reciclado: sai da lista
       const item = ST.itens.find((x) => x.id === id); if (item) item.reciclado = [...(item.reciclado || []), { formato: 'clone', conteudo_id: r.id, em: new Date().toISOString() }];
     } catch (e) { ctx.toast(e.message || 'Não foi possível clonar.'); }
     ST.producao = null; delete ST.ocupado[id]; ctx.render();
@@ -225,8 +227,20 @@
       ${removidas ? `<h3 class="rc2-h3">Removidas</h3><ul class="rc2-contas">${removidas}</ul>` : ''}`;
   }
 
+  // Com a aba aberta e visível: a cada 30 s lê mais uma conta no servidor (rodízio, sem IA) e atualiza a lista.
+  let timer = null;
+  function vigiar(ctx) {
+    if (timer) return;
+    timer = setInterval(async () => {
+      if (document.hidden || !document.querySelector('.rc2')) { if (!document.querySelector('.rc2')) { clearInterval(timer); timer = null; } return; }
+      if (Object.keys(ST.ocupado).length || ST.carregando) return;
+      try { const r = await ctx.api('/api/reciclagem/coletar-uma', { method: 'POST', body: {} }); if (r.novos) ctx.toast(`${r.novos} post${r.novos > 1 ? 's' : ''} novo${r.novos > 1 ? 's' : ''} na Reciclagem.`); } catch { /* limite da Meta ou rede: tenta no próximo ciclo */ }
+      await recarregarLista(ctx); ctx.render();
+    }, 30000);
+  }
   function render(ctx) {
     if (!ST.carregou && !ST.carregando && !ST.erro) setTimeout(() => carregar(ctx), 0);
+    vigiar(ctx);
     const e = ST.estado; const avisos = [];
     if (e && !e.banco) avisos.push('<div class="rc2-aviso erro">A Reciclagem precisa do banco de dados no servidor (Cópia no servidor) para guardar as teses.</div>');
     if (e && !e.instagram) avisos.push('<div class="rc2-aviso">A conexão com a Meta não está configurada (META_PAGE_ACCESS_TOKEN / META_IG_USER_ID): sem ela as contas de Instagram não são lidas.</div>');
@@ -264,6 +278,11 @@
           const corpo = { autor: f.autor ?? `@${item?.conta?.handle || ''}`, canal: f.canal || CANAIS[0], data: f.data || new Date().toISOString().slice(0, 10), prova: f.prova || '', credito: f.credito || '' };
           try { const a = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/autorizacao`, { method: 'POST', body: corpo }); if (item) item.autorizacao = a; ctx.toast('Autorização registrada.'); } catch (e) { ctx.toast(e.message); }
           ctx.render(); break;
+        }
+        case 'rc2-descartar': {
+          ST.itens = ST.itens.filter((x) => x.id !== id); ST.total = Math.max(0, (ST.total || 1) - 1); ctx.render(); // some na hora
+          try { await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/descartar`, { method: 'POST', body: {} }); } catch (e) { ctx.toast(e.message || 'Não consegui descartar.'); await recarregarLista(ctx); ctx.render(); }
+          break;
         }
         case 'rc2-clonar-menu': ST.menuClone = ST.menuClone === id ? null : id; ctx.render(); break;
         case 'rc2-clonar': ST.menuClone = null; await clonar(ctx, id, { modo: el.dataset.modo || 'original', fundo: el.dataset.fundo || 'branco' }); break;

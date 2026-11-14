@@ -286,3 +286,20 @@ test('reciclar na mesma estrutura: o briefing leva o nº de slides e o mecanismo
   assert.doesNotMatch(chamadas[1].texto, /MESMA ESTRUTURA/, 'sem o botão, nada muda');
   assert.ok(chamadas[0].texto.length >= 300);
 });
+
+test('lista "pendentes": reciclado e descartado saem; descartado não volta numa coleta nova; leitura leve lê 1 conta sem IA', async () => {
+  const arm = require('../armazem'); arm._definir(Object.assign(arm.memoria(), { duravel: true }));
+  const C = require('./coletar'); const { ACCOUNT } = require('../account');
+  const agora = Date.now(); const pub = new Date(agora - 4 * 86400000).toISOString();
+  const base = (id, extra = {}) => ({ id, rede: 'instagram', tipo: 'carrossel', permalink: `https://www.instagram.com/p/${id}/`, publicado_em: pub, coletado_em: pub, vl: 5, conta: { handle: 'x' }, reciclado: [], ...extra });
+  for (const d of [base('rc_aa'), base('rc_bb', { reciclado: [{ formato: 'clone' }] }), base('rc_cc')]) await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, d.id, d);
+  await C.descartar('rc_cc');
+  assert.deepStrictEqual((await C.listar({ dias: 30, pendentes: true })).itens.map((i) => i.id), ['rc_aa']);
+  assert.strictEqual((await C.listar({ dias: 30 })).total, 3, 'sem o filtro, tudo continua guardado');
+  let chamadas = 0;
+  const graph = async () => { chamadas++; return { business_discovery: { followers_count: 1000, media: { data: [] } } }; };
+  const r = await C.coletarAlgumas({ deps: { graph, igId: '1', contas: { instagram: [{ handle: 'a' }, { handle: 'b' }] } }, n: 1 });
+  assert.strictEqual(chamadas, 1); assert.deepStrictEqual(r.contas, ['a']);
+  const r2 = await C.coletarAlgumas({ deps: { graph, igId: '1', contas: { instagram: [{ handle: 'a' }, { handle: 'b' }] } }, n: 1 });
+  assert.deepStrictEqual(r2.contas, ['b'], 'rodízio: a próxima é a lida há mais tempo');
+});
