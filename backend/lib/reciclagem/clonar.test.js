@@ -203,3 +203,10 @@ test('bloco da leitura com várias frases que a IA separou vira um bloco só, um
   const TT = require('./trocaTexto');
   assert.strictEqual(TT.quebrar({ getAdvanceWidth: (t, n) => t.length * n * 0.5 }, blocos[0].novo, 40, 2000).length, 3);
 });
+
+test('"gostou do conteúdo? me siga" que a leitura achou sai sempre, mesmo sem a IA marcar', () => {
+  const V = require('./visaoTexto');
+  const { blocos } = V.blocosDaVisao({ textos: [] }, { trechos: [{ texto: 'gostou do conteúdo? me siga', x0: 462, y0: 1262, x1: 922, y1: 1292, altura_linha: 30 }] });
+  assert.strictEqual(blocos.length, 1); assert.strictEqual(blocos[0].apagar, true);
+  assert.ok(blocos[0].x1 > 922 + 60, 'pega o ícone ao lado');
+});
