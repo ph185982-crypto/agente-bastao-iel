@@ -193,8 +193,7 @@ function svgTroca(blocos, info, raw, { corOriginal = false } = {}) {
     const d = diagramar({ ...b, traco }, b.novo, info);
     const alto = d.linhas.length * d.tam * 1.18;
     // Página de um texto só, sem o cabeçalho do autor: o texto vai para o meio da página (fica só a página branca com ele).
-    const unico = blocos.filter((x) => !x.apagar && x.novo).length === 1 && blocos.some((x) => x.apagar && x.posicao && !x.posicao.startsWith('base'));
-    const y0 = (unico ? info.height / 2 : (b.y0 + b.y1) / 2) - alto / 2;
+    const y0 = (b.y0 + b.y1) / 2 - alto / 2; // sempre no lugar do texto original (página de texto do nosso formato é refeita em paginaTexto)
     rects += `<rect x="${b.x0 - pad}" y="${b.y0 - pad}" width="${b.x1 - b.x0 + 2 * pad}" height="${b.y1 - b.y0 + 2 * pad}" fill="${hex(fundo)}"/>`;
     // A caixa nova pode ser maior que a original: pinta também a área do texto novo.
     const xs = d.linhas.map((l) => { const w = d.f.getAdvanceWidth(l, d.tam); return { l, w, x: d.centrado ? (b.x0 + b.x1) / 2 - w / 2 : b.x0 }; });
