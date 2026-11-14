@@ -385,11 +385,14 @@ def renderizar_montagem(entrada, saida, segmentos, centros, sonda, ass_legenda, 
         f.write(''.join(f"file '{n}'\n" for n in nomes))
     # 4) junta, legenda e áudio final
     entradas = ['-f', 'concat', '-safe', '0', '-i', lista, '-i', voz]
+    # Voz gravada baixa (celular longe, rua): o loudnorm linear não consegue subir 20 dB sem estourar o pico e o vídeo
+    # saía a -26 LUFS. Primeiro um ganho de fala (dynaudnorm), depois o loudnorm dinâmico em -14 LUFS.
+    voz_f = 'highpass=f=70,dynaudnorm=f=250:g=15:p=0.9:m=20,' + filtro_loudnorm(None)
     if whoosh:
         entradas += ['-i', whoosh]
-        a_f = f"[1:a]{filtro_loudnorm(medido)}[vz];[2:a]aresample=48000[wh];[vz][wh]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+        a_f = f"[1:a]{voz_f}[vz];[2:a]aresample=48000[wh];[vz][wh]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
     else:
-        a_f = f"[1:a]{filtro_loudnorm(medido)}[aout]"
+        a_f = f"[1:a]{voz_f}[aout]"
     rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *entradas, '-filter_complex',
            f"[0:v]fps=30,format=yuv420p,ass=filename='{esc(ass_legenda)}':fontsdir='{fontes_esc}'[vout];{a_f}",
            '-map', '[vout]', '-map', '[aout]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-r', '30', '-pix_fmt', 'yuv420p',
