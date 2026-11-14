@@ -35,6 +35,7 @@ Para CADA frase, escolha a cena que ilustra o SENTIDO da frase (não uma palavra
 - pessoa: a frase cita pelo nome uma pessoa ou marca FAMOSA (com página na Wikipédia): aparece a foto dela. "pessoa" = o nome exato como está na Wikipédia (ex.: "Steve Jobs", "Magazine Luiza"). Só se o nome está na frase.
 - celular: a frase fala de pesquisar, buscar no Google, mandar mensagem ou ver algo no celular. "texto" = o que aparece digitado na tela (até 40 caracteres, ex.: "como crescer sem investidor").
 - fim: só a última frase, se for a chamada final (salva, comenta, manda para alguém).
+Em "imagem" e "broll" (vídeo de banco), o título e o rótulo NUNCA são nome de pessoa: a imagem não é dela. Frase que cita pessoa famosa usa o tipo "pessoa"; pessoa pouco conhecida, título com a ideia (ex.: "Começo do zero").
 Para todas as cenas: "titulo" = o NOME DA IDEIA em 1 a 3 palavras (ex.: "Sem investidor", "Lucro paga tudo", "2 pilares", "Dono do estoque"); nunca uma palavra solta sem sentido sozinha; não repita título.
 "rotulo" na imagem (opcional): até 3 palavras que ACRESCENTAM informação (um nome, um ano, um número), nunca repetindo o título.
 Regras: a 1ª frase é a abertura: tipo "imagem" com uma "busca" que represente o tema do vídeo inteiro. Varie os tipos (não repita o mesmo tipo 3 vezes seguidas). Não invente número que a frase não diz.
