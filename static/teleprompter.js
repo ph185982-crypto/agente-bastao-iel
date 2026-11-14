@@ -159,12 +159,16 @@
     T.rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) T.pedacos.push(ev.data); };
     T.rec.onerror = (ev) => { mostrarErro(`A gravação falhou: ${ev.error && ev.error.message ? ev.error.message : 'erro do navegador'}.`); pararGravacao(); };
     T.rec.onstop = aoParar;
+    T.pedidoParar = false; T.interrompido = null;
+    // iPhone: conectar no Bluetooth/CarPlay, ligação ou tela bloqueada encerram a câmera/microfone e a gravação para sozinha.
+    (T.stream.getTracks() || []).forEach((tr) => { tr.onended = () => { if (T.estado === 'gravando') { T.interrompido = tr.kind === 'audio' ? 'o microfone foi desligado pelo celular' : 'a câmera foi desligada pelo celular'; pararGravacao(); } }; });
     T.rec.start(1000);
     T.inicio = Date.now(); setEstado('gravando', 'Gravando'); mostrarErro('');
     clearInterval(T.cronoTimer); T.cronoTimer = setInterval(() => { const c = q('#tp-crono'); if (c) c.lastChild.textContent = mmss(Date.now() - T.inicio); }, 250);
     T.pos = 0; const t = q('#tp-texto'); if (t) t.style.transform = 'translateY(0px)'; rolar(true);
   }
   function pararGravacao() { clearInterval(T.cronoTimer); rolar(false); if (T.rec && T.rec.state !== 'inactive') { try { T.rec.stop(); } catch { aoParar(); } } }
+  function pararPeloBotao() { T.pedidoParar = true; pararGravacao(); }
   function aoParar() {
     const tipo = (T.rec && T.rec.mimeType) || T.mime || 'video/webm';
     T.blob = new Blob(T.pedacos, { type: tipo.split(';')[0] });
@@ -174,6 +178,8 @@
     const v = q('#tp-video-previa'); v.src = T.urlPrevia; v.muted = false;
     q('#tp-envio-texto').textContent = `${mmss(dur)} · ${(T.blob.size / 1048576).toFixed(1)} MB · ${/mp4/.test(tipo) ? 'MP4' : 'WebM'}. Confira e envie para a edição.`;
     setEstado('previa', 'Prévia');
+    // parou sem o Pedro apertar o botão: avisa na hora, antes de enviar um vídeo cortado
+    if (!T.pedidoParar) mostrarErro(`A gravação parou sozinha em ${mmss(dur)}${T.interrompido ? ` (${T.interrompido})` : ''}. Isso acontece no iPhone ao conectar no Bluetooth/CarPlay do carro, numa ligação ou ao bloquear a tela. Confira a prévia: se faltou o final, grave de novo.`);
   }
   async function enviar(blob, nome) {
     if (!window.Videos || !window.Videos.enviarArquivo) { mostrarErro('A aba Vídeos não carregou; atualize a página e tente de novo.'); return; }
@@ -207,7 +213,7 @@
     const b = ev.target.closest('[data-tp]'); if (!b) return;
     switch (b.dataset.tp) {
       case 'fechar': if (T.estado === 'gravando' && !confirm('Parar e descartar a gravação?')) return; fechar(); break;
-      case 'gravar': if (T.estado === 'gravando') pararGravacao(); else if (T.estado === 'pronto') contagemEGravar(); break;
+      case 'gravar': if (T.estado === 'gravando') pararPeloBotao(); else if (T.estado === 'pronto') contagemEGravar(); break;
       case 'virar': T.facing = T.facing === 'user' ? 'environment' : 'user'; ligarCamera(); break;
       case 'editar': q('#tp-roteiro-edit').value = T.roteiro; q('#tp-editor').hidden = false; T.editando = true; q('#tp-roteiro-edit').focus(); break;
       case 'salvar-roteiro': T.roteiro = q('#tp-roteiro-edit').value; aplicarTexto(); q('#tp-editor').hidden = true; T.editando = false; break;

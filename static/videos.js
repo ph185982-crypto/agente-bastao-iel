@@ -44,6 +44,7 @@
       erro: c.erro || (v.worker && v.worker.erro) || null, cortes: v.resultado && v.resultado.cortes, palavras: v.resultado && v.resultado.palavras,
       status: c.status || null, studio: c.studio || null, agenda: c.agenda || null, publicacao: c.publicacao || null, roteiro_texto: v.roteiro_texto || c.roteiro_texto || '',
       roteiro: c.roteiro || v.roteiro || null, duracao_estimada_s: c.duracao_estimada_s ?? v.duracao_estimada_s ?? null,
+      avisos: c.avisos || ((v.resultado && v.resultado.avisos) || []).filter((x) => /roteiro|interromp|rosto/.test(x)),
     };
   }
   const agendado = (c) => !!(c.agenda && c.agenda.publicar_em) && c.status === 'aprovado';
@@ -170,6 +171,7 @@
       <div class="vd-tags"><span class="vd-tag ${situacao[0]}">${esc(situacao[1])}</span>${c.estado === 'roteiro' && c.roteiro ? `<span class="vd-tag azul">${esc(c.roteiro.formato_nome || c.roteiro.formato || '')}</span>${c.roteiro.nota != null ? `<span class="vd-tag ok" title="Média dos fiscais (0 a 10)">Nota ${esc(String(c.roteiro.nota).replace('.', ','))}</span>` : ''}${c.duracao_estimada_s ? `<span class="vd-tag suave">~${esc(c.duracao_estimada_s)} s</span>` : ''}` : `<span class="vd-tag suave">${esc(ESTILOS.find((e) => e[0] === c.estilo)?.[1] || c.estilo)}</span>`}${c.cortes != null ? `<span class="vd-tag suave">${esc(c.cortes)} cortes</span>` : ''}</div>
       <h3>${esc(c.titulo)}</h3>
       ${midia(c)}
+      ${c.estado === 'pronto' && (c.avisos || []).length ? `<div class="vd-aviso" role="status"><b>Atenção:</b> ${esc(c.avisos[0])}</div>` : ''}
       ${c.estado === 'erro' ? `<div class="vd-aviso erro" role="status"><b>Não consegui editar este vídeo.</b> ${esc(c.erro || 'Erro sem detalhe.')} Você pode refazer com outro estilo ou enviar outro arquivo.</div>` : ''}
       ${c.estado === 'pronto' && legenda ? `<details class="vd-legenda" open><summary>Legenda do Instagram</summary><p>${esc(legenda)}</p><button class="vd-btn peq fantasma" data-action="vd-copiar" data-id="${esc(c.id)}" aria-label="Copiar legenda de ${esc(c.titulo)}">Copiar legenda</button></details>` : ''}
       ${c.estado === 'pronto' && !legenda ? '<p class="vd-meta">Sem legenda gerada: escreva a sua no Instagram ao publicar.</p>' : ''}

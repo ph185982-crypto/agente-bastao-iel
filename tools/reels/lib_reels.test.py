@@ -318,5 +318,54 @@ class Montagem(unittest.TestCase):
         assert '1360' in pos(1.0) and '960' in pos(3.0)
 
 
+
+class Destrava(unittest.TestCase):
+    """Formato da referência do Pedro (14/11/2026): gráficos em cima, janela embaixo, legenda de uma palavra."""
+    def _pal(self, textos):
+        pal, t = [], 0.3
+        for k, tx in enumerate(textos):
+            for w in tx.split():
+                pal.append({'n0': round(t, 3), 'n1': round(t + 0.3, 3), 'w': w}); t += 0.36
+            t += 0.3
+        return pal, t
+
+    def test_tipos_de_quadro(self):
+        import lib_destrava as D
+        pal, dur = self._pal(['Você não precisa de investidor para crescer.', 'No Brasil, 6 em cada 10 empresas fecham.',
+                              'Ela focou em duas coisas básicas.', 'Produto impecável e preço que a cliente paga.',
+                              'Quem manda no estoque manda na empresa.', 'Salva esse vídeo para lembrar.'])
+        frases = D.frases_por_pontuacao(pal)
+        self.assertEqual(len(frases), 6)
+        b = D.planejar(frases, dur, 'Cresça sem investidor', broll=False)
+        tipos = [x['tipo'] for x in b]
+        self.assertEqual(tipos[0], 'titulo')
+        self.assertEqual(tipos[-1], 'fim')
+        self.assertIn('numero', tipos)
+        self.assertEqual(D.palavra_chave('No Brasil, 6 em cada 10 empresas fecham.'), '6 em 10')
+        listas = [x for x in b if x['tipo'] == 'lista']
+        self.assertEqual(len(listas), 2)
+        self.assertEqual(listas[0]['itens_novos'], [])                       # o anúncio não mostra os itens antes da hora
+        self.assertEqual(listas[1]['itens_novos'], ['Produto impecável', 'Preço que a cliente paga'])
+        self.assertEqual(b[0]['t0'], 0.0); self.assertAlmostEqual(b[-1]['t1'], dur)
+        g = D.ass_graficos(b)
+        self.assertIn('Instrument Serif', g)
+        f = D.ass_final(b, pal, dur)
+        self.assertIn('@PEDRO_DESTRAVA', f)
+        self.assertEqual(sum(1 for ln in f.splitlines() if ',Legenda,' in ln), len(pal))   # uma palavra por evento
+
+    def test_roteiro_incompleto_avisa(self):
+        # caso real (14/11): o iPhone parou a gravação aos 33,6 s e o roteiro tinha ~56 s
+        rot = ("Você não precisa de investidor milionário para criar uma marca gigante. Uma designer americana provou isso na prática. "
+               "Lele Sadoughi começou a marca de joias dela do zero. Ela focou em duas coisas básicas: produto com acabamento impecável "
+               "e preço que a cliente consegue pagar. Em vez de torcer dinheiro em anúncio caro, o lucro da primeira venda pagava a "
+               "produção da seguinte. No Brasil, muito dono de negócio quebra porque busca sócio investidor antes de ter caixa próprio. "
+               "Quem manda no seu estoque manda na sua empresa. Crescer com o próprio lucro garante a sua liberdade. "
+               "Salva esse vídeo para lembrar disso quando pensar em pegar dinheiro emprestado.")
+        falado = rot.split('No Brasil')[0]
+        r = L.roteiro_incompleto(rot, [{'w': w} for w in falado.split()])
+        self.assertIsNotNone(r)
+        self.assertIn('No Brasil', r['faltou'])
+        self.assertIsNone(L.roteiro_incompleto(rot, [{'w': w} for w in rot.split()]))
+
 if __name__ == '__main__':
     unittest.main(verbosity=1)

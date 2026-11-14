@@ -29,6 +29,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lib_reels as L
 import lib_montagem as M  # noqa: E402
+import lib_destrava as D  # noqa: E402
 
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 FONTES = os.path.join(RAIZ, 'backend', 'assets')
@@ -399,6 +400,120 @@ def renderizar_montagem(entrada, saida, segmentos, centros, sonda, ass_legenda, 
            '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', '-shortest', saida])
 
 
+def _pgm_arredondado(caminho, w, h, r):
+    """Máscara (PGM cinza) de retângulo de cantos arredondados: 255 dentro, 0 fora. Sem PIL."""
+    import numpy as np
+    y, x = np.mgrid[0:h, 0:w]
+    dx = np.maximum(np.maximum(r - x, x - (w - 1 - r)), 0)
+    dy = np.maximum(np.maximum(r - y, y - (h - 1 - r)), 0)
+    dentro = (dx * dx + dy * dy) <= r * r
+    img = np.where(dentro, 255, 0).astype(np.uint8)
+    with open(caminho, 'wb') as f:
+        f.write(f"P5 {w} {h} 255\n".encode()); f.write(img.tobytes())
+    return caminho
+
+
+def _fundo_destrava(caminho):
+    """Fundo quase preto com grade de pontos sutil e vinheta (como a referência)."""
+    rodar(['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', f"color=c=0x0B0B0E:s={D.W}x{D.H}:d=1",
+           '-vf', "format=gray,geq=lum='if(lt(mod(X,26),3)*lt(mod(Y,26),3),30,12)',format=rgb24,vignette=angle=PI/5",
+           '-frames:v', '1', caminho])
+    return caminho
+
+
+def renderizar_destrava(entrada, saida, segmentos, centros, sonda, blocos, palavras_rm, dur, tmp, brolls, whoosh=None):
+    """Formato Destrava: fundo escuro com gráficos em cima e o Pedro numa janela embaixo; close em tela cheia e cena de
+    banco nos blocos certos; legenda de uma palavra; tela final. Render em etapas (memória constante)."""
+    fontes_esc = FONTES.replace('\\', '/').replace(':', '\\:').replace("'", "\\'")
+    def esc(p):
+        return p.replace('\\', '/').replace(':', '\\:').replace("'", "\\'")
+    enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '17', '-pix_fmt', 'yuv420p', '-r', '30']
+    J = D.JANELA
+    # 1) cortes em dois enquadramentos: janela (948x520, rosto + ombros) e close (1080x1920, zoom 1,22)
+    listas = {'j': [], 'c': [], 'a': []}
+    for i, (seg, (cx, cy)) in enumerate(zip(segmentos, centros)):
+        a, b = seg['a'], seg['b']; d = b - a
+        wj, hj, xj, yj = L.geometria_crop(sonda['largura'], sonda['altura'], 1.0, cx, min(1.0, cy + 0.03), J['w'], J['h'])
+        wc, hc, xc, yc = L.geometria_crop(sonda['largura'], sonda['altura'], 1.22, cx, cy)
+        jo, co, ao = (os.path.join(tmp, f'd{i:03d}.{e}') for e in ('j.mp4', 'c.mp4', 'a.wav'))
+        af = ['afade=t=in:st=0:d=0.03'] if seg['fade_in'] else []
+        if seg['fade_out'] and d > 0.06:
+            af.append(f"afade=t=out:st={max(0, d - 0.03):.3f}:d=0.03")
+        rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', '-ss', f"{a:.3f}", '-t', f"{d:.3f}", '-i', entrada,
+               '-filter_complex', f"[0:v]fps=30,split[x][y];[x]scale={wj}:{hj}:flags=bicubic,crop={J['w']}:{J['h']}:{xj}:{yj},setsar=1[j];"
+               f"[y]scale={wc}:{hc}:flags=bicubic,crop={L.LARGURA}:{L.ALTURA}:{xc}:{yc},setsar=1[c]",
+               '-map', '[j]', '-t', f"{d:.3f}", *enc, jo, '-map', '[c]', '-t', f"{d:.3f}", *enc, co,
+               '-map', '0:a', '-t', f"{d:.3f}", *(['-af', ','.join(af)] if af else []), '-ar', '48000', '-ac', '2', ao])
+        listas['j'].append(jo); listas['c'].append(co); listas['a'].append(ao)
+    janela, close, voz = os.path.join(tmp, 'janela.mp4'), os.path.join(tmp, 'close.mp4'), os.path.join(tmp, 'voz.wav')
+    for chave, destino in (('j', janela), ('c', close), ('a', voz)):
+        lst = os.path.join(tmp, f'lista_{chave}.txt')
+        with open(lst, 'w') as fl:
+            fl.write(''.join(f"file '{n}'\n" for n in listas[chave]))
+        rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', lst, '-c', 'copy', destino])
+    # 2) peças fixas
+    fundo = _fundo_destrava(os.path.join(tmp, 'fundo.png'))
+    m_jan = _pgm_arredondado(os.path.join(tmp, 'm_jan.pgm'), J['w'], J['h'], J['raio'])
+    ass_g = os.path.join(tmp, 'graficos.ass'); ass_f = os.path.join(tmp, 'final.ass')
+    open(ass_g, 'w', encoding='utf-8').write(D.ass_graficos(blocos))
+    open(ass_f, 'w', encoding='utf-8').write(D.ass_final(blocos, palavras_rm, dur))
+    if os.environ.get('REELS_DEPURAR'):
+        shutil.copy(ass_g, os.path.join(os.path.dirname(saida), 'graficos.ass'))
+    # 3) composição única, em fluxo (sem divisões que seguram o vídeo na memória)
+    entradas = ['-loop', '1', '-framerate', '30', '-t', f"{dur:.3f}", '-i', fundo, '-i', janela, '-i', close,
+                '-loop', '1', '-framerate', '30', '-t', f"{dur:.3f}", '-i', m_jan]
+    g = [f"[0:v]format=yuv420p[bg]", f"[1:v]format=yuva420p[jv];[3:v]format=gray[jm];[jv][jm]alphamerge[jr]",
+         f"[bg][jr]overlay={J['x']}:{J['y']}:shortest=0:eof_action=pass[v0]"]
+    atual = '[v0]'; k = 4; n = 0
+    for br in brolls:
+        b = br['bloco']; d0 = b['t1'] - b['t0']
+        if b['tipo'] in ('imagem', 'titulo'):
+            q = D.INSET_IMAGEM if b['tipo'] == 'imagem' else D.INSET_TITULO
+            mk = _pgm_arredondado(os.path.join(tmp, f'm_ins{n}.pgm'), q['w'], q['h'], q['raio'])
+            entradas += ['-i', br['arquivo'], '-loop', '1', '-framerate', '30', '-t', f"{d0:.3f}", '-i', mk]
+            g.append(f"[{k}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,scale={q['w']}:{q['h']}:force_original_aspect_ratio=increase,"
+                     f"crop={q['w']}:{q['h']},format=yuva420p[bv{n}];[{k + 1}:v]format=gray[bm{n}];[bv{n}][bm{n}]alphamerge,setpts=PTS+{b['t0']:.3f}/TB[bi{n}]")
+            g.append(f"{atual}[bi{n}]overlay={q['x']}:{q['y']}:eof_action=pass:enable='between(t,{b['t0']:.3f},{b['t1']:.3f})'[v{n + 1}]")
+            k += 2
+        else:   # broll em tela cheia: entra depois dos gráficos (abaixo)
+            continue
+        atual = f"[v{n + 1}]"; n += 1
+    g.append(f"{atual}ass=filename='{esc(ass_g)}':fontsdir='{fontes_esc}'[vg]")
+    atual = '[vg]'
+    # close em tela cheia nos blocos 'rosto'
+    rostos = [b for b in blocos if b['layout'] == 'rosto']
+    if rostos:
+        cond = '+'.join(f"between(t,{b['t0']:.3f},{b['t1'] - 0.001:.3f})" for b in rostos)
+        g.append(f"[2:v]format=yuv420p[cl];{atual}[cl]overlay=0:0:eof_action=pass:enable='{cond}'[vc]"); atual = '[vc]'
+    else:
+        g.append("[2:v]nullsink")
+    m = 0
+    for br in brolls:
+        b = br['bloco']
+        if b['tipo'] != 'broll':
+            continue
+        d0 = b['t1'] - b['t0']
+        entradas += ['-i', br['arquivo']]
+        g.append(f"[{k}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,scale={L.LARGURA}:{L.ALTURA}:force_original_aspect_ratio=increase,"
+                 f"crop={L.LARGURA}:{L.ALTURA},eq=brightness=-0.06,format=yuv420p,setpts=PTS+{b['t0']:.3f}/TB[fb{m}]")
+        g.append(f"{atual}[fb{m}]overlay=0:0:eof_action=pass:enable='between(t,{b['t0']:.3f},{b['t1']:.3f})'[vb{m}]")
+        atual = f"[vb{m}]"; k += 1; m += 1
+    g.append(f"{atual}ass=filename='{esc(ass_f)}':fontsdir='{fontes_esc}',format=yuv420p[vout]")
+    sem_video = os.path.join(tmp, 'mudo.mp4')
+    rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *entradas, '-filter_complex', ';'.join(g),
+           '-map', '[vout]', '-t', f"{dur:.3f}", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-r', '30', '-pix_fmt', 'yuv420p', sem_video])
+    # 4) áudio: voz (ganho de fala + loudnorm) + whoosh nas trocas
+    voz_f = 'highpass=f=70,dynaudnorm=f=250:g=15:p=0.9:m=20,' + filtro_loudnorm(None)
+    ent = ['-i', sem_video, '-i', voz]
+    if whoosh:
+        ent += ['-i', whoosh]
+        a_f = f"[1:a]{voz_f}[vz];[2:a]aresample=48000[wh];[vz][wh]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+    else:
+        a_f = f"[1:a]{voz_f}[aout]"
+    rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *ent, '-filter_complex', a_f, '-map', '0:v', '-map', '[aout]',
+           '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', '-shortest', saida])
+
+
 def medir_loudness(entrada, segmentos, centros, sonda, tmp):
     """Passo 1 do loudnorm: mede o áudio JÁ cortado (sem renderizar vídeo). Devolve o dict medido ou None."""
     filtros, _, ac = _filtros_segmentos(segmentos, centros, sonda, com_video=False)
@@ -462,7 +577,7 @@ def poster(final, destino):
 # ----------------------------------------------------------------------------------------------------------------------
 # Pipeline
 # ----------------------------------------------------------------------------------------------------------------------
-def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=None):
+def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=None, titulo=''):
     opcoes = {**OPCOES_PADRAO, **(opcoes or {})}
     if estilo not in L.PRESETS:
         raise ValueError(f"estilo inválido: {estilo} (use {', '.join(L.PRESETS)})")
@@ -489,6 +604,10 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         if sonda['tem_audio'] and not palavras:
             avisos.append('nenhuma palavra reconhecida: legendas vazias')
         json.dump(tr, open(os.path.join(pasta, 'transcricao.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        falta = L.roteiro_incompleto(roteiro, palavras)
+        if falta:
+            avisos.append(f"o vídeo termina antes do fim do roteiro: a fala para em “{falta['parou_em']}” e falta “{falta['faltou']}…”. "
+                          "A gravação foi interrompida no celular (ex.: o iPhone conectou no Bluetooth/CarPlay do carro). Grave o final de novo.")
 
         # 3. cortes
         cron.etapa('cortes')
@@ -509,7 +628,7 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         cron.etapa('enquadramento')
         horizontal = sonda['largura'] > sonda['altura']
         amostras = []
-        if horizontal:
+        if horizontal or opcoes.get('montagem', True):   # formato destrava/montagem: a janela e o close seguem o rosto
             try:
                 amostras = amostrar_rostos(entrada, sonda)
             except Exception as e:
@@ -518,10 +637,22 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
                 avisos.append('nenhum rosto detectado: enquadramento central')
         centros = L.centro_por_segmento(amostras, segmentos, padrao=0.5) if amostras else [(0.5, 0.5)] * len(segmentos)
 
-        # 5. montagem dinâmica: plano frase a frase (rosto / tela dividida / cartão), sem IA
+        # 5. montagem: formato 'destrava' (padrão, referência do Pedro de 14/11) ou a montagem v2; sem IA
         montagem = bool(opcoes.get('montagem', True)) and bool(palavras_rm)
+        formato = opcoes.get('formato') or 'destrava'
+        destrava = montagem and formato == 'destrava'
         blocos = []
-        if montagem:
+        if destrava:
+            por_seg = {}
+            for p in palavras_rm:
+                f = por_seg.setdefault(p.get('seg', 0), {'n0': p['n0'], 'n1': p['n1'], 'palavras': []})
+                f['n1'] = p['n1']; f['palavras'].append({'n0': p['n0'], 'n1': p['n1'], 'w': p['w'].strip()})
+            frases_d = D.frases_por_pontuacao([{'n0': p['n0'], 'n1': p['n1'], 'w': p['w'].strip()} for p in palavras_rm])
+            chave_tmp = os.environ.get('PEXELS_API_KEY', '').strip() or os.environ.get('BROLL_URL', '') or os.environ.get('REELS_BROLL_LOCAL', '')
+            titulo_video = titulo if titulo and not re.match(r'^(v[ií]deo|grava[cç][aã]o) ', titulo, re.I) else ''
+            blocos = D.planejar(frases_d, dur_final, titulo_video, broll=bool(opcoes.get('broll')) and bool(chave_tmp))
+            log('destrava: ' + ' | '.join(f"{b['t0']:.1f}-{b['t1']:.1f} {b['layout']}/{b['tipo']}:{b.get('chave', '')}" for b in blocos))
+        elif montagem:
             por_seg = {}
             for p in palavras_rm:
                 f = por_seg.setdefault(p.get('seg', 0), {'n0': p['n0'], 'n1': p['n1'], 'palavras': []})
@@ -533,8 +664,22 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         # 6. b-roll (Pexels): na montagem entra no quadro de cima de metade das telas divididas
         cron.etapa('broll')
         brolls = []; brolls_topo = []
-        chave_px = os.environ.get('PEXELS_API_KEY', '').strip() or ('__app__' if os.environ.get('BROLL_URL') else '')
-        if opcoes.get('broll'):
+        chave_px = os.environ.get('PEXELS_API_KEY', '').strip() or ('__app__' if os.environ.get('BROLL_URL') else '') or ('__local__' if os.environ.get('REELS_BROLL_LOCAL') else '')
+        brolls_destrava = []
+        if destrava:
+            pedidos = D.precisa_broll(blocos) if (opcoes.get('broll') and chave_px) else []
+            pontos = [{'inicio': b['t0'], 'duracao': round(b['t1'] - b['t0'], 3), 'texto': b['texto'],
+                       'consulta': L.palavra_chave(b.get('titulo') if b['tipo'] == 'titulo' else b['texto']), 'bloco': b} for b in pedidos]
+            if os.environ.get('REELS_BROLL_LOCAL') and pontos:   # teste local: um arquivo no lugar do banco de imagens
+                baixados = [dict(pt, arquivo=os.environ['REELS_BROLL_LOCAL']) for pt in pontos]
+            else:
+                baixados = baixar_broll(pontos, tmp, chave_px, avisos) if pontos else []
+            ok = {id(r['bloco']) for r in baixados}
+            for b in blocos:
+                if b['tipo'] in ('titulo', 'imagem', 'broll') and id(b) not in ok:
+                    D.sem_broll(b)
+            brolls_destrava = [{'arquivo': r['arquivo'], 'bloco': r['bloco'], 'consulta': r['consulta'], 'pexels_id': r.get('pexels_id')} for r in baixados]
+        elif opcoes.get('broll'):
             if not chave_px:
                 avisos.append('b-roll pulado: sem PEXELS_API_KEY')
             elif montagem:
@@ -558,8 +703,8 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         # 7. legendas (mudam de lugar conforme o layout) e quadros animados
         cron.etapa('legendas')
         ass = os.path.join(pasta, 'legendas.ass')
-        open(ass, 'w', encoding='utf-8').write(L.gerar_ass(palavras_rm, estilo, posicao=M.posicao_legenda(blocos) if montagem else None))
-        if montagem:
+        open(ass, 'w', encoding='utf-8').write(D.ass_final(blocos, palavras_rm, dur_final) if destrava else L.gerar_ass(palavras_rm, estilo, posicao=M.posicao_legenda(blocos) if montagem else None))
+        if montagem and not destrava:
             ass_topo = os.path.join(tmp, 'quadros_topo.ass'); ass_cheio = os.path.join(tmp, 'quadros_cheio.ass')
             open(ass_topo, 'w', encoding='utf-8').write(M.ass_graficos(blocos, 'topo'))
             open(ass_cheio, 'w', encoding='utf-8').write(M.ass_graficos(blocos, 'cheio'))
@@ -582,7 +727,11 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             rodar(['ffmpeg', '-y', '-loglevel', 'error', '-i', entrada, '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
                    '-shortest', '-c:v', 'copy', '-c:a', 'aac', mudo])
             entrada = mudo
-        if montagem:
+        if destrava:
+            whoosh = trilha_whoosh(os.path.join(tmp, 'whoosh.wav'), D.trocas(blocos), dur_final, volume=0.12) if opcoes.get('sons', True) else None
+            renderizar_destrava(entrada, final, segmentos, centros, sonda, blocos, palavras_rm, dur_final, tmp, brolls_destrava, whoosh)
+            brolls = [{'inicio': r['bloco']['t0'], 'duracao': round(r['bloco']['t1'] - r['bloco']['t0'], 2), 'consulta': r['consulta'], 'pexels_id': r.get('pexels_id')} for r in brolls_destrava]
+        elif montagem:
             whoosh = trilha_whoosh(os.path.join(tmp, 'whoosh.wav'), M.trocas(blocos), dur_final) if opcoes.get('sons', True) else None
             renderizar_montagem(entrada, final, segmentos, centros, sonda, ass, blocos, ass_topo, ass_cheio, medido, whoosh, brolls_topo)
             brolls = [{'inicio': b['t0'], 'duracao': round(b['t1'] - b['t0'], 2), 'consulta': b['consulta'], 'pexels_id': b.get('pexels_id')} for b in brolls_topo]
@@ -601,7 +750,8 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             'detalhes_cortes': {k: v for k, v in detalhes.items() if k != 'cortes_palavras'}, 'duracao_original_s': round(sonda['duracao'], 2),
             'broll': [{'inicio': b['inicio'], 'duracao': b['duracao'], 'consulta': b['consulta'], 'pexels_id': b.get('pexels_id')} for b in brolls],
             'modelo_whisper': tr.get('modelo'), 'tempos_s': cron.tempos, 'avisos': avisos,
-            'montagem': [{'t0': b['t0'], 't1': b['t1'], 'layout': b['layout'], 'chave': b['chave'], 'icone': b['icone'], 'broll': bool(b.get('broll'))} for b in blocos],
+            'montagem': [{'t0': b['t0'], 't1': b['t1'], 'layout': b['layout'], 'tipo': b.get('tipo'), 'chave': b.get('chave'), 'icone': b.get('icone')} for b in blocos],
+            'formato': 'destrava' if destrava else ('montagem' if montagem else 'simples'),
         }
         json.dump(resultado, open(os.path.join(pasta, 'resultado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         log(f"pronto: {final} ({resultado['duracao_s']}s, {resultado['palavras']} palavras, {resultado['cortes']} cortes)")
@@ -618,13 +768,14 @@ def main():
     ap.add_argument('--roteiro', help='arquivo .txt com o texto lido (ajuda o Whisper)')
     ap.add_argument('--opcoes', default='{}', help='JSON: broll, punch_in, remover_pausas, remover_muletas, musica')
     ap.add_argument('--modelo', help='força o modelo do Whisper (tiny/base/small/medium)')
+    ap.add_argument('--titulo', default='', help='título do vídeo (vira o título animado do formato destrava)')
     a = ap.parse_args()
     roteiro = open(a.roteiro, encoding='utf-8').read() if a.roteiro and os.path.exists(a.roteiro) else ''
     try:
         opcoes = json.loads(a.opcoes or '{}')
     except json.JSONDecodeError as e:
         sys.exit(f"--opcoes não é JSON válido: {e}")
-    r = editar(a.entrada, a.saida, a.estilo, roteiro, opcoes, a.modelo)
+    r = editar(a.entrada, a.saida, a.estilo, roteiro, opcoes, a.modelo, a.titulo)
     print(json.dumps({'duracao_s': r['duracao_s'], 'cortes': r['cortes'], 'palavras': r['palavras'], 'avisos': r['avisos'], 'tempos_s': r['tempos_s']}, ensure_ascii=False))
 
 
