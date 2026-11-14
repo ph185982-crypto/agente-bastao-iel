@@ -225,7 +225,16 @@ function svgAssinatura(raw, info, handle) {
 // Página de texto refeita no nosso padrão (pedido do Pedro): fundo branco, texto traduzido em Inter (negrito onde o original
 // era título/destaque), alinhado à esquerda e centralizado na altura, e o nosso @ embaixo. Sem nada do autor.
 async function paginaTexto(paragrafos, { assinatura = null, largura = W45, altura = H45 } = {}) {
-  const lista = (paragrafos || []).map((p) => ({ texto: String(p.texto || '').trim(), negrito: !!p.negrito })).filter((p) => p.texto);
+  // Só o que a Inter desenha (emoji e símbolo viram quadradinho): sai do texto.
+  const desenhavel = (t) => [...String(t || '')].filter((ch) => /\s/.test(ch) || fonte('normal').charToGlyph(ch).index !== 0).join('').replace(/\s{2,}/g, ' ').trim();
+  const brutos = (paragrafos || []).map((p) => ({ texto: desenhavel(p.texto), negrito: !!p.negrito })).filter((p) => p.texto);
+  // Frase partida em várias linhas (texto escrito à mão lido linha a linha): junta enquanto a anterior não termina a frase.
+  const lista = [];
+  for (const p of brutos) {
+    const ant = lista[lista.length - 1];
+    if (ant && ant.negrito === p.negrito && !/[.!?:;…"”)]$/.test(ant.texto)) ant.texto = `${ant.texto} ${p.texto.charAt(0).toLowerCase()}${p.texto.slice(1)}`;
+    else lista.push({ ...p });
+  }
   const M = 96; const larg = largura - 2 * M; const util = altura - 2 * 150;
   let tam = 64; let medida = null;
   for (; tam >= 26; tam -= 2) {
