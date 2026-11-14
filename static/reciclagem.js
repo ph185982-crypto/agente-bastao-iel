@@ -1,3 +1,4 @@
+// Reciclar: botão com duas opções (formato original / nosso formato branco ou preto).
 // Aba "Reciclar" (Radar de Reciclagem): o que viralizou nas contas de empreendedorismo vigiadas, com índice de
 // viralidade (VL), tema, mecanismo e tese neutra; tendências do dia no Google; e "Reciclar como…" carrossel, post ou reel.
 // O app só MOSTRA e comanda; coleta, classificação e escrita rodam no servidor. Nunca copiamos o texto de terceiros:
