@@ -379,6 +379,113 @@ def _filtros_montagem(segmentos, centros, sonda):
     return partes, '[vF]', '[vH]', '[ac]'
 
 
+def pedir_plano(frases, titulo, avisos):
+    """Plano visual por frase (nome da ideia, tipo de cena, busca da imagem em inglês), feito no app pela IA gratuita
+    (backend/lib/videos/plano.js). Sem app ou se falhar: None (o editor usa as regras automáticas). Teste local: o
+    arquivo em REELS_PLANO_LOCAL ({"cenas": [...]})."""
+    if not frases:
+        return None
+    local = os.environ.get('REELS_PLANO_LOCAL')
+    if local:
+        cenas = json.load(open(local, encoding='utf-8')).get('cenas')
+        return cenas if isinstance(cenas, list) else None
+    url = os.environ.get('PLANO_URL')
+    if not url:
+        return None
+    corpo = json.dumps({'id': os.environ.get('REELS_JOB_ID', ''), 'titulo': titulo or '', 'frases': [f['texto'] for f in frases]}, ensure_ascii=False).encode('utf-8')
+    try:
+        req = urllib.request.Request(url, data=corpo, method='POST', headers={'Authorization': 'Bearer ' + _credencial_app(), 'Content-Type': 'application/json', 'User-Agent': 'agente-bastao-reels/1.0'})
+        with urllib.request.urlopen(req, timeout=75) as r:
+            d = json.loads(r.read().decode('utf-8'))
+        cenas = d.get('cenas')
+        if isinstance(cenas, list) and len(cenas) == len(frases):
+            log(f"plano visual: {len(cenas)} cenas ({d.get('fonte') or 'ia'})")
+            return cenas
+        avisos.append('plano visual veio incompleto: usei as regras automáticas')
+    except Exception as e:   # o vídeo sai do mesmo jeito, com as regras de sempre
+        avisos.append(f'plano visual indisponível ({str(e)[:90]}): usei as regras automáticas')
+    return None
+
+
+def _wav_mono(caminho, onda, sr):
+    import numpy as np
+    import wave
+    pcm = (np.clip(onda, -1, 1) * 32767).astype(np.int16)
+    with wave.open(caminho, 'wb') as f:
+        f.setnchannels(1); f.setsampwidth(2); f.setframerate(sr); f.writeframes(pcm.tobytes())
+    return caminho
+
+
+def trilha_efeitos(caminho, eventos, duracao, sr=48000):
+    """Sons curtos gerados aqui (nenhum arquivo de terceiros): 'whoosh' na troca de cena, 'pop' quando um elemento entra
+    (item da lista, cartão, ícone) e 'impacto' no número gigante e na abertura. `eventos` = [(t, tipo)] (D.efeitos)."""
+    import numpy as np
+    n = int(duracao * sr) + sr
+    out = np.zeros(n, dtype=np.float32)
+    rng = np.random.default_rng(7)
+    d = int(0.28 * sr)
+    env = np.sin(np.linspace(0, np.pi, d)) ** 2
+    whoosh = (np.convolve(rng.standard_normal(d), np.ones(9) / 9, mode='same') * env * 0.12).astype(np.float32)
+    d = int(0.09 * sr); tt = np.arange(d) / sr
+    f = 420 + 680 * np.exp(-tt / 0.012)   # tom que cai rápido: "pop"
+    pop = np.sin(2 * np.pi * np.cumsum(f) / sr) * np.exp(-tt / 0.025) * np.minimum(1, tt / 0.002)
+    pop = ((pop + rng.standard_normal(d) * np.exp(-tt / 0.002) * 0.3) * 0.13).astype(np.float32)
+    d = int(0.32 * sr); tt = np.arange(d) / sr
+    f = 45 + 50 * np.exp(-tt / 0.05)      # grave que cai: "impacto"
+    imp = np.sin(2 * np.pi * np.cumsum(f) / sr) * np.exp(-tt / 0.11) * np.minimum(1, tt / 0.003)
+    imp = ((imp + rng.standard_normal(d) * np.exp(-tt / 0.004) * 0.25) * 0.25).astype(np.float32)
+    sons = {'whoosh': (whoosh, 0.12), 'pop': (pop, 0.0), 'impacto': (imp, 0.0)}   # (onda, quanto começa antes do instante)
+    for t, tipo in eventos:
+        w, adiant = sons.get(tipo, sons['pop'])
+        i = int(max(0.0, t - adiant) * sr)
+        if i + len(w) < n:
+            out[i:i + len(w)] += w
+    return _wav_mono(caminho, out, sr)
+
+
+def trilha_musical(caminho, duracao, sr=44100, bpm=92):
+    """Trilha de fundo GERADA aqui (não é de ninguém: o Instagram não tem o que silenciar): pad suave em lá menor
+    (Am–F–C–G), baixo nos tempos 1 e 3 e um pulso macio que faz o pad 'respirar'. O volume final e o abaixar sozinho
+    quando há fala ficam na mistura (renderizar_destrava)."""
+    import numpy as np
+    n = int((duracao + 1.0) * sr)
+    beat = 60.0 / bpm; compasso = 4 * beat
+    acordes = [(57, 60, 64, 69), (53, 57, 60, 65), (48, 52, 55, 60), (55, 59, 62, 67)]   # Am, F, C, G (MIDI)
+
+    def hz(m):
+        return 440.0 * 2 ** ((m - 69) / 12)
+    pad = np.zeros(n, np.float32)
+    for k in range(int(n / sr / compasso) + 2):
+        i0 = int(k * compasso * sr)
+        if i0 >= n:
+            break
+        i1 = min(n, int(((k + 1) * compasso + 0.8) * sr))   # cauda de 0,8 s cruza com o próximo acorde
+        tt = np.arange(i1 - i0) / sr
+        env = np.minimum(1.0, tt / 0.6) * np.exp(-np.maximum(0.0, tt - compasso) / 0.35)
+        seg = np.zeros(i1 - i0, np.float32)
+        for m in acordes[k % 4]:
+            for det in (-0.0012, 0.0012):   # dois osciladores levemente desafinados (coro)
+                ph = 2 * np.pi * hz(m) * (1 + det) * tt
+                seg += (np.sin(ph) + 0.3 * np.sin(2 * ph) + 0.12 * np.sin(3 * ph)).astype(np.float32)
+        pad[i0:i1] += seg * env / 8.0
+    baixo = np.zeros(n, np.float32); kick = np.zeros(n, np.float32); bomba = np.ones(n, np.float32)
+    for k in range(int(n / sr / beat) + 1):
+        i0 = int(k * beat * sr)
+        if i0 >= n:
+            break
+        L_ = min(n - i0, int(0.35 * sr)); tt = np.arange(L_) / sr
+        bomba[i0:i0 + L_] *= (1 - 0.3 * np.exp(-tt / 0.12)).astype(np.float32)
+        if k % 2 == 0:
+            f = 52 + 60 * np.exp(-tt / 0.03)
+            kick[i0:i0 + L_] += (np.sin(2 * np.pi * np.cumsum(f) / sr) * np.exp(-tt / 0.12)).astype(np.float32)
+            Lb = min(n - i0, int(beat * 1.8 * sr)); tb = np.arange(Lb) / sr
+            fb = hz(acordes[(k // 4) % 4][0] - 12)
+            baixo[i0:i0 + Lb] += (np.sin(2 * np.pi * fb * tb) * np.exp(-tb / 0.5) * np.minimum(1, tb / 0.01)).astype(np.float32)
+    mix = pad * bomba * 0.55 + baixo * 0.35 + kick * 0.16
+    mix = mix / (np.max(np.abs(mix)) + 1e-9) * 0.6
+    return _wav_mono(caminho, mix, sr)
+
+
 def trilha_whoosh(caminho, instantes, duracao, volume=0.18, sr=48000):
     """Gera (sem arquivo de terceiros) um 'whoosh' de 0,28 s em cada troca de layout: ruído filtrado com envelope."""
     import numpy as np
@@ -502,8 +609,20 @@ def _fundo_destrava(caminho):
     return caminho
 
 
+def _zoom_lento(w, h, d, quanto=0.08):
+    """Filtros do 'Ken Burns': a imagem de banco cobre w×h e vai aproximando devagar (quanto=8% ao longo de d s)."""
+    return (f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
+            f"scale=w='trunc({w}*(1+{quanto}*t/{max(d, 0.5):.3f})/2)*2':h='trunc({h}*(1+{quanto}*t/{max(d, 0.5):.3f})/2)*2':eval=frame,crop={w}:{h}")
+
+
+# Voz: passa-alta, menos ruído de rua, menos "embolado" (250 Hz), mais presença (4 kHz) e brilho, sem chiado no "s";
+# depois o ganho de fala e o loudnorm (-14 LUFS). Tudo no ffmpeg, sem custo.
+VOZ_FILTRO = ('highpass=f=80,afftdn=nr=10:nf=-50:tn=1,equalizer=f=250:t=q:w=1.1:g=-2,equalizer=f=4000:t=q:w=1.2:g=3,'
+              'highshelf=f=9500:g=2.5,deesser=i=0.35,dynaudnorm=f=250:g=15:p=0.9:m=20,')
+
+
 def renderizar_destrava(entrada, saida, segmentos, sonda, blocos, palavras_rm, dur, tmp, brolls, whoosh=None, trilha=None,
-                        altura_rosto=None, avisos=None):
+                        altura_rosto=None, avisos=None, musica=None):
     """Formato Destrava: fundo escuro com gráficos em cima e o Pedro numa janela embaixo, com o rosto centralizado (o
     recorte segue o rosto quadro a quadro) e a cabeça saindo pela borda de cima; close em tela cheia e cena de banco nos
     blocos certos; legenda de uma palavra; tela final. Render em etapas (memória constante)."""
@@ -568,8 +687,8 @@ def renderizar_destrava(entrada, saida, segmentos, sonda, blocos, palavras_rm, d
             q = D.INSET_IMAGEM if b['tipo'] == 'imagem' else D.INSET_TITULO
             mk = _pgm_arredondado(os.path.join(tmp, f'm_ins{n}.pgm'), q['w'], q['h'], q['raio'])
             entradas += ['-i', br['arquivo'], '-loop', '1', '-framerate', '30', '-t', f"{d0:.3f}", '-i', mk]
-            g.append(f"[{k}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,scale={q['w']}:{q['h']}:force_original_aspect_ratio=increase,"
-                     f"crop={q['w']}:{q['h']},format=yuva420p[bv{n}];[{k + 1}:v]format=gray[bm{n}];[bv{n}][bm{n}]alphamerge,setpts=PTS+{b['t0']:.3f}/TB[bi{n}]")
+            g.append(f"[{k}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,{_zoom_lento(q['w'], q['h'], d0)},"
+                     f"format=yuva420p[bv{n}];[{k + 1}:v]format=gray[bm{n}];[bv{n}][bm{n}]alphamerge,setpts=PTS+{b['t0']:.3f}/TB[bi{n}]")
             g.append(f"{atual}[bi{n}]overlay={q['x']}:{q['y']}:eof_action=pass:enable='between(t,{b['t0']:.3f},{b['t1']:.3f})'[v{n + 1}]")
             k += 2
         else:   # broll em tela cheia: entra depois dos gráficos (abaixo)
@@ -596,23 +715,37 @@ def renderizar_destrava(entrada, saida, segmentos, sonda, blocos, palavras_rm, d
             continue
         d0 = b['t1'] - b['t0']
         entradas += ['-i', br['arquivo']]
-        g.append(f"[{k}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,scale={L.LARGURA}:{L.ALTURA}:force_original_aspect_ratio=increase,"
-                 f"crop={L.LARGURA}:{L.ALTURA},eq=brightness=-0.06,format=yuv420p,setpts=PTS+{b['t0']:.3f}/TB[fb{m}]")
+        g.append(f"[{k}:v]trim=duration={d0:.3f},setpts=PTS-STARTPTS,fps=30,{_zoom_lento(L.LARGURA, L.ALTURA, d0, 0.06)},"
+                 f"eq=brightness=-0.06,format=yuv420p,setpts=PTS+{b['t0']:.3f}/TB[fb{m}]")
         g.append(f"{atual}[fb{m}]overlay=0:0:eof_action=pass:enable='between(t,{b['t0']:.3f},{b['t1']:.3f})'[vb{m}]")
         atual = f"[vb{m}]"; k += 1; m += 1
     g.append(f"{atual}ass=filename='{esc(ass_f)}':fontsdir='{fontes_esc}',format=yuv420p[vout]")
     sem_video = os.path.join(tmp, 'mudo.mp4')
     rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *entradas, '-filter_complex', ';'.join(g),
            '-map', '[vout]', '-t', f"{dur:.3f}", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-r', '30', '-pix_fmt', 'yuv420p', sem_video])
-    # 4) áudio: voz (ganho de fala + loudnorm) + whoosh nas trocas
-    voz_f = 'highpass=f=70,dynaudnorm=f=250:g=15:p=0.9:m=20,' + filtro_loudnorm(None)
+    # 4) áudio: voz tratada (VOZ_FILTRO + loudnorm) + efeitos (whoosh/pop/impacto) + trilha opcional que abaixa sozinha
+    #    quando há fala (sidechain) + limitador no fim (a soma não estoura)
     ent = ['-i', sem_video, '-i', voz]
+    partes = [f"[1:a]{VOZ_FILTRO}{filtro_loudnorm(None)}[vz0]"]
+    mistura = ['[vz]']
+    if musica:
+        partes[0] = partes[0].replace('[vz0]', ',asplit=2[vz][lado]')
+    else:
+        partes[0] = partes[0].replace('[vz0]', '[vz]')
+    k = 2
     if whoosh:
         ent += ['-i', whoosh]
-        a_f = f"[1:a]{voz_f}[vz];[2:a]aresample=48000[wh];[vz][wh]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]"
+        partes.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo[fx]"); mistura.append('[fx]'); k += 1
+    if musica:
+        ent += ['-i', musica]
+        partes.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=45,lowpass=f=2600,"
+                      f"afade=t=in:st=0:d=1.2,afade=t=out:st={max(0.0, dur - 1.8):.3f}:d=1.8,loudnorm=I=-31:TP=-9:LRA=7,aresample=48000[mu0]")
+        partes.append("[mu0][lado]sidechaincompress=threshold=0.03:ratio=6:attack=25:release=450:makeup=1[mu]"); mistura.append('[mu]')
+    if len(mistura) > 1:
+        partes.append(''.join(mistura) + f"amix=inputs={len(mistura)}:duration=first:dropout_transition=0:normalize=0,alimiter=limit=0.95:level=disabled[aout]")
     else:
-        a_f = f"[1:a]{voz_f}[aout]"
-    rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *ent, '-filter_complex', a_f, '-map', '0:v', '-map', '[aout]',
+        partes.append("[vz]anull[aout]")
+    rodar(['ffmpeg', '-y', '-hide_banner', '-nostats', '-loglevel', 'error', *ent, '-filter_complex', ';'.join(partes), '-map', '0:v', '-map', '[aout]',
            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', '-shortest', saida])
 
 
@@ -705,6 +838,14 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         log(f"{len(tr['frases'])} frases, {len(palavras)} palavras")
         if sonda['tem_audio'] and not palavras:
             avisos.append('nenhuma palavra reconhecida: legendas vazias')
+        # legenda conferida com o roteiro do teleprompter: grafia certa, trecho que o Whisper trocou e palavra inventada no fim
+        if roteiro and palavras:
+            palavras, conf = L.alinhar_com_roteiro(palavras, roteiro)
+            tr['conferencia_roteiro'] = conf
+            for c in conf['corrigidas']:
+                log(f"legenda corrigida pelo roteiro: “{c['de']}” → “{c['para']}”")
+            for r in conf['removidas']:
+                log(f"palavra tirada da legenda: “{r['w']}” ({r['motivo']})")
         json.dump(tr, open(os.path.join(pasta, 'transcricao.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         falta = L.roteiro_incompleto(roteiro, palavras)
         if falta:
@@ -749,6 +890,7 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         formato = opcoes.get('formato') or 'destrava'
         destrava = montagem and formato == 'destrava'
         blocos = []
+        plano = None
         if destrava:
             por_seg = {}
             for p in palavras_rm:
@@ -757,8 +899,9 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             frases_d = D.frases_por_pontuacao([{'n0': p['n0'], 'n1': p['n1'], 'w': p['w'].strip()} for p in palavras_rm])
             chave_tmp = os.environ.get('PEXELS_API_KEY', '').strip() or os.environ.get('BROLL_URL', '') or os.environ.get('REELS_BROLL_LOCAL', '')
             titulo_video = titulo if titulo and not re.match(r'^(v[ií]deo|grava[cç][aã]o) ', titulo, re.I) else ''
-            blocos = D.planejar(frases_d, dur_final, titulo_video, broll=bool(opcoes.get('broll')) and bool(chave_tmp))
-            log('destrava: ' + ' | '.join(f"{b['t0']:.1f}-{b['t1']:.1f} {b['layout']}/{b['tipo']}:{b.get('chave', '')}" for b in blocos))
+            plano = pedir_plano(frases_d, titulo_video, avisos)
+            blocos = D.planejar(frases_d, dur_final, titulo_video, broll=bool(opcoes.get('broll')) and bool(chave_tmp), plano=plano)
+            log('destrava: ' + ' | '.join(f"{b['t0']:.1f}-{b['t1']:.1f} {b['layout']}/{b['tipo']}:{b.get('cabeca') or b.get('chave', '')}" for b in blocos))
         elif montagem:
             por_seg = {}
             for p in palavras_rm:
@@ -775,8 +918,9 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
         brolls_destrava = []
         if destrava:
             pedidos = D.precisa_broll(blocos) if (opcoes.get('broll') and chave_px) else []
+            # busca da imagem: a do plano visual (inglês, pelo sentido da frase); sem plano, a palavra-chave traduzida
             pontos = [{'inicio': b['t0'], 'duracao': round(b['t1'] - b['t0'], 3), 'texto': b['texto'],
-                       'consulta': L.palavra_chave(b.get('titulo') if b['tipo'] == 'titulo' else b['texto']), 'bloco': b} for b in pedidos]
+                       'consulta': b.get('busca') or L.palavra_chave(b.get('titulo') if b['tipo'] == 'titulo' else b['texto']), 'bloco': b} for b in pedidos]
             if os.environ.get('REELS_BROLL_LOCAL') and pontos:   # teste local: um arquivo no lugar do banco de imagens
                 baixados = [dict(pt, arquivo=os.environ['REELS_BROLL_LOCAL']) for pt in pontos]
             else:
@@ -801,11 +945,9 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
                 brolls = baixar_broll(pontos, tmp, chave_px, avisos) if pontos else []
         musica = None
         if opcoes.get('musica'):
+            # trilha gerada aqui (sem direitos de terceiros); uma faixa CC0 em tools/reels/musica/ vale só no formato simples
             faixas = sorted(f for f in (os.listdir(PASTA_MUSICA) if os.path.isdir(PASTA_MUSICA) else []) if f.lower().endswith(('.mp3', '.ogg', '.wav', '.m4a')))
-            if faixas:
-                musica = os.path.join(PASTA_MUSICA, faixas[0])
-            else:
-                avisos.append('música pulada: nenhuma faixa CC0 em tools/reels/musica/')
+            musica = os.path.join(PASTA_MUSICA, faixas[0]) if (faixas and not destrava) else trilha_musical(os.path.join(tmp, 'musica.wav'), dur_final)
 
         # 7. legendas (mudam de lugar conforme o layout) e quadros animados
         cron.etapa('legendas')
@@ -835,9 +977,9 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
                    '-shortest', '-c:v', 'copy', '-c:a', 'aac', mudo])
             entrada = mudo
         if destrava:
-            whoosh = trilha_whoosh(os.path.join(tmp, 'whoosh.wav'), D.trocas(blocos), dur_final, volume=0.12) if opcoes.get('sons', True) else None
-            renderizar_destrava(entrada, final, segmentos, sonda, blocos, palavras_rm, dur_final, tmp, brolls_destrava, whoosh,
-                                trilha=trilha, altura_rosto=altura_rosto, avisos=avisos)
+            sons = trilha_efeitos(os.path.join(tmp, 'efeitos.wav'), D.efeitos(blocos), dur_final) if opcoes.get('sons', True) else None
+            renderizar_destrava(entrada, final, segmentos, sonda, blocos, palavras_rm, dur_final, tmp, brolls_destrava, sons,
+                                trilha=trilha, altura_rosto=altura_rosto, avisos=avisos, musica=musica)
             brolls = [{'inicio': r['bloco']['t0'], 'duracao': round(r['bloco']['t1'] - r['bloco']['t0'], 2), 'consulta': r['consulta'], 'pexels_id': r.get('pexels_id')} for r in brolls_destrava]
         elif montagem:
             whoosh = trilha_whoosh(os.path.join(tmp, 'whoosh.wav'), M.trocas(blocos), dur_final) if opcoes.get('sons', True) else None
@@ -858,8 +1000,11 @@ def editar(entrada, pasta, estilo='hormozi', roteiro='', opcoes=None, modelo=Non
             'detalhes_cortes': {k: v for k, v in detalhes.items() if k != 'cortes_palavras'}, 'duracao_original_s': round(sonda['duracao'], 2),
             'broll': [{'inicio': b['inicio'], 'duracao': b['duracao'], 'consulta': b['consulta'], 'pexels_id': b.get('pexels_id')} for b in brolls],
             'modelo_whisper': tr.get('modelo'), 'tempos_s': cron.tempos, 'avisos': avisos,
-            'montagem': [{'t0': b['t0'], 't1': b['t1'], 'layout': b['layout'], 'tipo': b.get('tipo'), 'chave': b.get('chave'), 'icone': b.get('icone')} for b in blocos],
+            'montagem': [{'t0': b['t0'], 't1': b['t1'], 'layout': b['layout'], 'tipo': b.get('tipo'), 'chave': b.get('cabeca') or b.get('chave'), 'icone': b.get('icone'), 'busca': b.get('busca')} for b in blocos],
             'formato': 'destrava' if destrava else ('montagem' if montagem else 'simples'),
+            'plano_visual': bool(plano),
+            'legenda_conferida': {'corrigidas': tr.get('conferencia_roteiro', {}).get('corrigidas', []),
+                                  'removidas': tr.get('conferencia_roteiro', {}).get('removidas', [])} if tr.get('conferencia_roteiro') else None,
         }
         json.dump(resultado, open(os.path.join(pasta, 'resultado.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         log(f"pronto: {final} ({resultado['duracao_s']}s, {resultado['palavras']} palavras, {resultado['cortes']} cortes)")

@@ -181,3 +181,40 @@ test('roteiro que cita a marca/perfil de onde veio a pauta é reprovado pelo có
   assert.ok(p.some((x) => x.criterio === 14 && x.eliminar));
   assert.ok(!R.fiscalCodigo(R.normalizar(BOM), { texto: 'x', autor: ['contaazul', 'Conta Azul'] }).problemas.length, 'a palavra "conta" sozinha não reprova');
 });
+
+test('fiscal: correção de português só vale se o trecho está no roteiro e é curta; é aplicada antes de salvar', () => {
+  const r = R.normalizar({ ...BOM, blocos: [...BOM.blocos, { fala: 'Em vez de torcer dinheiro em anúncio caro, o lucro paga a produção.', tela: 'LUCRO PAGA' }] });
+  const corr = R.lerCorrecoes({ correcoes: [
+    { trecho: 'torcer dinheiro', correcao: 'torrar dinheiro' },
+    { trecho: 'frase que não existe no roteiro', correcao: 'x' },
+    { trecho: 'Você vende, a maquininha apita e você acha que aquele valor é seu', correcao: 'reescrita longa' },
+  ] }, r);
+  assert.deepStrictEqual(corr, [{ trecho: 'torcer dinheiro', correcao: 'torrar dinheiro' }]);
+  const { roteiro, aplicadas } = R.aplicarCorrecoes(r, corr);
+  assert.match(R.textoFalado(roteiro), /torrar dinheiro em anúncio caro/);
+  assert.doesNotMatch(R.textoFalado(roteiro), /torcer/);
+  assert.strictEqual(aplicadas.length, 1);
+});
+
+test('fiscal: pessoa ou marca real com fato fora da pauta reprova; com pauta, vai para o cartão com a fonte', async () => {
+  const fatos = R.lerFatosReais({ pessoas_marcas: [{ nome: 'Lele Sadoughi', fatos: ['começou a marca de joias do zero', 'sem fundo de investimento'], na_pauta: false }, { nome: 'Pedro', fatos: ['eu'], na_pauta: true }] });
+  assert.deepStrictEqual(fatos.map((f) => [f.nome, f.na_pauta]), [['Lele Sadoughi', false]]);
+  assert.match(R.promptFiscal('ambos'), /pessoas_marcas/);
+  assert.match(R.promptFiscal('ambos'), /torrar dinheiro/);
+  // fluxo: o fiscal aponta fato sem pauta → o roteiro é reescrito; na segunda, com o fato da pauta, é salvo com a fonte
+  novo();
+  const est = {}; let chamadas = 0;
+  const salvos = [];
+  const respostas = [
+    BOM, { ...NOTAS_RET, notas: { ...NOTAS_RET.notas, ...NOTAS_VER.notas }, pessoas_marcas: [{ nome: 'Lele Sadoughi', fatos: ['nunca teve investidor'], na_pauta: false }] },
+    BOM, { ...NOTAS_RET, notas: { ...NOTAS_RET.notas, ...NOTAS_VER.notas }, pessoas_marcas: [{ nome: 'Lele Sadoughi', fatos: ['começou do zero'], na_pauta: true }], correcoes: [{ trecho: 'apita', correcao: 'apita alto' }] },
+  ];
+  const deps = { pedirJson: async () => ({ dados: respostas[chamadas++], llm: { provider: 'gratis' } }), teses: async () => [{ ...TESE, permalink: 'https://www.instagram.com/p/abc/' }], historias: async () => [], salvar: async (c) => { salvos.push(c); return c; }, sortear: () => 0 };
+  for (let i = 0; i < 4 && !salvos.length; i++) await R.avancar(est, { agora: AGORA, dia: DIA, orcamentoMs: 60000, deps });
+  assert.strictEqual(salvos.length, 1);
+  const rot = salvos[0].video.roteiro;
+  assert.deepStrictEqual(rot.fatos_reais.map((f) => f.nome), ['Lele Sadoughi']);
+  assert.strictEqual(rot.pauta.url, 'https://www.instagram.com/p/abc/');
+  assert.deepStrictEqual(rot.correcoes, [{ trecho: 'apita', correcao: 'apita alto' }]);
+  assert.match(salvos[0].video.roteiro_texto, /apita alto/);
+});

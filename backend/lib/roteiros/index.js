@@ -38,7 +38,7 @@ async function pautas({ est = {}, deps = {} } = {}) {
     const itens = await (deps.teses || (() => require('../reciclagem/coletar').listar({ dias: 10, limite: 60 })))();
     for (const it of (Array.isArray(itens) ? itens : itens?.itens) || []) {
       if (!it.tese) continue; const chave = `rc:${it.id}`; if (usadas.has(chave)) continue;
-      out.tese.push({ chave, tipo: 'tese', tema: limpa(it.tema || it.tese, 120), texto: [`TESE (viralizou em outra conta; não cite a origem): ${it.tese}`, it.ponte_pedro ? `PONTE PARA O EMPREENDEDOR BRASILEIRO: ${it.ponte_pedro}` : '', it.mecanismo ? `MECANISMO QUE FEZ VIRALIZAR: ${it.mecanismo}` : ''].filter(Boolean).join('\n'), peso: Number(it.vl) || 0, reel: it.tipo === 'reel' ? 1 : 0, autor: [it.conta?.handle, it.conta?.nome].filter((x) => x && String(x).replace(/^[@#]/, '').length >= 4).map((x) => String(x).replace(/^[@#]/, '').replace(/\(.*\)/, '').trim()) }); // handle e nome inteiros ("Conta Azul", não "Conta")
+      out.tese.push({ chave, tipo: 'tese', url: it.permalink || null, tema: limpa(it.tema || it.tese, 120), texto: [`TESE (viralizou em outra conta; não cite a origem): ${it.tese}`, it.ponte_pedro ? `PONTE PARA O EMPREENDEDOR BRASILEIRO: ${it.ponte_pedro}` : '', it.mecanismo ? `MECANISMO QUE FEZ VIRALIZAR: ${it.mecanismo}` : ''].filter(Boolean).join('\n'), peso: Number(it.vl) || 0, reel: it.tipo === 'reel' ? 1 : 0, autor: [it.conta?.handle, it.conta?.nome].filter((x) => x && String(x).replace(/^[@#]/, '').length >= 4).map((x) => String(x).replace(/^[@#]/, '').replace(/\(.*\)/, '').trim()) }); // handle e nome inteiros ("Conta Azul", não "Conta")
     }
     out.tese.sort((a, b) => (b.reel - a.reel) || (b.peso - a.peso)); // tese de reel viral primeiro: virou vídeo uma vez, vira de novo
   } catch { /* fonte fora do ar: as outras cobrem */ }
@@ -163,8 +163,39 @@ function promptFiscal(qual) {
 Avalie o roteiro de Reel do @pedro_destrava (público: dono de pequena empresa, MEI, vendedor de marketplace) com rigor; nota 8+ só para o que está realmente pronto para gravar. Na dúvida, nota menor.
 Critérios (0 a 10; ★ = eliminatório):
 ${crit.map((c) => `${c.n}${c.el ? '★' : ''}. ${c.nome}`).join('\n')}
-${qual !== 'retencao' ? 'Critério 8: compare cada número, data, valor e fato com a PAUTA. O que não está na pauta e é afirmado como fato = nota 0. Opinião assumida ("na minha leitura") e cena genérica do dia a dia são permitidas.\n' : ''}Responda APENAS JSON: {"notas":{${crit.map((c) => `"${c.n}":0`).join(',')}},"problemas":[{"criterio":0,"trecho":"frase exata do roteiro","sugestao":"como reescrever"}]}
+${qual !== 'retencao' ? 'Critério 8: compare cada número, data, valor e fato com a PAUTA. O que não está na pauta e é afirmado como fato = nota 0. Opinião assumida ("na minha leitura") e cena genérica do dia a dia são permitidas.\n' : ''}${qual !== 'retencao' ? `Além das notas:
+- "correcoes": erro de português no roteiro — palavra errada, expressão trocada (ex.: "torcer dinheiro" no lugar de "torrar dinheiro"), concordância. {"trecho":"texto EXATO do roteiro, até 6 palavras","correcao":"como fica"}. Só erro, não estilo. No máximo 5.
+- "pessoas_marcas": cada pessoa, empresa ou marca REAL citada no roteiro (fora o Pedro): {"nome":"","fatos":["cada fato afirmado sobre ela, curto"],"na_pauta":true}. na_pauta = true só se TODOS esses fatos estão escritos na PAUTA.
+` : ''}Responda APENAS JSON: {"notas":{${crit.map((c) => `"${c.n}":0`).join(',')}},"problemas":[{"criterio":0,"trecho":"frase exata do roteiro","sugestao":"como reescrever"}]${qual !== 'retencao' ? ',"correcoes":[],"pessoas_marcas":[]' : ''}}
 No máximo 4 problemas, os mais graves.`;
+}
+
+// Correções de português do fiscal: só as que existem LITERALMENTE no roteiro e são curtas (troca de palavra, não reescrita).
+function lerCorrecoes(d, r) {
+  const texto = r ? [textoFalado(r), r.tela_gancho, ...(r.blocos || []).map((b) => b.tela)].join('\n') : '';
+  const out = [];
+  for (const x of (Array.isArray(d?.correcoes) ? d.correcoes : []).slice(0, 5)) {
+    const trecho = limpa(x?.trecho, 80); const correcao = limpa(x?.correcao, 100);
+    if (!trecho || !correcao || trecho === correcao) continue;
+    if (palavras(trecho) > 8 || palavras(correcao) > 10 || !texto.includes(trecho)) continue;
+    out.push({ trecho, correcao });
+  }
+  return out;
+}
+
+function aplicarCorrecoes(r, correcoes) {
+  if (!correcoes?.length) return { roteiro: r, aplicadas: [] };
+  const aplicadas = [];
+  const troca = (t) => { let s = String(t || ''); for (const c of correcoes) if (s.includes(c.trecho)) { s = s.split(c.trecho).join(c.correcao); if (!aplicadas.includes(c)) aplicadas.push(c); } return s; };
+  const novo = { ...r, gancho: troca(r.gancho), tela_gancho: troca(r.tela_gancho), foreshadow: troca(r.foreshadow), payoff: troca(r.payoff), cta: troca(r.cta), blocos: (r.blocos || []).map((b) => ({ ...b, fala: troca(b.fala), tela: troca(b.tela) })) };
+  return { roteiro: novo, aplicadas };
+}
+
+// Pessoas e marcas reais citadas: o Pedro confere antes de gravar (fato errado sobre gente de verdade queima a reputação).
+function lerFatosReais(d) {
+  return (Array.isArray(d?.pessoas_marcas) ? d.pessoas_marcas : []).slice(0, 6).map((x) => ({
+    nome: limpa(x?.nome, 60), fatos: (Array.isArray(x?.fatos) ? x.fatos : []).map((f) => limpa(f, 160)).filter(Boolean).slice(0, 5), na_pauta: x?.na_pauta === true,
+  })).filter((x) => x.nome && !/pedro/i.test(x.nome));
 }
 
 function usuarioFiscal(r, pauta, formato) {
@@ -211,6 +242,7 @@ async function salvarRoteiro(rasc, { deps = {}, agora = Date.now() } = {}) {
       formato: rasc.formato, formato_nome: S.FORMATOS[rasc.formato]?.nome, nota: v.media, notas: v.notas, tentativas: rasc.tentativa,
       tela_gancho: r.tela_gancho, visual: r.visual, telas: r.blocos.map((b) => b.tela).filter(Boolean), cta_tipo: r.cta_tipo,
       pauta: { tipo: rasc.pauta.tipo, tema: rasc.pauta.tema, url: rasc.pauta.url || null, chave: rasc.pauta.chave },
+      correcoes: rasc.correcoes || [], fatos_reais: rasc.fatos || [],
       ia: rasc.ia || [], gerado_em: new Date(agora).toISOString(),
     },
     worker: { tentativas: 0 }, log: [{ em: new Date(agora).toISOString(), msg: `Roteiro ${rasc.formato} aprovado pelos fiscais (média ${v.media}).` }],
@@ -301,6 +333,8 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
         const { dados, llm } = await chamarIA({ sistema: promptFiscal('ambos'), usuario: usuarioFiscal(x.roteiro, x.pauta, x.formato), maxTokens: 900, temperatura: 0.2, etapa: 'fiscal_roteiro', deps, restanteMs: restante() });
         x.ia.push(llm?.provider || '?');
         x.pareceres = { codigo: x.codigo, retencao: lerNotas(dados, 'retencao'), verdade: lerNotas(dados, 'verdade') };
+        x.correcoes = lerCorrecoes(dados, x.roteiro); x.fatos = lerFatosReais(dados);
+        for (const f of x.fatos.filter((y) => !y.na_pauta)) x.codigo.problemas.push({ criterio: 8, eliminar: true, motivo: `fato sobre ${f.nome} que a pauta não sustenta (${f.fatos[0] || 'sem fonte'}): tire o fato ou fique só no que a pauta diz`, trecho: f.nome });
         out.fases.push(`${x.id}:fiscal`); x.fase = 'decidir';
         continue;
       }
@@ -319,6 +353,7 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
         const v = veredito({ retencao: x.pareceres?.retencao, verdade: x.pareceres?.verdade, codigo: x.codigo });
         x.veredito = v;
         if (v.aprovado) {
+          const corr = aplicarCorrecoes(x.roteiro, x.correcoes); x.roteiro = corr.roteiro; x.correcoes = corr.aplicadas;
           const c = await salvarRoteiro(x, { deps, agora });
           R.feitos += 1; out.salvos.push({ id: c.id, titulo: c.titulo, nota: v.media, formato: x.formato });
           R.ultimos = [{ id: c.id, titulo: c.titulo, nota: v.media, formato: x.formato, em: new Date(agora).toISOString() }, ...(R.ultimos || [])].slice(0, 12);
@@ -350,4 +385,4 @@ function resumo(est, { dia } = {}) {
   return { meta: META_DIA, feitos: hoje ? R.feitos || 0 : 0, descartados: hoje ? R.descartados || 0 : 0, comecados: hoje ? R.comecados || 0 : 0, em_producao: R.rascunho ? { formato: R.rascunho.formato, tema: R.rascunho.pauta?.tema, fase: R.rascunho.fase, tentativa: R.rascunho.tentativa } : null, pausa_ate: R.pausa_ate || null, ultimos: R.ultimos || [], ultimos_descartes: R.ultimos_descartes || [] };
 }
 
-module.exports = { pausaMin, META_DIA, TENTATIVAS_DIA, ROTACAO, pautas, escolherPauta, escolherFormato, promptRoteirista, promptFiscal, normalizar, textoFalado, fiscalCodigo, numerosSemFonte, lerNotas, veredito, feedbackDe, salvarRoteiro, arquivar, arquivarVelhos, estadoDoDia, pendente, avancar, resumo };
+module.exports = { pausaMin, META_DIA, TENTATIVAS_DIA, ROTACAO, pautas, escolherPauta, escolherFormato, promptRoteirista, promptFiscal, normalizar, textoFalado, fiscalCodigo, numerosSemFonte, lerNotas, lerCorrecoes, aplicarCorrecoes, lerFatosReais, veredito, feedbackDe, salvarRoteiro, arquivar, arquivarVelhos, estadoDoDia, pendente, avancar, resumo };

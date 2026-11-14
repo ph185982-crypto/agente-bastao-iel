@@ -27,6 +27,18 @@
     el.className = 'tp'; el.id = 'tp-overlay'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Teleprompter e câmera');
     el.innerHTML = `
       <video id="tp-cam" class="tp-cam espelho" autoplay muted playsinline></video>
+      <svg class="tp-guia" viewBox="0 0 100 178" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><ellipse cx="50" cy="64" rx="13" ry="16.5"/><path d="M16 178 C16 128 31 102 50 102 C69 102 84 128 84 178"/></svg>
+      <div class="tp-dicas" id="tp-dicas" role="note" aria-label="Dicas antes de gravar">
+        <b>Antes de gravar</b>
+        <ul>
+          <li>Mesmo lugar do começo ao fim.</li>
+          <li>Celular parado num apoio, na altura do peito, a 1 metro: ombros e mãos aparecem (encaixe no contorno).</li>
+          <li>Luz de frente para o rosto. Céu ou janela atrás de você escurece o rosto.</li>
+          <li>Grave até o fim, com a chamada final.</li>
+          <li>No carro, desligue o Bluetooth/CarPlay antes: ele corta a gravação.</li>
+        </ul>
+        <button type="button" class="tp-btn" data-tp="dicas-ok">Entendi</button>
+      </div>
       <div class="tp-previa" hidden><video id="tp-video-previa" controls playsinline preload="metadata"></video></div>
       <div class="tp-topo">
         <button type="button" class="tp-icone" data-tp="fechar" aria-label="Fechar o teleprompter">✕</button>
@@ -208,12 +220,16 @@
   function soltarTela() { try { if (T.wake) T.wake.release(); } catch { /* ignora */ } T.wake = null; }
   const aoVisibilidade = () => { if (!document.hidden && T.aberto) manterTelaAcesa(); };
 
+  // Dicas de gravação (pedido do Pedro, 15/11): aparecem ao abrir; somem no "Entendi" ou ao tocar em Gravar.
+  function fecharDicas() { const d = q('#tp-dicas'); if (d) d.hidden = true; }
+
   // ── Eventos ─────────────────────────────────────────────────────────────────
   function aoClicar(ev) {
     const b = ev.target.closest('[data-tp]'); if (!b) return;
     switch (b.dataset.tp) {
       case 'fechar': if (T.estado === 'gravando' && !confirm('Parar e descartar a gravação?')) return; fechar(); break;
-      case 'gravar': if (T.estado === 'gravando') pararPeloBotao(); else if (T.estado === 'pronto') contagemEGravar(); break;
+      case 'gravar': fecharDicas(); if (T.estado === 'gravando') pararPeloBotao(); else if (T.estado === 'pronto') contagemEGravar(); break;
+      case 'dicas-ok': fecharDicas(); break;
       case 'virar': T.facing = T.facing === 'user' ? 'environment' : 'user'; ligarCamera(); break;
       case 'editar': q('#tp-roteiro-edit').value = T.roteiro; q('#tp-editor').hidden = false; T.editando = true; q('#tp-roteiro-edit').focus(); break;
       case 'salvar-roteiro': T.roteiro = q('#tp-roteiro-edit').value; aplicarTexto(); q('#tp-editor').hidden = true; T.editando = false; break;

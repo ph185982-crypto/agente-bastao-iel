@@ -105,7 +105,10 @@ function editar(entrada, saida, job, logJob) {
       fs.writeFileSync(roteiro, String(job.roteiro_texto));
       args.push('--roteiro', roteiro);
     }
-    const p = spawn('python3', args, { cwd: RAIZ, env: { ...process.env, BROLL_URL: `${(process.env.APP_URL || '').replace(/\/+$/, '')}/api/videos/worker/pexels` }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const base = (process.env.APP_URL || '').replace(/\/+$/, '');
+    // BROLL_URL: clipes do Pexels pelo app (a chave fica no servidor). PLANO_URL: plano visual por frase (IA gratuita no app).
+    const env = { ...process.env, BROLL_URL: `${base}/api/videos/worker/pexels`, PLANO_URL: `${base}/api/videos/worker/plano`, REELS_JOB_ID: String(job.id || '') };
+    const p = spawn('python3', args, { cwd: RAIZ, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     const resto = { stderr: '' };
     const timer = setTimeout(() => { p.kill('SIGKILL'); reject(new Error('editar.py passou do tempo máximo')); }, TEMPO_MAX_EDICAO_MS);

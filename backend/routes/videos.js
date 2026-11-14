@@ -80,6 +80,10 @@ router.get('/worker/pexels', limita({ max: 120, janelaMs: 60000, nome: 'videos-p
     res.json({ videos: (d.videos || []).map((v) => ({ id: v.id, user: { name: v.user?.name }, video_files: (v.video_files || []).map((f) => ({ id: f.id, quality: f.quality, file_type: f.file_type, width: f.width, height: f.height, link: f.link })) })) });
   } catch (e) { erro(res, e); }
 });
+// Plano visual por frase (IA gratuita, uma vez por vídeo; ver backend/lib/videos/plano.js). Falhou: o editor segue sem plano.
+router.post('/worker/plano', limita({ max: 30, janelaMs: 60000, nome: 'videos-plano' }), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('../lib/videos/plano').planoDoVideo(String(b.id || '').slice(0, 80), { titulo: b.titulo, frases: b.frases })); } catch (e) { erro(res, e); }
+});
 router.post('/worker/erro', limita({ max: 30, janelaMs: 60000, nome: 'videos-erro' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.registrarErro(String(b.id || ''), { erro: b.erro, log: b.log, run_url: b.run_url }); res.json(V.resumo(c)); } catch (e) { erro(res, e); }
 });

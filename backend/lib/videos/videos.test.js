@@ -56,7 +56,7 @@ test('criar: conteúdo normal do app em formato reels, origem vídeo, campo vide
   assert.ok(c.id.startsWith('vd_'));
   assert.strictEqual(c.formato, 'reels'); assert.strictEqual(c.origem.tipo, 'video'); assert.strictEqual(c.status, 'rascunho');
   assert.strictEqual(c.video.estado, 'enviado'); assert.strictEqual(c.video.estilo, 'hormozi');
-  assert.deepStrictEqual(c.video.opcoes, { broll: false, musica: false, punch_in: true, remover_pausas: true, remover_muletas: true });
+  assert.deepStrictEqual(c.video.opcoes, { broll: false, musica: false, sons: true, punch_in: true, remover_pausas: true, remover_muletas: true });
   assert.deepStrictEqual(c.video.worker, { tentativas: 0, iniciado_em: null, concluido_em: null, run_url: null, erro: null });
   assert.strictEqual(c.conta.ig_id, ACCOUNT.ig_id);
   assert.strictEqual((await ler(c.id)).id, c.id, 'gravado no servidor');

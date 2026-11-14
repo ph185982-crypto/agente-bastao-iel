@@ -23,8 +23,8 @@
   const ROTULO = { enviado: 'Enviando…', na_fila: 'Na fila', editando: 'Editando…', pronto: 'Pronto para aprovar', erro: 'Erro', roteiro: 'Roteiro pronto' };
   const COR = { enviado: 'azul', na_fila: 'azul', editando: 'laranja', pronto: 'ok', erro: 'erro', roteiro: 'suave' };
   const ESTILOS = [['hormozi', 'Hormozi', 'Caixa-alta, palavra ativa em amarelo'], ['beast', 'Beast', 'Amarelo com contorno preto grosso'], ['caixa', 'Caixa', 'Branco sobre caixa preta']];
-  const OPCOES = [['remover_pausas', 'Cortar pausas'], ['remover_muletas', 'Tirar muletas (é, né, hã)'], ['punch_in', 'Punch-in (zoom alternado)'], ['broll', 'B-roll (imagens de apoio)']];
-  const OPCOES_PADRAO = { broll: true, musica: false, punch_in: true, remover_pausas: true, remover_muletas: true };
+  const OPCOES = [['remover_pausas', 'Cortar pausas'], ['remover_muletas', 'Tirar muletas (é, né, hã)'], ['punch_in', 'Punch-in (zoom alternado)'], ['broll', 'B-roll (imagens de apoio)'], ['sons', 'Efeitos sonoros'], ['musica', 'Trilha de fundo (feita pelo editor, sem direitos autorais)']];
+  const OPCOES_PADRAO = { broll: true, musica: false, sons: true, punch_in: true, remover_pausas: true, remover_muletas: true };
   const PENDENTES = new Set(['enviado', 'na_fila', 'editando']);
   const ctxAtual = () => ST.ctx || (window.Mesa && window.Mesa.ctx());
 
@@ -176,6 +176,7 @@
       ${c.estado === 'pronto' && legenda ? `<details class="vd-legenda" open><summary>Legenda do Instagram</summary><p>${esc(legenda)}</p><button class="vd-btn peq fantasma" data-action="vd-copiar" data-id="${esc(c.id)}" aria-label="Copiar legenda de ${esc(c.titulo)}">Copiar legenda</button></details>` : ''}
       ${c.estado === 'pronto' && !legenda ? '<p class="vd-meta">Sem legenda gerada: escreva a sua no Instagram ao publicar.</p>' : ''}
       ${c.roteiro_texto && c.estado !== 'pronto' ? `<details class="vd-legenda"${c.estado === 'roteiro' ? ' open' : ''}><summary>Roteiro</summary><p class="vd-roteiro">${esc(c.roteiro_texto)}</p></details>` : ''}
+      ${c.estado === 'roteiro' && c.roteiro ? conferirFatos(c.roteiro) : ''}
       ${c.estado === 'roteiro' && c.roteiro ? `<details class="vd-legenda"><summary>Texto na tela e cena</summary><ul class="vd-telas">${c.roteiro.tela_gancho ? `<li><b>Gancho:</b> ${esc(c.roteiro.tela_gancho)}</li>` : ''}${(c.roteiro.telas || []).map((t, i) => `<li><b>Bloco ${i + 1}:</b> ${esc(t)}</li>`).join('')}${c.roteiro.visual ? `<li><b>Abertura:</b> ${esc(c.roteiro.visual)}</li>` : ''}</ul>${c.roteiro.pauta && c.roteiro.pauta.tema ? `<p class="vd-meta">Pauta: ${esc(c.roteiro.pauta.tema)}</p>` : ''}</details>` : ''}
       ${paraAprovar(c) ? `<div class="vd-decisao">
           <button class="vd-btn" data-action="vd-publicar" data-id="${esc(c.id)}" ${d}>${oc === 'publicar' ? '<span class="es-spin"></span> Enviando…' : '✓ Aprovar e publicar agora'}</button>
@@ -197,6 +198,22 @@
     if (!lista.length) return vazio ? `<div class="vd-vazio">${vazio}</div>` : '';
     return `<section class="vd-secao"><div class="vd-h2"><h2>${titulo}</h2><span>${lista.length}</span></div><div class="vd-grade">${lista.map(cartao).join('')}</div></section>`;
   }
+  // Roteiro que cita pessoa ou marca real: os fatos aparecem para o Pedro conferir antes de gravar, com a fonte da pauta
+  // e um atalho de pesquisa. Correções de português que o revisor aplicou também aparecem (nada muda escondido).
+  function conferirFatos(r) {
+    const fatos = (r.fatos_reais || []).filter((f) => f && f.nome);
+    const fonte = r.pauta && /^https:\/\//.test(r.pauta.url || '') ? r.pauta.url : null;
+    const corr = (r.correcoes || []).filter((x) => x && x.trecho);
+    let html = '';
+    if (fatos.length) {
+      html += `<div class="vd-aviso" role="note"><b>Confira antes de gravar:</b> o roteiro cita ${fatos.length === 1 ? 'uma pessoa ou marca real' : 'pessoas ou marcas reais'}.`
+        + fatos.map((f) => `<br>• <b>${esc(f.nome)}</b>: ${esc((f.fatos || []).join('; ') || 'citado no roteiro')} · <a href="https://www.google.com/search?q=${encodeURIComponent(f.nome)}" target="_blank" rel="noopener">pesquisar</a>`).join('')
+        + (fonte ? `<br>Fonte da pauta: <a href="${esc(fonte)}" target="_blank" rel="noopener">post original</a>` : '') + '</div>';
+    }
+    if (corr.length) html += `<p class="vd-meta">Corrigido pelo revisor: ${corr.map((x) => `“${esc(x.trecho)}” → “${esc(x.correcao)}”`).join(' · ')}</p>`;
+    return html;
+  }
+
   // Fábrica de roteiros: até 10 por dia, cada um aprovado por três fiscais (código, retenção, verdade e voz).
   function painelRoteiros(roteiros) {
     const f = ST.fabrica; const oc = ST.gerandoRoteiros;
