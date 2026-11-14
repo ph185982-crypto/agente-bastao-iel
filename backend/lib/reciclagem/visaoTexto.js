@@ -85,8 +85,14 @@ const POSICOES = ['topo-esquerda', 'topo-centro', 'topo-direita', 'meio-esquerda
 // Devolve { blocos, faltando }: blocos para trocaTexto ({x0,y0,x1,y1,altura_linha,texto,novo} ou {apagar, posicao}).
 function blocosDaVisao(dados, { trechos = [] } = {}) {
   const textos = (Array.isArray(dados?.textos) ? dados.textos : []).slice(0, 40).map((t) => ({ original: limpa(t?.original), traducao: limpa(t?.traducao) })).filter((t) => t.original);
-  const porTexto = new Map();
+  const porTexto = new Map(); const juntos = [];
   for (const tr of trechos) {
+    // A OCR juntou num bloco várias frases que a IA separou ("A entrega atrasa." / "O cliente reclama." …): o bloco vira um só,
+    // com uma frase por linha.
+    const dentro = textos.map((t, k) => ({ t, k })).filter(({ t }) => norm(t.original).length >= 4 && norm(tr.texto).includes(norm(t.original)));
+    if (dentro.length >= 2 && dentro.reduce((a, { t }) => a + norm(t.original).length, 0) >= norm(tr.texto).length * 0.6) {
+      juntos.push({ tr, ks: dentro.map((x) => x.k) }); continue;
+    }
     let melhor = null; let nota = 0;
     for (const [k, t] of textos.entries()) {
       // trecho da OCR pode ser só um pedaço do texto (parágrafo partido): compara com o texto inteiro e com o pedaço do mesmo tamanho.
@@ -96,8 +102,14 @@ function blocosDaVisao(dados, { trechos = [] } = {}) {
     }
     if (melhor != null && nota >= 0.55) { if (!porTexto.has(melhor)) porTexto.set(melhor, []); porTexto.get(melhor).push(tr); }
   }
-  const blocos = []; const faltando = [];
+  const blocos = []; const faltando = []; const usados = new Set();
+  for (const { tr, ks } of juntos) {
+    ks.forEach((k) => usados.add(k));
+    const novo = ks.map((k) => textos[k].traducao || textos[k].original).join('\n');
+    blocos.push({ x0: tr.x0, x1: tr.x1, y0: tr.y0, y1: tr.y1, altura_linha: tr.altura_linha || tr.y1 - tr.y0, n_linhas: tr.n_linhas || ks.length, texto: tr.texto, novo, confianca: 100, visao: true });
+  }
   for (const [k, t] of textos.entries()) {
+    if (usados.has(k)) continue;
     const ocr = porTexto.get(k);
     const mudou = t.traducao && norm(t.traducao) !== norm(t.original);
     if (!ocr) { if (mudou) faltando.push(t.original); continue; }
