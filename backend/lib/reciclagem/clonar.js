@@ -129,6 +129,28 @@ async function traduzir(slides, legenda, { pedirJson } = {}) {
   };
 }
 
+// ── Nosso formato: regras sem IA ────────────────────────────────────────────
+const STOP_PT = /\b(de|que|não|você|é|para|com|uma|um|os|as|do|da|em|se|mais|por|isso|quando|seu|sua)\b/gi;
+const STOP_OUTRO = /\b(the|you|and|to|of|is|your|that|it|for|with|el|los|las|que|para|con|una|es|tu)\b/gi;
+function ehPortugues(t) { const s = String(t || ''); const pt = (s.match(STOP_PT) || []).length; const ot = (s.match(STOP_OUTRO) || []).length; return pt >= 3 && pt >= ot * 1.5; }
+const CTA_AUTOR_RE = /(me siga|siga (o|a|meu|minha|para|pra)|follow|gostou do conte|salve (esse|este)|compartilhe|arrast|swipe|link na bio|comente|^\d+\s*\/\s*\d+$)/i;
+// Tira dos trechos lidos tudo que é do autor (nome, @, chamada para seguir, contador de slide) e lixo de leitura.
+function limparTrechos(trechos, { handle = '', nome = '' } = {}) {
+  const h = String(handle || '').toLowerCase(); const n = String(nome || '').toLowerCase();
+  return (trechos || []).filter((p) => {
+    const t = String(p.texto || '').trim(); const tl = t.toLowerCase();
+    if ((t.match(/\p{L}/gu) || []).length < 2) return false;
+    if (h && tl.replace(/[^a-z0-9._]/g, '').includes(h.replace(/[^a-z0-9._]/g, ''))) return false;
+    if (n && n.length >= 4 && tl.includes(n)) return false;
+    return !CTA_AUTOR_RE.test(t);
+  });
+}
+function tirarAutorDe(t, handle) {
+  let s = String(t || '');
+  if (handle) s = s.replace(new RegExp(`@?${handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), '');
+  return s.split('\n').filter((l) => !/(me siga|follow me|siga para|link na bio|link in bio)/i.test(l)).join('\n').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
 // ── Montar a versão ─────────────────────────────────────────────────────────
 function montar(c, item) {
   const cl = c.clone; const aut = item.autorizacao || cl.autorizacao;
@@ -155,12 +177,15 @@ function montar(c, item) {
   }
   c.claims = claims; c.evidencias = evidencias;
   c.imagens = cl.slides.flatMap((s) => [s.foto_id, s.inteira_id, s.pt_id]).filter(Boolean).map((fid) => ({ id: fid })).map((s) => ({ id: s.id, tipo: 'foto_autorizada', autor: aut.autor, licenca: `Uso autorizado por ${aut.autor} (${aut.canal}, ${aut.data})`, exige_credito: false, origem: item.permalink }));
-  const legenda = [cl.traducao.legenda, aut.credito].filter(Boolean).join('\n\n').slice(0, 2200);
+  // Legenda: no lugar do crédito ao autor, chama para seguir o Pedro (decisão do Pedro, 14/11/2026).
+  const legenda = [cl.traducao.legenda, `Siga ${require('../account').ACCOUNT.handle} para mais conteúdos como este.`].filter(Boolean).join('\n\n').slice(0, 2200);
   M.criarVersao(c, { slides, legenda, legenda_claim_ids: claims.map((k) => k.id), cta: '', hashtags: [] }, { quem: 'sistema', rotulo: `clone autorizado de ${aut.autor}` });
 }
 
 // ── Passo a passo ───────────────────────────────────────────────────────────
-async function iniciar(itemId, { agora = Date.now() } = {}) {
+const MODOS = ['original', 'nosso']; const FUNDOS = ['branco', 'preto'];
+async function iniciar(itemId, { agora = Date.now(), modo = 'original', fundo = 'branco' } = {}) {
+  if (!MODOS.includes(modo)) modo = 'original'; if (!FUNDOS.includes(fundo)) fundo = 'branco';
   const item = await Coletar.obter(itemId); if (!item) throw erro('Item não encontrado.', 404, 'NAO_ENCONTRADO');
   // Sem etapa de registro (decisão do Pedro: ele combina com cada autor por fora). O crédito ao autor entra na legenda e pode ser
   // editado na aprovação.
@@ -168,7 +193,7 @@ async function iniciar(itemId, { agora = Date.now() } = {}) {
   item.autorizacao = item.autorizacao || { autor: h, canal: 'combinado pelo Pedro', data: new Date(agora).toISOString().slice(0, 10), prova: null, credito: `Conteúdo original de ${h}.` };
   await db().radar.salvar(conta(), Coletar.TIPO, item.id, item);
   const c = M.novoConteudo({ titulo: `Cópia de @${String(item.conta?.handle || '').replace(/^@/, '')}${item.tema ? `: ${item.tema}` : ''}`.slice(0, 140), formato: 'carrossel', origem: { tipo: 'clone_autorizado', url: item.permalink } });
-  c.clone = { item_id: item.id, etapa: 'buscar', estado: 'em_andamento', autorizacao: item.autorizacao, slides: [], criado_em: new Date(agora).toISOString(), erros: [] };
+  c.clone = { item_id: item.id, modo, fundo, etapa: 'buscar', estado: 'em_andamento', autorizacao: item.autorizacao, slides: [], criado_em: new Date(agora).toISOString(), erros: [] };
   c.studio = { estado: 'gerando', origem: 'clone' };
   await db().conteudos.salvar(conta(), c.id, c, 0);
   try { await Coletar.marcarReciclado(item.id, { formato: 'clone', conteudo_id: c.id }); } catch { /* cortesia */ }
@@ -203,7 +228,23 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
         cl.etapa = 'traduzir';
       } else if (cl.etapa === 'traduzir') {
         const Visao = require('./visaoTexto');
-        if (deps.visao || (!deps.pedirJson && Visao.disponivel())) {
+        const handleAutor = String(item?.conta?.handle || '').replace(/^@/, '');
+        if (cl.modo === 'nosso') {
+          // NOSSO FORMATO, no automático: o texto vem da leitura da imagem (OCR, sem IA), a assinatura do autor sai por regra,
+          // e só se o texto não estiver em português entra UMA chamada de tradução na IA gratuita.
+          const paras = cl.slides.map((s) => limparTrechos(s.paragrafos || [], { handle: handleAutor, nome: item?.conta?.nome }));
+          const tudo = [...paras.flat().map((p) => p.texto), cl.legenda_original || ''].join(' ');
+          let trad = null;
+          if (!ehPortugues(tudo)) trad = await traduzirFiel(paras.map((ps) => ({ paragrafos: ps })), cl.legenda_original, deps.pedirJson || require('../llmJson').pedirJson);
+          const alturas = paras.flat().map((p) => p.altura_linha || 0).sort((x, y) => x - y); const med = alturas[Math.floor(alturas.length / 2)] || 0;
+          const slides = paras.map((ps, i) => {
+            const pagina = ps.map((p, j) => ({ texto: (trad?.slides[i]?.blocos[j]?.novo || p.texto), negrito: med && p.altura_linha >= med * 1.25 }));
+            return { titulo: (pagina[0]?.texto || '').slice(0, 160), texto: pagina.slice(1).map((x) => x.texto).join(' ').slice(0, 700), blocos: [], pagina: pagina.length ? pagina : null };
+          });
+          const vazias = slides.map((x, i) => (x.pagina ? null : i + 1)).filter(Boolean);
+          if (vazias.length) cl.faltando = vazias.map((n) => `slide ${n}: sem texto legível (fica a imagem original)`);
+          cl.traducao = { fiel: true, nosso: true, slides, legenda: tirarAutorDe(trad ? trad.legenda : cl.legenda_original, handleAutor) };
+        } else if (deps.visao || (!deps.pedirJson && Visao.disponivel())) {
           // Leitura com IA que enxerga: texto conferido na imagem (sem erro de OCR), tradução e assinatura do autor marcada.
           cl.visao = cl.visao || [];
           const handle = String(item?.conta?.handle || '').replace(/^@/, '');
@@ -217,7 +258,7 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
           for (const [i, s] of cl.slides.entries()) {
             // Página só de texto: refeita no nosso padrão (página branca, nossa fonte, nosso @), sem depender da leitura das caixas.
             const textosPt = (cl.visao[i].textos || []).map((t) => ({ texto: String(t.traducao || t.original || '').trim(), negrito: !!t.negrito })).filter((t) => t.texto);
-            if (cl.visao[i].tipo_pagina === 'texto' && textosPt.length) {
+            if (cl.modo === 'nosso_visao' && cl.visao[i].tipo_pagina === 'texto' && textosPt.length) { // formato original: nunca refaz a página
               slides.push({ titulo: textosPt[0].texto.slice(0, 160), texto: textosPt.slice(1).map((t) => t.texto).join(' ').slice(0, 700), blocos: [], pagina: textosPt });
               continue;
             }
@@ -238,11 +279,11 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
             // Toda página da cópia: tira a assinatura do autor, troca o texto e põe o nosso @ embaixo.
             const handle = require('../account').ACCOUNT.handle;
             if (t.pagina) {
-              const pt_id = `clone_${c.id}_${i}_pt`; await a.arquivos.salvar(conta(), `img:${pt_id}`, await TT.paginaTexto(t.pagina, { assinatura: handle }), 'image/jpeg');
+              const pt_id = `clone_${c.id}_${i}_pt`; await a.arquivos.salvar(conta(), `img:${pt_id}`, await TT.paginaTexto(t.pagina, { assinatura: handle, fundo: cl.fundo }), 'image/jpeg');
               cl.slides[i].pt_id = pt_id; cl.slides[i].refeita = true; continue;
             }
             const arq = await a.arquivos.obter(conta(), `clone_orig:${c.id}:${i}`); if (!arq) continue;
-            const { buffer, trocados } = await TT.substituir(Buffer.from(arq.dados), t.blocos, { assinatura: handle });
+            const { buffer, trocados } = await TT.substituir(Buffer.from(arq.dados), t.blocos, { assinatura: handle, corOriginal: cl.modo !== 'nosso' });
             const pt_id = `clone_${c.id}_${i}_pt`; await a.arquivos.salvar(conta(), `img:${pt_id}`, await TT.encaixar45(buffer), 'image/jpeg');
             cl.slides[i].pt_id = pt_id; cl.slides[i].trocados = trocados.length;
           }
@@ -288,4 +329,4 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
 
 const resumo = (c) => ({ id: c.id, titulo: c.titulo, estado: c.clone?.estado, etapa: c.clone?.etapa, slides: c.clone?.n ?? null, lidos: c.clone?.slides?.length ?? 0, aviso: c.clone?.aviso || null, motivo: c.clone?.motivo || null, erro: (c.clone?.erros || []).slice(-1)[0] || null, concluido: c.clone?.estado !== 'em_andamento' });
 
-module.exports = { SISTEMA_TRADUCAO_FIEL, CANAIS, ETAPAS, autorizar, buscarOriginal, faixaSemTexto, lerSlide, traduzir, montar, iniciar, passo, resumo, SISTEMA_TRADUCAO };
+module.exports = { ehPortugues, limparTrechos, tirarAutorDe, MODOS, FUNDOS, SISTEMA_TRADUCAO_FIEL, CANAIS, ETAPAS, autorizar, buscarOriginal, faixaSemTexto, lerSlide, traduzir, montar, iniciar, passo, resumo, SISTEMA_TRADUCAO };

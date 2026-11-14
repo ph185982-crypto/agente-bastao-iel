@@ -36,11 +36,16 @@ async function publicarEmSegundoPlano(c){
   const atual=await armazem().publicacoes.obter(ACCOUNT.ig_id,c.id,'instagram');
   let p=atual?await P.avancar(c.id):await P.iniciar(c.id,{hash:c.revisao.hash_aprovado,base:studio.base()});
   if(['iniciada','aguardando_processamento','publicando_final'].includes(p.estado)){
+    // Carrossel grande demora para a Meta processar: espera com intervalo crescente (até ~20 min) pela fila, sem segurar a função.
     st.polls=(st.polls||0)+1;
-    if(st.polls>50)return;
     const reg=await studio.ler(c.id);if(reg.doc.studio?.job!==st.job)return;
-    reg.doc.studio.polls=st.polls;await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,reg.doc,reg.rev);
-    await new Promise(r=>setTimeout(r,3500));await kick(reg.doc);return;
+    if(st.polls>120){await require('../lib/top/relogio').agendarEm(Date.now()+120000).catch(()=>{});return;} // o relógio retoma em 2 min
+    const espera=st.polls<=10?4000:st.polls<=40?8000:15000;
+    reg.doc.studio.polls=st.polls;
+    if(process.env.VERCEL)reg.doc.studio.adiar_ate=new Date(Date.now()+espera).toISOString();
+    await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,reg.doc,reg.rev);
+    if(!process.env.VERCEL)await new Promise(r=>setTimeout(r,3500));
+    await kick(reg.doc);return;
   }
   const reg=await studio.ler(c.id);if(reg.doc.studio?.job!==st.job)return;
   const doc=reg.doc;doc.studio.estado=p.estado==='publicada'?'publicado':'erro';doc.studio.erro=p.erro?.amigavel||null;

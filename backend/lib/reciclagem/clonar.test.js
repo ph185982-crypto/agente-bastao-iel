@@ -57,7 +57,7 @@ test('clone de ponta a ponta: mesma quantidade de slides, texto traduzido, foto 
   assert.strictEqual(v.slides.length, 3); assert.strictEqual(v.slides[0].texto, 'Você perde 30% do lucro Separe suas contas hoje.');
   assert.strictEqual(v.slides[1].texto, '**Passo um** Abra uma conta da empresa.');
   assert.ok(v.slides.every((s) => s.imagem_id && s.tema_visual === 'tweet'));
-  assert.match(v.legenda, /Conteúdo original de @codiesanchez, traduzido e publicado com autorização\.$/);
+  assert.match(v.legenda, /Siga @pedro_destrava para mais conteúdos como este\.$/); assert.ok(!/Conteúdo original/.test(v.legenda), 'sem crédito ao autor na legenda');
   assert.strictEqual(doc.status, 'em_revisao'); assert.strictEqual(doc.studio.estado, 'pronto');
   assert.strictEqual(doc.arte.renders.length, 3);
   assert.deepStrictEqual(doc.claims.map((k) => k.id), ['k1', 'kL'], 'os números do slide 1 e da legenda ficam ligados ao original');
@@ -211,23 +211,50 @@ test('"gostou do conteúdo? me siga" que a leitura achou sai sempre, mesmo sem a
   assert.ok(blocos[0].x1 > 922 + 60, 'pega o ícone ao lado');
 });
 
-test('página só de texto: a cópia refaz a página no nosso padrão (branca, nossa fonte, nosso @), sem nada do original', async () => {
+test('formato original: mesmo página só de texto mantém o visual do post (não refaz a página)', async () => {
   novo();
   const base = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#f0e0d0' } }).jpeg().toBuffer();
   await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, tipo: 'imagem', midias: ['https://cdn.test/a.jpg'], legenda: 'x' });
   const ocrVazia = async () => ({ text: '', linhas: [], trechos: [] });
   const visao = async () => ({ provedor: 'teste', dados: { tipo_pagina: 'texto', textos: [{ original: 'I regret to inform you', traducao: 'Lamento informar', negrito: true }], assinaturas: [], legenda: 'x' } });
   const c = await CL.iniciar(ITEM.id); let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps: { fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => base }), ocr: ocrVazia, visao } }); if (r.concluido) break; }
-  assert.strictEqual(r.estado, 'concluido', JSON.stringify(r)); assert.strictEqual(r.aviso, null);
+  assert.strictEqual(r.estado, 'concluido', JSON.stringify(r)); assert.match(r.aviso, /não consegui trocar/, 'texto sem lugar na leitura vira aviso para o Pedro');
   const doc = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id)).doc; const v = M.versaoAtiva(doc);
-  assert.match(v.slides[0].imagem_id, /_pt$/); assert.strictEqual(doc.clone.slides[0].refeita, true);
+  assert.match(v.slides[0].imagem_id, /_pt$/); assert.ok(!doc.clone.slides[0].refeita);
   const img = await arm.armazem().arquivos.obter(ACCOUNT.ig_id, `img:${v.slides[0].imagem_id}`);
   const { data } = await sharp(Buffer.from(img.dados)).raw().toBuffer({ resolveWithObject: true });
-  assert.ok(data[0] > 245 && data[1] > 245 && data[2] > 245, 'fundo branco, não a cor do original');
+  assert.ok(Math.abs(data[0] - 0xf0) < 12 && Math.abs(data[2] - 0xd0) < 12, 'fundo do post original');
 });
 
 test('texto repetido ("swish" duas vezes) não vira um bloco "swish swish"', () => {
   const V = require('./visaoTexto');
   const { blocos } = V.blocosDaVisao({ textos: [{ original: 'swish', traducao: 'swish' }, { original: 'Reality', traducao: 'Realidade' }, { original: 'swish', traducao: 'swish' }] }, { trechos: [{ texto: 'swish', x0: 970, y0: 820, x1: 1037, y1: 855, altura_linha: 35 }] });
   assert.ok(blocos.every((b) => b.novo !== 'swish\nswish'));
+});
+
+test('nosso formato (fundo preto): texto da leitura sem IA quando já está em português, autor e "me siga" fora, página refeita', async () => {
+  novo();
+  const base = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#f0e0d0' } }).jpeg().toBuffer();
+  await arm.armazem().radar.salvar(ACCOUNT.ig_id, C.TIPO, ITEM.id, { ...ITEM, tipo: 'imagem', midias: ['https://cdn.test/a.jpg'], legenda: 'Você precisa ver isso. Me siga @codiesanchez para mais.' });
+  const ocrPt = async () => ({ text: '', linhas: [], trechos: [
+    { texto: 'Codie Sanchez @codiesanchez', x0: 200, y0: 100, x1: 600, y1: 140, altura_linha: 30, confianca: 95 },
+    { texto: 'Você não precisa de um negócio grande para ter um negócio que dá dinheiro.', x0: 90, y0: 500, x1: 990, y1: 700, altura_linha: 50, confianca: 95 },
+    { texto: 'gostou do conteúdo? me siga', x0: 400, y0: 1260, x1: 900, y1: 1290, altura_linha: 30, confianca: 95 } ] });
+  let ia = 0;
+  const c = await CL.iniciar(ITEM.id, { modo: 'nosso', fundo: 'preto' });
+  let r; for (let k = 0; k < 6; k++) { r = await CL.passo(c.id, { deps: { fetch: async () => ({ ok: true, status: 200, arrayBuffer: async () => base }), ocr: ocrPt, pedirJson: async () => { ia++; return { dados: {} }; } } }); if (r.concluido) break; }
+  assert.strictEqual(r.estado, 'concluido', JSON.stringify(r)); assert.strictEqual(ia, 0, 'em português: nenhuma chamada de IA');
+  const doc = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id)).doc; const v = M.versaoAtiva(doc);
+  assert.deepStrictEqual(doc.clone.traducao.slides[0].pagina.map((p) => p.texto), ['Você não precisa de um negócio grande para ter um negócio que dá dinheiro.']);
+  assert.ok(!/codiesanchez/i.test(v.legenda)); assert.match(v.legenda, /Siga @pedro_destrava/);
+  const img = await arm.armazem().arquivos.obter(ACCOUNT.ig_id, `img:${v.slides[0].imagem_id}`);
+  const { data } = await sharp(Buffer.from(img.dados)).raw().toBuffer({ resolveWithObject: true });
+  assert.ok(data[0] < 20 && data[1] < 20 && data[2] < 20, 'fundo preto');
+});
+
+test('nosso formato em inglês: uma chamada só de tradução, na IA gratuita', async () => {
+  const CLx = require('./clonar');
+  assert.strictEqual(CLx.ehPortugues('You don\'t need a big business to have a business that makes money.'), false);
+  assert.strictEqual(CLx.ehPortugues('Você não precisa de um negócio grande para ter um negócio que dá dinheiro.'), true);
+  assert.deepStrictEqual(CLx.limparTrechos([{ texto: '1/10' }, { texto: '@codiesanchez' }, { texto: 'Swipe →' }, { texto: 'Texto de verdade aqui.' }], { handle: 'codiesanchez' }).map((t) => t.texto), ['Texto de verdade aqui.']);
 });
