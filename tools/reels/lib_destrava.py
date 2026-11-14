@@ -368,7 +368,8 @@ def _marcas(b):
         out += [(t, 'pop') for t in tempos]
     elif tipo == 'comparacao':
         t_dir = _instante_de(b.get('direita'), pal, a + (z - a) * 0.5)
-        t_dir = round(max(a + 0.6, min(z - 0.3, t_dir - 0.05)), 3)
+        # o lado certo entra quando é falado, mas no máximo a 60% da cena: os dois lados ficam juntos na tela
+        t_dir = round(max(a + 0.6, min(z - 0.3, a + (z - a) * 0.6, t_dir - 0.05)), 3)
         b['tempos_itens'] = [round(a + 0.1, 3), t_dir]
         out += [(a + 0.15, 'pop'), (t_dir, 'pop')]
     elif tipo == 'numero':

@@ -557,7 +557,9 @@ class Pedido15Nov(unittest.TestCase):
         self.assertIn('designer americana', cartao['antes'])            # o cartão mostra as frases reais vizinhas
         self.assertIn('Lele Sadoughi', cartao['depois'])
         self.assertEqual(por('Sem')['tipo'], 'comparacao')
-        self.assertEqual(len(por('Sem')['tempos_itens']), 2)
+        cmp = por('Sem')
+        self.assertEqual(len(cmp['tempos_itens']), 2)
+        self.assertLessEqual(cmp['tempos_itens'][1], cmp['t0'] + (cmp['t1'] - cmp['t0']) * 0.6 + 0.001)   # os dois lados juntos na tela
         self.assertEqual((por('Crescer')['tipo'], por('Crescer')['icone']), ('icone', 'cadeado'))
         self.assertEqual((por('Em 2012')['tipo'], por('Em 2012')['destaque']), ('numero', '70%'))
         self.assertEqual(por('Em vez')['tipo'], 'grafico')
