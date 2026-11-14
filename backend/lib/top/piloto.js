@@ -18,7 +18,7 @@ const PADRAO = Object.freeze({
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
   // 'auto' reparte as vagas pelo placar real (envios por mil de cada formato, com 20% de teste); sem dado suficiente, faz o rodízio dos quatro.
-  roteiros_dia: 10, // roteiros de Reels aprovados pelos fiscais por dia (aba Vídeos); 0 desliga
+  roteiros_dia: 5, // roteiros de Reels aprovados pelos fiscais por dia (aba Vídeos); 0 desliga
   formato_padrao: 'auto', // 'auto' | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
 });
 // Formatos que o piloto pode pedir ao pipeline; 'alterna' roda tweet → ensaio → estatico para o feed variar.
@@ -154,12 +154,27 @@ async function proximaPauta(est, { agora, deps, restante }) {
   return fila.shift() || null;
 }
 
+async function passoRoteiros(cfg, est, r, { agora, dia, hora, deps, restante }) {
+  const metaRoteiros = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia;
+  if (!(metaRoteiros > 0 && hora >= '05:00' && hora <= '22:30' && restante() > 16000 && !deps.semRoteiros)) return;
+  try {
+    const rt = await (deps.roteiros || require('../roteiros').avancar)(est, { agora, dia, meta: metaRoteiros, orcamentoMs: restante() - 4000 });
+    if (rt.salvos?.length || rt.descartados?.length || rt.fases?.length) r.roteiros = { salvos: rt.salvos?.length || 0, descartados: rt.descartados?.length || 0, fases: rt.fases?.length || 0 };
+    if (rt.erro) r.avisos.push(`Roteiros: ${rt.erro}`);
+  } catch (e) { r.avisos.push(`Roteiros falharam: ${String(e.message).slice(0, 120)}`); }
+}
+
 // ── Rodada ──────────────────────────────────────────────────────────────────────
 // Quando a próxima rodada tem o que fazer (ms): o relógio dorme até lá em vez de acordar o banco à toa.
 function proximaAcao(cfg, est, { agora, dia, hora, removidos = new Set(), semPauta = false }) {
   const c = [];
   for (const x of est.agenda || []) if (!removidos.has(x.id)) { const t = Date.parse(x.publicar_em); if (t > agora) c.push(t); else c.push(agora + 10 * 60000); } // vencido e segurado: tenta de novo em 10 min
-  if (!cfg.ativo) return c.length ? Math.min(...c) : null;
+  if (!cfg.ativo) {
+    const metaRt0 = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia; const rt0 = est.roteiros;
+    const pausa0 = rt0?.pausa_ate && Date.parse(rt0.pausa_ate) > agora;
+    if (metaRt0 > 0 && hora >= '05:00' && hora <= '22:30' && (rt0?.dia !== dia || require('../roteiros').pendente(rt0, metaRt0))) c.push(pausa0 ? Date.parse(rt0.pausa_ate) : agora + 3 * 60000);
+    return c.length ? Math.min(...c) : null;
+  }
   for (const j of cfg.janelas_aprovacao || []) { const t = instante(dia, j); if (t > agora && !est.notificado?.[j]) c.push(t); }
   const folga = est.extra_dia?.dia === dia ? est.extra_dia.n : 0;
   const prontosHoje = (est.criados || []).filter((x) => x.dia === dia && x.estado === 'concluida' && x.decidido !== 'descartado').length;
@@ -241,7 +256,12 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       }
     }
   }
-  if (!cfg.ativo) { r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos }); est.ultima_rodada = r; await gravarRodada(est, removidos); return { executou: true, ...r, motivo: 'Piloto desligado: só a agenda já aprovada foi conferida.' }; }
+  if (!cfg.ativo) {
+    // Piloto desligado (sem carrossel do zero): a agenda continua e os roteiros de vídeo também (IA gratuita, independentes).
+    await passoRoteiros(cfg, est, r, { agora, dia, hora, deps, restante });
+    r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos }); est.ultima_rodada = r; await gravarRodada(est, removidos);
+    return { executou: true, ...r, motivo: 'Piloto desligado: agenda conferida e roteiros de vídeo avançados.' };
+  }
 
   // 2) Avança o que está em produção.
   for (const x of est.criados.filter((y) => y.estado === 'em_andamento')) {
@@ -317,15 +337,8 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       } else { r.sem_pauta = true; r.avisos.push('Sem pauta nova agora (fila vazia ou descoberta adiada).'); }
     } catch (e) { r.avisos.push(`Criação falhou: ${String(e.message).slice(0, 160)}`); }
   }
-  // 5) Roteiros de Reels: roteirista + fiscais avançam com o tempo que sobrou (IA gratuita; nada é publicado).
-  const metaRoteiros = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia;
-  if (metaRoteiros > 0 && !iaPausada && hora >= '05:00' && hora <= '22:30' && restante() > 16000 && !deps.semRoteiros) {
-    try {
-      const rt = await (deps.roteiros || require('../roteiros').avancar)(est, { agora, dia, meta: metaRoteiros, orcamentoMs: restante() - 4000 });
-      if (rt.salvos?.length || rt.descartados?.length || rt.fases?.length) r.roteiros = { salvos: rt.salvos?.length || 0, descartados: rt.descartados?.length || 0, fases: rt.fases?.length || 0 };
-      if (rt.erro) r.avisos.push(`Roteiros: ${rt.erro}`);
-    } catch (e) { r.avisos.push(`Roteiros falharam: ${String(e.message).slice(0, 120)}`); }
-  }
+  // 5) Roteiros de Reels: roteirista + fiscal avançam com o tempo que sobrou (IA gratuita; nada é publicado).
+  if (!iaPausada) await passoRoteiros(cfg, est, r, { agora, dia, hora, deps, restante });
   r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos, semPauta: !!r.sem_pauta });
   est.ultima_rodada = { ...r, avisos: r.avisos.slice(0, 6) };
   await gravarRodada(est, removidos);

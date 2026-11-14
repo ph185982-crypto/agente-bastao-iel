@@ -18,7 +18,7 @@ const { ACCOUNT } = require('../account');
 const S = require('./skill');
 
 const conta = () => ACCOUNT.ig_id;
-const META_DIA = 10;
+const META_DIA = 5;
 const TENTATIVAS_DIA = 24;       // teto de roteiros começados por dia (protege a cota gratuita)
 const DIAS_PAUTA_USADA = 30;
 const DIAS_VALIDADE = 7;         // roteiro não gravado em 7 dias sai da aba
@@ -28,7 +28,8 @@ const erro = (msg, code, status = 400) => Object.assign(new Error(msg), { code, 
 
 // ── Pautas ────────────────────────────────────────────────────────────────────
 // Ordem do dia: tese viral, notícia, tese, história própria… (a fonte que faltar cede a vez para a seguinte).
-const ROTACAO = ['tese', 'noticia', 'tese', 'proprio', 'tese', 'noticia', 'proprio', 'tese', 'noticia', 'tese'];
+// Só pautas que sustentam um bom roteiro: teses de reels/posts virais e as histórias do Pedro (notícia só com a manchete reprovava).
+const ROTACAO = ['tese', 'tese', 'proprio', 'tese', 'tese', 'noticia'];
 
 async function pautas({ est = {}, deps = {} } = {}) {
   const usadas = new Set(((est.roteiros || {}).usadas || []).map((u) => u.chave));
@@ -37,9 +38,9 @@ async function pautas({ est = {}, deps = {} } = {}) {
     const itens = await (deps.teses || (() => require('../reciclagem/coletar').listar({ dias: 10, limite: 60 })))();
     for (const it of (Array.isArray(itens) ? itens : itens?.itens) || []) {
       if (!it.tese) continue; const chave = `rc:${it.id}`; if (usadas.has(chave)) continue;
-      out.tese.push({ chave, tipo: 'tese', tema: limpa(it.tema || it.tese, 120), texto: [`TESE (viralizou em outra conta; não cite a origem): ${it.tese}`, it.ponte_pedro ? `PONTE PARA O EMPREENDEDOR BRASILEIRO: ${it.ponte_pedro}` : '', it.mecanismo ? `MECANISMO QUE FEZ VIRALIZAR: ${it.mecanismo}` : ''].filter(Boolean).join('\n'), peso: Number(it.vl) || 0 });
+      out.tese.push({ chave, tipo: 'tese', tema: limpa(it.tema || it.tese, 120), texto: [`TESE (viralizou em outra conta; não cite a origem): ${it.tese}`, it.ponte_pedro ? `PONTE PARA O EMPREENDEDOR BRASILEIRO: ${it.ponte_pedro}` : '', it.mecanismo ? `MECANISMO QUE FEZ VIRALIZAR: ${it.mecanismo}` : ''].filter(Boolean).join('\n'), peso: Number(it.vl) || 0, reel: it.tipo === 'reel' ? 1 : 0 });
     }
-    out.tese.sort((a, b) => b.peso - a.peso);
+    out.tese.sort((a, b) => (b.reel - a.reel) || (b.peso - a.peso)); // tese de reel viral primeiro: virou vídeo uma vez, vira de novo
   } catch { /* fonte fora do ar: as outras cobrem */ }
   try {
     const hs = await (deps.historias || (() => require('../historias').listar()))();
@@ -48,7 +49,7 @@ async function pautas({ est = {}, deps = {} } = {}) {
       out.proprio.push({ chave, tipo: h.tipo || 'historia', tema: limpa(h.titulo, 120), texto: `${h.tipo === 'como_fazer' ? 'PASSO A PASSO' : h.tipo === 'caso' ? 'CASO REAL' : 'HISTÓRIA REAL'} DO PEDRO (fatos verdadeiros; não invente nada além disto):\n${h.texto}` });
     }
   } catch { /* sem cadastro */ }
-  for (const p of (deps.noticias || est.fila || [])) {
+  for (const p of (deps.noticias || [])) { // notícia só se alguém passar explicitamente
     const chave = `pt:${p.id}`; if (usadas.has(chave) || !p.titulo) continue;
     out.noticia.push({ chave, tipo: 'noticia', tema: limpa(p.titulo, 140), texto: `NOTÍCIA EM ALTA (você só tem a manchete; não invente detalhe, número ou data que não está aqui):\n${p.titulo}`, url: p.url || null });
   }
@@ -147,15 +148,17 @@ function fiscalCodigo(r, pauta) {
 
 // ── Fiscais de IA ─────────────────────────────────────────────────────────────
 function promptFiscal(qual) {
-  const crit = S.CRITERIOS.filter((c) => c.fiscal === qual);
-  const papel = qual === 'retencao'
+  const crit = qual === 'ambos' ? S.CRITERIOS : S.CRITERIOS.filter((c) => c.fiscal === qual);
+  const papel = qual === 'ambos'
+    ? 'FISCAL DE QUALIDADE (dois olhares numa leitura só). RETENÇÃO: você pensa como Paddy Galloway, Jenny Hoyos e Kallaway, a pessoa decide em 3 segundos se fica. VERDADE E VOZ: número inventado, fato que a pauta não sustenta, tom de palanque e texto com cara de IA queimam a reputação do Pedro.'
+    : qual === 'retencao'
     ? 'FISCAL DE RETENÇÃO E VIRALIDADE. Você pensa como Paddy Galloway, Jenny Hoyos e Kallaway: a pessoa decide em 3 segundos se fica, e sai no primeiro trecho sem novidade.'
     : 'FISCAL DE VERDADE, VOZ E REPUTAÇÃO. Você protege o Pedro: número inventado, fato não sustentado pela pauta, tom de palanque, ataque pessoal e texto com cara de IA queimam a reputação dele.';
   return `Você é o ${papel}
 Avalie o roteiro de Reel do @pedro_destrava (público: dono de pequena empresa, MEI, vendedor de marketplace) com rigor; nota 8+ só para o que está realmente pronto para gravar. Na dúvida, nota menor.
 Critérios (0 a 10; ★ = eliminatório):
 ${crit.map((c) => `${c.n}${c.el ? '★' : ''}. ${c.nome}`).join('\n')}
-${qual === 'verdade' ? 'Critério 8: compare cada número, data, valor e fato com a PAUTA. O que não está na pauta e é afirmado como fato = nota 0. Opinião assumida ("na minha leitura") e cena genérica do dia a dia são permitidas.\n' : ''}Responda APENAS JSON: {"notas":{${crit.map((c) => `"${c.n}":0`).join(',')}},"problemas":[{"criterio":0,"trecho":"frase exata do roteiro","sugestao":"como reescrever"}]}
+${qual !== 'retencao' ? 'Critério 8: compare cada número, data, valor e fato com a PAUTA. O que não está na pauta e é afirmado como fato = nota 0. Opinião assumida ("na minha leitura") e cena genérica do dia a dia são permitidas.\n' : ''}Responda APENAS JSON: {"notas":{${crit.map((c) => `"${c.n}":0`).join(',')}},"problemas":[{"criterio":0,"trecho":"frase exata do roteiro","sugestao":"como reescrever"}]}
 No máximo 4 problemas, os mais graves.`;
 }
 
@@ -285,8 +288,15 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
         out.fases.push(`${x.id}:escreveu`);
         // O código já reprovou: nem gasta os fiscais de IA.
         const grave = x.codigo.problemas.some((p) => p.eliminar) || x.codigo.problemas.length >= 3 || !x.roteiro.blocos.length;
-        x.fase = grave ? 'decidir' : 'retencao';
+        x.fase = grave ? 'decidir' : 'fiscal'; // um fiscal só, com os 15 critérios (economiza uma chamada por roteiro)
         if (grave) x.pareceres = { codigo: x.codigo };
+        continue;
+      }
+      if (x.fase === 'fiscal') {
+        const { dados, llm } = await chamarIA({ sistema: promptFiscal('ambos'), usuario: usuarioFiscal(x.roteiro, x.pauta, x.formato), maxTokens: 900, temperatura: 0.2, etapa: 'fiscal_roteiro', deps, restanteMs: restante() });
+        x.ia.push(llm?.provider || '?');
+        x.pareceres = { codigo: x.codigo, retencao: lerNotas(dados, 'retencao'), verdade: lerNotas(dados, 'verdade') };
+        out.fases.push(`${x.id}:fiscal`); x.fase = 'decidir';
         continue;
       }
       if (x.fase === 'retencao' || x.fase === 'verdade') {
