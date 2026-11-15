@@ -47,3 +47,17 @@ test("sessão: assinatura, expiração e adulteração", async () => {
   assert.ok(isAllowedAdmin("ADMIN@avanteza.com.br"));
   assert.ok(!isAllowedAdmin("outro@x.com"));
 });
+
+test("sessão: papel de revisão (somente leitura) e acesso", async () => {
+  const { verifySessionFull, canAccess } = await import("../src/lib/session");
+  const secret = "s".repeat(40);
+  process.env.ADMIN_EMAILS = "admin@avanteza.com.br";
+  const rev = await verifySessionFull(await signSession("shopee-review@avanteza.com.br", secret, 3600, "reviewer"), secret);
+  assert.deepEqual(rev, { email: "shopee-review@avanteza.com.br", role: "reviewer" });
+  assert.ok(canAccess(rev));
+  const adm = await verifySessionFull(await signSession("admin@avanteza.com.br", secret), secret);
+  assert.equal(adm?.role, "admin");
+  assert.ok(canAccess(adm));
+  // admin fora da lista ADMIN_EMAILS não entra
+  assert.ok(!canAccess(await verifySessionFull(await signSession("x@y.com", secret), secret)));
+});

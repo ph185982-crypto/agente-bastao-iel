@@ -15,11 +15,13 @@ export function Shell({
   counts,
   paused,
   dryRun,
+  reviewer = false,
 }: {
   children: React.ReactNode;
   counts: { approvals: number; alerts: number };
   paused: boolean;
   dryRun: boolean;
+  reviewer?: boolean;
 }) {
   return (
     <>
@@ -45,6 +47,11 @@ export function Shell({
           </form>
         </div>
       </header>
+      {reviewer && (
+        <div style={{ background: "var(--navy-2)", color: "var(--cream)", textAlign: "center", padding: "6px 12px", fontSize: 13, fontWeight: 700 }}>
+          Acesso de revisão — somente leitura. Você pode navegar, cadastrar um cliente de teste e gerar o link de autorização.
+        </div>
+      )}
       {(paused || dryRun) && (
         <div style={{ background: paused ? "var(--orange)" : "var(--sand)", color: paused ? "#fff" : "var(--navy)", textAlign: "center", padding: "6px 12px", fontSize: 13, fontWeight: 700 }}>
           {paused ? "PAUSA GERAL ATIVA — nenhuma ação de escrita será executada." : "Modo simulação ativo — ações aprovadas são apenas simuladas."}{" "}

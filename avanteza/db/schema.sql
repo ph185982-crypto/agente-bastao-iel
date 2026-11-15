@@ -12,6 +12,7 @@ create extension if not exists pgcrypto;
 create table if not exists avanteza.admins (
   email text primary key,
   password_hash text,             -- bcrypt
+  role text not null default 'admin' check (role in ('admin','reviewer')), -- reviewer = somente leitura
   created_at timestamptz not null default now()
 );
 

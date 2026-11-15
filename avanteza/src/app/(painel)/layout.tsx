@@ -1,11 +1,12 @@
 import { Shell } from "@/components/Shell";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, currentSession } from "@/lib/auth";
 import { userDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   await requireAdmin();
+  const reviewer = (await currentSession())?.role === "reviewer";
   const db = await userDb();
   const [approvals, alerts, settings] = await Promise.all([
     db.from("actions").select("id", { count: "exact", head: true }).eq("status", "proposed"),
@@ -17,6 +18,7 @@ export default async function PainelLayout({ children }: { children: React.React
       counts={{ approvals: approvals.count ?? 0, alerts: alerts.count ?? 0 }}
       paused={Boolean(settings.data?.global_pause)}
       dryRun={Boolean(settings.data?.dry_run)}
+      reviewer={reviewer}
     >
       {children}
     </Shell>

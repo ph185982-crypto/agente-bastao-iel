@@ -25,22 +25,29 @@ function secretOrThrow(secret?: string) {
   return s;
 }
 
-export async function signSession(email: string, secret?: string, ttl = SESSION_TTL_S): Promise<string> {
-  const payload = b64url(enc.encode(JSON.stringify({ e: email.toLowerCase(), x: Math.floor(Date.now() / 1000) + ttl })));
+export type Role = "admin" | "reviewer";
+
+export async function signSession(email: string, secret?: string, ttl = SESSION_TTL_S, role: Role = "admin"): Promise<string> {
+  const payload = b64url(enc.encode(JSON.stringify({ e: email.toLowerCase(), x: Math.floor(Date.now() / 1000) + ttl, r: role })));
   const sig = await crypto.subtle.sign("HMAC", await key(secretOrThrow(secret)), enc.encode(payload));
   return `${payload}.${b64url(sig)}`;
 }
 
 export async function verifySession(token: string | undefined, secret?: string): Promise<string | null> {
+  return (await verifySessionFull(token, secret))?.email ?? null;
+}
+
+/** Sessão completa: e-mail e papel (admin = acesso total; reviewer = só leitura). */
+export async function verifySessionFull(token: string | undefined, secret?: string): Promise<{ email: string; role: Role } | null> {
   if (!token) return null;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return null;
   try {
     const ok = await crypto.subtle.verify("HMAC", await key(secretOrThrow(secret)), fromB64url(sig), enc.encode(payload));
     if (!ok) return null;
-    const data = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { e: string; x: number };
+    const data = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { e: string; x: number; r?: Role };
     if (!data.e || data.x < Math.floor(Date.now() / 1000)) return null;
-    return data.e;
+    return { email: data.e, role: data.r === "reviewer" ? "reviewer" : "admin" };
   } catch {
     return null;
   }
@@ -50,4 +57,10 @@ export function isAllowedAdmin(email: string | null): boolean {
   if (!email) return false;
   const list = (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
   return list.includes(email.toLowerCase());
+}
+
+/** Acesso ao painel: administradores da lista ADMIN_EMAILS ou contas de revisão (somente leitura). */
+export function canAccess(sess: { email: string; role: Role } | null): boolean {
+  if (!sess) return false;
+  return sess.role === "reviewer" || isAllowedAdmin(sess.email);
 }

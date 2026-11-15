@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, requireWriter } from "@/lib/auth";
 import { SESSION_COOKIE, SESSION_TTL_S, signSession } from "@/lib/session";
 import { checkLogin, setPassword } from "@/lib/login";
 import { userDb, adminDb } from "@/lib/db";
@@ -38,7 +38,7 @@ export async function login(_prev: { error?: string; email?: string } | null, fd
   const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconhecido";
   const r = await checkLogin(email, password, ip);
   if (!r.ok) return { error: r.error, email };
-  (await cookies()).set(SESSION_COOKIE, await signSession(email), {
+  (await cookies()).set(SESSION_COOKIE, await signSession(email, undefined, undefined, r.role ?? "admin"), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
@@ -49,7 +49,7 @@ export async function login(_prev: { error?: string; email?: string } | null, fd
 }
 
 export async function changePassword(fd: FormData) {
-  const email = await requireAdmin();
+  const email = await requireWriter();
   const nova = String(fd.get("new_password") ?? "");
   const atual = String(fd.get("current_password") ?? "");
   const h = await headers();
@@ -89,7 +89,7 @@ export async function createClient(fd: FormData) {
 }
 
 export async function updateClient(fd: FormData) {
-  await requireAdmin();
+  await requireWriter();
   const id = str(fd, "client_id");
   const db = await userDb();
   const { error } = await db
@@ -141,7 +141,7 @@ export async function collectNow(fd: FormData) {
 }
 
 export async function disconnectAccount(fd: FormData) {
-  const actor = await requireAdmin();
+  const actor = await requireWriter();
   const accountId = str(fd, "account_id");
   const path = back(fd, "/clientes");
   const db = adminDb();
@@ -158,7 +158,7 @@ export async function disconnectAccount(fd: FormData) {
 
 // ───────────── Regras de alerta e políticas ─────────────
 export async function saveRule(fd: FormData) {
-  await requireAdmin();
+  await requireWriter();
   const clientId = str(fd, "client_id");
   const ruleType = str(fd, "rule_type");
   const params: Record<string, number> = {};
@@ -177,7 +177,7 @@ export async function saveRule(fd: FormData) {
 }
 
 export async function savePolicy(fd: FormData) {
-  const actor = await requireAdmin();
+  const actor = await requireWriter();
   const clientId = str(fd, "client_id") || null;
   const type = str(fd, "action_type");
   const path = back(fd, "/configuracoes");
@@ -205,7 +205,7 @@ export async function savePolicy(fd: FormData) {
 
 // ───────────── Configurações globais ─────────────
 export async function saveSettings(fd: FormData) {
-  const actor = await requireAdmin();
+  const actor = await requireWriter();
   const db = adminDb();
   const { data: before } = await db.from("settings").select("*").single();
   const after = {
@@ -223,7 +223,7 @@ export async function saveSettings(fd: FormData) {
 }
 
 export async function togglePause(fd: FormData) {
-  const actor = await requireAdmin();
+  const actor = await requireWriter();
   const db = adminDb();
   const pause = str(fd, "pause") === "1";
   await db.from("settings").update({ global_pause: pause, updated_at: new Date().toISOString() }).eq("id", true);
@@ -234,7 +234,7 @@ export async function togglePause(fd: FormData) {
 
 // ───────────── Ações (executor) ─────────────
 export async function proposeManual(fd: FormData) {
-  const actor = await requireAdmin();
+  const actor = await requireWriter();
   const clientId = str(fd, "client_id");
   const path = back(fd, `/clientes/${clientId}`);
   const type = str(fd, "action_type") as ActionType;
@@ -286,7 +286,7 @@ export async function proposeManual(fd: FormData) {
 }
 
 export async function decide(fd: FormData) {
-  const actor = await requireAdmin();
+  const actor = await requireWriter();
   const id = str(fd, "action_id");
   const decision = str(fd, "decision") === "approve" ? "approve" : "reject";
   const path = back(fd, "/aprovacoes");
@@ -308,7 +308,7 @@ export async function decide(fd: FormData) {
 }
 
 export async function executeApproved(fd: FormData) {
-  const actor = await requireAdmin();
+  const actor = await requireWriter();
   const path = back(fd, "/aprovacoes");
   let msg = "";
   try {
@@ -323,7 +323,7 @@ export async function executeApproved(fd: FormData) {
 
 // ───────────── Alertas ─────────────
 export async function setAlertStatus(fd: FormData) {
-  await requireAdmin();
+  await requireWriter();
   const status = str(fd, "status");
   const db = await userDb();
   await db
@@ -350,7 +350,7 @@ export async function runAlertsNow(fd: FormData) {
 
 // ───────────── IA (Fase 2) ─────────────
 export async function runAgentNow(fd: FormData) {
-  await requireAdmin();
+  await requireWriter();
   const clientId = str(fd, "client_id");
   const path = back(fd, `/clientes/${clientId}`);
   let msg = "";
@@ -371,7 +371,7 @@ export async function runAgentNow(fd: FormData) {
 }
 
 export async function sendTestEmail(fd: FormData) {
-  await requireAdmin();
+  await requireWriter();
   const { EmailChannel } = await import("@/lib/alerts/channels");
   const ch = new EmailChannel();
   if (!ch.enabled()) flash("/configuracoes", "E-mail não configurado (RESEND_API_KEY / ALERT_EMAIL_FROM).", "erro");
