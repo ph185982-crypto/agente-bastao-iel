@@ -33,15 +33,16 @@ function limparErro(e) {
 
 /** Caminhos no Blob dos arquivos do vídeo `id` (a rota exige o prefixo videos/<id>/). */
 function pathnames(id) {
-  return { final: `videos/${id}/final.mp4`, poster: `videos/${id}/poster.jpg` };
+  return { final: `videos/${id}/final.mp4`, poster: `videos/${id}/poster.jpg`, capa: `videos/${id}/capa.jpg` };
 }
 
 /** Corpo do POST resultado: o resultado.json do editar.py + as URLs do Blob. */
-function montarResultado(resultadoJson, upFinal, upPoster, tamanhoFinal) {
+function montarResultado(resultadoJson, upFinal, upPoster, tamanhoFinal, upCapa = null) {
   const { transcricao, avisos = [], tempos_s: tempos = {}, ...resto } = resultadoJson;
   return {
     resultado: {
       ...resto, url: upFinal.url, pathname: upFinal.pathname, poster_url: upPoster.url, poster_pathname: upPoster.pathname,
+      ...(upCapa ? { capa_url: upCapa.url, capa_pathname: upCapa.pathname } : {}),
       tamanho: tamanhoFinal, editado_em: new Date().toISOString(), avisos, tempos_s: tempos,
     },
     transcricao,
@@ -99,12 +100,16 @@ async function baixar(url, destino) {
 function editar(entrada, saida, job, logJob) {
   return new Promise((resolve, reject) => {
     const args = [EDITAR, entrada, saida, '--estilo', job.estilo || 'hormozi', '--opcoes', JSON.stringify(job.opcoes || {})];
+    if (job.titulo && String(job.titulo).trim()) args.push('--titulo', String(job.titulo).slice(0, 140));
     const roteiro = path.join(saida, 'roteiro.txt');
     if (job.roteiro_texto && String(job.roteiro_texto).trim()) {
       fs.writeFileSync(roteiro, String(job.roteiro_texto));
       args.push('--roteiro', roteiro);
     }
-    const p = spawn('python3', args, { cwd: RAIZ, env: { ...process.env, BROLL_URL: `${(process.env.APP_URL || '').replace(/\/+$/, '')}/api/videos/worker/pexels` }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const base = (process.env.APP_URL || '').replace(/\/+$/, '');
+    // BROLL_URL: clipes do Pexels pelo app (a chave fica no servidor). PLANO_URL: plano visual por frase (IA gratuita no app).
+    const env = { ...process.env, BROLL_URL: `${base}/api/videos/worker/pexels`, PLANO_URL: `${base}/api/videos/worker/plano`, REELS_JOB_ID: String(job.id || '') };
+    const p = spawn('python3', args, { cwd: RAIZ, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     const resto = { stderr: '' };
     const timer = setTimeout(() => { p.kill('SIGKILL'); reject(new Error('editar.py passou do tempo máximo')); }, TEMPO_MAX_EDICAO_MS);
@@ -159,9 +164,13 @@ async function processar(api, job) {
     log(`job ${id}: final.mp4 enviado ao Blob`);
     const upPoster = await subir(api, id, path.join(saida, 'poster.jpg'), nomes.poster, 'image/jpeg');
     log(`job ${id}: poster.jpg enviado ao Blob`);
+    // capa do Reels (o Pedro recortado + o gancho): extra, o vídeo segue sem ela se algo falhar
+    let upCapa = null;
+    const capaJpg = path.join(saida, 'capa.jpg');
+    if (fs.existsSync(capaJpg)) { try { upCapa = await subir(api, id, capaJpg, nomes.capa, 'image/jpeg'); log(`job ${id}: capa.jpg enviada ao Blob`); } catch (e) { log(`job ${id}: capa não subiu: ${limparErro(e).split('\n')[0]}`); } }
     logJob('arquivos enviados ao Blob');
 
-    const corpo = montarResultado(resultado, upFinal, upPoster, fs.statSync(finalMp4).size);
+    const corpo = montarResultado(resultado, upFinal, upPoster, fs.statSync(finalMp4).size, upCapa);
     await api.resultado({ id, ...corpo, log: logs, run_url: urlRun() });
     log(`job ${id}: resultado registrado (${((Date.now() - t0) / 1000).toFixed(0)} s no total)`);
     return true;

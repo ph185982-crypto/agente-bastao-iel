@@ -166,3 +166,10 @@ test('atualizar: estouro de tempo devolve o que já leu e marca como parcial', a
   assert.strictEqual(s.parcial, true);
   assert.ok(s.avisos.some((a) => /interrompida/.test(a)));
 });
+
+test('retenção do Reel: tempo médio assistido (ms → s) e % do vídeo quando a duração é conhecida', () => {
+  assert.deepStrictEqual(MI.retencao(12345, 30), { tempo_medio_s: 12.3, duracao_s: 30, assistido_pct: 41 });
+  assert.deepStrictEqual(MI.retencao(null, 30), { tempo_medio_s: null, duracao_s: 30, assistido_pct: null });
+  assert.deepStrictEqual(MI.retencao(8000, undefined), { tempo_medio_s: 8, duracao_s: null, assistido_pct: null });
+  assert.ok(MI.REEL.includes('ig_reels_avg_watch_time'));
+});

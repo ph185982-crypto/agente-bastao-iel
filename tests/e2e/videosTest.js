@@ -128,7 +128,7 @@ async function montarAba(p) {
   await p.click('[data-vd-card="v3"] [data-action="vd-refazer"]');
   await p.waitForSelector('[data-vd-card="v3"] .vd-refazer');
   ok(await p.locator('[data-vd-card="v3"] .vd-estilo').count() === 3, 'seletor com os 3 estilos (hormozi, beast, caixa)');
-  ok(await p.locator('[data-vd-card="v3"] input[data-vd-opt]').count() === 4, '4 opções: pausas, muletas, punch-in, b-roll');
+  ok(await p.locator('[data-vd-card="v3"] input[data-vd-opt]').count() === 6, '6 opções: pausas, muletas, punch-in, b-roll, efeitos sonoros e trilha de fundo');
   await p.click('[data-vd-card="v3"] [data-action="vd-refazer-estilo"][data-estilo="beast"]');
   await p.waitForFunction(() => document.querySelector('[data-vd-card="v3"] [data-estilo="beast"]')?.getAttribute('aria-pressed') === 'true');
   await p.uncheck('[data-vd-card="v3"] input[data-vd-opt="broll"]');

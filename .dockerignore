@@ -1,0 +1,8 @@
+node_modules
+.git
+tests
+tools/reels
+docs
+previas
+dist
+*.md

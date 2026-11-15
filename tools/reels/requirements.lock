@@ -1,7 +1,9 @@
 # Versões EXATAS testadas (python 3.11). Gerado do ambiente em que o editor foi validado; o requirements.txt traz só as dependências diretas.
+ai-edge-litert==2.3.0
 annotated-doc==0.0.5
 anyio==4.16.0
 av==18.1.0
+backports.strenum==1.2.8
 certifi==2026.10.23
 charset-normalizer==3.5.2
 ctranslate2==4.8.5
@@ -17,6 +19,7 @@ huggingface-hub==1.16.1
 idna==3.20
 markdown-it-py==4.2.0
 mdurl==0.1.2
+ml_dtypes==0.6.0
 numpy==2.2.6
 onnxruntime==1.31.1
 opencv-python-headless==4.10.0.84

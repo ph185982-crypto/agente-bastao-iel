@@ -61,11 +61,28 @@ async function graph(metodo, caminho, params = {}, { semProof = false } = {}) {
       method: metodo, url, timeout: 20000,
       ...(metodo === 'GET' ? { params: { ...base, ...params } } : { data: new URLSearchParams({ ...base, ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])) }).toString(), headers: { 'content-type': 'application/x-www-form-urlencoded' } }),
     });
+    lerUso(r.headers);
     return r.data;
   } catch (e) {
+    lerUso(e?.response?.headers);
     throw Object.assign(new Error(interpretarErro(e).amigavel), { meta: interpretarErro(e) });
   }
 }
+
+// Quanto da cota da Meta já foi usado: cada resposta traz os cabeçalhos x-app-usage e x-business-use-case-usage
+// (porcentagens de chamadas, CPU e tempo). Guardamos o maior número, para quem lê muito (Reciclagem) frear sozinho.
+let _uso = { pct: null, regain_min: 0, em: null };
+function lerUso(h) {
+  if (!h) return;
+  const pcts = []; let regain = 0;
+  try { const a = JSON.parse(h['x-app-usage'] || 'null'); if (a) pcts.push(a.call_count || 0, a.total_cputime || 0, a.total_time || 0); } catch { /* cabeçalho ausente */ }
+  try {
+    const b = JSON.parse(h['x-business-use-case-usage'] || 'null');
+    for (const lista of Object.values(b || {})) for (const x of lista || []) { pcts.push(x.call_count || 0, x.total_cputime || 0, x.total_time || 0); regain = Math.max(regain, x.estimated_time_to_regain_access || 0); }
+  } catch { /* idem */ }
+  if (pcts.length) _uso = { pct: Math.max(...pcts), regain_min: regain, em: new Date().toISOString() };
+}
+const uso = () => ({ ..._uso });
 
 // ── URLs de mídia assinadas ─────────────────────────────────────────────────
 // A Meta baixa a mídia por URL pública. Em vez de guardar arquivos num serviço
@@ -91,4 +108,4 @@ function verificarMidia(token) {
   } catch { return null; }
 }
 
-module.exports = { graph, config, faltando, interpretarErro, assinarMidia, verificarMidia, proof, VERSAO, OBRIGATORIAS };
+module.exports = { uso, lerUso, graph, config, faltando, interpretarErro, assinarMidia, verificarMidia, proof, VERSAO, OBRIGATORIAS };

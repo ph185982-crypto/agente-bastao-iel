@@ -27,7 +27,7 @@ async function estado() {
 // Lista ordenada por VL. Filtros: dias (1–30), min_vl, mecanismo, idioma, rede.
 router.get('/', rota(async (req, res) => {
   const q = req.query || {};
-  const r = await Coletar.listar({ dias: q.dias, min_vl: q.min_vl, mecanismo: Contas.MECANISMOS[q.mecanismo] ? q.mecanismo : null, idioma: Contas.IDIOMAS.includes(q.idioma) ? q.idioma : null, rede: ['instagram', 'youtube'].includes(q.rede) ? q.rede : null, limite: q.limite });
+  const r = await Coletar.listar({ dias: q.dias, min_vl: q.min_vl, mecanismo: Contas.MECANISMOS[q.mecanismo] ? q.mecanismo : null, idioma: Contas.IDIOMAS.includes(q.idioma) ? q.idioma : null, rede: ['instagram', 'youtube'].includes(q.rede) ? q.rede : null, limite: q.limite, soImagens: q.so_imagens === '1', pendentes: q.pendentes === '1' });
   res.json({ ...r, estado: await estado() });
 }));
 
@@ -62,8 +62,27 @@ router.post('/:id/reciclar', limita({ max: 6, janelaMs: 60000, nome: 'reciclagem
   if (!Reciclar.FORMATOS.includes(formato)) return res.status(400).json({ error: `Formato inválido. Use ${Reciclar.FORMATOS.join(', ')}.`, code: 'ENTRADA' });
   const deps = depsDeTeste();
   if (formato === 'reel' && !deps.pedirJson && !llmJson.hasLlmKey()) return res.status(503).json({ error: 'Nenhuma IA está configurada no servidor: o roteiro não pode ser escrito.', code: 'SEM_IA' });
-  const r = await Reciclar.reciclar(id, { formato, deps });
+  const r = await Reciclar.reciclar(id, { formato, deps, mesmaEstrutura: req.body?.mesma_estrutura === true });
   res.status(201).json(r);
+}));
+
+// ── Clone autorizado (tradução fiel, mesma estrutura) ───────────────────────────
+const Clonar = require('../lib/reciclagem/clonar');
+router.post('/coletar-uma', limita({ max: 4, janelaMs: 60000, nome: 'reciclagem-leve' }), rota(async (req, res) => { res.json(await Coletar.coletarAlgumas()); }));
+router.post('/:id/descartar', limita({ max: 60, janelaMs: 60000, nome: 'reciclagem-descartar' }), rota(async (req, res) => {
+  const r = await Coletar.descartar(exigeId(req.params.id)); if (!r) throw Object.assign(new Error('Item não encontrado.'), { status: 404, code: 'NAO_ENCONTRADO' }); res.json(r);
+}));
+router.post('/:id/autorizacao', limita({ max: 20, janelaMs: 60000, nome: 'reciclagem-autorizacao' }), rota(async (req, res) => {
+  res.status(201).json(await Clonar.autorizar(exigeId(req.params.id), req.body || {}));
+}));
+router.post('/:id/clonar', limita({ max: 6, janelaMs: 60000, nome: 'reciclagem-clonar' }), rota(async (req, res) => {
+  const b = req.body || {};
+  const c = await Clonar.iniciar(exigeId(req.params.id), { modo: b.modo === 'nosso' ? 'nosso' : 'original', fundo: b.fundo === 'preto' ? 'preto' : 'branco' });
+  res.status(201).json(await Clonar.passo(c.id, { orcamentoMs: 40000 }));
+}));
+router.post('/clone/:cid/passo', limita({ max: 40, janelaMs: 60000, nome: 'reciclagem-clone-passo' }), rota(async (req, res) => {
+  const cid = String(req.params.cid); if (!/^c_[a-f0-9]{6,16}$/.test(cid)) throw Object.assign(new Error('Identificador inválido.'), { status: 400, code: 'ENTRADA' });
+  res.json(await Clonar.passo(cid, { orcamentoMs: 45000 }));
 }));
 
 module.exports = router;

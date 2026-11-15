@@ -48,7 +48,7 @@
     const titulo = esc(p.legenda || 'Sem legenda');
     return `<li class="ig-post"><div class="es-between"><span class="ig-tipo">${esc(p.tipo)}</span>${p.da_ferramenta ? chip('neutro', 'pela ferramenta') : ''}</div>
       <div class="ig-leg">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${titulo}</a>` : titulo}</div>
-      <div class="ig-nums"><span><b>${num(p.alcance)}</b> alcance</span><span><b>${num(p.compartilhamentos_por_mil, 1)}</b> envios/mil</span><span><b>${num(p.salvamentos_por_mil, 1)}</b> salv./mil</span><span><b>${num(p.seguidores_ganhos)}</b> seguidores</span></div></li>`;
+      <div class="ig-nums"><span><b>${num(p.alcance)}</b> alcance</span><span><b>${num(p.compartilhamentos_por_mil, 1)}</b> envios/mil</span><span><b>${num(p.salvamentos_por_mil, 1)}</b> salv./mil</span><span><b>${num(p.seguidores_ganhos)}</b> seguidores</span>${p.tempo_medio_s != null ? `<span title="Tempo médio que cada pessoa assistiu"><b>${num(p.tempo_medio_s, 1)} s</b> assistidos${p.assistido_pct != null ? ` (${p.assistido_pct}% do vídeo)` : ''}</span>` : ''}</div></li>`;
   }
 
   // Placar da ferramenta: resultado real por jeito de fazer (backend/lib/placar.js). Grupo com menos de 3 posts é só indício.

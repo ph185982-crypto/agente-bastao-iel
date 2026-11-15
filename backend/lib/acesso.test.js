@@ -85,7 +85,7 @@ test('computador local (sem VERCEL) e sem código: aberto para desenvolvimento',
 test('produção com acesso público explícito abre sem código, mesmo com código anterior configurado', async () => {
   await sobe({ VERCEL: '1', APP_ACCESS_MODE: 'public', APP_ACCESS_CODE: 'codigo-anterior-de-teste' });
   const st = await chama('GET', '/api/auth/status');
-  assert.deepStrictEqual(st.json, { protected: false, configured: true, estado: 'aberto_publico', authenticated: true });
+  assert.deepStrictEqual(st.json, { protected: false, configured: true, estado: 'aberto_publico', sem_codigo_total: false, authenticated: true });
   assert.strictEqual(require('./access').protegido(), false);
   assert.strictEqual((await chama('GET', '/api/sync/status')).status, 200);
   assert.strictEqual((await chama('POST', '/api/auth/login')).json.protected, false);

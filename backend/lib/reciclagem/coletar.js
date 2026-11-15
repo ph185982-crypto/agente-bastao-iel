@@ -15,8 +15,8 @@
 //   para Reels, visualizações ÷ seguidores com a mesma lógica (curtidas podem estar ocultas).
 //   VL ≥ 3 = viral para aquela conta; VL ≥ 5 = outlier forte.
 //
-// Princípio do projeto: nunca copiamos nem traduzimos texto de terceiros. A legenda entra na IA só como DADO, para
-// classificar tema, mecanismo e tese neutra; depois de classificado o item, a legenda é apagada do armazém.
+// A legenda original fica guardada para o Pedro ver o post no app e para a cópia traduzida (decisão dele, 15/11/2026).
+// Na classificação ela entra na IA só como DADO, para tirar tema, mecanismo e tese.
 const crypto = require('crypto');
 const { armazem } = require('../armazem');
 const { ACCOUNT } = require('../account');
@@ -27,14 +27,14 @@ const TIPO = 'reciclagem';                 // itens, um documento por post (id d
 const TIPO_ESTADO = 'reciclagem_estado';   // documento único com a última coleta, tendências e controle do push
 const MATURIDADE_H = 72;
 const RETENCAO_DIAS = 30;
-const MAX_CONTAS = 40;
-const LIMITE_MIDIAS = 40;
+const MAX_CONTAS = 70;                     // 1 chamada por conta; 3 coletas por dia, em rodízio
+const LIMITE_MIDIAS = 50;
 const LOTE_IA = 15;
 const MAX_CLASSIFICAR = 45;                // 3 lotes por coleta
 const VL_CANDIDATO = 1.5;                  // abaixo disso nem entra no armazém
 const VL_CLASSIFICAR = 2;
 const VL_ALTA = 3;
-const MAX_GUARDAR = 300;
+const MAX_GUARDAR = 600;
 const COTA_YOUTUBE = 300;
 const TRENDS_URL = 'https://trends.google.com/trending/rss?geo=BR';
 
@@ -90,9 +90,9 @@ function pontuar(posts, seguidores, { agora = Date.now() } = {}) {
 const tipoIg = (m) => (m.media_product_type === 'REELS' || m.media_type === 'VIDEO' ? 'reel' : m.media_type === 'CAROUSEL_ALBUM' ? 'carrossel' : 'imagem');
 function normalizarMidiaIg(m) {
   if (!m?.permalink || !m?.timestamp) return null;
-  return { permalink: String(m.permalink), publicado_em: String(m.timestamp), tipo: tipoIg(m), curtidas: num(m.like_count), comentarios: num(m.comments_count), visualizacoes: num(m.view_count), legenda: String(m.caption || '').replace(/\s+/g, ' ').trim().slice(0, 500) };
+  return { permalink: String(m.permalink), publicado_em: String(m.timestamp), tipo: tipoIg(m), curtidas: num(m.like_count), comentarios: num(m.comments_count), visualizacoes: num(m.view_count), n_slides: Array.isArray(m.children?.data) ? m.children.data.length || null : null, midias: (Array.isArray(m.children?.data) && m.children.data.length ? m.children.data : [m]).filter((x) => x.media_type === 'IMAGE' && x.media_url).map((x) => String(x.media_url)).slice(0, 20), legenda: String(m.caption || '').trim().slice(0, 2200) };
 }
-async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxContas = MAX_CONTAS, orcamentoMs = 40000, concorrencia = 4 } = {}) {
+async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxContas = MAX_CONTAS, orcamentoMs = 40000, concorrencia = 7 } = {}) {
   const lista = (contas || []).slice(0, maxContas); const itens = []; const resumo = []; const inicio = Date.now(); let parcial = false;
   const fila = [...lista];
   const trabalhador = async () => {
@@ -100,8 +100,14 @@ async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxCo
       if (Date.now() - inicio > orcamentoMs) { parcial = true; return; }
       const c = fila.shift(); const h = c.handle;
       try {
-        const campos = `business_discovery.username(${h}){username,followers_count,media.limit(${LIMITE_MIDIAS}){like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type}}`;
-        const d = await graph('GET', igId, { fields: campos });
+        const campos = (n) => `business_discovery.username(${h}){username,followers_count,media.limit(${n}){like_count,comments_count,view_count,caption,permalink,media_type,timestamp,media_product_type,media_url,thumbnail_url,children.limit(20){media_type,media_url}}}`;
+        let d;
+        try { d = await graph('GET', igId, { fields: campos(LIMITE_MIDIAS) }); }
+        catch (e1) {
+          // Conta grande: a Meta pede "reduce the amount of data". Repete com menos mídias antes de desistir.
+          if (!/reduce the amount|amount of data|too large|1\b.*unknown error|An unknown error/i.test(`${e1?.meta?.mensagem_original || ''} ${e1?.message || ''}`) || e1?.meta?.tipo === 'limite' || e1?.meta?.tipo === 'token') throw e1;
+          d = await graph('GET', igId, { fields: campos(15) });
+        }
         const bd = d?.business_discovery || {}; const seguidores = num(bd.followers_count);
         const posts = (bd.media?.data || []).map(normalizarMidiaIg).filter(Boolean);
         const pontuados = pontuar(posts, seguidores, { agora });
@@ -109,7 +115,7 @@ async function coletarInstagram({ contas, graph, igId, agora = Date.now(), maxCo
         resumo.push({ handle: h, ok: true, seguidores, lidos: posts.length, maduros: pontuados.length });
       } catch (e) {
         // Conta que a Meta recusa (não é profissional, handle errado, permissão) só fica registrada: as outras seguem.
-        resumo.push({ handle: h, ok: false, erro: String(e?.meta?.amigavel || e?.message || 'erro').slice(0, 160), tipo: e?.meta?.tipo || null });
+        resumo.push({ handle: h, ok: false, erro: String(e?.meta?.amigavel || e?.message || 'erro').slice(0, 160), original: String(e?.meta?.mensagem_original || '').slice(0, 200) || null, tipo: e?.meta?.tipo || null });
         if (e?.meta?.tipo === 'token' || e?.meta?.tipo === 'limite') { parcial = true; fila.length = 0; return; }
       }
     }
@@ -239,7 +245,7 @@ async function classificar(itens, { pedirJson, lote = LOTE_IA } = {}) {
         const avisos = [];
         if (tese && copiaLegenda(tese, it.legenda)) { avisos.push('tese descartada: copiava a legenda original'); tese = null; }
         if (tema && (palavras(tema).length < 2 || palavras(tema).length > 8)) avisos.push('tema fora do tamanho pedido');
-        saida.push({ ...it, tema: tema || null, mecanismo: normalizarMecanismo(r.mecanismo), tese, ponte_pedro: r.ponte_pedro ? String(r.ponte_pedro).replace(/\s+/g, ' ').trim().slice(0, 260) : null, classificado_em: iso(Date.now()), avisos_ia: avisos, legenda: null });
+        saida.push({ ...it, tema: tema || null, mecanismo: normalizarMecanismo(r.mecanismo), tese, ponte_pedro: r.ponte_pedro ? String(r.ponte_pedro).replace(/\s+/g, ' ').trim().slice(0, 260) : null, classificado_em: iso(Date.now()), avisos_ia: avisos });
       });
     } catch (e) {
       erros.push(String(e.message).slice(0, 160));
@@ -270,8 +276,10 @@ async function guardar(itens, { agora = Date.now(), retencaoDias = RETENCAO_DIAS
     const doc = {
       ...(ant || {}), id, rede: i.rede, conta: i.conta, permalink: i.permalink, publicado_em: i.publicado_em, tipo: i.tipo,
       curtidas: i.curtidas, comentarios: i.comentarios, visualizacoes: i.visualizacoes, seguidores: i.seguidores, er: i.er, visualizacoes_por_seguidor: i.visualizacoes_por_seguidor,
+      n_slides: i.n_slides ?? ant?.n_slides ?? null,
+      midias: i.midias?.length ? i.midias : (ant?.midias || []), midias_em: i.midias?.length ? iso(agora) : (ant?.midias_em || null),
       vl_er: i.vl_er, vl_views: i.vl_views, vl: i.vl, mediana_er: i.mediana_er, n_base: i.n_base,
-      legenda: ant?.classificado_em ? null : (i.legenda || ant?.legenda || null), // texto de terceiro só até classificar
+      legenda: i.legenda || ant?.legenda || null, // legenda original: aparece no card para o Pedro ver o post antes de copiar
       tema: ant?.tema ?? null, mecanismo: ant?.mecanismo ?? null, tese: ant?.tese ?? null, ponte_pedro: ant?.ponte_pedro ?? null, classificado_em: ant?.classificado_em ?? null,
       coletado_em: iso(agora), primeira_coleta_em: ant?.primeira_coleta_em || iso(agora), reciclado: ant?.reciclado || [],
     };
@@ -282,7 +290,7 @@ async function guardar(itens, { agora = Date.now(), retencaoDias = RETENCAO_DIAS
   const contasLidas = new Set(itens.map((i) => i.conta?.handle || i.conta?.canal).filter(Boolean));
   for (const d of existentes.values()) {
     const vencido = Date.parse(d.publicado_em || d.coletado_em || 0) < limite;
-    const foraDoRecorte = !vistos.has(d.id) && contasLidas.has(d.conta?.handle || d.conta?.canal) && !(d.reciclado || []).length;
+    const foraDoRecorte = !vistos.has(d.id) && contasLidas.has(d.conta?.handle || d.conta?.canal) && !(d.reciclado || []).length && !d.descartado_em; // descartado fica guardado para não voltar
     if (vencido || foraDoRecorte) { await db().radar.apagar(conta(), TIPO, d.id); removidos += 1; }
   }
   return { novos, atualizados, removidos, guardados: candidatos.length };
@@ -292,6 +300,70 @@ async function marcarReciclado(id, { formato, conteudo_id, agora = Date.now() })
   const doc = await obter(id); if (!doc) return null;
   doc.reciclado = [...(doc.reciclado || []), { formato, conteudo_id, em: iso(agora) }].slice(-10);
   await salvarItem(doc); return doc;
+}
+
+// Pedro descartou: sai da lista e não volta nas próximas coletas (o registro fica até vencer os 30 dias).
+async function descartar(id, { agora = Date.now() } = {}) {
+  const doc = await obter(id); if (!doc) return null;
+  doc.descartado_em = iso(agora); await salvarItem(doc); return { id, descartado: true };
+}
+
+// ── Hashtags (busca oficial da Meta: top posts da hashtag, inclusive de contas que não vigiamos) ─────────────
+// Limite da Meta: 30 hashtags diferentes por semana por conta. A lista fica em 20.
+const HASHTAGS = ['empreendedorismo', 'empreendedor', 'negocios', 'mei', 'pequenasempresas', 'marketingdigital', 'vendas', 'educacaofinanceira', 'financas', 'gestao',
+  'lideranca', 'ecommerce', 'entrepreneur', 'entrepreneurship', 'smallbusiness', 'business', 'marketing', 'sales', 'personalfinance', 'leadership'];
+const IDIOMA_TAG = (t) => (/^(entrepreneur|entrepreneurship|smallbusiness|business|marketing|sales|personalfinance|leadership)$/.test(t) ? 'en' : 'pt');
+async function lerHashtag(tag, { graph, igId, estado, agora = Date.now() }) {
+  const ids = { ...(estado.hashtag_ids || {}) };
+  if (!ids[tag]) { const r = await graph('GET', 'ig_hashtag_search', { user_id: igId, q: tag }); ids[tag] = r?.data?.[0]?.id || null; }
+  if (!ids[tag]) return { itens: [], ids };
+  const d = await graph('GET', `${ids[tag]}/top_media`, { user_id: igId, limit: 50, fields: 'id,caption,media_type,comments_count,like_count,permalink,timestamp,media_url,children{media_type,media_url}' });
+  const posts = (d?.data || []).map(normalizarMidiaIg).filter((p) => p && ['carrossel', 'imagem'].includes(p.tipo)); // top da hashtag já é o que está bombando: sem esperar 72 h
+  // Sem dono nem seguidores no retorno: o índice é a curtida do post ÷ a mediana das curtidas do top da hashtag (mínimo 2: já é top).
+  const curt = posts.map((p) => p.curtidas || 0).sort((a, b) => a - b); const med = curt[Math.floor(curt.length / 2)] || 1;
+  const itens = posts.map((p) => ({ ...p, rede: 'instagram', vl: Math.max(2, Math.round(((p.curtidas || 0) / med) * 10) / 10), vl_er: null, vl_views: null, er: null, seguidores: null,
+    conta: { handle: `#${tag}`, nome: `#${tag} (top da hashtag)`, pais: '??', idioma: IDIOMA_TAG(tag) } }));
+  return { itens, ids };
+}
+
+// Leitura leve (a aba aberta chama a cada 30 s): contas em rodízio + uma hashtag a cada 4 rodadas, sem IA.
+// Quantas contas por rodada depende da cota que a própria Meta informa: até 5 com folga, 1 quando passa de 60%, pausa acima de 85%.
+async function coletarAlgumas({ deps = {}, n = null, agora = Date.now() } = {}) {
+  db();
+  const meta = deps.meta || require('../meta');
+  if (!deps.graph && meta.faltando().filter((k) => k !== 'PUBLISH_SECRET').length) return { lidas: 0, novos: 0, motivo: 'Instagram não configurado.' };
+  const estado = await lerEstado(); const lidasEm = estado.lidas_em || {};
+  if (estado.leve_ate && Date.parse(estado.leve_ate) > agora) return { lidas: 0, novos: 0, ocupado: true };
+  await salvarEstado({ leve_ate: new Date(agora + 25000).toISOString() });
+  try {
+    if (estado.leve_pausa_ate && Date.parse(estado.leve_pausa_ate) > agora) { await salvarEstado({ leve_ate: null }); return { lidas: 0, novos: 0, pausado_ate: estado.leve_pausa_ate }; }
+    const graph = deps.graph || meta.graph; const igId = deps.igId || meta.config().igId;
+    const rodada = (estado.leve_rodadas || 0) + 1;
+    const contasAtuais = deps.contas || (await Contas.carregar());
+    const qtd = Math.max(1, Math.min(5, n || estado.leve_n || 2));
+    const fila = [...(contasAtuais.instagram || [])].sort((a, b) => Date.parse(lidasEm[a.handle] || 0) - Date.parse(lidasEm[b.handle] || 0)).slice(0, qtd);
+    const r = await coletarInstagram({ contas: fila, graph, igId, agora, maxContas: fila.length, orcamentoMs: 20000, concorrencia: fila.length });
+    // A cada 4 rodadas, uma hashtag (a lida há mais tempo). Sem permissão na Meta: tenta de novo só no dia seguinte.
+    let tag = null; let erroTag = null; let ids = estado.hashtag_ids || {}; const tagsEm = { ...(estado.hashtags_em || {}) };
+    const tagLiberada = !estado.hashtag_bloqueio_ate || Date.parse(estado.hashtag_bloqueio_ate) < agora;
+    if (rodada % 4 === 0 && tagLiberada && !deps.semHashtag) {
+      tag = [...HASHTAGS].sort((a, b) => Date.parse(tagsEm[a] || 0) - Date.parse(tagsEm[b] || 0))[0];
+      try { const h = await lerHashtag(tag, { graph, igId, estado, agora }); ids = h.ids; r.itens.push(...h.itens); tagsEm[tag] = iso(agora); }
+      catch (e) { erroTag = String(e?.meta?.mensagem_original || e.message).slice(0, 200); }
+    }
+    const g = r.itens.length ? await guardar(r.itens, { agora }) : { novos: 0 };
+    const atual = await lerEstado(); const lidas = { ...(atual.lidas_em || {}) };
+    for (const c of r.contas) lidas[c.handle] = iso(agora); // recusada também anda na fila (senão trava o rodízio nela)
+    // Freio pela cota que a Meta informa nos cabeçalhos.
+    const u = (deps.uso || meta.uso || (() => ({})))(); const pct = u.pct;
+    const limite = r.contas.some((c) => c.tipo === 'limite');
+    const proxN = limite || (pct != null && pct >= 60) ? 1 : pct != null && pct < 30 ? Math.min(5, qtd + 1) : qtd;
+    const pausa = limite || (pct != null && pct >= 85) ? new Date(agora + Math.max(10, u.regain_min || 0) * 60000).toISOString() : null;
+    await salvarEstado({ lidas_em: lidas, leve_ate: null, leve_n: proxN, leve_rodadas: rodada, leve_pausa_ate: pausa, hashtag_ids: ids, hashtags_em: tagsEm,
+      ...(erroTag ? { hashtag_bloqueio_ate: new Date(agora + 86400000).toISOString(), hashtag_erro: erroTag } : tag ? { hashtag_erro: null } : {}),
+      ultima_leve: { em: iso(agora), contas: r.contas.map((c) => ({ handle: c.handle, ok: c.ok })), hashtag: tag, erro_hashtag: erroTag, uso_meta_pct: pct, proximas: proxN, novos: g.novos } });
+    return { lidas: r.contas.filter((c) => c.ok).length, contas: r.contas.map((c) => c.handle), hashtag: tag, erro_hashtag: erroTag, novos: g.novos || 0, uso_meta_pct: pct, proximas: proxN, pausa_ate: pausa, limite };
+  } catch (e) { await salvarEstado({ leve_ate: null }).catch(() => {}); throw e; }
 }
 
 // ── Coleta completa (cron diário ou botão "Atualizar agora") ─────────────────────
@@ -337,11 +409,11 @@ async function coletar({ deps = {}, origem = 'manual', agora = Date.now() } = {}
 }
 
 // ── Leitura para a API ───────────────────────────────────────────────────────────
-const visao = (d) => { const { legenda, ...resto } = d; void legenda; return { ...resto, vl: d.vl ?? null, em_alta: (d.vl ?? 0) >= VL_ALTA }; };
-async function listar({ dias = 7, min_vl = 0, mecanismo = null, idioma = null, rede = null, limite = 100, agora = Date.now() } = {}) {
+const visao = (d) => ({ ...d, vl: d.vl ?? null, em_alta: (d.vl ?? 0) >= VL_ALTA });
+async function listar({ dias = 7, min_vl = 0, mecanismo = null, idioma = null, rede = null, limite = 100, soImagens = false, pendentes = false, agora = Date.now() } = {}) {
   if (!disponivel()) return { itens: [], total: 0, sem_banco: true };
   const d = Math.min(30, Math.max(1, Number(dias) || 7)); const minVl = Math.max(0, Number(min_vl) || 0); const limiteMs = agora - d * 86400000;
-  const todos = (await listarDocs()).filter((x) => Date.parse(x.publicado_em || x.coletado_em) >= limiteMs && (x.vl ?? 0) >= minVl && (!mecanismo || x.mecanismo === mecanismo) && (!idioma || x.conta?.idioma === idioma) && (!rede || x.rede === rede));
+  const todos = (await listarDocs()).filter((x) => Date.parse(x.publicado_em || x.coletado_em) >= limiteMs && (x.vl ?? 0) >= minVl && (!mecanismo || x.mecanismo === mecanismo) && (!idioma || x.conta?.idioma === idioma) && (!rede || x.rede === rede) && (!soImagens || (x.rede === 'instagram' && ['carrossel', 'imagem'].includes(x.tipo))) && (!pendentes || (!x.descartado_em && !(x.reciclado || []).length)));
   todos.sort((a, b) => (b.vl ?? 0) - (a.vl ?? 0) || Date.parse(b.publicado_em) - Date.parse(a.publicado_em));
   return { itens: todos.slice(0, Math.min(300, Math.max(1, Number(limite) || 100))).map(visao), total: todos.length };
 }
@@ -352,6 +424,7 @@ async function tendenciasGuardadas() {
 }
 
 module.exports = {
+  descartar, coletarAlgumas, lerHashtag, HASHTAGS,
   TIPO, TIPO_ESTADO, MATURIDADE_H, RETENCAO_DIAS, MAX_CONTAS, LOTE_IA, VL_ALTA, VL_CANDIDATO, VL_CLASSIFICAR, COTA_YOUTUBE, TRENDS_URL,
   mediana, er, maduro, pontuar, idDe, diaBRT,
   coletarInstagram, coletarYoutube, parseTrendsRss, tendencias, cruzar, classificar, normalizarMecanismo, copiaLegenda,

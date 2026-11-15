@@ -8,6 +8,7 @@ Convenções:
 - "trechos" é a lista ordenada e sem sobreposição dos intervalos do original que FICAM no vídeo final.
 - Depois de `remapear_tempos`, cada palavra ganha `n0`/`n1`: o tempo dela no vídeo final.
 """
+import difflib
 import json
 import math
 import re
@@ -19,10 +20,10 @@ import unicodedata
 MULETAS = {'é', 'éé', 'ééé', 'hã', 'ã', 'hum', 'ahn', 'né', 'hm', 'hmm', 'ahm', 'eh', 'ééh'}
 PAUSA_MULETA = 0.15       # muleta só sai se estiver isolada por pausa ≥ 150 ms dos dois lados
 MARGEM_SILENCIO = 0.15    # sobra de silêncio que fica em cada lado da fala
-PROTEGER_INICIO = 1.0     # nunca cortar o 1º segundo
+PROTEGER_INICIO = 1.0     # sem transcrição (corte por silêncio): nunca cortar o 1º segundo
 RETOMADA_MIN_PALAVRAS = 3
 RETOMADA_JANELA = 6.0
-ZOOMS_PUNCH_IN = (1.0, 1.12)
+ZOOMS_PUNCH_IN = (1.0, 1.08)   # punch-in discreto: 12% chamava atenção demais
 LARGURA, ALTURA = 1080, 1920
 MARGEM_V = 560            # legenda acima da interface do Reels
 
@@ -254,11 +255,48 @@ def detectar_retomadas(palavras, min_palavras=RETOMADA_MIN_PALAVRAS, janela=RETO
     return cortes, sorted(indices)
 
 
+# Cortes pelas PALAVRAS (não pelo volume): gravação baixa (rua, celular longe) tem fala abaixo de -35 dB e o corte por
+# silêncio apagava frases inteiras. Aqui só sai o vão ENTRE palavras, e fica um respiro para soar humano.
+FOLGA_INICIO = 0.12     # antes da 1ª palavra do trecho
+FOLGA_PRIMEIRA = 0.25   # antes da 1ª palavra do VÍDEO: o vídeo começa já na fala (sem segundo mudo), sem comer a 1ª sílaba
+FOLGA_FIM = 0.20        # depois da última (o Whisper costuma cortar o fim da palavra)
+PAUSA_MAX = 0.55        # vão maior que isso é encurtado
+RESPIRO = 0.30          # quanto do vão fica no meio da frase
+RESPIRO_FRASE = 0.45    # quanto fica no fim de frase (ponto final): pausa natural
+
+
+def trechos_por_palavras(palavras, duracao, folga_ini=FOLGA_INICIO, folga_fim=FOLGA_FIM, pausa_max=PAUSA_MAX,
+                         respiro=RESPIRO, respiro_frase=RESPIRO_FRASE, folga_primeira=FOLGA_PRIMEIRA):
+    """Palavras com t0/t1 → trechos mantidos. Nunca corta dentro de palavra; vão longo vira respiro curto."""
+    duracao = float(duracao)
+    pal = sorted((p for p in palavras if p.get('t1', 0) > p.get('t0', 0)), key=lambda p: p['t0'])
+    if not pal:
+        return [(0.0, duracao)]
+    trechos = []
+    ini = max(0.0, pal[0]['t0'] - max(folga_ini, folga_primeira))
+    for a, b in zip(pal, pal[1:]):
+        vao = b['t0'] - a['t1']
+        if vao <= pausa_max:
+            continue
+        fim_frase = a['w'].rstrip().endswith(('.', '!', '?', ':'))
+        guarda = respiro_frase if fim_frase else respiro
+        # o respiro fica dividido: um pouco depois da palavra, um pouco antes da próxima
+        fim = min(a['t1'] + max(folga_fim, guarda * 0.6), b['t0'])
+        prox = max(b['t0'] - max(folga_ini, guarda * 0.4), fim)
+        trechos.append((ini, fim))
+        ini = prox
+    trechos.append((ini, min(duracao, pal[-1]['t1'] + 0.35)))
+    return [(round(a, 3), round(b, 3)) for a, b in trechos if b - a > 0.05]
+
+
 def montar_trechos(duracao, silencios=(), palavras=(), remover_pausas=True, remover_muletas=True,
                    remover_retomadas=True, margem=MARGEM_SILENCIO):
-    """Junta tudo: silêncios ∪ muletas ∪ repetições ∪ retomadas → trechos mantidos. Devolve (trechos, detalhes)."""
+    """Junta tudo: pausas (pelas palavras; silêncio só sem transcrição) ∪ muletas ∪ repetições ∪ retomadas → trechos."""
     duracao = float(duracao)
-    mantidos = trechos_por_silencio(duracao, silencios, margem) if remover_pausas else [(0.0, duracao)]
+    if remover_pausas and palavras:
+        mantidos = trechos_por_palavras(palavras, duracao)
+    else:
+        mantidos = trechos_por_silencio(duracao, silencios, margem) if remover_pausas else [(0.0, duracao)]
     detalhes = {'silencios': len([s for s in silencios]) if remover_pausas else 0, 'muletas': 0, 'repeticoes': 0, 'retomadas': 0}
     cortes = []
     if remover_muletas and palavras:
@@ -274,7 +312,8 @@ def montar_trechos(duracao, silencios=(), palavras=(), remover_pausas=True, remo
         cortes += rt
     if cortes:
         mantidos = subtrair_intervalos(mantidos, cortes)
-    mantidos = proteger_inicio(mantidos, duracao)
+    if not (remover_pausas and palavras):   # com as palavras, o vídeo começa na 1ª fala (o segundo mudo do início derrubava a retenção)
+        mantidos = proteger_inicio(mantidos, duracao)
     mantidos = limpar_trechos(mantidos)
     if not mantidos:
         mantidos = [(0.0, duracao)]
@@ -474,9 +513,100 @@ def geometria_crop(largura, altura, zoom=1.0, cx=0.5, cy=0.5, alvo_l=LARGURA, al
     return w, h, x, y
 
 
-def filtro_rotacao(rotacao):
+# ----------------------------------------------------------------------------------------------------------------------
+# Rastreio do rosto quadro a quadro: o recorte acompanha o rosto dentro de cada trecho (não fica parado no centro médio)
+# ----------------------------------------------------------------------------------------------------------------------
+def _interp(xs, ys, x):
+    """Interpolação linear com as pontas seguras (igual a numpy.interp). `xs` crescente."""
+    if x <= xs[0]:
+        return ys[0]
+    if x >= xs[-1]:
+        return ys[-1]
+    lo, hi = 0, len(xs) - 1
+    while hi - lo > 1:
+        meio = (lo + hi) // 2
+        if xs[meio] <= x:
+            lo = meio
+        else:
+            hi = meio
+    if xs[hi] == xs[lo]:
+        return ys[lo]
+    return ys[lo] + (ys[hi] - ys[lo]) * (x - xs[lo]) / (xs[hi] - xs[lo])
+
+
+def trilha_rosto(cru, sigma_s=0.5, mediana=5):
+    """`cru` = [(t, cx|None, cy|None, ...)] no tempo ORIGINAL, cx/cy normalizados 0..1 (None = rosto não achado).
+    Devolve {'t', 'cx', 'cy'}: buracos preenchidos por interpolação (pontas seguras), picos de detecção falsa tirados
+    (mediana móvel) e movimento suave SEM atraso (gaussiana de fase zero, σ = sigma_s s), como um operador de câmera
+    calmo. None se nenhuma amostra tem rosto."""
+    ts = [float(c[0]) for c in cru]
+    if not ts:
+        return None
+
+    def serie(k):
+        pts = [(float(c[0]), float(c[k])) for c in cru if c[k] is not None]
+        if not pts:
+            return None
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        v = [_interp(xs, ys, t) for t in ts]
+        h = mediana // 2
+        if h and len(v) > 2:
+            pad = [v[0]] * h + v + [v[-1]] * h
+            v = [sorted(pad[i:i + 2 * h + 1])[h] for i in range(len(v))]
+        dt = (ts[-1] - ts[0]) / (len(ts) - 1) if len(ts) > 1 else 0
+        if dt <= 0:
+            return [round(x, 5) for x in v]
+        s = max(0.5, sigma_s / dt)
+        r = int(3 * s)
+        nucleo = [math.exp(-0.5 * (j / s) ** 2) for j in range(-r, r + 1)]
+        soma = sum(nucleo)
+        pad = [v[0]] * r + v + [v[-1]] * r
+        return [round(sum(nucleo[j] * pad[i + j] for j in range(2 * r + 1)) / soma, 5) for i in range(len(v))]
+
+    cx, cy = serie(1), serie(2)
+    if cx is None or cy is None:
+        return None
+    return {'t': ts, 'cx': cx, 'cy': cy}
+
+
+def posicao_na_trilha(trilha, t):
+    """(cx, cy) do rosto no instante t (tempo original), interpolado na trilha."""
+    return _interp(trilha['t'], trilha['cx'], t), _interp(trilha['t'], trilha['cy'], t)
+
+
+def expr_linear(pontos, casas=1):
+    """[(t, v)] com t crescente → expressão do ffmpeg na variável t, linear por partes e segura antes do 1º e depois do
+    último ponto: v0 + Σ Δv·clip((t − tᵢ)/(tᵢ₊₁ − tᵢ), 0, 1). Vai entre aspas simples no filtro (tem vírgulas)."""
+    vals = [(float(t), round(float(v), casas)) for t, v in pontos]
+    out = [f"{vals[0][1]:.{casas}f}"]
+    for (ta, va), (tb, vb) in zip(vals, vals[1:]):
+        dv = round(vb - va, casas)
+        if abs(dv) < 0.5 * 10 ** -casas or tb - ta <= 1e-6:
+            continue
+        out.append(f"{'+' if dv > 0 else '-'}{abs(dv):.{casas}f}*clip((t-{ta:.3f})/{tb - ta:.3f},0,1)")
+    return ''.join(out)
+
+
+def chaves_crop(trilha, a, b, larg, alt, corte_l, corte_a, alvo_x, alvo_y, topo=0, passo=0.25):
+    """Recorte que segue o rosto no trecho [a, b] da fonte (tempo original). A fonte já escalada mede larg×alt e ganha
+    `topo` linhas de preenchimento em cima (a cabeça pode passar da borda de cima); o recorte mede corte_l×corte_a e
+    põe o rosto em (alvo_x, alvo_y) dele, sempre dentro dos limites. Sem trilha: rosto suposto em (0,5; 0,45).
+    Devolve (expr_x, expr_y) no tempo LOCAL do segmento (0 = início dele)."""
+    n = max(1, int(math.ceil((b - a) / passo - 1e-9)))
+    px, py = [], []
+    for k in range(n + 1):
+        t = a + (b - a) * k / n
+        cx, cy = posicao_na_trilha(trilha, t) if trilha else (0.5, 0.45)
+        x = min(max(cx * larg - alvo_x, 0), max(0, larg - corte_l))
+        y = min(max(cy * alt + topo - alvo_y, 0), max(0, alt + topo - corte_a))
+        px.append((t - a, x))
+        py.append((t - a, y))
+    return expr_linear(px), expr_linear(py)
+
+
+def filtro_rotacao_legado(rotacao):
     """Rotação do ffprobe (side_data 'rotation', convenção: -90 = gravar deitado precisa girar horário) → filtro."""
-    r = int(round(float(rotacao or 0))) % 360
+    r = int(round(float(rotacao or 0))) % 360  # não usar: o sinal muda entre versões do ffmpeg (5.0 inverteu)
     if r == 270:      # -90
         return 'transpose=1'
     if r == 90:
@@ -560,7 +690,7 @@ def cabecalho_ass(estilo):
     )
 
 
-def eventos_ass(blocos, estilo, sobra=0.35):
+def eventos_ass(blocos, estilo, sobra=0.35, posicao=None):
     """Um Dialogue por palavra ativa: o bloco inteiro aparece e a palavra da vez muda de cor/escala."""
     p = PRESETS[estilo]
     linhas = []
@@ -571,7 +701,10 @@ def eventos_ass(blocos, estilo, sobra=0.35):
             fim_bloco = min(fim_bloco, prox_inicio)
         tam = tamanho_para_bloco(bloco, p)
         tags_bloco = f"\\fs{tam}" if tam != p['tamanho'] else ''     # só quando precisou encolher a fonte
-        prefixo = f"{{{tags_bloco}}}" if tags_bloco else ''
+        pos = posicao(bloco[0]['n0']) if posicao else ''               # montagem dinâmica: legenda muda de lugar com o layout
+        # entrada com "pop": o bloco nasce um pouco menor e cresce em 120 ms
+        pop = '\\fscx86\\fscy86\\t(0,120,\\fscx100\\fscy100)'
+        prefixo = f"{{{pos}{tags_bloco}}}" if (tags_bloco or pos) else ''
         textos = [escapar_ass(x['w'].strip().upper() if p['maiusculas'] else x['w'].strip()) for x in bloco]
         for i, w in enumerate(bloco):
             ini = w['n0']
@@ -584,17 +717,18 @@ def eventos_ass(blocos, estilo, sobra=0.35):
                     partes.append(f"{{\\c{p['cor_ativa']}\\fscx{esc}\\fscy{esc}}}{t}{{\\r{tags_bloco}}}")
                 else:
                     partes.append(t)
-            linhas.append(f"Dialogue: 0,{ass_tempo(ini)},{ass_tempo(fim)},Legenda,,0,0,0,,{prefixo}{' '.join(partes)}")
+            entrada = f"{{{pop}}}" if i == 0 else ''
+            linhas.append(f"Dialogue: 0,{ass_tempo(ini)},{ass_tempo(fim)},Legenda,,0,0,0,,{prefixo}{entrada}{' '.join(partes)}")
     return linhas
 
 
-def gerar_ass(palavras_remapeadas, estilo='hormozi'):
-    """Palavras (n0/n1) → conteúdo completo do arquivo .ass no preset pedido."""
+def gerar_ass(palavras_remapeadas, estilo='hormozi', posicao=None):
+    """Palavras (n0/n1) → conteúdo completo do arquivo .ass no preset pedido. `posicao(t)` → tags \\an/\\pos por bloco."""
     if estilo not in PRESETS:
         raise ValueError(f"estilo desconhecido: {estilo}")
     p = PRESETS[estilo]
     blocos = agrupar_palavras(palavras_remapeadas, p['max_palavras'], p['max_chars'], p['min_palavras'])
-    return cabecalho_ass(estilo) + '\n'.join(eventos_ass(blocos, estilo)) + '\n'
+    return cabecalho_ass(estilo) + '\n'.join(eventos_ass(blocos, estilo, posicao=posicao)) + '\n'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -648,3 +782,142 @@ def escolher_arquivo_pexels(video, altura_min=1080):
 
 def resumo_json(obj):
     return json.dumps(obj, ensure_ascii=False, indent=1)
+
+
+def filtro_rotacao(rotacao):
+    """Rotação fica com o próprio ffmpeg (autorotate, padrão): girar na mão dependia do sinal do ffprobe, que mudou
+    entre versões — no worker do GitHub o vídeo saiu de lado/de ponta-cabeça. Mantido só por compatibilidade."""
+    return ''
+
+
+def roteiro_incompleto(roteiro, palavras, minimo=0.35):
+    """O vídeo cobre o roteiro até o fim? Compara o último terço do roteiro com o que foi falado. None se está completo."""
+    rw = [normalizar(w) for w in (roteiro or '').split() if normalizar(w)]
+    if len(rw) < 20 or not palavras:
+        return None
+    falado = [normalizar(p['w']) for p in palavras if normalizar(p['w'])]
+    conj = set(falado)
+    # só palavras de conteúdo (5+ letras): "de", "o", "seu" aparecem em qualquer fala e escondiam o corte
+    terco = [w for w in rw[-max(8, len(rw) // 3):] if len(w) >= 5 and w not in STOPWORDS]
+    if len(terco) < 5:
+        return None
+    cobertura = sum(1 for w in terco if w in conj) / len(terco)
+    if cobertura >= minimo:
+        return None
+    # onde parou: a última sequência de 3 palavras do falado que existe no roteiro
+    pos = 0
+    for i in range(len(rw) - 2):
+        tri = rw[i:i + 3]
+        if any(falado[j:j + 3] == tri for j in range(max(0, len(falado) - 12), len(falado) - 2)):
+            pos = i + 3
+    original = (roteiro or '').split()
+    return {'cobertura_final': round(cobertura, 2), 'parou_em': ' '.join(original[max(0, pos - 5):pos]), 'faltou': ' '.join(original[pos:pos + 8])}
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Legenda conferida com o roteiro do teleprompter (sem IA)
+# ----------------------------------------------------------------------------------------------------------------------
+# Frases que o Whisper inventa em áudio cortado ou mudo (vêm das legendas com que ele foi treinado).
+ALUCINACOES = re.compile(r'legendas? (pela|por) comunidade|amara\.?org|obrigad[oa] por assistir|inscreva-se no canal|legendado por', re.I)
+
+
+def _tok(w):
+    """Palavra comparável: minúscula, sem acento e sem pontuação ('Anúncio,' → 'anuncio')."""
+    return sem_acentos(normalizar(w)).replace('-', '')
+
+
+def _parecido(a, b):
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _repartir(t0, t1, novas, base):
+    """Distribui o tempo [t0, t1] entre as palavras `novas` pelo tamanho de cada uma (a fala dura mais nas longas)."""
+    pesos = [len(_tok(w)) + 1 for w in novas]
+    total = float(sum(pesos)) or 1.0
+    out, acum = [], t0
+    for w, peso in zip(novas, pesos):
+        fim = acum + (t1 - t0) * peso / total
+        out.append(dict(base, t0=round(acum, 3), t1=round(fim, 3), w=w, corrigida=True))
+        acum = fim
+    return out
+
+
+def _ancoras(ops):
+    """Blocos 'equal' confiáveis: 2+ palavras seguidas, ou 1 palavra sem salto no roteiro. Palavra comum isolada ('em',
+    'da') que o difflib casa com um ponto distante do roteiro não conta como âncora."""
+    sol, pi, pj = set(), 0, 0
+    for k, (op, i1, i2, j1, j2) in enumerate(ops):
+        if op != 'equal':
+            continue
+        if i2 - i1 >= 2 or (j1 - pj) <= (i1 - pi) + 2:
+            sol.add(k); pi, pj = i2, j2
+    return sol
+
+
+def alinhar_com_roteiro(palavras, roteiro, parecido_min=0.55, parecido_entre=0.35, max_bloco=4, max_sobra=6):
+    """Confere cada palavra do Whisper com o roteiro que o Pedro leu no teleprompter e devolve (palavras, relatório).
+    - Palavra igual (sem acento/pontuação): fica com a grafia do roteiro (acento, maiúscula e pontuação certos — a
+      pontuação também separa as frases do vídeo).
+    - Trecho curto trocado pelo Whisper e parecido com o roteiro ('anos caros' no lugar de 'anúncio caro'): vira o
+      texto do roteiro, no mesmo tempo da fala. Entre duas palavras certas, aceita parecença um pouco menor.
+    - Palavra dita fora do roteiro (improviso, 'e' a mais): fica como o Whisper ouviu.
+    - Depois da última palavra que bate com o roteiro, se o roteiro não terminou: até `max_sobra` palavras saem (é o
+      Whisper completando uma gravação cortada, como o 'prática…' que ninguém falou); sobra maior é improviso e fica.
+      Frases-fantasma conhecidas ('Legendas pela comunidade Amara.org') saem sempre."""
+    rot = [w for w in (roteiro or '').split() if _tok(w)]
+    pal = [p for p in (palavras or []) if _tok(p.get('w'))]
+    rel = {'corrigidas': [], 'removidas': [], 'iguais': 0}
+    if len(rot) < 5 or not pal:
+        return list(palavras or []), rel
+    tn, rn = [_tok(p['w']) for p in pal], [_tok(w) for w in rot]
+    ops = difflib.SequenceMatcher(None, tn, rn, autojunk=False).get_opcodes()
+    sol = _ancoras(ops)
+    out = []          # (palavra, origem) — origem: 'igual' (âncora) | 'corrigida' | 'fala'
+    j_ult = 0
+    for k, (op, i1, i2, j1, j2) in enumerate(ops):
+        if op == 'equal':
+            origem = 'igual' if k in sol else 'fala'
+            for d in range(i2 - i1):
+                out.append((dict(pal[i1 + d], w=rot[j1 + d]) if k in sol else dict(pal[i1 + d]), origem))
+            if k in sol:
+                rel['iguais'] += i2 - i1; j_ult = max(j_ult, j2)
+        elif op == 'replace':
+            nt, nr = i2 - i1, j2 - j1
+            # entre duas âncoras do roteiro, quem lê o teleprompter falou o roteiro: o Whisper é que errou ("prática"
+            # no lugar de "primeira venda"); improviso de verdade fica bem diferente (parecença < 0,3) e é mantido
+            entre = (k - 1) in sol and (k + 1) in sol
+            limite = parecido_entre if (entre and abs(nt - nr) <= 1 and max(nt, nr) <= 3) else parecido_min
+            sim = _parecido(' '.join(tn[i1:i2]), ' '.join(rn[j1:j2]))
+            if nt <= max_bloco and nr <= max_bloco + 1 and abs(nt - nr) <= 1 and sim >= limite:
+                base = {x: v for x, v in pal[i1].items() if x not in ('t0', 't1', 'w')}
+                base['p'] = min(p.get('p', 1.0) for p in pal[i1:i2])
+                novas = _repartir(pal[i1]['t0'], pal[i2 - 1]['t1'], rot[j1:j2], base)
+                out += [(n, 'corrigida') for n in novas]
+                rel['corrigidas'].append({'de': ' '.join(p['w'] for p in pal[i1:i2]), 'para': ' '.join(rot[j1:j2]), 't0': pal[i1]['t0']})
+                j_ult = max(j_ult, j2) if entre else j_ult
+            else:
+                out += [(dict(p), 'fala') for p in pal[i1:i2]]
+        elif op == 'delete':
+            out += [(dict(p), 'fala') for p in pal[i1:i2]]
+        # 'insert': palavra do roteiro que não foi dita → nada a fazer
+    ult = max((i for i, (_, o) in enumerate(out) if o == 'igual'), default=-1)
+    roteiro_terminou = j_ult >= len(rot) - 3
+    sobra = len(out) - 1 - ult
+    cortar_sobra = ult >= 0 and not roteiro_terminou and 0 < sobra <= max_sobra
+    final = []
+    for i, (p, origem) in enumerate(out):
+        fantasma = ALUCINACOES.search(p['w']) is not None
+        if fantasma or (cortar_sobra and i > ult):
+            rel['removidas'].append({'w': p['w'], 't0': p['t0'], 'motivo': 'frase-fantasma do Whisper' if fantasma else 'depois do fim da fala (gravação cortada)'})
+            continue
+        final.append(p)
+    # frase-fantasma em várias palavras ("Legendas pela comunidade Amara.org"): confere o texto corrido também
+    texto = ' '.join(p['w'] for p in final)
+    m = ALUCINACOES.search(texto)
+    if m and not ALUCINACOES.search(roteiro or ''):
+        ini = len(texto[:m.start()].split())
+        n = len(m.group(0).split())
+        for p in final[ini:ini + n]:
+            rel['removidas'].append({'w': p['w'], 't0': p['t0'], 'motivo': 'frase-fantasma do Whisper'})
+        final = final[:ini] + final[ini + n:]
+    return final, rel

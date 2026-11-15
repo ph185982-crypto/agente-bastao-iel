@@ -132,14 +132,14 @@ test('pipeline: sem painel montado ou painel desligado, a produção segue norma
   assert.ok(!ia.chamadas.some((x) => x.tipo === 'painel'));
 });
 
-test('pipeline: cota da IA esgotada no painel espera a cota voltar (não segue sem a nota)', async () => {
+test('pipeline: painel calibrado (que barra) sem cota de IA espera a cota voltar (não segue sem a nota)', async () => {
   novo();
   await PN.montar({ ia: async () => ({ dados: { personas: [] } }), retrato: RETRATO });
   const doc = await PN.personasAtuais();
   const base = iaFalsa(() => ({ vozes: doc.personas.map((p) => ({ id: p.id, capa: [6, 6, 6], interesse: 6, envio: 6, objecao: '' })) }));
   const ia = { pedirJson: async (a) => { if (/simula um painel/.test(a.sistema)) throw Object.assign(new Error('429 status code (no body)'), { status: 429 }); return base.pedirJson(a); } };
   const c = await T.criar({ url: 'https://exemplo.test/m' });
-  const r = await T.executarTudo(c.id, { deps: { ...deps(ia), provedoresFortes: () => ['gemini'], ultimoErro: () => ({ status: 429 }) }, maxMs: 15000 });
+  const r = await T.executarTudo(c.id, { deps: { ...deps(ia), placar: { calibracao: { painel: { n: 14, acerta: true } } }, provedoresFortes: () => ['gemini'], ultimoErro: () => ({ status: 429 }) }, maxMs: 15000 });
   const top = r.conteudo.top;
   assert.strictEqual(top.estado, 'em_andamento', 'não conclui sem passar pelo painel');
   assert.ok(top.adiar_ate && top.erros.some((e) => e.codigo === 'COTA_IA' && e.etapa === 'painel'));
@@ -163,4 +163,15 @@ test('pipeline: capa de mente reprovada pelo revisor de honestidade não é usad
     assert.doesNotMatch(M.versaoAtiva(doc).slides[0].texto, /Eu também achava/);
     assert.notStrictEqual(doc.top.mentes.capa, 'bernbach');
   } finally { delete global.REPROVA_MENTE; }
+});
+
+test('pipeline: painel que só opina e fica sem cota de IA não segura a peça (segue sem a nota dele)', async () => {
+  novo();
+  await PN.montar({ ia: async () => ({ dados: { personas: [] } }), retrato: RETRATO });
+  const base = iaFalsa(() => ({ vozes: [] }));
+  const ia = { pedirJson: async (a) => { if (/simula um painel/.test(a.sistema)) throw Object.assign(new Error('429 status code (no body)'), { status: 429 }); return base.pedirJson(a); } };
+  const c = await T.criar({ url: 'https://exemplo.test/m' });
+  const r = await T.executarTudo(c.id, { deps: deps(ia) });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  assert.strictEqual(r.conteudo.top.painel.pulado, true);
 });

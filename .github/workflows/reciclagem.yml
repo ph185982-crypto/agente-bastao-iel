@@ -1,4 +1,4 @@
-# Radar de Reciclagem: coleta diária do que viralizou nas contas vigiadas (09:00 de Brasília = 12:00 UTC).
+# Radar de Reciclagem: coleta 3 vezes por dia do que viralizou nas contas vigiadas (09:00 de Brasília = 12:00 UTC).
 # Chama a rota de coleta do app com o CRON_SECRET; a rota lê a Graph da Meta (business_discovery), o YouTube (se houver
 # chave) e o RSS do Google Trends, calcula o índice de viralidade, classifica tema/mecanismo/tese pela IA e avisa no celular.
 # Só roda se este arquivo estiver na branch principal e se as configurações abaixo existirem:
@@ -6,10 +6,11 @@
 #     • Variável  MONITOR_URL  = endereço de PRODUÇÃO do app, sem barra no fim (a mesma do monitor e do Radar)
 #     • (opcional) Secret CRON_SECRET; sem ele vale o token OIDC do runner (backend/lib/githubOidc.js)
 # Nunca publica nada: só coleta, mede e guarda; reciclar é decisão do Pedro no app.
-name: Radar de Reciclagem (09:00 Brasília)
+name: Radar de Reciclagem (09:00, 15:00 e 21:00 Brasília)
 on:
   schedule:
-    - cron: '0 12 * * *'
+    - cron: '0 12,18 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch: {}
 permissions:
   contents: read

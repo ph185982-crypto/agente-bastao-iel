@@ -1,4 +1,7 @@
-// Radar de Reciclagem: contas vigiadas. Lista curada a partir da pesquisa de 07/11/2026 (40 contas de Instagram e
+// Radar de Reciclagem: contas vigiadas. Em 13/11/2026 entraram 40 contas que postam CARROSSEL e IMAGEM (formato: 'imagem'),
+// porque das 243 publicações coletadas 193 eram reels e a aba Copiar só usa post e carrossel. Em 14/11 saíram 16 que a
+// Meta respondeu "Invalid user id" (@ inexistente ou perfil não profissional) e entraram 10 no lugar.
+// Lista curada a partir da pesquisa de 07/11/2026 (40 contas de Instagram e
 // 20 canais de YouTube de empreendedorismo e finanças, em 7 países), mesclada com a configuração editável do Pedro
 // (`reciclagem_contas` no armazém: adicionar e remover handles sem mexer no código).
 //
@@ -25,7 +28,6 @@ const INSTAGRAM = [
   { handle: 'myrongolden', nome: 'Myron Golden', pais: 'US', idioma: 'en', por_que: 'Precificação e venda de alto valor com história pessoal.' },
   { handle: 'ryanserhant', nome: 'Ryan Serhant', pais: 'US', idioma: 'en', por_que: 'Vendas e marca pessoal; bastidor com número.' },
   { handle: 'thiago.nigro', nome: 'Thiago Nigro (Primo Rico)', pais: 'BR', idioma: 'pt', destaque: true, por_que: 'Maior audiência de finanças do Brasil; mesmo público que vende em marketplace.' },
-  { handle: 'oprimorico', nome: 'O Primo Rico (marca)', pais: 'BR', idioma: 'pt', por_que: 'Cortes e carrosséis da marca; serve de termômetro do que a audiência de finanças compartilha.' },
   { handle: 'pablomarcal1', nome: 'Pablo Marçal', pais: 'BR', idioma: 'pt', destaque: true, por_que: 'Maior referência de direita e empreendedorismo do Brasil; mecanismos de polêmica e identidade.' },
   { handle: 'geracaodevalor', nome: 'Flávio Augusto', pais: 'BR', idioma: 'pt', destaque: true, por_que: 'Liberdade econômica e "empreender é a saída" em voz empresarial sóbria.' },
   { handle: 'joeljota', nome: 'Joel Jota', pais: 'BR', idioma: 'pt', destaque: true, por_que: 'Disciplina e alta performance para empresário; maior engajamento do grupo brasileiro.' },
@@ -43,7 +45,6 @@ const INSTAGRAM = [
   { handle: 'osotrava', nome: 'Oso Trava', pais: 'MX', idioma: 'es', por_que: 'Empreendedor e podcaster mexicano; entrevistas cortadas em clipes.' },
   { handle: 'arturoelias', nome: 'Arturo Elías Ayub', pais: 'MX', idioma: 'es', por_que: 'Executivo falando de negociação e gestão; tom direto.' },
   { handle: 'invertirmejor', nome: 'Juan Diego Gómez (Invertir Mejor)', pais: 'CO', idioma: 'es', a_confirmar: true, por_que: 'Finanças e investimento em espanhol; handle não confirmado na pesquisa.' },
-  { handle: 'jorgeserratos', nome: 'Jorge Serratos', pais: 'MX', idioma: 'es', a_confirmar: true, por_que: 'Negócios para pequeno empresário mexicano; handle não confirmado na pesquisa.' },
   { handle: 'steven', nome: 'Steven Bartlett', pais: 'GB', idioma: 'en', por_que: 'Diary of a CEO: clipes de entrevista com frase de identidade.' },
   { handle: 'simonsquibb', nome: 'Simon Squibb', pais: 'GB', idioma: 'en', destaque: true, por_que: 'Entrevista de rua "qual seu sonho?": o formato mais fácil de adaptar para "qual seu negócio?".' },
   { handle: 'imangadzhi', nome: 'Iman Gadzhi', pais: 'GB', idioma: 'en', por_que: 'Agência e renda online para jovens; mecanismo de confissão.' },
@@ -51,6 +52,42 @@ const INSTAGRAM = [
   { handle: 'judit_cat', nome: 'Judit Català', pais: 'ES', idioma: 'es', por_que: 'Marketing digital em espanhol para pequena empresa.' },
   { handle: 'euge.oller', nome: 'Euge Oller', pais: 'ES', idioma: 'es', por_que: 'Negócios digitais e produtividade em espanhol.' },
   { handle: 'pedrobuerbaum', nome: 'Pedro Buerbaum', pais: 'ES', idioma: 'es', por_que: 'Podcast de negócios; cortes com pergunta única.' },
+  { handle: 'thedankoe', nome: 'Dan Koe', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Posts de texto em imagem sobre negócio de uma pessoa só; muito salvo e enviado.' },
+  { handle: 'sahilbloom', nome: 'Sahil Bloom', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Carrosséis de modelos mentais e listas; alto salvamento.' },
+  { handle: 'visualizevalue', nome: 'Visualize Value (Jack Butcher)', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Desenho minimalista + frase de negócio: o tipo de post que se copia traduzido.' },
+  { handle: 'foundr', nome: 'Foundr', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Carrosséis e citações de fundadores; página feita de posts de imagem.' },
+  { handle: 'entrepreneur', nome: 'Entrepreneur', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Revista de empreendedorismo; carrosséis de lição de negócio.' },
+  { handle: 'morningbrew', nome: 'Morning Brew', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Memes e gráficos de negócio e economia; viralizam por envio.' },
+  { handle: 'personalfinanceclub', nome: 'Personal Finance Club', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Gráficos simples de dinheiro e juros compostos; carrosséis muito salvos.' },
+  { handle: 'ramit', nome: 'Ramit Sethi', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Finanças pessoais com frase forte em imagem.' },
+  { handle: 'aliabdaal', nome: 'Ali Abdaal', pais: 'GB', idioma: 'en', formato: 'imagem', por_que: 'Produtividade e negócio online; carrosséis de lista.' },
+  { handle: 'naval', nome: 'Naval', pais: 'US', idioma: 'en', formato: 'imagem', a_confirmar: true, por_que: 'Frases sobre riqueza e alavancagem em imagem.' },
+  { handle: 'businessinsider', nome: 'Business Insider', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Notícia de negócio em carrossel.' },
+  { handle: 'mises_brasil', nome: 'Instituto Mises Brasil', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Liberdade econômica em português; carrosséis de tese.' },
+  { handle: 'brasilparalelo', nome: 'Brasil Paralelo', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Carrosséis de economia e história com viés liberal-conservador.' },
+  { handle: 'revistaoeste', nome: 'Revista Oeste', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Notícia e opinião de direita em carrossel.' },
+  { handle: 'gazetadopovo', nome: 'Gazeta do Povo', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Notícia de economia com leitura liberal; carrosséis.' },
+  { handle: 'exame', nome: 'Exame', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Negócios e economia em carrossel.' },
+  { handle: 'infomoney', nome: 'InfoMoney', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Mercado e dinheiro em carrossel; muito compartilhado.' },
+  { handle: 'sebrae', nome: 'Sebrae', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Dicas para MEI e pequeno negócio em carrossel: o público do Pedro.' },
+  { handle: 'contaazul', nome: 'Conta Azul', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Gestão e imposto para pequena empresa em carrossel.' },
+  { handle: 'thenews.cc', nome: 'The News', pais: 'BR', idioma: 'pt', formato: 'imagem', a_confirmar: true, por_que: 'Newsletter de notícias em carrossel com humor.' },
+  { handle: 'ecommercenapratica', nome: 'E-commerce na Prática', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Venda online e marketplace em carrossel.' },
+  { handle: 'nubank', nome: 'Nubank', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Dinheiro do dia a dia em carrossel e meme.' },
+  { handle: 'xpinvestimentos', nome: 'XP Investimentos', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Mercado e economia em carrossel.' },
+  { handle: 'jurgenklaric', nome: 'Jürgen Klarić', pais: 'MX', idioma: 'es', formato: 'imagem', a_confirmar: true, por_que: 'Venda e neuromarketing em espanhol; frases em imagem.' },
+  { handle: 'emprendedores', nome: 'Emprendedores', pais: 'ES', idioma: 'es', formato: 'imagem', a_confirmar: true, por_que: 'Revista espanhola de empreendedorismo; carrosséis.' },
+  { handle: 'forbesmexico', nome: 'Forbes México', pais: 'MX', idioma: 'es', formato: 'imagem', a_confirmar: true, por_que: 'Negócios em espanhol; carrosséis de caso.' },
+  { handle: 'forbes', nome: 'Forbes', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Negócios e fortuna em carrossel; muito compartilhado.' },
+  { handle: 'fortune', nome: 'Fortune', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Negócios e empresas em carrossel de dado.' },
+  { handle: 'theeconomist', nome: 'The Economist', pais: 'GB', idioma: 'en', formato: 'imagem', por_que: 'Economia em gráfico e carrossel; leitura liberal.' },
+  { handle: 'hubspot', nome: 'HubSpot', pais: 'US', idioma: 'en', formato: 'imagem', por_que: 'Marketing e vendas para pequena empresa em meme e carrossel.' },
+  { handle: 'shopify', nome: 'Shopify', pais: 'CA', idioma: 'en', formato: 'imagem', por_que: 'Venda online para lojista pequeno; carrosséis de dica.' },
+  { handle: 'valoreconomico', nome: 'Valor Econômico', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Economia e negócios em carrossel.' },
+  { handle: 'cnnbrasil', nome: 'CNN Brasil', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Notícia de economia em carrossel; alto alcance.' },
+  { handle: 'estadao', nome: 'Estadão', pais: 'BR', idioma: 'pt', formato: 'imagem', por_que: 'Notícia de economia e política em carrossel.' },
+  { handle: 'forbesbr', nome: 'Forbes Brasil', pais: 'BR', idioma: 'pt', formato: 'imagem', a_confirmar: true, por_que: 'Negócios e empreendedores brasileiros em carrossel.' },
+  { handle: 'sebraesp', nome: 'Sebrae SP', pais: 'BR', idioma: 'pt', formato: 'imagem', a_confirmar: true, por_que: 'Dicas para MEI e pequeno negócio em carrossel.' },
 ];
 
 // canal: handle (@) ou id UC… aceito por channels.list (forHandle / id). url: página pública do canal.

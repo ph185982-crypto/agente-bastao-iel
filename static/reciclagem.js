@@ -1,3 +1,4 @@
+// Reciclar: botão com duas opções (formato original / nosso formato branco ou preto).
 // Aba "Reciclar" (Radar de Reciclagem): o que viralizou nas contas de empreendedorismo vigiadas, com índice de
 // viralidade (VL), tema, mecanismo e tese neutra; tendências do dia no Google; e "Reciclar como…" carrossel, post ou reel.
 // O app só MOSTRA e comanda; coleta, classificação e escrita rodam no servidor. Nunca copiamos o texto de terceiros:
@@ -7,8 +8,8 @@
   'use strict';
   const ST = {
     carregando: false, carregou: false, erro: null, itens: [], total: 0, estado: null, tendencias: null, tela: 'lista',
-    filtro: { mecanismo: '', idioma: '', min_vl: '3', dias: '7' }, menu: null, ocupado: {}, roteiro: null, producao: null,
-    contas: null, contasForm: { handle: '', nome: '', pais: 'BR', idioma: 'pt', por_que: '', canal: '', canal_nome: '', canal_pais: 'BR', canal_idioma: 'pt' }, contasAlterado: false,
+    filtro: { mecanismo: '', idioma: '', min_vl: '2', dias: '30' }, menu: null, ocupado: {}, roteiro: null, producao: null,
+    contas: null, contasForm: { handle: '', nome: '', pais: 'BR', idioma: 'pt', por_que: '', canal: '', canal_nome: '', canal_pais: 'BR', canal_idioma: 'pt' }, contasAlterado: false, autoriza: null, autForm: {},
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TZ = 'America/Sao_Paulo';
@@ -24,7 +25,7 @@
   const TIPO = { reel: 'Reel', carrossel: 'Carrossel', imagem: 'Imagem', video: 'Vídeo', short: 'Short' };
 
   // ── Dados ───────────────────────────────────────────────────────────────────
-  const query = () => { const f = ST.filtro; const p = new URLSearchParams({ dias: f.dias, min_vl: f.min_vl }); if (f.mecanismo) p.set('mecanismo', f.mecanismo); if (f.idioma) p.set('idioma', f.idioma); return p.toString(); };
+  const query = () => { const f = ST.filtro; const p = new URLSearchParams({ dias: f.dias, min_vl: f.min_vl, so_imagens: '1', pendentes: '1' }); /* reciclado ou descartado não aparece mais */ if (f.mecanismo) p.set('mecanismo', f.mecanismo); if (f.idioma) p.set('idioma', f.idioma); return p.toString(); };
   async function carregar(ctx, forcar) {
     const f = forcar && typeof forcar === 'object' ? forcar.forcar : forcar;
     if (ST.carregando || (ST.carregou && !f)) return;
@@ -68,11 +69,11 @@
     } catch (e) { ctx.toast(`A produção continua no servidor (${e.message}).`); }
     ST.producao = null; ctx.render();
   }
-  async function reciclar(ctx, id, formato) {
+  async function reciclar(ctx, id, formato, mesmaEstrutura = false) {
     if (ST.ocupado[id]) return;
     ST.ocupado[id] = formato; ST.menu = null; ctx.render();
     try {
-      const r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/reciclar`, { method: 'POST', body: { formato } });
+      const r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/reciclar`, { method: 'POST', body: { formato, mesma_estrutura: mesmaEstrutura } });
       const item = ST.itens.find((x) => x.id === id); if (item) item.reciclado = [...(item.reciclado || []), { formato, conteudo_id: r.id, em: new Date().toISOString() }];
       if (formato === 'reel') { ST.roteiro = { id: r.id, roteiro: r.roteiro, titulo: r.titulo, duracao: r.duracao_estimada_s, mente: r.mente, tentativas: r.tentativas }; ctx.toast('Roteiro pronto.'); }
       else { ctx.toast(`${formato === 'estatico' ? 'Post' : 'Carrossel'} em produção: a tese vira texto do Pedro com fatos brasileiros.`); delete ST.ocupado[id]; ctx.render(); await conduzirTop(ctx, r.id, r.titulo); return; }
@@ -116,6 +117,13 @@
       <label class="rc2-sel">VL mínimo <select data-action="rc2-sel" data-k="min_vl">${['1.5', '2', '3', '5'].map((v) => `<option value="${v}" ${f.min_vl === v ? 'selected' : ''}>${v.replace('.', ',')}×</option>`).join('')}</select></label>
       <label class="rc2-sel">Período <select data-action="rc2-sel" data-k="dias">${[['7', '7 dias'], ['14', '14 dias'], ['30', '30 dias']].map(([v, r]) => `<option value="${v}" ${f.dias === v ? 'selected' : ''}>${r}</option>`).join('')}</select></label></div></div>`;
   }
+  // Galeria do post original (deslize para o lado) e a legenda original, para ver o conteúdo antes de copiar.
+  function galeria(i) {
+    const ms = (i.midias || []).filter((u) => /^(https:\/\/|data:image\/)/.test(u));
+    const fotos = ms.length ? `<div class="rc2-galeria" role="region" aria-label="Imagens do post (deslize para o lado)" tabindex="0">${ms.map((u, k) => `<img src="${esc(u)}" alt="Slide ${k + 1} de ${ms.length}" loading="lazy" referrerpolicy="no-referrer" onerror="this.classList.add('quebrada')">`).join('')}</div>${ms.length > 1 ? `<p class="rc2-meta">${ms.length} imagens · deslize para o lado</p>` : ''}` : '<p class="rc2-meta">Imagens aparecem a partir da próxima coleta.</p>';
+    const leg = i.legenda ? `<details class="rc2-legenda"><summary>Legenda original</summary><p>${esc(i.legenda)}</p></details>` : '';
+    return fotos + leg;
+  }
   function cartao(i) {
     const oc = ST.ocupado[i.id]; const menu = ST.menu === i.id; const c = i.conta || {};
     const metricas = [i.curtidas != null ? `${num(i.curtidas)} curtidas` : null, i.comentarios != null ? `${num(i.comentarios)} comentários` : null, i.visualizacoes != null ? `${num(i.visualizacoes)} views` : null, i.seguidores != null ? `${num(i.seguidores)} seguidores` : null].filter(Boolean).join(' · ');
@@ -125,17 +133,62 @@
       <div class="rc2-corpo">
         <div class="rc2-conta"><b>@${esc(c.handle || '?')}</b><span>${esc(c.nome && c.nome !== c.handle ? c.nome : '')}</span><span class="rc2-tag suave">${esc(PAIS[c.pais] || c.pais || '?')} · ${esc(IDIOMA[c.idioma] || c.idioma || '?')}</span><span class="rc2-tag suave">${esc(i.rede === 'youtube' ? 'YouTube' : 'Instagram')} · ${esc(TIPO[i.tipo] || i.tipo || '')}</span></div>
         <p class="rc2-metrica">${esc(metricas || 'sem métricas públicas')} · ${dia(i.publicado_em)}</p>
+        ${galeria(i)}
         ${i.tema ? `<h3>${esc(i.tema)}</h3>` : '<h3 class="rc2-mudo">Ainda sem tema (a IA classifica na próxima coleta)</h3>'}
         <div class="rc2-tags">${i.mecanismo ? `<span class="rc2-tag mec ${esc(i.mecanismo)}">${esc(MEC[i.mecanismo] || i.mecanismo)}</span>` : ''}${i.em_alta ? '<span class="rc2-tag alta">em alta</span>' : ''}${i.vl_views != null && i.vl_views >= 3 && i.tipo === 'reel' ? `<span class="rc2-tag suave">views ${vlFmt(i.vl_views)}</span>` : ''}</div>
         ${i.tese ? `<dl class="rc2-dl"><div><dt>Tese</dt><dd>${esc(i.tese)}</dd></div>${i.ponte_pedro ? `<div><dt>Ponte para o Pedro</dt><dd>${esc(i.ponte_pedro)}</dd></div>` : ''}</dl>` : ''}
         <div class="rc2-acoes">
-          ${i.tese ? `<button class="rc2-btn laranja" data-action="rc2-menu" data-id="${esc(i.id)}" aria-expanded="${menu}" ${oc ? 'disabled' : ''}>${oc ? (oc === 'reel' ? 'Escrevendo o roteiro…' : 'Enviando para produção…') : 'Reciclar como…'}</button>` : ''}
+          ${i.rede === 'instagram' && ['carrossel', 'imagem'].includes(i.tipo) ? `<button class="rc2-btn laranja" data-action="rc2-clonar-menu" data-id="${esc(i.id)}" aria-expanded="${ST.menuClone === i.id}" ${oc ? 'disabled' : ''}>${oc === 'clone' ? 'Reciclando…' : 'Reciclar'}</button>` : ''}
+          ${i.tese ? `<button class="rc2-btn" data-action="rc2-menu" data-id="${esc(i.id)}" aria-expanded="${menu}" ${oc ? 'disabled' : ''}>${oc ? (oc === 'reel' ? 'Escrevendo o roteiro…' : 'Enviando para produção…') : 'Reciclar como…'}</button>` : ''}
           <a class="rc2-btn fantasma" href="${esc(link(i.permalink))}" target="_blank" rel="noopener noreferrer">Ver post original ↗</a>
+          <button class="rc2-btn fantasma" data-action="rc2-descartar" data-id="${esc(i.id)}" aria-label="Descartar este post da lista" ${oc ? 'disabled' : ''}>✕ Descartar</button>
+          ${ST.menuClone === i.id && !oc ? `<div class="rc2-clone-opcoes" role="group" aria-label="Como reciclar">
+            <button class="rc2-opcao" data-action="rc2-clonar" data-id="${esc(i.id)}" data-modo="original"><b>Formato original</b><small>Mesmo visual do post (cores e layout), só traduzido. Tira a assinatura do autor e põe o seu @.</small></button>
+            <button class="rc2-opcao" data-action="rc2-clonar" data-id="${esc(i.id)}" data-modo="nosso" data-fundo="branco"><b>Nosso formato · fundo branco</b><small>Pega o texto, traduz se precisar e monta no seu padrão. Sem custo de IA quando já está em português.</small></button>
+            <button class="rc2-opcao preto" data-action="rc2-clonar" data-id="${esc(i.id)}" data-modo="nosso" data-fundo="preto"><b>Nosso formato · fundo preto</b><small>O mesmo, com fundo preto e texto branco.</small></button>
+          </div>` : ''}
         </div>
-        ${menu ? `<div class="rc2-menu" role="group" aria-label="Formato"><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel">Carrossel</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="estatico">Post estático</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="reel">Roteiro de reel</button><p class="rc2-meta">Só a tese é reaproveitada, nunca o texto. Carrossel e post passam pelos mesmos filtros de fatos e anti-IA e vão para “Aprovar”.</p></div>` : ''}
-        ${ja.length ? `<p class="rc2-meta">Já reciclado: ${ja.map((r) => `${esc({ carrossel: 'carrossel', estatico: 'post', reel: 'reel' }[r.formato] || r.formato)} em ${dh(r.em)}`).join(' · ')}</p>` : ''}
+        ${menu ? `<div class="rc2-menu" role="group" aria-label="Formato"><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel">Carrossel</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="carrossel" data-e="1">Carrossel na mesma estrutura</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="estatico">Post estático</button><button class="rc2-btn" data-action="rc2-reciclar" data-id="${esc(i.id)}" data-f="reel">Roteiro de reel</button><p class="rc2-meta">Só a tese e a estrutura (nº de slides e tipo de gancho) são reaproveitadas; texto, exemplos e fotos são seus. Para republicar um conteúdo de terceiros como está, é preciso a autorização do autor, fora da ferramenta. Carrossel e post passam pelos mesmos filtros de fatos e anti-IA e vão para “Aprovar”.</p></div>` : ''}
+        ${ST.autoriza === i.id ? formAutorizacao(i) : ''}
+        ${ja.length ? `<p class="rc2-meta">Já reciclado: ${ja.map((r) => `${esc({ carrossel: 'carrossel', estatico: 'post', reel: 'reel', clone: 'clone traduzido' }[r.formato] || r.formato)} em ${dh(r.em)}`).join(' · ')}</p>` : ''}
       </div></article>`;
   }
+  // Clone traduzido: só com a autorização do autor registrada (quem, onde, quando e a prova). O crédito entra na legenda.
+  const CANAIS = ['DM do Instagram', 'WhatsApp', 'E-mail', 'Pessoalmente', 'Outro'];
+  function formAutorizacao(i) {
+    const f = ST.autForm; const a = i.autorizacao;
+    if (a) return `<div class="rc2-menu" role="group" aria-label="Clone autorizado"><p class="rc2-meta">Autorizado por <b>${esc(a.autor)}</b> (${esc(a.canal)}, ${esc(a.data)}). Crédito: “${esc(a.credito)}”</p>
+      <p class="rc2-meta">A ferramenta lê o texto de cada slide, traduz para o português (IA gratuita) e remonta no mesmo número de slides, com a foto de cada um. Vai para “Aprovar”; nada é publicado sem você.</p>
+      <button class="rc2-btn laranja" data-action="rc2-clonar" data-id="${esc(i.id)}">Clonar agora</button> <button class="rc2-btn fantasma" data-action="rc2-clone-fechar">Fechar</button></div>`;
+    return `<form class="rc2-menu rc2-aut" data-rc2-aut="${esc(i.id)}" aria-label="Registrar autorização">
+      <p class="rc2-meta"><b>Antes de clonar, registre a autorização do autor.</b> Sem ela o post não é processado.</p>
+      <label>Quem autorizou<input data-rc2-aut="autor" value="${esc(f.autor ?? `@${i.conta?.handle || ''}`)}" maxlength="40" required></label>
+      <label>Onde<select data-rc2-aut="canal">${CANAIS.map((c) => `<option ${f.canal === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+      <label>Data<input type="date" data-rc2-aut="data" value="${esc(f.data || new Date().toISOString().slice(0, 10))}" required></label>
+      <label>Prova (o que ele escreveu ou onde está o print)<textarea data-rc2-aut="prova" rows="3" maxlength="600" required>${esc(f.prova || '')}</textarea></label>
+      <label>Crédito na legenda (opcional)<input data-rc2-aut="credito" value="${esc(f.credito || '')}" maxlength="160" placeholder="Conteúdo original de @autor, traduzido e publicado com autorização."></label>
+      <button type="button" class="rc2-btn laranja" data-action="rc2-autorizar" data-id="${esc(i.id)}">Registrar autorização</button> <button type="button" class="rc2-btn fantasma" data-action="rc2-clone-fechar">Cancelar</button></form>`;
+  }
+  async function clonar(ctx, id, opcoes = {}) {
+    if (ST.ocupado[id]) return;
+    ST.ocupado[id] = 'clone'; ST.autoriza = null; ctx.render();
+    try {
+      let r = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/clonar`, { method: 'POST', body: { modo: opcoes.modo || 'original', fundo: opcoes.fundo || 'branco' } });
+      ST.producao = { id: r.id, titulo: 'Copiando o post', rotulo: 'Lendo os slides…' }; ctx.render();
+      for (let k = 0; k < 40 && !r.concluido; k++) {
+        await new Promise((x) => setTimeout(x, r.erro?.codigo === 'COTA_IA' ? 20000 : 1500));
+        try { r = await ctx.api(`/api/reciclagem/clone/${encodeURIComponent(r.id)}/passo`, { method: 'POST', body: {} }); } catch (e) { if (e.status === 429) continue; throw e; }
+        ST.producao = { id: r.id, titulo: 'Copiando o post', rotulo: { buscar: 'Buscando o post…', ler: `Lendo os slides (${r.lidos}/${r.slides || '?'})…`, traduzir: r.erro?.codigo === 'COTA_IA' ? 'IA gratuita sem cota: esperando…' : 'Traduzindo…', arte: 'Desenhando…', fim: 'Conferindo…' }[r.etapa] || '…' }; ctx.render();
+      }
+      if (r.estado === 'concluido') ctx.toast(r.aviso ? `Cópia pronta em “Aprovar”. Atenção: ${r.aviso}` : 'Cópia pronta. Veja em “Aprovar”.');
+      else if (r.estado === 'erro') ctx.toast(`O clone parou: ${r.motivo}`);
+      else ctx.toast('O clone continua no servidor; aparece em “Aprovar” quando terminar.');
+      if (r.estado !== 'erro') ST.itens = ST.itens.filter((x) => x.id !== id); // reciclado: sai da lista
+      const item = ST.itens.find((x) => x.id === id); if (item) item.reciclado = [...(item.reciclado || []), { formato: 'clone', conteudo_id: r.id, em: new Date().toISOString() }];
+    } catch (e) { ctx.toast(e.message || 'Não foi possível clonar.'); }
+    ST.producao = null; delete ST.ocupado[id]; ctx.render();
+  }
+
   function roteiroModal() {
     const r = ST.roteiro; if (!r) return '';
     return `<div class="rc2-modal"><div role="dialog" aria-modal="true" aria-labelledby="rc2-rot-t"><h3 id="rc2-rot-t">${esc(r.titulo || 'Roteiro de reel')}</h3>
@@ -174,8 +227,20 @@
       ${removidas ? `<h3 class="rc2-h3">Removidas</h3><ul class="rc2-contas">${removidas}</ul>` : ''}`;
   }
 
+  // Com a aba aberta e visível: a cada 30 s lê mais uma conta no servidor (rodízio, sem IA) e atualiza a lista.
+  let timer = null;
+  function vigiar(ctx) {
+    if (timer) return;
+    timer = setInterval(async () => {
+      if (document.hidden || !document.querySelector('.rc2')) { if (!document.querySelector('.rc2')) { clearInterval(timer); timer = null; } return; }
+      if (Object.keys(ST.ocupado).length || ST.carregando) return;
+      try { const r = await ctx.api('/api/reciclagem/coletar-uma', { method: 'POST', body: {} }); if (r.novos) ctx.toast(`${r.novos} post${r.novos > 1 ? 's' : ''} novo${r.novos > 1 ? 's' : ''} na Reciclagem.`); } catch { /* limite da Meta ou rede: tenta no próximo ciclo */ }
+      await recarregarLista(ctx); ctx.render();
+    }, 30000);
+  }
   function render(ctx) {
     if (!ST.carregou && !ST.carregando && !ST.erro) setTimeout(() => carregar(ctx), 0);
+    vigiar(ctx);
     const e = ST.estado; const avisos = [];
     if (e && !e.banco) avisos.push('<div class="rc2-aviso erro">A Reciclagem precisa do banco de dados no servidor (Cópia no servidor) para guardar as teses.</div>');
     if (e && !e.instagram) avisos.push('<div class="rc2-aviso">A conexão com a Meta não está configurada (META_PAGE_ACCESS_TOKEN / META_IG_USER_ID): sem ela as contas de Instagram não são lidas.</div>');
@@ -206,7 +271,22 @@
         case 'rc2-sel': break; // tratado no evento change
         case 'rc2-tela': ST.tela = el.dataset.t === 'contas' ? 'contas' : 'lista'; ctx.render(); if (ST.tela === 'contas') await carregarContas(ctx); break;
         case 'rc2-menu': ST.menu = ST.menu === id ? null : id; ctx.render(); break;
-        case 'rc2-reciclar': await reciclar(ctx, id, el.dataset.f); break;
+        case 'rc2-clone-abrir': ST.autoriza = ST.autoriza === id ? null : id; ST.autForm = {}; ST.menu = null; ctx.render(); break;
+        case 'rc2-clone-fechar': ST.autoriza = null; ctx.render(); break;
+        case 'rc2-autorizar': {
+          const f = ST.autForm; const item = ST.itens.find((x) => x.id === id);
+          const corpo = { autor: f.autor ?? `@${item?.conta?.handle || ''}`, canal: f.canal || CANAIS[0], data: f.data || new Date().toISOString().slice(0, 10), prova: f.prova || '', credito: f.credito || '' };
+          try { const a = await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/autorizacao`, { method: 'POST', body: corpo }); if (item) item.autorizacao = a; ctx.toast('Autorização registrada.'); } catch (e) { ctx.toast(e.message); }
+          ctx.render(); break;
+        }
+        case 'rc2-descartar': {
+          ST.itens = ST.itens.filter((x) => x.id !== id); ST.total = Math.max(0, (ST.total || 1) - 1); ctx.render(); // some na hora
+          try { await ctx.api(`/api/reciclagem/${encodeURIComponent(id)}/descartar`, { method: 'POST', body: {} }); } catch (e) { ctx.toast(e.message || 'Não consegui descartar.'); await recarregarLista(ctx); ctx.render(); }
+          break;
+        }
+        case 'rc2-clonar-menu': ST.menuClone = ST.menuClone === id ? null : id; ctx.render(); break;
+        case 'rc2-clonar': ST.menuClone = null; await clonar(ctx, id, { modo: el.dataset.modo || 'original', fundo: el.dataset.fundo || 'branco' }); break;
+        case 'rc2-reciclar': await reciclar(ctx, id, el.dataset.f, el.dataset.e === '1'); break;
         case 'rc2-fechar': ST.roteiro = null; ctx.render(); break;
         case 'rc2-copiar': { const r = ST.roteiro; if (r) { try { await navigator.clipboard.writeText(r.roteiro); ctx.toast('Roteiro copiado.'); } catch { ctx.toast('Não consegui copiar. Selecione o texto.'); } } break; }
         case 'rc2-gravar': {
@@ -265,6 +345,8 @@
   const root = document.getElementById('esteira');
   if (root) {
     root.addEventListener('input', (ev) => { const k = ev.target?.dataset?.rc2Campo; if (k) ST.contasForm[k] = ev.target.value; });
+    root.addEventListener('input', (ev) => { const k = ev.target?.dataset?.rc2Aut; if (k && ev.target.tagName !== 'FORM') ST.autForm[k] = ev.target.value; });
+    root.addEventListener('change', (ev) => { const k = ev.target?.dataset?.rc2Aut; if (k && ev.target.tagName === 'SELECT') ST.autForm[k] = ev.target.value; });
     root.addEventListener('change', async (ev) => {
       const t = ev.target; if (!t?.dataset) return;
       if (t.dataset.rc2Campo) ST.contasForm[t.dataset.rc2Campo] = t.value;

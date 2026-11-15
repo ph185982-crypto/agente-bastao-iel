@@ -72,3 +72,28 @@ test('cookie de leitura: imagem (GET) passa com o cookie; escrita (POST) só com
     for (const [k, v] of [['VERCEL', antes.v], ['APP_ACCESS_MODE', antes.m], ['APP_ACCESS_CODE', antes.c]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   }
 });
+
+test('sem código nenhum (APP_ACCESS_MODE=public_total): tudo abre, publicar segue liberado e ninguém cria código pelo app', async () => {
+  const antes = { v: process.env.VERCEL, m: process.env.APP_ACCESS_MODE, c: process.env.APP_ACCESS_CODE };
+  arm._definir(Object.assign(arm.memoria(), { duravel: true })); A._zerarDono();
+  process.env.VERCEL = '1'; process.env.APP_ACCESS_MODE = 'public_total'; process.env.APP_ACCESS_CODE = 'codigo-antigo-da-vercel';
+  const { s, chamar } = await servidor();
+  try {
+    const st = (await chamar('/api/auth/status')).d;
+    assert.strictEqual(st.estado, 'aberto_publico'); assert.strictEqual(st.sem_codigo_total, true); assert.strictEqual(st.protected, false);
+    assert.strictEqual((await chamar('/api/privado')).status, 200, 'rota privada abre sem token, mesmo com código antigo na Vercel');
+    await require('./publicador').exigirAcessoProtegido(); // não lança: publicar liberado por escolha do dono
+    // um visitante não consegue criar um código e tomar a ferramenta
+    const def = await chamar('/api/auth/definir', { metodo: 'POST', corpo: { code: 'codigo-de-um-estranho-123' } });
+    assert.strictEqual(def.status, 409); assert.strictEqual(def.d.code, 'SEM_CODIGO_TOTAL');
+    assert.strictEqual((await chamar('/api/auth/status')).d.estado, 'aberto_publico');
+    // voltar a proteger é só trocar a variável: o código antigo da Vercel volta a valer
+    delete process.env.APP_ACCESS_MODE;
+    assert.strictEqual((await chamar('/api/auth/status')).d.estado, 'protegido');
+    assert.strictEqual((await chamar('/api/privado')).status, 401);
+  } finally {
+    s.close();
+    for (const [k, v] of [['VERCEL', antes.v], ['APP_ACCESS_MODE', antes.m], ['APP_ACCESS_CODE', antes.c]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    A._zerarDono();
+  }
+});

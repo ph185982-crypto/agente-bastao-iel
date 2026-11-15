@@ -68,13 +68,30 @@ app.use('/api/painel', require('./routes/painel'));
 app.use('/api/videos', require('./routes/videos'));
 app.use('/api/reciclagem', require('./routes/reciclagem'));
 app.use('/api/historias', require('./routes/historias'));
+app.use('/api/linkedin', require('./routes/linkedin'));
 // Manutenção do banco (limite de 512 MB do Postgres gratuito): ver espaço e limpar prévias/fotos/revisões sem uso.
 app.get('/api/manutencao/espaco', async (req, res) => { try { const a = require('./lib/armazem').armazem(); res.json(a?.arquivos?.espaco ? await a.arquivos.espaco() : {}); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.post('/api/manutencao/limpar', async (req, res) => { try { res.json(await require('./lib/manutencao').limpar({ simular: req.body?.simular === true })); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.post('/api/manutencao/compactar', async (req, res) => { try { const a = require('./lib/armazem').armazem(); res.json({ tabelas: a?.arquivos?.compactar ? await a.arquivos.compactar({ full: req.body?.full === true }) : [], espaco: a?.arquivos?.espaco ? await a.arquivos.espaco() : null }); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.use('/api/radar', require('./routes/radar'));
+app.use('/api/nuvem', require('./routes/nuvem')); // Google Cloud Run: chamadas do Cloud Tasks
 app.use('/api/publico', require('./routes/publish').publico);
 app.use('/api/jobs', require('./routes/sync').jobs);
+
+// Fora da Vercel (Google Cloud Run): o Cloud Scheduler gratuito tem 3 tarefas; esta rota agrupa as rotinas diárias
+// numa chamada só, repassando o mesmo CRON_SECRET para cada rota, uma depois da outra.
+const LOTE_CRON = { 'content-finder': '/api/content-finder/mine', trending: '/api/trending/mine', radar: '/api/radar/cron', publish: '/api/publish/cron' };
+app.get('/api/cron/lote', async (req, res) => {
+  const nomes = String(req.query.r || '').split(',').filter((n) => LOTE_CRON[n]);
+  const saida = {};
+  for (const n of nomes) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${PORT}${LOTE_CRON[n]}`, { headers: { Authorization: req.headers.authorization || '' }, signal: AbortSignal.timeout(280000) });
+      saida[n] = r.status;
+    } catch (e) { saida[n] = String(e.message).slice(0, 80); }
+  }
+  res.json({ ok: true, rotas: saida });
+});
 
 app.get(['/health', '/api/health'], (req, res) =>
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
@@ -87,6 +104,8 @@ app.get('/', (req, res) => {
   res.sendFile(require('path').join(__dirname, '..', 'static', 'index.html'));
 });
 app.use(express.static(require('path').join(__dirname, '..', 'static')));
+// Igual à Vercel ("/(.*)" → index.html): qualquer endereço da interface abre o app.
+app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(require('path').join(__dirname, '..', 'static', 'index.html')));
 
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {

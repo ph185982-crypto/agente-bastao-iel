@@ -16,6 +16,11 @@ test('próximo horário: depois de agora + 10 min, pulando ocupados, e vira o di
   assert.strictEqual(Pi.proximoHorario(cfg, [], SP('2026-10-29', '08:55')), new Date(SP('2026-10-29', '12:30')).toISOString());
   assert.strictEqual(Pi.proximoHorario(cfg, [new Date(SP('2026-10-29', '12:30')).toISOString()], SP('2026-10-29', '10:00')), new Date(SP('2026-10-29', '20:00')).toISOString());
   assert.strictEqual(Pi.proximoHorario(cfg, [], SP('2026-10-29', '21:00')), new Date(SP('2026-10-30', '09:00')).toISOString());
+  // Grade do dia toda ocupada: sem limite diário, entra num horário extra do mesmo dia (não empurra para amanhã).
+  const cheia = cfg.horarios.map((h) => new Date(SP('2026-10-29', h)).toISOString());
+  const extra = Pi.proximoHorario(cfg, cheia, SP('2026-10-29', '08:00'));
+  assert.strictEqual(extra.slice(0, 10), '2026-10-29');
+  assert.ok(cheia.every((o) => Math.abs(Date.parse(o) - Date.parse(extra)) >= 25 * 60000));
 });
 
 test('configuração valida horários e limites', async () => {
@@ -118,23 +123,23 @@ test('aprovação durante a rodada não some da agenda; rodada simultânea é re
   assert.strictEqual(outra.executou, true); // a trava foi liberada no fim
 });
 
-test('relógio: 1 min com produção; parado dorme até o próximo compromisso (5 a 45 min); correntes simultâneas caem na mesma chave', async () => {
+test('relógio: 5 min com produção; parado dorme até o próximo compromisso (10 a 50 min); correntes simultâneas caem na mesma chave', async () => {
   const R = require('./relogio'); const t = Date.parse('2026-10-29T10:00:05Z');
   const ativo = R.proximo({ avancados: [{ id: 'x', estado: 'em_andamento' }] }, t);
-  assert.strictEqual(ativo.alvo, Date.parse('2026-10-29T10:01:00Z'));
+  assert.strictEqual(ativo.alvo, Date.parse('2026-10-29T10:05:00Z'));
   assert.strictEqual(R.proximo({ avancados: [{ id: 'x', estado: 'em_andamento' }] }, t + 20000).chave, ativo.chave);
-  // parado e sem compromisso informado: teto de 45 min, na grade (duas correntes caem na mesma chave)
-  assert.strictEqual(R.proximo({ avancados: [] }, t).alvo, Date.parse('2026-10-29T10:30:00Z'));
+  // parado e sem compromisso informado: teto de 50 min, na grade (duas correntes caem na mesma chave)
+  assert.strictEqual(R.proximo({ avancados: [] }, t).alvo, Date.parse('2026-10-29T10:50:00Z'));
   assert.strictEqual(R.proximo(null, t + 60000).chave, R.proximo(null, t).chave);
-  // compromisso em 20 min: acorda nele; em 2 min: espera o mínimo de 5; em 3 h: fica no teto de 45 min
+  // compromisso em 20 min: acorda nele; em 2 min: espera o mínimo de 10; em 3 h: fica no teto de 50 min
   assert.strictEqual(R.proximo({ proxima_em: Date.parse('2026-10-29T10:20:00Z') }, t).alvo, Date.parse('2026-10-29T10:20:00Z'));
-  assert.strictEqual(R.proximo({ proxima_em: Date.parse('2026-10-29T10:02:00Z') }, t).alvo, Date.parse('2026-10-29T10:06:00Z'));
-  assert.ok(R.proximo({ proxima_em: Date.parse('2026-10-29T13:00:00Z') }, t).alvo <= t + 45 * 60000);
+  assert.strictEqual(R.proximo({ proxima_em: Date.parse('2026-10-29T10:02:00Z') }, t).alvo, Date.parse('2026-10-29T10:11:00Z'));
+  assert.ok(R.proximo({ proxima_em: Date.parse('2026-10-29T13:00:00Z') }, t).alvo <= t + 50 * 60000);
   const nudge = []; assert.deepStrictEqual(await R.agendarEm(Date.parse('2026-10-29T10:15:00Z'), { agora: t, enviar: async (m, o) => nudge.push(o) }), { alvo: Date.parse('2026-10-29T10:15:00Z') });
   assert.strictEqual(nudge[0].delaySeconds, 895);
   assert.strictEqual(await R.agendarEm(Date.parse('2026-10-29T13:00:00Z'), { agora: t, enviar: async () => {} }), null); // longe: o tique normal chega antes
   const enviados = []; await R.agendarProxima({ criado: { id: 'n' } }, { agora: t, enviar: async (m, o) => enviados.push(o) });
-  assert.strictEqual(enviados[0].delaySeconds, 55);
+  assert.strictEqual(enviados[0].delaySeconds, 295);
   assert.ok(await R.agendarProxima({}, { agora: t, enviar: async () => { throw new Error('fila fora'); } }) === null);
 });
 
@@ -198,8 +203,13 @@ test('pedido de pautas extras: vale só no dia, ignora o horário e soma ao limi
 });
 
 test('próxima ação: dorme até o post agendado, a janela de aprovação, a volta da cota ou o início da produção', () => {
-  const cfg = { ...Pi.PADRAO }; const dia = '2026-10-29';
+  const cfg = { ...Pi.PADRAO, roteiros_dia: 0 }; const dia = '2026-10-29'; // fábrica de roteiros desligada: tem teste próprio abaixo
   const base = (hhmm, est = {}, extra = {}) => Pi.proximaAcao(cfg, { criados: [], agenda: [], notificado: {}, ...est }, { agora: SP(dia, hhmm), dia, hora: hhmm, ...extra });
+  // roteiros de Reels faltando hoje: volta em 3 min; meta cumprida ou IA pausada: não acorda por eles
+  const comRt = (rt) => Pi.proximaAcao(Pi.PADRAO, { criados: [], agenda: [], notificado: { '08:00': true, '14:00': true }, roteiros: rt }, { agora: SP(dia, '15:10'), dia, hora: '15:10', semPauta: true });
+  assert.strictEqual(comRt({ dia, feitos: 2, comecados: 3 }), SP(dia, '15:13'));
+  assert.strictEqual(comRt({ dia, feitos: 10, comecados: 12 }), SP(dia, '15:30'));
+  assert.strictEqual(comRt({ dia, feitos: 2, comecados: 3, pausa_ate: new Date(SP(dia, '16:00')).toISOString() }), SP(dia, '15:30'));
   // de madrugada, antes da produção: acorda às 03:00
   assert.strictEqual(base('01:00'), SP(dia, '03:00'));
   // meta do dia cumprida à tarde, um post agendado para 17:00 e a janela das 14h já avisada: acorda no post

@@ -56,7 +56,7 @@ test('criar: conteúdo normal do app em formato reels, origem vídeo, campo vide
   assert.ok(c.id.startsWith('vd_'));
   assert.strictEqual(c.formato, 'reels'); assert.strictEqual(c.origem.tipo, 'video'); assert.strictEqual(c.status, 'rascunho');
   assert.strictEqual(c.video.estado, 'enviado'); assert.strictEqual(c.video.estilo, 'hormozi');
-  assert.deepStrictEqual(c.video.opcoes, { broll: false, musica: false, punch_in: true, remover_pausas: true, remover_muletas: true });
+  assert.deepStrictEqual(c.video.opcoes, { broll: false, musica: false, sons: true, punch_in: true, remover_pausas: true, remover_muletas: true });
   assert.deepStrictEqual(c.video.worker, { tentativas: 0, iniciado_em: null, concluido_em: null, run_url: null, erro: null });
   assert.strictEqual(c.conta.ig_id, ACCOUNT.ig_id);
   assert.strictEqual((await ler(c.id)).id, c.id, 'gravado no servidor');
@@ -111,7 +111,7 @@ test('resultado: legenda com vício é rejeitada e pedida de novo; versão de 1 
   const v = M.versaoAtiva(c);
   assert.strictEqual(c.copia.versoes.length, 1); assert.strictEqual(v.slides.length, 1); assert.strictEqual(v.slides[0].layout, 'reel'); assert.strictEqual(v.slides[0].texto, LEGENDA_BOA.legenda);
   assert.strictEqual(v.legenda, LEGENDA_BOA.legenda); assert.deepStrictEqual(v.hashtags, c.video.legenda_ig.hashtags);
-  assert.deepStrictEqual({ ...c.motion, duracao_s: undefined, formato: undefined }, { engine: 'blob', estado: 'pronto', hash: v.hash, url: RESULTADO(id).url, poster: RESULTADO(id).poster_url, sandbox: false, duracao_s: undefined, formato: undefined });
+  assert.deepStrictEqual({ ...c.motion, duracao_s: undefined, formato: undefined }, { engine: 'blob', estado: 'pronto', hash: v.hash, url: RESULTADO(id).url, poster: RESULTADO(id).poster_url, capa: null, sandbox: false, duracao_s: undefined, formato: undefined });
   assert.strictEqual(c.video.transcricao.frases[0].t1, 3.2); assert.strictEqual(c.video.worker.run_url, 'https://github.com/x/actions/runs/1'); assert.strictEqual(c.video.worker.lease_ate, undefined);
   assert.ok(c.video.log.some((l) => /editor: 14 cortes/.test(l.msg)));
   assert.strictEqual(d.push.length, 1); assert.strictEqual(d.push[0].url, '/?tab=videos'); assert.match(d.push[0].corpo, /Vídeo pronto/);
@@ -358,4 +358,21 @@ test('alertas: conferir mede, junta as frases num push só e nunca lança', asyn
   assert.strictEqual(r.frases.length, 2); assert.strictEqual(push.length, 1); assert.match(push[0].corpo, /Banco de dados em 88%.*acesso ao Instagram caiu/);
   const ok = await AL.conferir({ deps: { armazem: { arquivos: { espaco: async () => { throw new Error('x'); } } }, saude: async () => { throw new Error('y'); }, notificar: async () => { throw new Error('z'); } } });
   assert.deepStrictEqual(ok.frases, []);
+});
+
+
+test('capa do Reels: o editor manda capa_url, o vídeo guarda e o cartão mostra a capa; fora de videos/<id>/ é ignorada', async () => {
+  novo(); const d = depsDe(iaFalsa([LEGENDA_BOA]).ia);
+  const id = await ateNaFila(d.deps); await V.proximoJob();
+  const capa = blob(id, 'capa.jpg').url;
+  const c = await V.registrarResultado(id, { resultado: { ...RESULTADO(id), capa_url: capa, capa_pathname: `videos/${id}/capa.jpg` }, transcricao: TRANSCRICAO }, d);
+  assert.strictEqual(c.video.resultado.capa_url, capa);
+  assert.strictEqual(c.motion.capa, capa); assert.strictEqual(c.motion.poster, capa);
+  const lista = await V.listar();
+  assert.strictEqual(lista[0].poster, capa); assert.strictEqual(lista[0].capa, capa);
+  // capa fora da pasta do vídeo não entra
+  novo(); const d2 = depsDe(iaFalsa([LEGENDA_BOA]).ia);
+  const id2 = await ateNaFila(d2.deps); await V.proximoJob();
+  const e = await V.registrarResultado(id2, { resultado: { ...RESULTADO(id2), capa_url: 'https://abc.public.blob.vercel-storage.com/videos/outro/capa.jpg', capa_pathname: 'videos/outro/capa.jpg' }, transcricao: TRANSCRICAO }, d2);
+  assert.strictEqual(e.motion.capa, null);
 });

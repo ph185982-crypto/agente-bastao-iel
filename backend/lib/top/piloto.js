@@ -18,11 +18,12 @@ const PADRAO = Object.freeze({
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
   // 'auto' reparte as vagas pelo placar real (envios por mil de cada formato, com 20% de teste); sem dado suficiente, faz o rodízio dos quatro.
-  formato_padrao: 'auto', // 'auto' | 'reportagem' (visual da marca) | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
+  roteiros_dia: 5, // roteiros de Reels aprovados pelos fiscais por dia (aba Vídeos); 0 desliga
+  formato_padrao: 'auto', // 'auto' | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
 });
 // Formatos que o piloto pode pedir ao pipeline; 'alterna' roda tweet → ensaio → estatico para o feed variar.
-const FORMATOS_PILOTO = ['reportagem', 'tweet', 'estatico', 'ensaio', 'alterna', 'auto'];
-const FORMATOS_AUTO = ['tweet', 'reportagem', 'estatico', 'ensaio'];
+const FORMATOS_PILOTO = ['tweet', 'estatico', 'ensaio', 'alterna', 'auto'];
+const FORMATOS_AUTO = ['tweet', 'estatico', 'ensaio'];
 const RODIZIO = ['tweet', 'ensaio', 'estatico'];
 const proximoDoRodizio = (ultimo) => RODIZIO[(RODIZIO.indexOf(ultimo) + 1) % RODIZIO.length]; // desconhecido (-1) → tweet
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -39,7 +40,7 @@ function validar(patch = {}) {
   const out = {};
   if ('ativo' in patch) { if (typeof patch.ativo !== 'boolean') throw erro('ativo deve ser verdadeiro ou falso.'); out.ativo = patch.ativo; }
   const inteiro = (k, min, max) => { if (!(k in patch)) return; const n = Number(patch[k]); if (!Number.isInteger(n) || n < min || n > max) throw erro(`${k} deve ser um inteiro de ${min} a ${max}.`); out[k] = n; };
-  inteiro('meta_dia', 1, 15); inteiro('reserva', 0, 5); inteiro('candidatos_max_dia', 1, 30);
+  inteiro('meta_dia', 1, 15); inteiro('reserva', 0, 5); inteiro('candidatos_max_dia', 1, 30); inteiro('roteiros_dia', 0, 15);
   for (const k of ['inicio_producao', 'fim_producao']) if (k in patch) { if (!HORA.test(patch[k])) throw erro(`${k} deve estar no formato HH:MM.`); out[k] = patch[k]; }
   if ('formato_padrao' in patch) { if (!FORMATOS_PILOTO.includes(patch.formato_padrao)) throw erro(`formato_padrao deve ser ${FORMATOS_PILOTO.slice(0, -1).join(', ')} ou auto.`); out.formato_padrao = patch.formato_padrao; }
   for (const k of ['horarios', 'janelas_aprovacao']) if (k in patch) {
@@ -65,25 +66,34 @@ async function gravarEstado(e) { const a = armazem(); if (a?.duravel) await a.co
 
 // ── Agenda ──────────────────────────────────────────────────────────────────────
 // Próximo horário livre da grade, a partir de agora + 10 min (hoje ou nos próximos dias).
+// Sem limite de posts por dia: se a grade do dia já está toda ocupada, o post entra num horário extra do mesmo dia
+// (de 30 em 30 min entre 08:00 e 22:30, a pelo menos 25 min de outro post) em vez de empurrar para amanhã.
 function proximoHorario(cfg, ocupados, agora) {
+  const livre = (t, folga) => !ocupados.some((o) => Math.abs(Date.parse(o) - t) < folga);
   let dia = diaSP(agora);
-  for (let d = 0; d < 7; d++, dia = proximoDia(dia)) {
+  for (let d = 0; d < 30; d++, dia = proximoDia(dia)) {
+    let cheia = false;
     for (const h of cfg.horarios) {
       const t = instante(dia, h);
       if (t < agora + 10 * 60000) continue;
-      if (ocupados.some((o) => Math.abs(Date.parse(o) - t) < 60000)) continue;
+      if (!livre(t, 60000)) { cheia = true; continue; }
       return new Date(t).toISOString();
+    }
+    if (cheia) {
+      for (let m = 8 * 60; m <= 22 * 60 + 30; m += 30) {
+        const t = instante(dia, `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+        if (t >= agora + 10 * 60000 && livre(t, 25 * 60000)) return new Date(t).toISOString();
+      }
     }
   }
   return null;
 }
 
-// Chamado pela aprovação: o conteúdo já está aprovado (studio.decidir). Grava o horário no conteúdo e na agenda.
 async function agendar(id, { agora = Date.now() } = {}) {
   const a = armazem(); const cfg = await config(); const est = await lerEstado();
   const agenda = (est.agenda || []).filter((x) => x.id !== id);
   const quando = proximoHorario(cfg, agenda.map((x) => x.publicar_em), agora);
-  if (!quando) throw erro('Não há horário livre na grade dos próximos 7 dias.', 409);
+  if (!quando) throw erro('Não há horário livre nos próximos 30 dias.', 409);
   const reg = await a.conteudos.obter(conta(), id); if (!reg) throw erro('Conteúdo não encontrado.', 404);
   const c = reg.doc;
   c.agenda = { publicar_em: quando, agendado_em: new Date(agora).toISOString() };
@@ -144,12 +154,27 @@ async function proximaPauta(est, { agora, deps, restante }) {
   return fila.shift() || null;
 }
 
+async function passoRoteiros(cfg, est, r, { agora, dia, hora, deps, restante }) {
+  const metaRoteiros = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia;
+  if (!(metaRoteiros > 0 && hora >= '05:00' && hora <= '22:30' && restante() > 16000 && !deps.semRoteiros)) return;
+  try {
+    const rt = await (deps.roteiros || require('../roteiros').avancar)(est, { agora, dia, meta: metaRoteiros, orcamentoMs: restante() - 4000 });
+    if (rt.salvos?.length || rt.descartados?.length || rt.fases?.length) r.roteiros = { salvos: rt.salvos?.length || 0, descartados: rt.descartados?.length || 0, fases: rt.fases?.length || 0 };
+    if (rt.erro) r.avisos.push(`Roteiros: ${rt.erro}`);
+  } catch (e) { r.avisos.push(`Roteiros falharam: ${String(e.message).slice(0, 120)}`); }
+}
+
 // ── Rodada ──────────────────────────────────────────────────────────────────────
 // Quando a próxima rodada tem o que fazer (ms): o relógio dorme até lá em vez de acordar o banco à toa.
 function proximaAcao(cfg, est, { agora, dia, hora, removidos = new Set(), semPauta = false }) {
   const c = [];
   for (const x of est.agenda || []) if (!removidos.has(x.id)) { const t = Date.parse(x.publicar_em); if (t > agora) c.push(t); else c.push(agora + 10 * 60000); } // vencido e segurado: tenta de novo em 10 min
-  if (!cfg.ativo) return c.length ? Math.min(...c) : null;
+  if (!cfg.ativo) {
+    const metaRt0 = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia; const rt0 = est.roteiros;
+    const pausa0 = rt0?.pausa_ate && Date.parse(rt0.pausa_ate) > agora;
+    if (metaRt0 > 0 && hora >= '05:00' && hora <= '22:30' && (rt0?.dia !== dia || require('../roteiros').pendente(rt0, metaRt0))) c.push(pausa0 ? Date.parse(rt0.pausa_ate) : agora + 3 * 60000);
+    return c.length ? Math.min(...c) : null;
+  }
   for (const j of cfg.janelas_aprovacao || []) { const t = instante(dia, j); if (t > agora && !est.notificado?.[j]) c.push(t); }
   const folga = est.extra_dia?.dia === dia ? est.extra_dia.n : 0;
   const prontosHoje = (est.criados || []).filter((x) => x.dia === dia && x.estado === 'concluida' && x.decidido !== 'descartado').length;
@@ -160,6 +185,10 @@ function proximaAcao(cfg, est, { agora, dia, hora, removidos = new Set(), semPau
   else if (est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora) c.push(Date.parse(est.ia_pausa_ate));
   else if (semPauta) c.push(Math.ceil((agora + 15 * 60000) / (30 * 60000)) * 30 * 60000); // fila de pautas vazia: olha de novo em ~30 min
   else c.push(agora + 5 * 60000);
+  // Roteiros de Reels ainda faltando hoje: volta em poucos minutos (cada rodada faz 1 a 3 chamadas de IA).
+  const metaRt = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia;
+  const rt = est.roteiros; const rtPausa = rt?.pausa_ate && Date.parse(rt.pausa_ate) > agora;
+  if (metaRt > 0 && hora >= '05:00' && hora <= '22:30' && !rtPausa && (rt?.dia !== dia || require('../roteiros').pendente(rt, metaRt))) c.push(agora + 3 * 60000);
   return Math.min(...c);
 }
 
@@ -204,12 +233,12 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
     try { const f = await (deps.faxinaVideos || ((o) => require('../videos').faxina(o)))({ agora }); if (f.apagados) r.faxina_videos = f; } catch (e) { r.avisos.push(`Faxina de vídeos falhou: ${String(e.message).slice(0, 100)}`); }
   }
   // 0d) Uma vez por dia, a partir das 8h: alertas de operação (banco, acesso ao Instagram, relógio que ficou parado).
-  if (hora >= '08:00' && est.alerta_dia !== dia && (process.env.VERCEL || deps.alertas)) {
+  if (hora >= '08:00' && est.alerta_dia !== dia && (process.env.VERCEL || process.env.K_SERVICE || deps.alertas)) {
     est.alerta_dia = dia;
     try { const al = await (deps.alertas || ((o) => require('../alertas').conferir(o)))({ agora, ultimaRodadaEm: est.ultima_rodada?.em || null }); if (al.frases?.length) r.alertas = al.frases; } catch { /* alerta nunca derruba a rodada */ }
   }
   // 0e) Uma vez por dia, a partir das 7h: lê os resultados reais dos posts (Meta) e refaz o placar que orienta a produção.
-  if (hora >= '07:00' && est.metricas_dia !== dia && restante() > 40000 && (process.env.VERCEL || deps.coletarMetricas)) {
+  if (hora >= '07:00' && est.metricas_dia !== dia && restante() > 40000 && (process.env.VERCEL || process.env.K_SERVICE || deps.coletarMetricas)) {
     est.metricas_dia = dia;
     try { const m = await (deps.coletarMetricas || ((o) => require('../placar').coletar(o)))({ agora, orcamentoMs: Math.min(22000, restante() - 18000) }); r.metricas = { posts: m.snapshot?.posts?.length || 0, parcial: !!m.snapshot?.parcial }; }
     catch (e) { r.avisos.push(`Leitura dos resultados falhou: ${String(e.meta?.amigavel || e.message).slice(0, 110)}`); }
@@ -227,7 +256,12 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       }
     }
   }
-  if (!cfg.ativo) { r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos }); est.ultima_rodada = r; await gravarRodada(est, removidos); return { executou: true, ...r, motivo: 'Piloto desligado: só a agenda já aprovada foi conferida.' }; }
+  if (!cfg.ativo) {
+    // Piloto desligado (sem carrossel do zero): a agenda continua e os roteiros de vídeo também (IA gratuita, independentes).
+    await passoRoteiros(cfg, est, r, { agora, dia, hora, deps, restante });
+    r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos }); est.ultima_rodada = r; await gravarRodada(est, removidos);
+    return { executou: true, ...r, motivo: 'Piloto desligado: agenda conferida e roteiros de vídeo avançados.' };
+  }
 
   // 2) Avança o que está em produção.
   for (const x of est.criados.filter((y) => y.estado === 'em_andamento')) {
@@ -284,7 +318,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       if (historia) { /* a vaga desta rodada foi para a linha própria */ } else if (pauta) {
         // Formato padrão do feed: "reportagem" (o visual da marca). Dá para mudar em config.piloto (formato_padrao);
         // "alterna" faz o rodízio tweet → ensaio → estatico a cada pauta.
-        const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto';
+        const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto'; // 'reportagem' salvo antes vira 'auto'
         const ultimoFmt = [...est.criados].reverse().find((x) => x.formato)?.formato;
         let fmt = formato === 'alterna' ? proximoDoRodizio(ultimoFmt) : formato;
         if (formato === 'auto') {
@@ -303,6 +337,8 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       } else { r.sem_pauta = true; r.avisos.push('Sem pauta nova agora (fila vazia ou descoberta adiada).'); }
     } catch (e) { r.avisos.push(`Criação falhou: ${String(e.message).slice(0, 160)}`); }
   }
+  // 5) Roteiros de Reels: roteirista + fiscal avançam com o tempo que sobrou (IA gratuita; nada é publicado).
+  if (!iaPausada) await passoRoteiros(cfg, est, r, { agora, dia, hora, deps, restante });
   r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos, semPauta: !!r.sem_pauta });
   est.ultima_rodada = { ...r, avisos: r.avisos.slice(0, 6) };
   await gravarRodada(est, removidos);
@@ -340,6 +376,20 @@ async function registrarDecisao(id, decisao) {
   if (x) { x.decidido = decisao; await gravarEstado(est); }
 }
 
+// "Gerar roteiros agora" (aba Vídeos): roda só a fábrica de roteiros, respeitando a trava da rodada.
+async function avancarRoteiros({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {}) {
+  const a = armazem(); if (!a?.duravel) throw erro('Os roteiros precisam do banco de dados no servidor.', 503);
+  const cfg = await config(); const est = await lerEstado();
+  if (est.rodando_ate && Date.parse(est.rodando_ate) > Date.now()) return { ocupado: true, motivo: 'O piloto está rodando agora; os roteiros avançam nessa rodada.' };
+  const dia = diaSP(agora);
+  const meta = Math.max(Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia, 1);
+  await gravarEstado({ ...est, rodando_ate: new Date(Date.now() + orcamentoMs + 15000).toISOString() });
+  let r;
+  try { r = await (deps.avancar || require('../roteiros').avancar)(est, { agora, dia, meta, orcamentoMs }); }
+  finally { const atual = await lerEstado(); await gravarEstado({ ...atual, roteiros: est.roteiros, rodando_ate: null }); }
+  return { ...r, resumo: require('../roteiros').resumo(est, { dia }) };
+}
+
 async function resumoDoDia({ agora = Date.now() } = {}) {
   const cfg = await config(); const est = await lerEstado(); const dia = diaSP(agora);
   const hoje = (est.criados || []).filter((x) => x.dia === dia);
@@ -349,8 +399,10 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
     hoje: { criados: hoje.length, em_producao: cont((x) => x.estado === 'em_andamento'), prontos: cont((x) => x.estado === 'concluida' && !x.decidido), aprovados: cont((x) => x.decidido === 'aprovado'), descartados_regua: cont((x) => ['descartada', 'abaixo_da_regua', 'erro'].includes(x.estado)) },
     itens: hoje.map((x) => ({ id: x.id, titulo: x.titulo || '', estado: x.estado, nota: x.nota ?? null, decidido: x.decidido || null })),
     agenda: (est.agenda || []).slice(0, 20), proximo_horario: proximoHorario(cfg, (est.agenda || []).map((x) => x.publicar_em), agora),
+    roteiros: require('../roteiros').resumo(est, { dia }),
     ultima_rodada: est.ultima_rodada || null, guardado: !!armazem()?.duravel,
+    ia_paga: process.env.IA_OPENAI === '1' && process.env.OPENAI_API_KEY ? await require('../gastoIa').resumo({ agora }).catch(() => null) : null,
   };
 }
 
-module.exports = { proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
+module.exports = { avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };

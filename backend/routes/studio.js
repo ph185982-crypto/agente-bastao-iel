@@ -10,6 +10,9 @@ const erro=(res,e)=>res.status(e.status || (e.code==='CONFLITO'?409:500)).json({
 function segundoPlano(p){if(process.env.VERCEL)waitUntil(p);else p.catch(e=>console.error('[studio]',e.message));}
 async function kick(c){
   if(!['gerando','publicando'].includes(c.studio?.estado))return;
+  const T=require('../lib/nuvem/tarefas');
+  if(T.naNuvem()){const st=c.studio;const atraso=st.adiar_ate?Math.max(0,Math.ceil((Date.parse(st.adiar_ate)-Date.now())/1000)):0;
+    await T.criar({caminho:'/api/nuvem/studio',corpo:{id:c.id,job:st.job},atrasoS:atraso,chave:['st',c.id,st.job,st.etapa,st.indice||0,st.passos||0,st.polls||0].join('-')});return;}
   if(!process.env.VERCEL){setTimeout(()=>executar(c.id,c.studio.job),c.studio.etapa==='motion'?4000:100);return;}
   await require('../lib/studioFila').enfileirar(c);
 }
@@ -36,11 +39,16 @@ async function publicarEmSegundoPlano(c){
   const atual=await armazem().publicacoes.obter(ACCOUNT.ig_id,c.id,'instagram');
   let p=atual?await P.avancar(c.id):await P.iniciar(c.id,{hash:c.revisao.hash_aprovado,base:studio.base()});
   if(['iniciada','aguardando_processamento','publicando_final'].includes(p.estado)){
+    // Carrossel grande demora para a Meta processar: espera com intervalo crescente (até ~20 min) pela fila, sem segurar a função.
     st.polls=(st.polls||0)+1;
-    if(st.polls>50)return;
     const reg=await studio.ler(c.id);if(reg.doc.studio?.job!==st.job)return;
-    reg.doc.studio.polls=st.polls;await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,reg.doc,reg.rev);
-    await new Promise(r=>setTimeout(r,3500));await kick(reg.doc);return;
+    if(st.polls>120){await require('../lib/top/relogio').agendarEm(Date.now()+120000).catch(()=>{});return;} // o relógio retoma em 2 min
+    const espera=st.polls<=10?4000:st.polls<=40?8000:15000;
+    reg.doc.studio.polls=st.polls;
+    if(require('../lib/nuvem/tarefas').comFila())reg.doc.studio.adiar_ate=new Date(Date.now()+espera).toISOString();
+    await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,reg.doc,reg.rev);
+    if(!require('../lib/nuvem/tarefas').comFila())await new Promise(r=>setTimeout(r,3500));
+    await kick(reg.doc);return;
   }
   const reg=await studio.ler(c.id);if(reg.doc.studio?.job!==st.job)return;
   const doc=reg.doc;doc.studio.estado=p.estado==='publicada'?'publicado':'erro';doc.studio.erro=p.erro?.amigavel||null;
@@ -49,6 +57,18 @@ async function publicarEmSegundoPlano(c){
   M.registrar(doc,'sistema','publicacao',p.estado==='publicada'?'Publicado no Instagram':doc.studio.erro||'A publicação não terminou.');
   await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,doc,reg.rev);
   await require('../lib/push').notificar({corpo:p.estado==='publicada'?'Publicado! Seu conteúdo já está no Instagram.':`A publicação precisa de atenção: ${doc.studio.erro||'tente novamente no app'}`,tag:`publicacao-${c.id}`}).catch(()=>{});
+  // LinkedIn: o mesmo conteúdo aprovado sai também lá, se a conexão estiver ligada. Falha no LinkedIn não desfaz o Instagram.
+  if(p.estado==='publicada'&&doc.formato!=='reels')await publicarNoLinkedIn(c.id,p.hash_versao).catch(e=>console.error('[linkedin]',e.message));
+}
+async function publicarNoLinkedIn(id,hash){
+  const L=require('../lib/linkedin');const cfg=await L.lerCfg();if(!cfg.ativo||!cfg.token)return null;
+  let r=null;let falha=null;try{r=await L.publicar(id,{hash});}catch(e){falha=e.message;}
+  const reg=await studio.ler(id);const d=reg.doc;
+  d.publicacoes=[...(d.publicacoes||[]).filter(x=>x.network!=='linkedin'),{network:'linkedin',status:falha?'erro':(r?.estado||'publicada'),post_id:r?.ig_media_id||null,permalink:r?.permalink||null,published_at:r?.publicada_em||null,erro:falha}];
+  M.registrar(d,'sistema','publicacao',falha?`LinkedIn: ${falha}`:'Publicado no LinkedIn');
+  await armazem().conteudos.salvar(ACCOUNT.ig_id,id,d,reg.rev);
+  await require('../lib/push').notificar({corpo:falha?`O LinkedIn não recebeu o post: ${falha}`:'Publicado também no LinkedIn.',tag:`linkedin-${id}`}).catch(()=>{});
+  return r;
 }
 router.post('/worker/:id',async(req,res)=>{
   try{const {job}=req.body||{};if(!job||!studio.confere(req.params.id,job,req.get('x-studio-token')))return res.status(403).json({error:'Chamada de produção inválida.'});
@@ -88,7 +108,8 @@ router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'})
     const c=await studio.decidir(req.params.id,req.body||{});
     // Carrossel "top" (piloto): aprovar AGENDA no próximo horário da grade; "agora:true" publica na hora como antes.
     if(c.top&&['aprovar','descartar'].includes(req.body.acao))await require('../lib/top/piloto').registrarDecisao(c.id,req.body.acao==='aprovar'?'aprovado':'descartado').catch(()=>{});
-    if(req.body.acao==='aprovar'&&c.top&&!req.body.agora){await require('../lib/top/piloto').agendar(c.id);return res.status(202).json(await studio.ler(c.id));}
+    // Agendar vale para qualquer conteúdo (piloto, cópia da Reciclagem, criado à mão): entra no próximo horário livre.
+    if(req.body.acao==='aprovar'&&!req.body.agora&&(c.top||req.body.agendar)){await require('../lib/top/piloto').agendar(c.id);return res.status(202).json(await studio.ler(c.id));}
     if(req.body.acao==='aprovar'){
       const P=require('../lib/publicador');const cfg=await P.config();if(cfg.publish_paused)return res.status(409).json({error:'As publicações estão pausadas. Libere em Perfil para publicar.',code:'PAUSADO'});
       const reg=await studio.ler(c.id);reg.doc.studio={...(reg.doc.studio||{}),job:require('crypto').randomUUID(),estado:'publicando',etapa:'publicacao',polls:0};

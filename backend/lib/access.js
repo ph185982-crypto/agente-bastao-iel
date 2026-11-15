@@ -8,7 +8,10 @@
 // privada fica FECHADA com "configuração necessária" (503): nada que consuma
 // IA, leia URLs ou guarde dados roda aberto. Só no computador de quem
 // desenvolve (sem VERCEL) a ausência do código deixa a API aberta.
-// APP_ACCESS_MODE=public permite acesso sem código por escolha explícita do dono.
+// APP_ACCESS_MODE=public permite acesso sem código por escolha explícita do dono (publicar continua exigindo código).
+// APP_ACCESS_MODE=public_total é a escolha do dono de NÃO ter código nenhum: qualquer pessoa com o endereço usa tudo,
+// inclusive aprovar e publicar no Instagram. Nesse modo ninguém cria código pelo app (senão um visitante criaria o dele
+// e tomaria a ferramenta); para proteger de novo, o dono troca a variável na Vercel.
 // Com o app aberto ao público, o dono pode criar o código pelo próprio app (POST /api/auth/definir): o código vira
 // hash scrypt no banco e, a partir daí, o app fica protegido (sem precisar mexer na Vercel). APP_ACCESS_CODE da Vercel,
 // se existir, continua valendo junto (é o caminho de recuperação se o código do app for esquecido).
@@ -46,7 +49,8 @@ const hashCodigo = (codigo, sal) => crypto.scryptSync(String(codigo), Buffer.fro
 
 const envValido = () => code().length >= MIN_CODIGO;
 const codigoValido = () => envValido() || !!dono;
-const acessoPublico = () => process.env.APP_ACCESS_MODE === 'public' && !dono;
+const semCodigoTotal = () => process.env.APP_ACCESS_MODE === 'public_total';
+const acessoPublico = () => semCodigoTotal() || (process.env.APP_ACCESS_MODE === 'public' && !dono);
 const secret = () => crypto.createHash('sha256').update(`pico|${envValido() ? code() : dono?.hash || ''}|${process.env.APP_TOKEN_SALT || ''}`).digest();
 const protegido = () => !acessoPublico() && codigoValido();
 
@@ -120,14 +124,14 @@ function registraFalha(ip) {
 // /api/publico/midia: a Meta baixa as imagens daqui SEM o código do Pedro; a rota só entrega
 // com um token assinado (HMAC) que amarra o conteúdo, o hash aprovado e o slide, e expira.
 // /api/sso/(entrar|callback|central): login único Avanteza ID — o callback confere o JWT da Central antes de emitir qualquer coisa (ver ssoRota.js).
-const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/sso\/(entrar|callback|central)$/, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/, /^\/api\/videos\/blob$/];
+const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/, /^\/api\/videos\/blob$/, /^\/api\/linkedin\/callback$/, /^\/api\/sso\/(entrar|callback|central)$/];
 // Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
 // Vídeos: o worker de edição (GitHub Actions) chama /api/videos/worker/* e pede client tokens em /api/videos/blob com o CRON_SECRET.
 // Reciclagem: a coleta diária (GitHub Actions) chama /api/reciclagem/coletar.
-const ROTAS_CRON = [/^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/, /^\/api\/monitor\/tick$/, /^\/api\/radar\/cron$/, /^\/api\/top\/piloto\/rodada$/, /^\/api\/videos\/worker\/(proximo|token|resultado|erro|sinal)$/, /^\/api\/videos\/blob$/, /^\/api\/reciclagem\/coletar$/];
+const ROTAS_CRON = [/^\/api\/cron\/lote$/, /^\/api\/nuvem\/(studio|radar)$/, /^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/, /^\/api\/monitor\/tick$/, /^\/api\/radar\/cron$/, /^\/api\/top\/piloto\/rodada$/, /^\/api\/videos\/worker\/(proximo|token|resultado|erro|sinal|plano)$/, /^\/api\/videos\/blob$/, /^\/api\/reciclagem\/coletar$/];
 
 // Rotas que o GitHub Actions chama com o token OIDC do próprio runner (sem segredo cadastrado): ver backend/lib/githubOidc.js.
-const ROTAS_OIDC = [/^\/api\/videos\/worker\/(proximo|token|resultado|erro|pexels|sinal)$/, /^\/api\/reciclagem\/coletar$/];
+const ROTAS_OIDC = [/^\/api\/videos\/worker\/(proximo|token|resultado|erro|pexels|sinal|plano)$/, /^\/api\/reciclagem\/coletar$/];
 
 const estadoAcesso = () => (acessoPublico() ? 'aberto_publico' : codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
 const aberto = (estado) => estado === 'aberto_local' || estado === 'aberto_publico';
@@ -193,7 +197,7 @@ function registrarRotas(app) {
   r.get('/status', async (req, res) => {
     await carregarDono();
     const est = estadoAcesso();
-    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : aberto(est) });
+    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, sem_codigo_total: semCodigoTotal(), authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : aberto(est) });
   });
   r.post('/login', async (req, res) => {
     await carregarDono();
@@ -222,6 +226,7 @@ function registrarRotas(app) {
     try {
       const a = require('./armazem').armazem();
       if (!a?.duravel) return res.status(503).json({ error: 'Sem banco de dados no servidor para guardar o código.', code: 'SEM_ARMAZEM' });
+      if (semCodigoTotal()) return res.status(409).json({ error: 'O dono escolheu usar a ferramenta sem código. Para proteger de novo, troque APP_ACCESS_MODE na Vercel.', code: 'SEM_CODIGO_TOTAL' });
       await carregarDono(true);
       if (estadoAcesso() !== 'aberto_publico') return res.status(409).json({ error: 'O app já tem código de acesso. Entre com ele.', code: 'JA_PROTEGIDO' });
       const codigo = String(req.body?.code || '');
@@ -237,4 +242,4 @@ function registrarRotas(app) {
   app.use('/api/auth', r);
 }
 
-module.exports = { exigeAcesso, limita, unica, registrarRotas, protegido, estadoAcesso, carregarDono, emitirAcesso, sign, verify, codigoConfere, MIN_CODIGO, _zerarDono: () => { dono = null; donoEm = 0; } };
+module.exports = { exigeAcesso, limita, unica, registrarRotas, protegido, estadoAcesso, semCodigoTotal, carregarDono, emitirAcesso, sign, verify, codigoConfere, MIN_CODIGO, _zerarDono: () => { dono = null; donoEm = 0; } };

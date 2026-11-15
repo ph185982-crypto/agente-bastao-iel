@@ -146,7 +146,7 @@ class PunchIn(unittest.TestCase):
 
     def test_planejar_zoom_alterna_e_fades_so_nas_emendas(self):
         segs = L.planejar_segmentos([(0, 6), (8, 12)], inicios_frases=[0, 3, 8])
-        self.assertEqual([s['zoom'] for s in segs], [1.0, 1.12, 1.0])
+        self.assertEqual([s['zoom'] for s in segs], [1.0, 1.08, 1.0])
         self.assertEqual([(s['fade_in'], s['fade_out']) for s in segs], [(True, False), (False, True), (True, True)])
 
     def test_sem_punch_in(self):
@@ -188,13 +188,10 @@ class Enquadramento(unittest.TestCase):
         self.assertEqual((x, y), (65, 116))
 
     def test_rotacao(self):
-        self.assertEqual(L.filtro_rotacao(-90), 'transpose=1')
-        self.assertEqual(L.filtro_rotacao(90), 'transpose=2')
-        self.assertEqual(L.filtro_rotacao(180), 'transpose=1,transpose=1')
-        self.assertEqual(L.filtro_rotacao(0), '')
+        # a rotação fica com o ffmpeg (autorotate): o filtro manual não existe mais (girava duas vezes no worker)
+        self.assertEqual(L.filtro_rotacao(-90), '')
+        self.assertEqual(L.filtro_rotacao_legado(-90), 'transpose=1')
 
-
-class Legendas(unittest.TestCase):
     def setUp(self):
         p = palavras('O governo gastou mais do que arrecadou pelo décimo ano seguido.', 0.0)
         self.pal = L.remapear_tempos(p, [(0, 100)])
@@ -286,6 +283,462 @@ class Texto(unittest.TestCase):
         self.assertEqual(len(p.split()), 200 + len('É… tipo, né? Hã, então, assim…'.split()))
         self.assertTrue(L.montar_initial_prompt('').startswith('É…'))
 
+
+
+
+# ── Montagem dinâmica e cortes pelas palavras (14/11/2026) ─────────────────────────────────────────────────────────
+class Montagem(unittest.TestCase):
+    def test_cortes_pelas_palavras_nao_apagam_fala_baixa(self):
+        pal = [{'t0': 1.7, 't1': 2.0, 'w': 'Você'}, {'t0': 2.1, 't1': 2.4, 'w': 'não.'}, {'t0': 4.0, 't1': 4.5, 'w': 'Uma'}, {'t0': 4.55, 't1': 5.0, 'w': 'marca'}]
+        tr = L.trechos_por_palavras(pal, 10)
+        assert len(tr) == 2
+        for p in pal:   # toda palavra inteira dentro de um trecho
+            assert any(a <= p['t0'] and p['t1'] <= b for a, b in tr), p
+        # o vão de 1,6 s virou respiro curto, não sumiu nem ficou inteiro
+        assert 0.3 <= (tr[0][1] - 2.4) + (4.0 - tr[1][0]) <= 0.6
+
+
+    def test_montagem_alterna_layouts_e_gancho_e_rosto(self):
+        import lib_montagem as M
+        frases = [{'n0': i * 3.0, 'n1': i * 3.0 + 2.8, 'texto': t} for i, t in enumerate(
+            ['Você não precisa de investidor', 'O preço caiu 30%', 'Ela focou no cliente', 'A marca cresceu muito', 'Faça isso hoje'])]
+        b = M.planejar_blocos(frases, 15)
+        assert b[0]['layout'] == 'rosto'
+        assert all(b[i]['layout'] != b[i + 1]['layout'] for i in range(len(b) - 1))
+        assert abs(b[-1]['t1'] - 15) < 1e-6 and b[0]['t0'] == 0
+        assert M.palavra_chave('O preço caiu 30%') == '30%'
+        ass = M.ass_graficos(b, 'topo')
+        assert 'PlayResY: 960' in ass and '\\clip(' in ass
+
+
+    def test_legenda_muda_de_lugar_com_o_layout(self):
+        import lib_montagem as M
+        b = [{'t0': 0, 't1': 2, 'layout': 'rosto'}, {'t0': 2, 't1': 4, 'layout': 'dividida'}]
+        pos = M.posicao_legenda(b)
+        assert '1360' in pos(1.0) and '960' in pos(3.0)
+
+
+
+def _avaliar(expr, t):
+    """Avalia uma expressão do ffmpeg gerada por expr_linear (só usa +, -, *, /, clip e t)."""
+    return eval(expr, {'__builtins__': {}}, {'clip': lambda x, a, b: min(max(x, a), b), 't': t})
+
+
+class Rastreio(unittest.TestCase):
+    """O recorte segue o rosto quadro a quadro (pedido do Pedro: rosto centralizado na janela de baixo)."""
+    def test_trilha_preenche_buracos_e_tira_pico(self):
+        cru = [(i / 6, 0.5, 0.5, 0.3) for i in range(30)]
+        cru[10] = (10 / 6, None, None, None)        # rosto não achado
+        cru[20] = (20 / 6, 0.95, 0.1, 0.3)          # detecção falsa
+        tr = L.trilha_rosto(cru)
+        self.assertEqual(len(tr['t']), 30)
+        self.assertTrue(all(abs(v - 0.5) < 0.01 for v in tr['cx']))
+        self.assertTrue(all(abs(v - 0.5) < 0.01 for v in tr['cy']))
+        self.assertIsNone(L.trilha_rosto([(0.1, None, None, None)]))
+        self.assertIsNone(L.trilha_rosto([]))
+
+    def test_trilha_sem_atraso(self):
+        # rosto andando para a direita em velocidade constante: a suavização não pode atrasar (fase zero)
+        cru = [(i / 6, 0.3 + 0.01 * i, 0.5, 0.3) for i in range(40)]
+        tr = L.trilha_rosto(cru)
+        for i in range(8, 32):
+            self.assertAlmostEqual(tr['cx'][i], 0.3 + 0.01 * i, places=3)
+        self.assertAlmostEqual(L.posicao_na_trilha(tr, 15.5 / 6)[0], 0.455, places=3)
+
+    def test_expressao_linear(self):
+        pts = [(0, 10), (0.25, 10), (0.5, 12.3), (1.0, 8)]
+        e = L.expr_linear(pts)
+        self.assertNotIn(':', e)
+        for t, v in [(-1, 10), (0, 10), (0.25, 10), (0.375, 11.15), (0.5, 12.3), (0.75, 10.15), (1.0, 8), (5, 8)]:
+            self.assertAlmostEqual(_avaliar(e, t), v, places=4)
+        self.assertEqual(L.expr_linear([(0, 3), (1, 3)]), '3.0')
+
+    def test_crop_centraliza_e_respeita_limites(self):
+        tr = L.trilha_rosto([(i / 6, 0.5 + 0.004 * i, 0.5, 0.3) for i in range(60)])
+        larg, alt, cl, ca = 1200, 2000, 948, 750
+        ex, ey = L.chaves_crop(tr, 2.0, 4.0, larg, alt, cl, ca, cl / 2, 150 + 276, topo=150)
+        for tl in (0, 0.5, 1.0, 1.5, 2.0):
+            cx, cy = L.posicao_na_trilha(tr, 2.0 + tl)
+            x, y = _avaliar(ex, tl), _avaliar(ey, tl)
+            self.assertTrue(0 <= x <= larg - cl and 0 <= y <= alt + 150 - ca)
+            self.assertAlmostEqual(cx * larg - x, cl / 2, delta=1.0)           # rosto no centro do recorte
+            self.assertAlmostEqual(cy * alt + 150 - y, 150 + 276, delta=1.0)
+        # rosto colado na borda: o recorte para no limite (não mostra fora da imagem)
+        tr2 = L.trilha_rosto([(i / 6, 0.02, 0.98, 0.3) for i in range(12)])
+        ex2, ey2 = L.chaves_crop(tr2, 0, 1.5, larg, alt, cl, ca, cl / 2, 426, topo=150)
+        self.assertEqual((_avaliar(ex2, 0.7), _avaliar(ey2, 0.7)), (0.0, alt + 150 - ca))
+        # sem rosto: recorte fixo
+        ex3, ey3 = L.chaves_crop(None, 0, 3, larg, alt, cl, ca, cl / 2, 426, topo=150)
+        self.assertNotIn('clip', ex3 + ey3)
+
+
+class Destrava(unittest.TestCase):
+    """Formato da referência do Pedro (14/11/2026): gráficos em cima, janela embaixo, legenda de uma palavra."""
+    def _pal(self, textos):
+        pal, t = [], 0.3
+        for k, tx in enumerate(textos):
+            for w in tx.split():
+                pal.append({'n0': round(t, 3), 'n1': round(t + 0.3, 3), 'w': w}); t += 0.36
+            t += 0.3
+        return pal, t
+
+    def test_tipos_de_quadro(self):
+        import lib_destrava as D
+        pal, dur = self._pal(['Você não precisa de investidor para crescer.', 'No Brasil, 6 em cada 10 empresas fecham.',
+                              'Ela focou em duas coisas básicas.', 'Produto impecável e preço que a cliente paga.',
+                              'Quem manda no estoque manda na empresa.', 'Salva esse vídeo para lembrar.'])
+        frases = D.frases_por_pontuacao(pal)
+        self.assertEqual(len(frases), 6)
+        b = D.planejar(frases, dur, 'Cresça sem investidor', broll=False)
+        tipos = [x['tipo'] for x in b]
+        self.assertEqual(tipos[0], 'titulo')
+        self.assertEqual(tipos[-1], 'fim')
+        self.assertIn('numero', tipos)
+        self.assertEqual(D.palavra_chave('No Brasil, 6 em cada 10 empresas fecham.'), '6 em 10')
+        listas = [x for x in b if x['tipo'] == 'lista']
+        self.assertEqual(len(listas), 2)
+        self.assertEqual(listas[0]['itens_novos'], [])                       # o anúncio não mostra os itens antes da hora
+        self.assertEqual(listas[1]['itens_novos'], ['Produto impecável', 'Preço que a cliente paga'])
+        self.assertEqual(b[0]['t0'], 0.0); self.assertAlmostEqual(b[-1]['t1'], dur)
+        g = D.ass_graficos(b)
+        self.assertIn('Instrument Serif', g)
+        f = D.ass_final(b, pal, dur)
+        self.assertIn('@PEDRO_DESTRAVA', f)
+        self.assertEqual(sum(1 for ln in f.splitlines() if ',Legenda,' in ln), len(pal))   # uma palavra por evento
+        # sem marca d'água lateral (pedido do Pedro, 14/11): o @ só aparece na tela final
+        ini_fim = b[-1]['t0']
+        for ln in f.splitlines():
+            if 'PEDRO_DESTRAVA' in ln:
+                hh, mm, ss = ln.split(',')[1].split(':')
+                self.assertGreaterEqual(int(hh) * 3600 + int(mm) * 60 + float(ss), ini_fim - 0.01, ln)
+
+    def test_sem_marca_lateral_sem_tela_final(self):
+        import lib_destrava as D
+        pal, dur = self._pal(['Você não precisa de investidor.', 'Quem manda no estoque manda na empresa.'])
+        b = D.planejar(D.frases_por_pontuacao(pal), dur, '', broll=False)
+        self.assertNotEqual(b[-1]['layout'], 'fim')   # "quem MANDA no estoque" não é chamada final
+        f = D.ass_final(b, pal, dur)   # vídeo curto (< 8 s) e sem chamada: nenhum @ nem logo
+        self.assertNotIn('PEDRO_DESTRAVA', f)
+        self.assertEqual([ln for ln in f.splitlines() if ln.startswith('Dialogue') and ',Legenda,' not in ln], [])
+
+    def test_graficos_acima_da_legenda_e_da_cabeca(self):
+        import re as _re
+        import lib_destrava as D
+        topo_cabeca = D.JANELA['y'] - D.RECORTE
+        self.assertLess(D.Y_LEGENDA['split'] + 40, topo_cabeca)   # a legenda de uma palavra fica acima da cabeça
+        for q in (D.INSET_IMAGEM, D.INSET_TITULO):
+            self.assertLessEqual(q['y'] + q['h'], D.Y_LEGENDA['split'] - 45)
+        pal, dur = self._pal(['Você não precisa de investidor para crescer.', 'No Brasil, 6 em cada 10 empresas fecham.',
+                              'Ela focou em quatro coisas básicas.', 'Produto, preço, prazo e caixa.',
+                              'Quem manda no estoque manda na empresa.', 'O dinheiro do lucro paga a produção seguinte.'])
+        b = D.planejar(D.frases_por_pontuacao(pal), dur, 'Cresça sem investidor', broll=False)
+        g = D.ass_graficos(b)
+        ys = [int(m) for m in _re.findall(r'\\pos\(\d+,(\d+)\)', g)]
+        self.assertTrue(ys)
+        self.assertLessEqual(max(ys), D.Y_LEGENDA['split'] - 90)
+        for desenho in _re.findall(r'\\p1\}([^{]*)\{', g):   # formas vetoriais (cartões, fichas) também param antes
+            nums = [float(x) for x in desenho.replace('m', ' ').replace('l', ' ').replace('b', ' ').split()]
+            self.assertLessEqual(max(nums[1::2]), D.Y_LEGENDA['split'] - 45, desenho[:60])
+
+    def test_escala_da_janela(self):
+        import lib_destrava as D
+        # selfie de perto (rosto = 1/3 da altura): só a folga de 6% para centralizar, sem aumentar o rosto
+        s, w, h = D.escala_janela(1080, 1920, 0.33)
+        self.assertAlmostEqual(s, D.JANELA['w'] / 1080 * D.ZOOM_JANELA, places=4)
+        self.assertGreater(w, D.JANELA['w']); self.assertEqual(w % 2, 0); self.assertEqual(h % 2, 0)
+        # câmera longe (rosto pequeno, vídeo deitado): aproxima, mas no máximo 2,2× a escala base
+        s2, w2, h2 = D.escala_janela(1920, 1080, 0.12)
+        base = max(D.JANELA['w'] / 1920, D.JANELA['h'] / 1080)
+        self.assertAlmostEqual(s2, base * 2.2, places=4)
+        s3, _, _ = D.escala_janela(1920, 1080, 0.3)
+        self.assertAlmostEqual(s3, 0.62 * D.JANELA['h'] / (0.3 * 1080), places=4)
+        self.assertGreaterEqual(D.escala_janela(1080, 1920, None)[1], D.JANELA['w'])
+
+    def test_roteiro_incompleto_avisa(self):
+        # caso real (14/11): o iPhone parou a gravação aos 33,6 s e o roteiro tinha ~56 s
+        rot = ("Você não precisa de investidor milionário para criar uma marca gigante. Uma designer americana provou isso na prática. "
+               "Lele Sadoughi começou a marca de joias dela do zero. Ela focou em duas coisas básicas: produto com acabamento impecável "
+               "e preço que a cliente consegue pagar. Em vez de torcer dinheiro em anúncio caro, o lucro da primeira venda pagava a "
+               "produção da seguinte. No Brasil, muito dono de negócio quebra porque busca sócio investidor antes de ter caixa próprio. "
+               "Quem manda no seu estoque manda na sua empresa. Crescer com o próprio lucro garante a sua liberdade. "
+               "Salva esse vídeo para lembrar disso quando pensar em pegar dinheiro emprestado.")
+        falado = rot.split('No Brasil')[0]
+        r = L.roteiro_incompleto(rot, [{'w': w} for w in falado.split()])
+        self.assertIsNotNone(r)
+        self.assertIn('No Brasil', r['faltou'])
+        self.assertIsNone(L.roteiro_incompleto(rot, [{'w': w} for w in rot.split()]))
+
+
+class Pedido15Nov(unittest.TestCase):
+    """O que o Pedro aprovou em 15/11: começo sem segundo mudo, legenda conferida com o roteiro, tela final limpa,
+    cartão com frases reais, sem palavra repetida, plano visual, novos tipos de cena e sons."""
+    ROT = ("Você não precisa de investidor milionário para criar uma marca gigante. Uma designer americana provou isso na prática. "
+           "E o passo final dela é a maior lição pro seu negócio. Lele Sadoughi começou a marca de joias dela do zero. "
+           "Sem fundo de investimento botando milhões na conta. Ela focou em duas coisas básicas: produto com acabamento impecável "
+           "e preço que a cliente consegue pagar. Em vez de torcer dinheiro em anúncio caro, o lucro da primeira venda pagava a "
+           "produção da seguinte. No Brasil, muito dono de negócio quebra porque busca sócio investidor antes de ter caixa próprio. "
+           "Quem manda no seu estoque manda na sua empresa. Crescer com o próprio lucro garante a sua liberdade. "
+           "Salva esse vídeo para lembrar disso quando pensar em pegar dinheiro emprestado.")
+
+    def _pal(self, texto, p=0.9):
+        return [{'t0': round(1.1 + i * 0.3, 3), 't1': round(1.1 + i * 0.3 + 0.25, 3), 'w': w, 'p': p, 'seg': 0} for i, w in enumerate(texto.split())]
+
+    def test_legenda_corrige_pelo_roteiro_e_tira_palavra_inventada(self):
+        # transcrição real de produção (14/11): "anos caros" no lugar de "anúncio caro" e "prática…" que ninguém falou
+        falado = self.ROT.split(' o lucro da')[0].replace('anúncio caro,', 'anos caros,') + ' o lucro da prática…'
+        out, rel = L.alinhar_com_roteiro(self._pal(falado), self.ROT)
+        texto = ' '.join(p['w'] for p in out)
+        self.assertIn('anúncio caro, o lucro da', texto)
+        self.assertNotIn('anos', texto); self.assertNotIn('prática…', texto)
+        self.assertEqual([c['para'] for c in rel['corrigidas']], ['anúncio caro,'])
+        self.assertEqual([r['w'] for r in rel['removidas']], ['prática…'])
+        # pontuação do roteiro: "básicas:" separa a lista
+        self.assertIn('duas coisas básicas: produto', texto)
+
+    def test_legenda_corrige_palavra_trocada_entre_trechos_certos(self):
+        # produção (14/11, 2ª versão): "o lucro da prática pagava a produção" — ele leu "primeira venda"
+        falado = self.ROT.split(' da seguinte.')[0].replace('da primeira venda pagava', 'da prática pagava')
+        out, rel = L.alinhar_com_roteiro(self._pal(falado), self.ROT)
+        texto = ' '.join(p['w'] for p in out)
+        self.assertIn('o lucro da primeira venda pagava a produção', texto)
+        self.assertNotIn('prática pagava', texto)
+
+    def test_legenda_mantem_improviso_e_fala_diferente(self):
+        falado = self.ROT.replace('sua empresa', 'seu negócio') + ' Valeu demais, até amanhã pessoal.'
+        out, rel = L.alinhar_com_roteiro(self._pal(falado), self.ROT)
+        texto = ' '.join(p['w'] for p in out)
+        self.assertIn('manda na seu negócio.', texto)     # ele falou diferente: a legenda mostra o que ele falou
+        self.assertNotIn('sua empresa', texto)
+        self.assertTrue(texto.endswith('até amanhã pessoal.'))
+        self.assertEqual(rel['removidas'], [])
+
+    def test_frase_fantasma_do_whisper_sai(self):
+        falado = self.ROT + ' Legendas pela comunidade Amara.org'
+        out, rel = L.alinhar_com_roteiro(self._pal(falado), self.ROT)
+        self.assertNotIn('Amara', ' '.join(p['w'] for p in out))
+        self.assertTrue(rel['removidas'])
+
+    def test_sem_roteiro_nao_mexe(self):
+        pal = self._pal('qualquer coisa falada aqui')
+        out, rel = L.alinhar_com_roteiro(pal, '')
+        self.assertEqual(out, pal)
+
+    def test_video_comeca_na_fala(self):
+        pal = self._pal('Você não precisa de investidor milionário.')   # 1ª palavra em 1,1 s
+        trechos, _ = L.montar_trechos(10.0, [], pal)
+        self.assertAlmostEqual(trechos[0][0], 1.1 - L.FOLGA_PRIMEIRA, places=3)   # antes ficava 1 s mudo no começo
+        sil, _ = L.montar_trechos(10.0, [(0.0, 1.0)], [])   # sem transcrição: a proteção do 1º segundo continua
+        self.assertEqual(sil[0][0], 0.0)
+
+    def _frases(self, textos):
+        import lib_destrava as D
+        pal, t = [], 0.3
+        for tx in textos:
+            for w in tx.split():
+                pal.append({'n0': round(t, 3), 'n1': round(t + 0.3, 3), 'w': w}); t += 0.36
+            t += 0.3
+        return D.frases_por_pontuacao(pal), pal, t
+
+    def test_plano_visual_manda_nas_cenas(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases([
+            'Você não precisa de investidor milionário para criar uma marca gigante.', 'Uma designer americana provou isso na prática.',
+            'E o passo final dela é a maior lição pro seu negócio.', 'Lele Sadoughi começou a marca de joias dela do zero.',
+            'Sem fundo de investimento botando milhões na conta.', 'Em vez de torcer dinheiro em anúncio caro, o lucro pagava a produção.',
+            'Crescer com o próprio lucro garante a sua liberdade.', 'Em 2012 ela tinha 70% de margem.'])
+        plano = [{'tipo': 'imagem', 'titulo': 'Sem investidor', 'busca': 'luxury jewelry store'},
+                 {'tipo': 'imagem', 'titulo': 'A prova', 'busca': 'jewelry designer workshop', 'rotulo': 'Designer dos EUA'},
+                 {'tipo': 'frase', 'titulo': 'A lição', 'rotulo': 'LIÇÃO'},
+                 {'tipo': 'imagem', 'titulo': 'Do zero', 'busca': 'handmade jewelry making', 'rotulo': 'Lele Sadoughi'},
+                 {'tipo': 'comparacao', 'titulo': 'Sem fundo', 'esquerda': 'Fundo investidor', 'direita': 'Caixa próprio'},
+                 {'tipo': 'grafico', 'titulo': 'Lucro paga tudo', 'direcao': 'sobe', 'rotulo': 'lucro'},
+                 {'tipo': 'icone', 'titulo': 'Liberdade', 'icone': 'cadeado'},
+                 {'tipo': 'numero', 'titulo': 'Margem', 'destaque': '70%'}]
+        b = D.planejar(frases, dur, 'Construa uma marca forte', broll=True, plano=plano)
+        def por(inicio):
+            return next(x for x in b if x['texto'].startswith(inicio))
+        self.assertEqual(b[0]['tipo'], 'titulo'); self.assertEqual(b[0]['busca'], 'luxury jewelry store')
+        img = por('Uma')
+        self.assertEqual((img['tipo'], img['cabeca'], img['busca'], img['rotulo']), ('imagem', 'A prova', 'jewelry designer workshop', 'Designer dos EUA'))
+        cartao = por('E o passo')
+        self.assertEqual(cartao['tipo'], 'frase')
+        self.assertIn('designer americana', cartao['antes'])            # o cartão mostra as frases reais vizinhas
+        self.assertIn('Lele Sadoughi', cartao['depois'])
+        self.assertEqual(por('Sem')['tipo'], 'comparacao')
+        cmp = por('Sem')
+        self.assertEqual(len(cmp['tempos_itens']), 2)
+        self.assertLessEqual(cmp['tempos_itens'][1], cmp['t0'] + (cmp['t1'] - cmp['t0']) * 0.6 + 0.001)   # os dois lados juntos na tela
+        self.assertEqual((por('Crescer')['tipo'], por('Crescer')['icone']), ('icone', 'cadeado'))
+        self.assertEqual((por('Em 2012')['tipo'], por('Em 2012')['destaque']), ('numero', '70%'))
+        self.assertEqual(por('Em vez')['tipo'], 'grafico')
+        tipos = [x['tipo'] for x in b]
+        self.assertIn('grafico', tipos)
+        # sem chamada no fim e vídeo > 8 s: tela final própria, e o bloco anterior termina antes dela
+        self.assertEqual(b[-1]['tipo'], 'fim'); self.assertTrue(b[-1]['sem_chamada'])
+        self.assertAlmostEqual(b[-2]['t1'], b[-1]['t0'])
+        g = D.ass_graficos(b)
+        self.assertIn('Lele Sadoughi', g)                                 # rótulo com informação nova
+        self.assertNotIn('Fake', g)
+        f = D.ass_final(b, pal, dur)
+        self.assertIn('@PEDRO_DESTRAVA', f)
+        self.assertIn('\\alpha&H00&', f)                                # fundo da tela final opaco: nada aparece por baixo
+
+    def test_sem_plano_nao_repete_palavra_na_etiqueta(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Você não precisa de investidor.', 'Uma designer americana provou isso na prática.',
+                                         'Ela vendeu joias na feira.', 'Depois abriu a loja.'])
+        b = D.planejar(frases, dur, 'Teste', broll=True)
+        for x in b:
+            if x['tipo'] == 'imagem':
+                self.assertNotIn('rotulo', x)       # sem plano: sem etiqueta (era a mesma palavra do título e da legenda)
+
+    def test_graficos_novos_dentro_da_area_de_cima(self):
+        import re as _re
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Abertura do vídeo aqui.', 'Investidor em vez de caixa próprio sempre.',
+                                         'O lucro cresce mês a mês sem parar.', 'Quatro coisas: produto, preço, prazo e caixa.',
+                                         'Em 2012 ela tinha 70% de margem.', 'Fecha aqui.'])
+        plano = [{}, {'tipo': 'comparacao', 'titulo': 'A diferença', 'esquerda': 'Investidor', 'direita': 'Caixa próprio'},
+                 {'tipo': 'grafico', 'titulo': 'Lucro', 'direcao': 'sobe', 'rotulo': 'mês a mês'}, {},
+                 {'tipo': 'numero', 'destaque': '70%'}, {}]
+        b = D.planejar(frases, dur, 'Teste', broll=False, plano=plano)
+        g = D.ass_graficos(b)
+        ys = [int(m) for m in _re.findall(r'\\(?:pos|move)\(\d+,(\d+)', g)]
+        self.assertTrue(ys); self.assertLessEqual(max(ys), D.Y_LEGENDA['split'] - 90)
+        for desenho in _re.findall(r'\\p1\}([^{]*)\{', g):
+            nums = [float(x) for x in desenho.replace('m', ' ').replace('l', ' ').replace('b', ' ').split()]
+            self.assertLessEqual(max(nums[1::2]), D.Y_LEGENDA['split'] - 45, desenho[:60])
+
+    def test_contagem_do_numero(self):
+        import lib_destrava as D
+        self.assertEqual(D._contagem('70%')[-1], '70%')
+        self.assertEqual(len(D._contagem('70%')), 12)
+        self.assertEqual(D._contagem('R$ 1.500')[-1], 'R$ 1.500')
+        self.assertIsNone(D._contagem('2012'))          # ano não conta
+        self.assertIsNone(D._contagem('6 em 10'))
+        self.assertIsNone(D._contagem('5'))
+
+    def test_sons_nos_elementos(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Abertura do vídeo aqui.', 'Ela focou em duas coisas: produto bom e preço justo.',
+                                         'Em 2012 ela tinha 70% de margem.', 'Quem manda no estoque manda na empresa.'])
+        b = D.planejar(frases, dur, 'Teste', broll=False)
+        ev = D.efeitos(b)
+        tipos = [k for _, k in ev]
+        self.assertEqual(ev[0], (0.05, 'impacto'))
+        self.assertIn('pop', tipos); self.assertIn('whoosh', tipos)
+        self.assertTrue(all(t2 - t1 >= 0.25 for (t1, _), (t2, _) in zip(ev, ev[1:])))   # nada encavalado
+
+
+
+class Pedido15NovParte2(unittest.TestCase):
+    """Segunda leva de 15/11: gancho animado, resumo que se monta, legenda com destaque, zoom na ênfase, foto livre,
+    celular, rótulos curtos da lista e trilha com clima."""
+    def _frases(self, textos):
+        import lib_destrava as D
+        pal, t = [], 0.3
+        for tx in textos:
+            for w in tx.split():
+                pal.append({'n0': round(t, 3), 'n1': round(t + 0.3, 3), 'w': w}); t += 0.36
+            t += 0.3
+        return D.frases_por_pontuacao(pal), pal, t
+
+    def test_gancho_abre_grande_e_a_imagem_do_titulo_entra_depois(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Você não precisa de investidor milionário para criar uma marca gigante.', 'Uma designer provou isso.',
+                                         'Quem manda no estoque manda na empresa.'])
+        b = D.planejar(frases, dur, 'Marca forte', broll=True, gancho='Sem investidor milionário')
+        t = b[0]
+        self.assertEqual(t['gancho'], 'Sem investidor milionário')
+        self.assertGreater(t['gancho_fim'], t['t0']); self.assertEqual(t['inset_ini'], t['gancho_fim'])
+        self.assertEqual(D._linhas_gancho('Sem investidor de verdade'), ['Sem', 'investidor', 'de verdade'])
+        g = D.ass_graficos(b)
+        self.assertIn('INVESTIDOR', g)                                  # gancho em caixa alta, uma palavra por linha
+        self.assertIn('impacto', [k for _, k in t['marcas']])
+        self.assertAlmostEqual(D.zoom_da_cena(b, t['t0'] + 0.5), 1.14)   # rosto mais perto no gancho
+
+    def test_resumo_se_monta_com_marcadores(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases([
+            'Abertura do vídeo sobre erros.', 'Existem três erros que quebram empresas.',
+            'O primeiro erro é misturar as contas.', 'Isso acontece porque o dono paga tudo do mesmo caixa.',
+            'O segundo erro é não ter reserva.', 'Sem reserva qualquer mês ruim vira crise.',
+            'O terceiro erro é crescer no cartão.', 'Fecha aqui com a ideia final.'])
+        b = D.planejar(frases, dur, 'Erros', broll=False)
+        listas = [x for x in b if x['tipo'] == 'lista']
+        self.assertEqual(len(listas), 4)                                 # anúncio + 3 marcadores
+        self.assertEqual([x['itens_novos'] for x in listas[1:]], [['Misturar as contas'], ['Não ter reserva'], ['Crescer no cartão']])
+        self.assertEqual(listas[3]['ja'], ['Misturar as contas', 'Não ter reserva'])   # os de antes ficam acesos
+        explic = [x for x in b if x['texto'].startswith('Isso acontece')][0]
+        self.assertNotEqual(explic['tipo'], 'lista')                     # a explicação tem a cena dela
+        self.assertEqual(D.rotulo_ordinal('E por último, separe o pró-labore.'), 'Separe o pró-labore')
+
+    def test_rotulos_curtos_do_plano_na_lista(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'Ela focou em duas coisas básicas: produto com acabamento impecável e preço que a cliente consegue pagar.', 'Fim aqui.'])
+        plano = [{}, {'tipo': 'lista', 'titulo': 'Duas coisas', 'itens': ['Acabamento impecável', 'Preço acessível']}, {}]
+        b = D.planejar(frases, dur, 'X', broll=False, plano=plano)
+        g = D.ass_graficos(b)
+        self.assertIn('Acabamento impecável', g); self.assertIn('Preço acessível', g)
+
+    def test_foto_e_celular(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'Steve Jobs voltou para a Apple e mudou tudo.', 'Pesquise como crescer sem investidor no Google.', 'Fim.'])
+        plano = [{}, {'tipo': 'pessoa', 'titulo': 'A volta', 'pessoa': 'Steve Jobs', 'busca': 'apple store'}, {'tipo': 'celular', 'titulo': 'A busca', 'texto': 'como crescer sem investidor'}, {}]
+        b = D.planejar(frases, dur, 'X', broll=True, plano=plano)
+        foto = [x for x in b if x['tipo'] == 'foto'][0]; cel = [x for x in b if x['tipo'] == 'celular'][0]
+        self.assertEqual(foto['pessoa'], 'Steve Jobs'); self.assertEqual(cel['busca_tela'], 'como crescer sem investidor')
+        foto['credito'] = 'Foto: Fulano · CC BY-SA 4.0 (Wikimedia)'
+        g = D.ass_graficos(b)
+        self.assertIn('Steve Jobs', g); self.assertIn('CC BY-SA 4.0', g)   # nome e crédito exigido pela licença
+        self.assertIn('como crescer sem investidor', g)
+        D.sem_foto(foto)                                                    # sem foto livre: vídeo de banco (havia busca)
+        self.assertEqual(foto['tipo'], 'imagem')
+
+    def test_nome_de_pessoa_nunca_em_foto_de_banco(self):
+        import lib_destrava as D
+        self.assertTrue(D.nome_proprio('Lele Sadoughi', 'Lele Sadoughi começou a marca de joias dela do zero.'))
+        self.assertFalse(D.nome_proprio('Designer americana', 'Uma designer americana provou isso na prática.'))
+        self.assertFalse(D.nome_proprio('Do zero', 'Lele Sadoughi começou a marca de joias dela do zero.'))
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'Lele Sadoughi começou a marca de joias dela do zero.', 'Fim aqui.'])
+        # produção (14/11): a IA pôs a foto de banco de uma mulher qualquer com o título "Lele Sadoughi"
+        b = D.planejar(frases, dur, 'X', broll=True, plano=[{}, {'tipo': 'imagem', 'titulo': 'Lele Sadoughi', 'busca': 'jewelry woman', 'rotulo': 'Lele Sadoughi'}, {}])
+        img = [x for x in b if x['tipo'] == 'imagem'][0]
+        self.assertNotIn('Lele', img.get('cabeca', '')); self.assertNotIn('rotulo', img)
+        # foto livre não achada → vídeo de banco: o nome sai do título
+        b2 = D.planejar(frases, dur, 'X', broll=True, plano=[{}, {'tipo': 'pessoa', 'titulo': 'Lele Sadoughi', 'pessoa': 'Lele Sadoughi', 'busca': 'jewelry workshop'}, {}])
+        foto = [x for x in b2 if x['tipo'] == 'foto'][0]
+        self.assertEqual(foto['cabeca'], 'Lele Sadoughi')                 # na foto livre DELA, o nome vai
+        D.sem_foto(foto)
+        self.assertEqual(foto['tipo'], 'imagem'); self.assertNotIn('Lele', foto.get('cabeca', ''))
+
+    def test_legenda_destaca_numero_e_ideia_da_cena(self):
+        import lib_destrava as D
+        bl = {'cabeca': 'Lucro paga tudo'}
+        self.assertTrue(D.destaque_legenda('70%', None)); self.assertTrue(D.destaque_legenda('R$', None))
+        self.assertTrue(D.destaque_legenda('lucro,', bl)); self.assertFalse(D.destaque_legenda('paga', {'cabeca': 'A paga'}) and False)
+        self.assertFalse(D.destaque_legenda('casa', bl))
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'O lucro paga a produção seguinte.'])
+        b = D.planejar(frases, dur, 'X', broll=False, plano=[{}, {'tipo': 'icone', 'titulo': 'Lucro paga tudo'}])
+        f = D.ass_final(b, pal, dur)
+        self.assertTrue(any(D.AMARELO in ln and 'lucro' in ln for ln in f.splitlines() if ',Legenda,' in ln))
+
+    def test_zoom_na_enfase(self):
+        import lib_destrava as D
+        frases, pal, dur = self._frases(['Abertura do vídeo.', 'Quem manda no estoque manda na empresa.', 'Outra frase normal aqui.'])
+        b = D.planejar(frases, dur, 'X', broll=False, plano=[{}, {'tipo': 'frase', 'rotulo': 'REGRA'}, {}])
+        cartao = [x for x in b if x['tipo'] == 'frase'][0]
+        self.assertAlmostEqual(D.zoom_da_cena(b, (cartao['t0'] + cartao['t1']) / 2), 1.10)
+        self.assertAlmostEqual(D.zoom_da_cena(b, b[-1]['t1'] - 0.1, base=1.04), 1.04)
+
+    def test_trilha_com_clima(self):
+        import tempfile, wave
+        import editar as E
+        for clima in ('calma', 'animada', 'tensa', 'inexistente'):
+            arq = os.path.join(tempfile.mkdtemp(), f'{clima}.wav')
+            E.trilha_musical(arq, 3, clima=clima)
+            with wave.open(arq) as w:
+                self.assertGreater(w.getnframes(), 3 * w.getframerate())
 
 if __name__ == '__main__':
     unittest.main(verbosity=1)

@@ -172,7 +172,9 @@ async function criarContainers({ id, hash, slides, legenda, base, c }) {
   const ig = meta.config().igId;
   if(c?.formato === 'reels'){
     if(c.motion.engine==='local')c.motion.url=`${base.replace(/\/$/,'')}/api/publico/video/${meta.assinarMidia({conteudo:id,hash,indice:0})}.mp4`;
-    const r=await meta.graph('POST',`${ig}/media`,{media_type:'REELS',video_url:c.motion.url,caption:legenda,share_to_feed:true});
+    // capa do Reels (o Pedro recortado + o gancho, feita pelo editor): sem ela, o Instagram usa um quadro qualquer
+    const capa=/^https:\/\//.test(c.motion.capa||'')?{cover_url:c.motion.capa}:{};
+    const r=await meta.graph('POST',`${ig}/media`,{media_type:'REELS',video_url:c.motion.url,caption:legenda,share_to_feed:true,...capa});
     return {tipo:'REELS',creation_id:r.id,filhos:[]};
   }
   if (slides.length === 1) {
@@ -190,6 +192,7 @@ async function criarContainers({ id, hash, slides, legenda, base, c }) {
 async function exigirAcessoProtegido() {
   const A = require('./access');
   await A.carregarDono();
+  if (A.semCodigoTotal()) return; // o dono escolheu não ter código nenhum (APP_ACCESS_MODE=public_total): publicar segue liberado
   if ((process.env.VERCEL || process.env.NODE_ENV === 'production') && A.estadoAcesso() === 'aberto_publico') {
     throw new ErroPub('ACESSO_ABERTO', 'Publicar exige código de acesso: o app está aberto ao público. Crie o seu código em Perfil → "Criar meu código" (10+ caracteres) e aprove de novo.', 403);
   }
@@ -213,7 +216,7 @@ async function iniciar(id, { hash, base } = {}) {
   const pubs = await a.publicacoes.listar(conta());
   const desde = Date.now() - 24 * 3600e3;
   const feitas = pubs.filter((p) => ['publicada', 'publicando_final', 'aguardando_processamento', 'iniciada'].includes(p.estado) && Date.parse(p.iniciada_em) >= desde && p.content_id !== id).length;
-  if (feitas >= cfg.daily_publish_cap) throw new ErroPub('LIMITE_DIARIO', `Limite diário atingido (${feitas}/${cfg.daily_publish_cap}). O item fica aprovado e sai no próximo ciclo.`, 429);
+  void feitas; // sem limite próprio de posts por dia (pedido do Pedro, 14/11/2026): vale só a cota real da Meta, conferida abaixo.
 
   await conferirConta();
   const cota = await cotaMeta().catch(() => null);
@@ -372,11 +375,17 @@ async function renderizarMidia(token) {
   const c = reg.doc;
   const v = M.versaoAtiva(c);
   if (!v || c.revisao?.aprovada_versao !== v.id || c.revisao.hash_aprovado !== p.h || v.hash !== p.h) throw new ErroPub('VERSAO_DIFERENTE', 'A versão aprovada mudou; este link não vale mais.', 409);
-  const s = v.slides[p.i];
+  return jpegDoSlide(c, v, p.i);
+}
+
+// JPEG 1080×1350 de um slide da versão (o mesmo arquivo que vai ao Instagram; o LinkedIn usa também).
+async function jpegDoSlide(c, v, i) {
+  const a = armazem();
+  const s = v.slides[i];
   if (!s) throw new ErroPub('NAO_ENCONTRADO', 'Slide não encontrado.', 404);
   const imagem = s.imagem_id ? (await a.arquivos.obter(conta(), `img:${s.imagem_id}`))?.dados : null;
   const enc = s.layout === 'encerramento' ? (await a.arquivos.obter(conta(), 'upload:encerramento'))?.dados : null;
-  const r = await arte.renderizarSlide(s, { indice: p.i + 1, total: Math.min(v.slides.length, LIMITE_CARROSSEL), imagem: imagem ? Buffer.from(imagem) : null, arquivoEncerramento: enc ? Buffer.from(enc) : null });
+  const r = await arte.renderizarSlide(s, { indice: i + 1, total: Math.min(v.slides.length, LIMITE_CARROSSEL), imagem: imagem ? Buffer.from(imagem) : null, arquivoEncerramento: enc ? Buffer.from(enc) : null });
   if (r.metrics.cabe === false) throw new ErroPub('TEXTO_CORTADO', 'O texto do slide não cabe na arte.', 409);
   const sharp = require('sharp');
   // Feed aceita só JPEG (documentação da Meta): converte sem alterar 1080×1350.
@@ -384,4 +393,4 @@ async function renderizarMidia(token) {
 }
 
 module.exports = {
-  exigirAcessoProtegido, urlMidia, conferirMidias, conta, iniciar, avancar, saude, config, listarPublicacoes, avancarPendentes, renderizarMidia, montarLegenda, conferirLegenda, carregarAprovado, ErroPub, resposta, LIMITE_CARROSSEL, LIMITE_LEGENDA, REDE };
+  exigirAcessoProtegido, jpegDoSlide, urlMidia, conferirMidias, conta, iniciar, avancar, saude, config, listarPublicacoes, avancarPendentes, renderizarMidia, montarLegenda, conferirLegenda, carregarAprovado, ErroPub, resposta, LIMITE_CARROSSEL, LIMITE_LEGENDA, REDE };

@@ -139,15 +139,14 @@ test('só publica a versão aprovada: não aprovado, hash diferente, edição de
   assert.strictEqual(chamou(/POST/).length, 0, 'nada foi enviado à Meta em nenhum desses casos');
 });
 
-test('pausar publicações, limite diário e cota da Meta barram antes de enviar', async () => {
+test('pausar publicações e cota da Meta barram antes de enviar (sem limite diário próprio)', async () => {
   zera();
   const c = await monta({ conteudo: conteudoAprovado(), encerramento: true });
   await arm.config.salvar(ACCOUNT.ig_id, { publish_paused: true });
   await assert.rejects(() => P.iniciar(c.id, { hash: c.revisao.hash_aprovado, base: basePublica }), (e) => e.code === 'PAUSADO');
   await arm.config.salvar(ACCOUNT.ig_id, { publish_paused: false, daily_publish_cap: 1 });
   await arm.publicacoes.iniciar(ACCOUNT.ig_id, 'outro_conteudo', 'instagram', {});
-  await assert.rejects(() => P.iniciar(c.id, { hash: c.revisao.hash_aprovado, base: basePublica }), (e) => e.code === 'LIMITE_DIARIO' && /1\/1/.test(e.message));
-  await arm.config.salvar(ACCOUNT.ig_id, { daily_publish_cap: 10 });
+  // Sem limite próprio por dia: o cap antigo salvo na configuração não barra mais nada (só a cota real da Meta).
   graph.est.quota = { usado: 100, total: 100 };
   await assert.rejects(() => P.iniciar(c.id, { hash: c.revisao.hash_aprovado, base: basePublica }), (e) => e.code === 'COTA_META');
   assert.strictEqual(chamou(/POST .*\/media/).length, 0);
@@ -344,4 +343,17 @@ test('Reel aprovado cria vídeo REELS e uma única publicação; prévia de sand
   const pedidos=chamou(/POST .*\/media$/);assert.strictEqual(pedidos.length,1);assert.strictEqual(pedidos[0].params.media_type,'REELS');assert.strictEqual(pedidos[0].params.video_url,c.motion.url);
   await P.avancar(c.id);await P.avancar(c.id);await P.avancar(c.id);assert.strictEqual(graph.est.publicados.length,1);
   c.id+='sandbox';c.motion.sandbox=true;await monta({conteudo:c});await assert.rejects(P.iniciar(c.id,{base:basePublica}),(e)=>e.code==='VIDEO_TESTE');
+});
+
+test('Reel com capa do editor: a capa vai como cover_url; sem capa, nenhum cover_url', async () => {
+  zera();
+  const c=conteudoAprovado();c.formato='reels';c.motion={estado:'pronto',hash:M.versaoAtiva(c).hash,url:'https://exemplo.test/reel-fixture.mp4',capa:'https://exemplo.test/capa.jpg',sandbox:false};
+  await monta({conteudo:c});
+  await P.iniciar(c.id,{hash:c.revisao.hash_aprovado,base:basePublica});
+  const pedidos=chamou(/POST .*\/media$/);assert.strictEqual(pedidos[0].params.cover_url,'https://exemplo.test/capa.jpg');
+  zera();
+  const c2=conteudoAprovado();c2.formato='reels';c2.motion={estado:'pronto',hash:M.versaoAtiva(c2).hash,url:'https://exemplo.test/reel-fixture.mp4',sandbox:false};
+  await monta({conteudo:c2});
+  await P.iniciar(c2.id,{hash:c2.revisao.hash_aprovado,base:basePublica});
+  assert.strictEqual(chamou(/POST .*\/media$/)[0].params.cover_url,undefined);
 });

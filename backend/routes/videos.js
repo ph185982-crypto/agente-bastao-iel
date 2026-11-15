@@ -80,6 +80,10 @@ router.get('/worker/pexels', limita({ max: 120, janelaMs: 60000, nome: 'videos-p
     res.json({ videos: (d.videos || []).map((v) => ({ id: v.id, user: { name: v.user?.name }, video_files: (v.video_files || []).map((f) => ({ id: f.id, quality: f.quality, file_type: f.file_type, width: f.width, height: f.height, link: f.link })) })) });
   } catch (e) { erro(res, e); }
 });
+// Plano visual por frase (IA gratuita, uma vez por vídeo; ver backend/lib/videos/plano.js). Falhou: o editor segue sem plano.
+router.post('/worker/plano', limita({ max: 30, janelaMs: 60000, nome: 'videos-plano' }), async (req, res) => {
+  try { const b = req.body || {}; res.json(await require('../lib/videos/plano').planoDoVideo(String(b.id || '').slice(0, 80), { titulo: b.titulo, frases: b.frases })); } catch (e) { erro(res, e); }
+});
 router.post('/worker/erro', limita({ max: 30, janelaMs: 60000, nome: 'videos-erro' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.registrarErro(String(b.id || ''), { erro: b.erro, log: b.log, run_url: b.run_url }); res.json(V.resumo(c)); } catch (e) { erro(res, e); }
 });
@@ -88,6 +92,11 @@ router.post('/worker/erro', limita({ max: 30, janelaMs: 60000, nome: 'videos-err
 router.post('/', limita({ max: 12, janelaMs: 60000, nome: 'videos-criar' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.criar({ titulo: b.titulo, estilo: b.estilo, opcoes: b.opcoes, roteiro_id: b.roteiro_id, roteiro_texto: b.roteiro_texto }); res.status(201).json({ id: c.id, ...V.resumo(c), prefixo_blob: `videos/${c.id}/` }); } catch (e) { erro(res, e); }
 });
+// Fábrica de roteiros (até 10 por dia, aprovados pelos fiscais): situação do dia e "gerar agora".
+router.get('/roteiros', async (req, res) => { try { const P = require('../lib/top/piloto'); res.json((await P.resumoDoDia()).roteiros); } catch (e) { erro(res, e); } });
+router.post('/roteiros/gerar', limita({ max: 6, janelaMs: 60000, nome: 'roteiros-gerar' }), async (req, res) => {
+  try { res.json(await require('../lib/top/piloto').avancarRoteiros({ orcamentoMs: 45000 })); } catch (e) { erro(res, e); }
+});
 router.get('/', async (req, res) => { try { res.json({ videos: await V.listar() }); } catch (e) { erro(res, e); } });
 router.get('/:id', async (req, res) => { try { res.json(await V.obter(idDe(req))); } catch (e) { erro(res, e); } });
 router.post('/:id/enviado', limita({ max: 20, janelaMs: 60000, nome: 'videos-enviado' }), async (req, res) => {
@@ -95,6 +104,10 @@ router.post('/:id/enviado', limita({ max: 20, janelaMs: 60000, nome: 'videos-env
 });
 router.post('/:id/refazer', limita({ max: 10, janelaMs: 60000, nome: 'videos-refazer' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.refazer(idDe(req), { estilo: b.estilo, opcoes: b.opcoes }); res.json(V.resumo(c)); } catch (e) { erro(res, e); }
+});
+// O vídeo pronto vira carrossel (mesmas ideias, nosso formato, sem IA), só quando o Pedro toca no botão.
+router.post('/:id/carrossel', limita({ max: 6, janelaMs: 60000, nome: 'videos-carrossel' }), async (req, res) => {
+  try { res.json(await require('../lib/videos/carrossel').carrosselDoVideo(idDe(req))); } catch (e) { erro(res, e); }
 });
 router.delete('/:id', limita({ max: 10, janelaMs: 60000, nome: 'videos-apagar' }), async (req, res) => {
   try { res.json(await V.apagar(idDe(req))); } catch (e) { erro(res, e); }

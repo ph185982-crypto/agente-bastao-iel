@@ -26,7 +26,7 @@ const pushLib = require('../push');
 const LEASE_MS = 30 * 60 * 1000;
 const MAX_TENTATIVAS = 2;
 const ESTILOS = ['hormozi', 'beast', 'caixa'];
-const OPCOES_PADRAO = { broll: true, musica: false, punch_in: true, remover_pausas: true, remover_muletas: true };
+const OPCOES_PADRAO = { broll: true, musica: false, sons: true, punch_in: true, remover_pausas: true, remover_muletas: true };
 const TIPOS_PERMITIDOS = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v', 'video/3gpp', 'video/x-matroska', 'image/jpeg'];
 const TAMANHO_MAXIMO = 600 * 1024 * 1024;
 const REPO_WORKER = 'ph185982-crypto/agente-bastao-iel';
@@ -95,6 +95,8 @@ async function criar({ titulo, estilo, opcoes, roteiro_id, roteiro_texto } = {})
   c.studio = { estado: 'video', etapa: 'envio' };
   log(c, 'Vídeo criado; aguardando o arquivo.');
   await a.conteudos.salvar(conta(), c.id, c, 0);
+  // Gravou com um roteiro da fábrica: o cartão do roteiro sai da aba (o vídeo novo leva o texto junto).
+  if (c.video.roteiro_id && ehVideo(c.video.roteiro_id)) await require('../roteiros').arquivar(c.video.roteiro_id, 'gravado').catch(() => {});
   return c;
 }
 
@@ -178,7 +180,7 @@ async function proximoJob() {
     c.studio = { estado: 'video', etapa: 'edicao' };
     log(c, `Editor pegou o vídeo (tentativa ${c.video.worker.tentativas}).`);
     try { await gravar(c, reg.rev); } catch (e) { if (e.code === 'CONFLITO') continue; throw e; }
-    return { id: c.id, origem: c.video.origem, estilo: c.video.estilo, opcoes: c.video.opcoes, roteiro_texto: c.video.roteiro_texto || '', tentativa: c.video.worker.tentativas, lease_ate: c.video.worker.lease_ate };
+    return { id: c.id, titulo: c.titulo || '', origem: c.video.origem, estilo: c.video.estilo, opcoes: c.video.opcoes, roteiro_texto: c.video.roteiro_texto || '', tentativa: c.video.worker.tentativas, lease_ate: c.video.worker.lease_ate };
   }
   return null;
 }
@@ -256,7 +258,8 @@ function validarResultado(id, r) {
   if (!urlPublica(r.url)) throw falha('O vídeo final precisa de uma URL pública (https).');
   if (r.pathname && !pathnameValido(id, r.pathname)) throw falha(`O vídeo final precisa estar em ${prefixoDe(id)}.`);
   if (r.poster_url && !urlPublica(r.poster_url)) throw falha('O poster precisa de uma URL pública (https).');
-  return { url: String(r.url), pathname: r.pathname ? String(r.pathname) : null, poster_url: r.poster_url ? String(r.poster_url) : null, duracao_s: Number(r.duracao_s) || null, tamanho: Number(r.tamanho) || null, cortes: Number(r.cortes) || 0, palavras: Number(r.palavras) || 0, avisos: Array.isArray(r.avisos) ? r.avisos.map(String).slice(0, 10) : [], editado_em: agora() };
+  const capa = r.capa_url && urlPublica(r.capa_url) && (!r.capa_pathname || pathnameValido(id, r.capa_pathname)) ? String(r.capa_url) : null;
+  return { url: String(r.url), pathname: r.pathname ? String(r.pathname) : null, poster_url: r.poster_url ? String(r.poster_url) : null, capa_url: capa, duracao_s: Number(r.duracao_s) || null, tamanho: Number(r.tamanho) || null, cortes: Number(r.cortes) || 0, palavras: Number(r.palavras) || 0, avisos: Array.isArray(r.avisos) ? r.avisos.map(String).slice(0, 10) : [], editado_em: agora() };
 }
 function validarTranscricao(t) {
   if (!t || typeof t !== 'object') return { texto: '', frases: [] };
@@ -283,7 +286,7 @@ async function registrarResultado(id, { resultado, transcricao, log: logWorker, 
   // A "arte" de um vídeo é o próprio vídeo no Blob. O registro de render existe só para o portão `arte_pendente`
   // (feito para carrosséis) não travar a aprovação; o poster é a imagem que o app mostra.
   c.arte = { ...(c.arte || { template: 'familia', versao_template: 1 }), renders: [{ slide_id: 's1', versao: v.id, texto_hash: M.hashRender(v.slides[0]), blob_key: null, poster_url: res.poster_url, indice: 1, total: 1, metrics: { cabe: true }, elementos: [] }] };
-  c.motion = { engine: 'blob', estado: 'pronto', hash: v.hash, url: res.url, poster: res.poster_url, sandbox: false, duracao_s: res.duracao_s, formato: '1080x1920' };
+  c.motion = { engine: 'blob', estado: 'pronto', hash: v.hash, url: res.url, poster: res.capa_url || res.poster_url, capa: res.capa_url || null, sandbox: false, duracao_s: res.duracao_s, formato: '1080x1920' };
   c.video.estado = 'pronto';
   c.video.worker = { ...c.video.worker, concluido_em: agora(), erro: null, run_url: run_url ? String(run_url).slice(0, 300) : c.video.worker.run_url || null };
   delete c.video.worker.lease_ate;
@@ -398,8 +401,10 @@ async function registrarUploadConcluido({ blob, tokenPayload } = {}, { deps } = 
 function resumo(c) {
   const v = M.versaoAtiva(c);
   return { id: c.id, titulo: c.titulo, estado: c.video.estado, status: c.status, criado_em: c.created_at, atualizado_em: c.updated_at, estilo: c.video.estilo,
-    poster: c.video.resultado?.poster_url || null, url: c.video.resultado?.url || null, duracao_s: c.video.resultado?.duracao_s ?? c.video.origem?.duracao_s ?? null,
-    legenda: c.video.legenda_ig?.texto || null, hashtags: c.video.legenda_ig?.hashtags || [], hash: v?.hash || null, erro: c.video.estado === 'erro' ? c.video.worker?.erro || null : null, tentativas: c.video.worker?.tentativas || 0 };
+    poster: c.video.resultado?.capa_url || c.video.resultado?.poster_url || null, capa: c.video.resultado?.capa_url || null, url: c.video.resultado?.url || null, duracao_s: c.video.resultado?.duracao_s ?? c.video.origem?.duracao_s ?? null,
+    legenda: c.video.legenda_ig?.texto || null, hashtags: c.video.legenda_ig?.hashtags || [], hash: v?.hash || null, erro: c.video.estado === 'erro' ? c.video.worker?.erro || null : null, tentativas: c.video.worker?.tentativas || 0,
+    avisos: (c.video.resultado?.avisos || []).filter((x) => /roteiro|interromp|rosto/.test(x)).slice(0, 3),
+    ...(c.video.estado === 'roteiro' ? { roteiro_texto: c.video.roteiro_texto || '', duracao_estimada_s: c.video.duracao_estimada_s ?? null, roteiro: c.video.roteiro || null } : {}) };
 }
 function publico(c) {
   const d = M.clone(c);
@@ -415,4 +420,5 @@ module.exports = {
   criar, registrarEnvio, urlDoSinal, marcarFila, proximoJob, registrarResultado, registrarErro, refazer, apagar, faxina, listar, obter, resumo, publico,
   gerarLegenda, problemasDaLegenda, limparLegenda, tokenDoWorker, registrarUploadConcluido, restricoesToken, dispararWorker, exigirBlob, pathnameValido,
   ESTILOS, OPCOES_PADRAO, TIPOS_PERMITIDOS, TAMANHO_MAXIMO, LEASE_MS, MAX_TENTATIVAS, MSG_SEM_BLOB, PREFIXO,
+  _ler: ler, _gravar: gravar,   // plano visual (./plano.js) guarda o plano no documento do vídeo
 };
