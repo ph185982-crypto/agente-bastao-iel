@@ -6,3 +6,7 @@ docs
 previas
 dist
 *.md
+
+avanteza/
+contratos/
+packages/

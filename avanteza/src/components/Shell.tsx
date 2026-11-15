@@ -1,0 +1,80 @@
+import Link from "next/link";
+import { Logo } from "./Logo";
+import { logout } from "@/app/actions";
+
+const NAV = [
+  { href: "/", label: "Visão geral", ico: "◧" },
+  { href: "/clientes", label: "Clientes", ico: "◉" },
+  { href: "/aprovacoes", label: "Aprovações", ico: "✓", key: "approvals" },
+  { href: "/alertas", label: "Alertas", ico: "!", key: "alerts" },
+  { href: "/configuracoes", label: "Ajustes", ico: "⚙" },
+];
+
+export function Shell({
+  children,
+  counts,
+  paused,
+  dryRun,
+  reviewer = false,
+}: {
+  children: React.ReactNode;
+  counts: { approvals: number; alerts: number };
+  paused: boolean;
+  dryRun: boolean;
+  reviewer?: boolean;
+}) {
+  return (
+    <>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <div className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
+            <Link href="/central" aria-label="Central: todas as ferramentas" title="Central" className="appswitch">
+              <span /><span /><span /><span />
+            </Link>
+            <Link href="/" style={{ textDecoration: "none" }}>
+              <Logo />
+            </Link>
+          </div>
+          <nav className="topnav">
+            {NAV.map((n) => (
+              <Link key={n.href} href={n.href}>
+                {n.label}
+                {n.key && counts[n.key as "approvals" | "alerts"] > 0 ? ` (${counts[n.key as "approvals" | "alerts"]})` : ""}
+              </Link>
+            ))}
+            <Link href="/relatorios">Relatórios</Link>
+            <Link href="/auditoria">Auditoria</Link>
+          </nav>
+          <form action={logout}>
+            <button className="btn btn-sm btn-ghost" style={{ color: "var(--sand)", borderColor: "var(--navy-2)" }}>
+              Sair
+            </button>
+          </form>
+        </div>
+      </header>
+      {reviewer && (
+        <div style={{ background: "var(--navy-2)", color: "var(--cream)", textAlign: "center", padding: "6px 12px", fontSize: 13, fontWeight: 700 }}>
+          Acesso de revisão — somente leitura. Você pode navegar, cadastrar um cliente de teste e gerar o link de autorização.
+        </div>
+      )}
+      {(paused || dryRun) && (
+        <div style={{ background: paused ? "var(--orange)" : "var(--sand)", color: paused ? "#fff" : "var(--navy)", textAlign: "center", padding: "6px 12px", fontSize: 13, fontWeight: 700 }}>
+          {paused ? "PAUSA GERAL ATIVA — nenhuma ação de escrita será executada." : "Modo simulação ativo — ações aprovadas são apenas simuladas."}{" "}
+          <Link href="/configuracoes">Alterar</Link>
+        </div>
+      )}
+      <main className="main">{children}</main>
+      <nav className="bottomnav" aria-label="Navegação">
+        {NAV.map((n) => (
+          <Link key={n.href} href={n.href}>
+            <span className="ico" aria-hidden="true">{n.ico}</span>
+            {n.label}
+            {n.key && counts[n.key as "approvals" | "alerts"] > 0 && (
+              <span className="badge-count">{counts[n.key as "approvals" | "alerts"]}</span>
+            )}
+          </Link>
+        ))}
+      </nav>
+    </>
+  );
+}

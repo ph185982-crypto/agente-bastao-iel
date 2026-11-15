@@ -1,0 +1,53 @@
+/* Avanteza — tokens de design (fonte única para TODAS as ferramentas).
+   Identidade v2.0: Marinho #0B1B33 · Creme #F5F0E6 · Areia #EAD9C2 · Laranja #FF6A1F
+   Regras: sem sombras, sem degradês, bordas de 1px, laranja só para ação e destaque (≈10%).
+   Fontes: Manrope (texto e números) + Instrument Serif itálico (palavra-chave em títulos). */
+:root {
+  /* cor */
+  --avz-navy: #0B1B33;
+  --avz-navy-2: #132A4C;
+  --avz-cream: #F5F0E6;
+  --avz-sand: #EAD9C2;
+  --avz-orange: #FF6A1F;
+  --avz-orange-hover: #E85A12;
+  --avz-white: #FFFFFF;
+  --avz-muted: #64748B;
+  --avz-ok: #047857;
+  --avz-ok-bg: #D1FAE5;
+  --avz-danger: #DC2626;
+  --avz-danger-bg: #FEE2E2;
+  --avz-warn: #B45309;
+
+  /* papéis semânticos (use estes nos componentes) */
+  --avz-bg: var(--avz-cream);          /* fundo da página */
+  --avz-surface: var(--avz-white);     /* cartões */
+  --avz-text: var(--avz-navy);
+  --avz-text-soft: var(--avz-muted);
+  --avz-border: var(--avz-sand);
+  --avz-primary: var(--avz-navy);      /* botão padrão, barra superior */
+  --avz-on-primary: var(--avz-cream);
+  --avz-accent: var(--avz-orange);     /* ação principal, foco, destaque */
+  --avz-on-accent: var(--avz-white);
+
+  /* forma */
+  --avz-radius: 6px;
+  --avz-radius-pill: 50px;
+  --avz-border-w: 1px;
+  --avz-shadow: none;
+
+  /* tipografia */
+  --avz-font: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --avz-font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --avz-text-size: 15px;
+  --avz-line: 1.5;
+  --avz-h1: 800 26px/1.15 var(--avz-font);
+  --avz-h2: 800 15px/1.3 var(--avz-font);   /* MAIÚSCULAS + barra laranja à esquerda */
+  --avz-tracking-tight: -0.025em;
+
+  /* espaço e toque */
+  --avz-gap: 12px;
+  --avz-pad: 16px;
+  --avz-tap: 44px;                     /* altura mínima de botões e campos */
+  --avz-maxw: 1100px;
+}
+/* Fontes: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap"> */

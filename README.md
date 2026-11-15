@@ -42,6 +42,31 @@ Resultado e pendências desta entrega: [VALIDACAO.md](docs/VALIDACAO.md).
 Configuração real: [acesso](docs/ACESSO.md), [banco](docs/ARMAZENAMENTO.md)
 e [Instagram](docs/META_SETUP.md).
 
+### Login único (Avanteza ID)
+
+A tela de acesso tem o botão **Entrar com Avanteza**; o código de acesso continua como reserva.
+
+1. O botão abre `/api/sso/entrar`, que leva à Central: `<AVANTEZA_HUB_URL>/sso/authorize?app=conteudo&return=<caminho>`.
+2. A Central autentica e devolve em `/api/sso/callback?token=<JWT>` (ES256, 60 s, `iss=avanteza-id`, `aud=conteudo`).
+3. `backend/lib/ssoRota.js` confere o JWT com `backend/lib/avantezaSso.js` (cópia fiel de
+   `packages/avanteza-kit/avanteza-sso.js`; o deploy deste app não inclui `packages/`) e emite o **mesmo** token de
+   acesso do login por código (`emitirAcesso` em `backend/lib/access.js`, 14 dias).
+4. O token volta no fragmento (`/#sso=<token>`, nunca em query string); `static/auth.js` guarda em `localStorage`,
+   limpa o endereço e segue. Erros voltam como `/#sso_erro=<código>` e aparecem na tela de acesso.
+
+`AVANTEZA_HUB_URL` é opcional (padrão `https://app.avanteza.com.br`). O login único depende do app estar em modo
+protegido: o token de acesso é assinado com o código (`APP_ACCESS_CODE` ou o código criado no app). Com
+`APP_ACCESS_MODE=public` o app fica aberto e a tela de acesso não aparece. O cabeçalho tem o atalho **Central**
+(`/api/sso/central` → `<AVANTEZA_HUB_URL>/central`).
+
+### Identidade visual
+
+A interface segue a identidade Avanteza (marinho, creme, areia, laranja; Manrope + Instrument Serif itálico; sem
+sombras nem degradês, bordas de 1px, raio 6px). Os tokens ficam em `static/avanteza.css` (cópia de
+`packages/avanteza-kit/tokens.css`; ao mudar o kit, copie de novo) e os nomes antigos `--pd-*`/`--es-*` em
+`static/marca.css` apontam para eles. As artes geradas para o Instagram têm identidade própria (@pedro_destrava)
+e não usam esses tokens.
+
 **Radar de Negócios** (pesquisa diária às 7h, carrossel “Ideias que dão dinheiro”, fila de aprovação): [docs/RADAR.md](docs/RADAR.md).
 
 **Não promover para `main`, publicar em produção nem enviar posts sem a

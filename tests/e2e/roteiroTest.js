@@ -48,8 +48,8 @@ const falhas = []; const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m);
   ok(/Para aprovar\s*1/.test(n), 'a aba Para aprovar conta o roteiro');
   const trilho = await p.innerText('.st-trilho');
   ok(/1\s*Roteiros para aprovar/.test(trilho) && await p.locator('.st-trilho button.vez').count() === 1, 'o trilho do fluxo mostra o roteiro e marca a etapa da vez');
-  ok(await p.evaluate(async () => { await document.fonts.ready; return document.fonts.check('800 20px "Manrope PD"') && document.fonts.check('400 16px "Inter PD"'); }), 'as fontes da marca (Manrope e Inter) carregaram');
-  ok(await p.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(246, 245, 240)', 'o fundo do app é o branco quente da marca');
+  ok(await p.evaluate(async () => { await document.fonts.ready; return document.fonts.check('800 20px "Manrope"') && document.fonts.check('400 16px "Manrope"'); }), 'a fonte da identidade (Manrope) carregou');
+  ok(await p.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(245, 240, 230)', 'o fundo do app é o creme da identidade Avanteza');
   await p.screenshot({ path: `${SP}/rt_1_roteiro.png` });
 
   await p.click('[data-action="st-roteiro-aprovar"]');

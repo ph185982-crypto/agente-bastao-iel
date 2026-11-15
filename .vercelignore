@@ -4,3 +4,6 @@ frontend/.env
 frontend/.env.local
 .env
 *.log
+avanteza/
+contratos/
+packages/
