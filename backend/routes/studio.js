@@ -10,6 +10,9 @@ const erro=(res,e)=>res.status(e.status || (e.code==='CONFLITO'?409:500)).json({
 function segundoPlano(p){if(process.env.VERCEL)waitUntil(p);else p.catch(e=>console.error('[studio]',e.message));}
 async function kick(c){
   if(!['gerando','publicando'].includes(c.studio?.estado))return;
+  const T=require('../lib/nuvem/tarefas');
+  if(T.naNuvem()){const st=c.studio;const atraso=st.adiar_ate?Math.max(0,Math.ceil((Date.parse(st.adiar_ate)-Date.now())/1000)):0;
+    await T.criar({caminho:'/api/nuvem/studio',corpo:{id:c.id,job:st.job},atrasoS:atraso,chave:['st',c.id,st.job,st.etapa,st.indice||0,st.passos||0,st.polls||0].join('-')});return;}
   if(!process.env.VERCEL){setTimeout(()=>executar(c.id,c.studio.job),c.studio.etapa==='motion'?4000:100);return;}
   await require('../lib/studioFila').enfileirar(c);
 }
@@ -42,9 +45,9 @@ async function publicarEmSegundoPlano(c){
     if(st.polls>120){await require('../lib/top/relogio').agendarEm(Date.now()+120000).catch(()=>{});return;} // o relógio retoma em 2 min
     const espera=st.polls<=10?4000:st.polls<=40?8000:15000;
     reg.doc.studio.polls=st.polls;
-    if(process.env.VERCEL)reg.doc.studio.adiar_ate=new Date(Date.now()+espera).toISOString();
+    if(require('../lib/nuvem/tarefas').comFila())reg.doc.studio.adiar_ate=new Date(Date.now()+espera).toISOString();
     await armazem().conteudos.salvar(ACCOUNT.ig_id,c.id,reg.doc,reg.rev);
-    if(!process.env.VERCEL)await new Promise(r=>setTimeout(r,3500));
+    if(!require('../lib/nuvem/tarefas').comFila())await new Promise(r=>setTimeout(r,3500));
     await kick(reg.doc);return;
   }
   const reg=await studio.ler(c.id);if(reg.doc.studio?.job!==st.job)return;

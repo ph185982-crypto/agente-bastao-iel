@@ -26,6 +26,11 @@ function localmente(runId, atrasoS = 0) {
 }
 
 async function continuar(runId, { atrasoS = 0 } = {}) {
+  const T = require('../nuvem/tarefas');
+  if (T.naNuvem()) {
+    try { await T.criar({ caminho: '/api/nuvem/radar', corpo: { id: runId }, atrasoS, chave: `rd-${runId}-${Math.floor(Date.now() / 20000)}` }); } catch (e) { console.error('[radar] Cloud Tasks indisponível:', U.limita(e.message, 100)); }
+    return;
+  }
   if (!process.env.VERCEL) return localmente(runId, atrasoS);
   try { await enfileirar(runId, { atrasoS }); } catch (e) { console.error('[radar] fila indisponível:', U.limita(e.message, 100)); }
 }
