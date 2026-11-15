@@ -3,7 +3,7 @@
 // partner_id + path + timestamp (+ access_token + shop_id nas rotas de loja).
 // VERIFICAR: confirmar caminhos/campos de leitura e escrita na documentação oficial
 // (open.shopee.com) assim que o cadastro de desenvolvedor estiver aprovado, em modo simulação.
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { fetchJson } from "../../http";
 import { env, envOptional } from "../../env";
 import type {
@@ -31,6 +31,15 @@ export function shopeeSign(partnerKey: string, parts: (string | number)[]): stri
 }
 
 const ts = () => Math.floor(Date.now() / 1000);
+
+/** Push da Shopee: Authorization = hex(HMAC-SHA256(partner_key, URL + "|" + corpo)). VERIFICAR. */
+export function shopeePushValid(partnerKey: string, url: string, raw: string, signature: string | null): boolean {
+  if (!signature) return false;
+  const expected = createHmac("sha256", partnerKey).update(`${url}|${raw}`).digest("hex");
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signature);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export class ShopeeAdapter implements MarketplaceAdapter {
   readonly id = "shopee" as const;

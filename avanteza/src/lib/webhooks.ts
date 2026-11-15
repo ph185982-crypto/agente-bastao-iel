@@ -11,12 +11,12 @@ export function resourceId(resource: string): string | null {
   return parts.length >= 2 ? parts[1] : null;
 }
 
-async function processOne(ev: { id: number; topic: string; resource: string; external_user_id: string; attempts: number }) {
+async function processOne(ev: { id: number; marketplace: string; topic: string; resource: string; external_user_id: string; attempts: number }) {
   const db = adminDb();
   const { data: acc } = await db
     .from("marketplace_accounts")
     .select("*")
-    .eq("marketplace", "mercadolivre")
+    .eq("marketplace", ev.marketplace || "mercadolivre")
     .eq("external_user_id", ev.external_user_id)
     .maybeSingle();
   if (!acc) return "ignored";
@@ -93,7 +93,7 @@ export async function processWebhookQueue(budgetMs = 40_000, limit = 100) {
   const started = Date.now();
   const { data } = await db
     .from("webhook_events")
-    .select("id, topic, resource, external_user_id, attempts")
+    .select("id, marketplace, topic, resource, external_user_id, attempts")
     .in("status", ["pending", "error"])
     .lt("attempts", 5)
     .order("received_at", { ascending: true })

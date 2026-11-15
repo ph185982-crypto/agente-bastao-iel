@@ -127,7 +127,7 @@ export default async function Cliente({
                 <div>
                   <strong>{a.nickname ?? a.external_user_id}</strong>{" "}
                   <span className={`pill ${a.status === "active" ? "pill-ok" : "pill-danger"}`}>{a.status === "active" ? "Ativa" : a.status === "disabled" ? "Desconectada" : "Reautorizar"}</span>
-                  <div className="small muted">{MARKETPLACE_LABEL[a.marketplace as "mercadolivre" | "shopee"] ?? a.marketplace} · ID {a.external_user_id} · token até {dt(a.token_expires_at)} · coleta {ago(a.last_collected_at)}</div>
+                  <div className="small muted">{MARKETPLACE_LABEL[a.marketplace as "mercadolivre" | "shopee" | "tiktok"] ?? a.marketplace} · ID {a.external_user_id} · token até {dt(a.token_expires_at)} · coleta {ago(a.last_collected_at)}</div>
                   {a.last_error && <div className="small down">{a.last_error}</div>}
                 </div>
                 {a.status === "active" && (

@@ -63,7 +63,7 @@ nada bloqueado) e entram na fila do executor com justificativa (`source = ia`). 
 (números calculados pelo sistema + leitura da IA) fica em **Relatórios**, pronto para copiar ou
 enviar no WhatsApp. Sem `ANTHROPIC_API_KEY`, o relatório sai só com números.
 
-### Fase 3 — autonomia e Shopee
+### Fase 3 — autonomia, Shopee e TikTok Shop
 - Tipos de ação em modo **automático** executam sozinhos dentro dos limites diários, respeitando
   a pausa geral, a simulação e um teto de ações automáticas por cliente/dia (acima dele, volta a
   pedir aprovação). Regras podem propor ações (ex.: ROAS abaixo da meta → corte de verba).
@@ -71,6 +71,12 @@ enviar no WhatsApp. Sem `ANTHROPIC_API_KEY`, o relatório sai só com números.
 - `ShopeeAdapter`: assinatura v2, autorização de loja, tokens (refresh sempre salvo), leitura de
   anúncios e pedidos e escrita de preço/estoque/listagem. Fica ativo quando `SHOPEE_PARTNER_ID` e
   `SHOPEE_PARTNER_KEY` existem. Pontos `VERIFICAR` devem ser validados na documentação oficial.
+  Push da Shopee em `/api/webhooks/shopee` (assinatura conferida).
+- `TikTokShopAdapter` (`src/lib/marketplaces/tiktok/`): autorização do vendedor (service_id), tokens,
+  lojas autorizadas (shop_cipher), produtos, pedidos, preço, estoque, ativar/desativar e webhooks em
+  `/api/webhooks/tiktok` (HMAC do app_key + corpo). Caminhos e assinatura conferidos no cliente gerado da
+  especificação oficial; a assinatura tem teste com vetor da implementação de referência. Fica ativo com
+  `TIKTOK_APP_KEY`, `TIKTOK_APP_SECRET` e `TIKTOK_SERVICE_ID`.
 
 ## Variáveis de ambiente
 Veja `.env.example`. Segredos (`ML_CLIENT_SECRET`, `ENCRYPTION_KEY`, `RESEND_API_KEY`,

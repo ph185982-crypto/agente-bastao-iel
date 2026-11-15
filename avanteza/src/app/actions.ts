@@ -113,7 +113,7 @@ export async function updateClient(fd: FormData) {
 export async function generateAuthLink(clientId: string, marketplace = "mercadolivre"): Promise<{ url?: string; error?: string }> {
   await requireAdmin();
   try {
-    if (!["mercadolivre", "shopee"].includes(marketplace)) throw new Error("Marketplace inválido");
+    if (!["mercadolivre", "shopee", "tiktok"].includes(marketplace)) throw new Error("Marketplace inválido");
     const { url } = await createAuthorizationLink(clientId, marketplace);
     return { url };
   } catch (e) {

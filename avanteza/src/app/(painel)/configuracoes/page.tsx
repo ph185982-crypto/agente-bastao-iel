@@ -17,11 +17,14 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
     adminDb().from("job_runs").select("job, status, started_at, details").order("started_at", { ascending: false }).limit(12),
   ]);
   const missing = missingConfig();
-  const optional = ["RESEND_API_KEY", "ALERT_EMAIL_FROM", "ALERT_EMAIL_TO", "ANTHROPIC_API_KEY", "SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY"].filter((k) => !process.env[k]);
+  const optional = ["RESEND_API_KEY", "ALERT_EMAIL_FROM", "ALERT_EMAIL_TO", "ANTHROPIC_API_KEY", "SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY", "TIKTOK_APP_KEY", "TIKTOK_APP_SECRET", "TIKTOK_SERVICE_ID"].filter((k) => !process.env[k]);
   const urls = [
     ["Redirect URI (callback OAuth)", redirectUri()],
     ["URL de notificações (webhook)", `${appUrl()}/api/webhooks/mercadolivre`],
-    ["Shopee · Redirect URL (Fase 3)", redirectUri("shopee")],
+    ["Shopee · Redirect URL", redirectUri("shopee")],
+    ["Shopee · Push (notificações)", `${appUrl()}/api/webhooks/shopee`],
+    ["TikTok Shop · Redirect URL", redirectUri("tiktok")],
+    ["TikTok Shop · Webhook", `${appUrl()}/api/webhooks/tiktok`],
   ];
   return (
     <>
@@ -67,7 +70,7 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
         </ul>
       </div>
 
-      <h2>DevCenter do Mercado Livre</h2>
+      <h2>Endereços para cadastrar nos marketplaces</h2>
       <div className="card stack">
         {urls.map(([label, url]) => (
           <div key={label} className="row">

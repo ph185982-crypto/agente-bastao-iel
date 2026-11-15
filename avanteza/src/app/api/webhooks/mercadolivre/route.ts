@@ -1,9 +1,8 @@
 // Notificações do Mercado Livre: grava na fila e responde 200 imediatamente.
 // O processamento acontece em seguida (after) e, como garantia, pelo cron da fila.
-import { NextResponse, after } from "next/server";
-import { adminDb } from "@/lib/db";
+import { NextResponse } from "next/server";
 import { getAdapter } from "@/lib/marketplaces";
-import { processWebhookQueue } from "@/lib/webhooks";
+import { enqueueWebhook } from "@/lib/webhook-intake";
 
 export const dynamic = "force-dynamic";
 
@@ -16,25 +15,8 @@ export async function POST(req: Request) {
   }
   const n = getAdapter("mercadolivre").parseWebhook(body);
   if (n) {
-    const { error } = await adminDb().from("webhook_events").insert({
-      marketplace: "mercadolivre",
-      topic: n.topic,
-      resource: n.resource,
-      external_user_id: n.externalUserId,
-      payload: n.raw as object,
-    });
-    if (error) {
-      // 500 faz o Mercado Livre reenviar a notificação mais tarde (nada se perde).
-      console.error("[webhook] falha ao gravar:", error.message);
-      return NextResponse.json({ ok: false }, { status: 500 });
-    }
-    after(async () => {
-      try {
-        await processWebhookQueue(20_000, 20);
-      } catch (err) {
-        console.error("[webhook] processamento adiado:", err instanceof Error ? err.message : err);
-      }
-    });
+    // 500 faz o Mercado Livre reenviar a notificação mais tarde (nada se perde).
+    if (!(await enqueueWebhook("mercadolivre", n))) return NextResponse.json({ ok: false }, { status: 500 });
   }
   return NextResponse.json({ ok: true });
 }

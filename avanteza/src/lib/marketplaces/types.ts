@@ -1,6 +1,6 @@
 // Interface comum de marketplace. Mercado Livre hoje; Shopee entra como outro adapter.
 
-export type MarketplaceId = "mercadolivre" | "shopee";
+export type MarketplaceId = "mercadolivre" | "shopee" | "tiktok";
 
 export interface TokenSet {
   accessToken: string;

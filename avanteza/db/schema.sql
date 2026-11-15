@@ -60,7 +60,7 @@ create table if not exists avanteza.oauth_states (
 create table if not exists avanteza.marketplace_accounts (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references avanteza.clients(id) on delete cascade,
-  marketplace text not null check (marketplace in ('mercadolivre','shopee')),
+  marketplace text not null check (marketplace in ('mercadolivre','shopee','tiktok')),
   external_user_id text not null,
   nickname text,
   site_id text,

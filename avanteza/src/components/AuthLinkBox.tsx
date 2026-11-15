@@ -3,7 +3,7 @@ import { useState, useTransition } from "react";
 import { generateAuthLink } from "@/app/actions";
 import { CopyButton } from "./CopyButton";
 
-const LABEL: Record<string, string> = { mercadolivre: "Mercado Livre", shopee: "Shopee" };
+const LABEL: Record<string, string> = { mercadolivre: "Mercado Livre", shopee: "Shopee", tiktok: "TikTok Shop" };
 
 export function AuthLinkBox({ clientId, clientName, marketplaces = ["mercadolivre"] }: { clientId: string; clientName: string; marketplaces?: string[] }) {
   const [mk, setMk] = useState("mercadolivre");
@@ -11,7 +11,7 @@ export function AuthLinkBox({ clientId, clientName, marketplaces = ["mercadolivr
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const msg = url
-    ? `Olá! Para a Avanteza acompanhar sua conta ${mk === "shopee" ? "da Shopee" : "do Mercado Livre"}, autorize o acesso por este link (válido por 7 dias, uso único): ${url}`
+    ? `Olá! Para a Avanteza acompanhar sua conta ${mk === "shopee" ? "da Shopee" : mk === "tiktok" ? "do TikTok Shop" : "do Mercado Livre"}, autorize o acesso por este link (válido por 7 dias, uso único): ${url}`
     : "";
   return (
     <div className="stack">

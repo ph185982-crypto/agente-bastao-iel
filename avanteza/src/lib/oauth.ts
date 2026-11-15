@@ -14,7 +14,7 @@ export function redirectUri(marketplace = "mercadolivre"): string {
 /** Gera o link de autorização para enviar ao cliente (state único contra CSRF; PKCE opcional). */
 export async function createAuthorizationLink(clientId: string, marketplace = "mercadolivre") {
   const state = randomToken(24);
-  const usePkce = marketplace === "mercadolivre" && envOptional("ML_USE_PKCE") === "true";
+  const usePkce = marketplace === "mercadolivre" && envOptional("ML_USE_PKCE") === "true"; // Shopee e TikTok não usam PKCE
   const verifier = usePkce ? randomToken(48) : null;
   const challenge = verifier ? createHash("sha256").update(verifier).digest("base64url") : undefined;
   const { error } = await adminDb().from("oauth_states").insert({
