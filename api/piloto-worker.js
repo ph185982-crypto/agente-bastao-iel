@@ -16,6 +16,9 @@ async function pelaVersaoAtual() {
 }
 
 module.exports = fila().handleNodeCallback(async () => {
+  // Versão de teste (preview): NÃO roda nem reagenda. Cada push criava uma versão nova com a sua própria corrente
+  // perpétua de tiques, e a soma delas estourou o limite de CPU do plano gratuito (projeto pausado em 15/11).
+  if (process.env.VERCEL_ENV !== 'production') return;
   if (await pelaVersaoAtual()) return;
   let r = null;
   try { r = await Piloto.rodada({ orcamentoMs: 45000 }); } catch (e) { console.error('[piloto] rodada falhou:', String(e.message).slice(0, 160)); }

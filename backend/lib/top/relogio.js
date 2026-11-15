@@ -8,7 +8,7 @@
 let cliente;
 const fila = () => (cliente ||= new (require('@vercel/queue').QueueClient)({ region: process.env.VERCEL_REGION || 'iad1' }));
 const TOPICO = 'pedro-piloto';
-const ATIVO_S = 60; const PARADO_MIN_S = 300; const PARADO_MAX_S = 2700; // a fila guarda a mensagem por 1 h: o atraso fica abaixo disso
+const ATIVO_S = 300; const PARADO_MIN_S = 600; const PARADO_MAX_S = 3000; // econômico: o limite de CPU do plano gratuito estourou com tique a cada 1 min // a fila guarda a mensagem por 1 h: o atraso fica abaixo disso
 
 function proximo(rodada, agora = Date.now()) {
   const ativo = (rodada?.avancados || []).some((x) => x.estado === 'em_andamento') || !!rodada?.criado;
@@ -26,7 +26,7 @@ function proximo(rodada, agora = Date.now()) {
 
 // Compromisso novo no meio do caminho (o Pedro agendou um post para daqui a pouco): garante um tique naquele horário.
 async function agendarEm(quando, { agora = Date.now(), enviar } = {}) {
-  if (!enviar && !process.env.VERCEL) return null;
+  if (!enviar && (!process.env.VERCEL || process.env.VERCEL_ENV !== 'production')) return null; // só produção agenda tiques
   const alvo = Math.ceil(Number(quando) / 60000) * 60000;
   if (!(alvo > agora) || alvo - agora > PARADO_MAX_S * 1000) return null; // longe: o tique normal chega antes
   try {
@@ -36,7 +36,7 @@ async function agendarEm(quando, { agora = Date.now(), enviar } = {}) {
 }
 
 async function agendarProxima(rodada, { agora = Date.now(), enviar } = {}) {
-  if (!enviar && !process.env.VERCEL) return null;
+  if (!enviar && (!process.env.VERCEL || process.env.VERCEL_ENV !== 'production')) return null; // só produção agenda tiques
   const p = proximo(rodada, agora);
   try {
     await (enviar || ((m, o) => fila().send(TOPICO, m, o)))({ alvo: p.alvo }, { idempotencyKey: p.chave, retentionSeconds: 3600, delaySeconds: p.atrasoS });
