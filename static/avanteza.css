@@ -1,0 +1,145 @@
+/* Identidade visual única Avanteza no app de conteúdo. ÚLTIMA folha carregada.
+   1) Tokens: cópia fiel de packages/avanteza-kit/tokens.css (o deploy deste app não inclui packages/). Ao mudar o kit, copie de novo.
+   2) Fontes servidas pelo próprio app (sem depender de rede externa).
+   3) Ajustes de tema sobre as folhas anteriores: barra superior marinho, ações em laranja, palavra-chave em serifa itálica.
+   Não vale para as ARTES do Instagram (geradas no servidor, identidade própria do @pedro_destrava), para o teleprompter
+   (.tp, sobreposição da câmera) nem para as amostras de legenda de vídeo (.vd-estilo i). */
+
+@font-face { font-family: 'Manrope'; font-weight: 400 800; font-style: normal; font-display: swap; src: url('./Manrope-Variavel.woff2') format('woff2'); }
+@font-face { font-family: 'Instrument Serif'; font-weight: 400; font-style: italic; font-display: swap; src: url('./InstrumentSerif-Italico.woff2') format('woff2'); }
+
+:root {
+  /* cor */
+  --avz-navy: #0B1B33;
+  --avz-navy-2: #132A4C;
+  --avz-cream: #F5F0E6;
+  --avz-sand: #EAD9C2;
+  --avz-orange: #FF6A1F;
+  --avz-orange-hover: #E85A12;
+  --avz-white: #FFFFFF;
+  --avz-muted: #64748B;
+  --avz-ok: #047857;
+  --avz-ok-bg: #D1FAE5;
+  --avz-danger: #DC2626;
+  --avz-danger-bg: #FEE2E2;
+  --avz-warn: #B45309;
+
+  /* papéis semânticos (use estes nos componentes) */
+  --avz-bg: var(--avz-cream);          /* fundo da página */
+  --avz-surface: var(--avz-white);     /* cartões */
+  --avz-text: var(--avz-navy);
+  --avz-text-soft: var(--avz-muted);
+  --avz-border: var(--avz-sand);
+  --avz-primary: var(--avz-navy);      /* botão padrão, barra superior */
+  --avz-on-primary: var(--avz-cream);
+  --avz-accent: var(--avz-orange);     /* ação principal, foco, destaque */
+  --avz-on-accent: var(--avz-white);
+
+  /* forma */
+  --avz-radius: 6px;
+  --avz-radius-pill: 50px;
+  --avz-border-w: 1px;
+  --avz-shadow: none;
+
+  /* tipografia */
+  --avz-font: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --avz-font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --avz-text-size: 15px;
+  --avz-line: 1.5;
+  --avz-h1: 800 26px/1.15 var(--avz-font);
+  --avz-h2: 800 15px/1.3 var(--avz-font);   /* MAIÚSCULAS + barra laranja à esquerda */
+  --avz-tracking-tight: -0.025em;
+
+  /* espaço e toque */
+  --avz-gap: 12px;
+  --avz-pad: 16px;
+  --avz-tap: 44px;                     /* altura mínima de botões e campos */
+  --avz-maxw: 1100px;
+}
+
+/* ---------- Base ---------- */
+html, body { background: var(--avz-bg) !important; color: var(--avz-text); }
+::selection { background: var(--avz-navy); color: var(--avz-cream); }
+#esteira :focus-visible, #pico-legacy-app :focus-visible, .vd :focus-visible { outline: 2px solid var(--avz-accent); outline-offset: 2px; }
+.es-input:focus, .studio-search:focus-within { border-color: var(--avz-accent); box-shadow: none; outline: 2px solid var(--avz-accent); outline-offset: 0; }
+.vd-estilo[aria-pressed="true"] { border-color: var(--avz-navy); outline: 2px solid var(--avz-accent); outline-offset: 0; }
+.vd-check input, .rdn-check input { accent-color: var(--avz-accent); }
+#pico-legacy-app *, #pico-login * { box-shadow: none !important; }
+
+/* Palavra-chave do título: Instrument Serif itálico (substitui os colchetes da marca antiga). */
+body .br { font-family: var(--avz-font-serif) !important; font-style: italic; font-weight: 400; letter-spacing: -.01em; font-size: 1.12em; color: inherit; white-space: normal; }
+.br::before, .br::after { content: none; }
+/* Sobretítulo: quadrado laranja (o ponto do logotipo) no lugar dos colchetes. */
+.st-eyebrow::before, .studio-eyebrow::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; background: var(--avz-accent); }
+.st-eyebrow::after, .studio-eyebrow::after { content: none; }
+.rc2-eyebrow:before { background: var(--avz-accent); border-radius: 0; }
+
+/* ---------- Barra superior e navegação (marinho) ---------- */
+.studio-brand { background: var(--avz-primary); color: var(--avz-on-primary); }
+.studio-brand b { color: var(--avz-on-primary); }
+.studio-brand div > span { color: var(--avz-sand); }
+.studio-header { background: var(--avz-primary); color: var(--avz-on-primary); border-bottom: 0; }
+.studio-breadcrumb { color: var(--avz-sand); }
+.studio-breadcrumb b { color: var(--avz-on-primary); }
+.studio-breadcrumb span { color: var(--avz-navy-2); }
+.studio-save { color: var(--avz-sand); }
+.studio-save i { background: #34D399; }
+.studio-save.warn i { background: var(--avz-accent); }
+.studio-save.err i { background: #F87171; }
+.studio-save.loading i { background: var(--avz-sand); }
+.studio-avatar, .studio-rail-footer .studio-avatar { background: var(--avz-sand); color: var(--avz-navy); border-radius: 50%; }
+.studio-rail-footer { border-top: 1px solid var(--avz-navy-2); }
+.studio-rail-footer div > span { color: var(--avz-sand); }
+/* Atalho para a Central Avanteza (grade 2×2). */
+.studio-central { display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex-shrink: 0; min-width: 44px; min-height: 44px; padding: 0 10px; border: 1px solid var(--avz-navy-2); border-radius: var(--avz-radius-pill); color: var(--avz-sand); text-decoration: none; font-size: 13px; font-weight: 700; pointer-events: auto; }
+.studio-central:hover { color: var(--avz-on-primary); border-color: var(--avz-sand); }
+.studio-central svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+.es-nav { background: var(--avz-primary); border-top: 1px solid var(--avz-navy-2); }
+.es-nav button { color: var(--avz-sand); border-radius: var(--avz-radius); }
+.es-nav button:hover { background: var(--avz-navy-2); color: var(--avz-on-primary); }
+.es-nav button[aria-current="page"] { background: var(--avz-navy-2); color: var(--avz-on-primary); position: relative; }
+.es-nav .es-badge { background: var(--avz-accent); color: var(--avz-on-accent); border-radius: var(--avz-radius-pill); }
+@media (min-width: 761px) {
+  .es-nav button[aria-current="page"]::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; background: var(--avz-accent); }
+}
+@media (max-width: 760px) {
+  .studio-brand { background: transparent; color: var(--avz-on-primary); }
+  .studio-brand b { color: var(--avz-on-primary); }
+  .studio-brand div > span { color: var(--avz-sand); }
+  .studio-central span { display: none; }
+  .studio-central { padding: 0; }
+  .es-nav { background: var(--avz-primary); border-top: 1px solid var(--avz-navy-2); }
+  .es-nav button { color: var(--avz-sand); }
+  .es-nav button:hover { background: transparent; color: var(--avz-on-primary); }
+  .es-nav button[aria-current="page"] { background: transparent; color: var(--avz-on-primary); }
+  .es-nav button[aria-current="page"]::before { background: var(--avz-accent); border-radius: 0; }
+  .es-nav button[aria-current="page"] svg { color: var(--avz-on-primary); }
+  .es-nav .es-badge { background: var(--avz-accent); color: var(--avz-on-accent); }
+}
+
+/* ---------- Ações ---------- */
+/* Ação principal em laranja; secundária em contorno marinho; botões em pílula, como nas demais ferramentas. */
+.es-btn, .st-approve, .st-new, .cn-btn.cn-ok, .es-btn.ok {
+  background: var(--avz-accent); color: var(--avz-on-accent); border: 1px solid var(--avz-accent); border-radius: var(--avz-radius-pill);
+}
+.es-btn:hover, .st-approve:hover, .st-new:hover, .cn-btn.cn-ok:hover { background: var(--avz-orange-hover); border-color: var(--avz-orange-hover); }
+.es-btn.dark { background: var(--avz-primary); border-color: var(--avz-primary); color: var(--avz-on-primary); }
+.es-btn.dark:hover { background: var(--avz-navy-2); border-color: var(--avz-navy-2); }
+.es-btn.ghost, .st-reject, .cn-btn.cn-fora, .st-text-button.caixa, .st-agendar {
+  background: var(--avz-surface); color: var(--avz-text); border: 1px solid var(--avz-navy); border-radius: var(--avz-radius-pill);
+}
+.es-btn.ghost:hover, .st-reject:hover { background: var(--avz-navy); color: var(--avz-on-primary); }
+.es-btn.danger { background: var(--avz-surface); color: var(--avz-danger); border: 1px solid var(--avz-danger); }
+.st-text-button, .cn-link { color: var(--avz-text); text-decoration: underline; text-decoration-color: var(--avz-accent); text-underline-offset: 3px; }
+.st-text-button.caixa { text-decoration: none; }
+.es-progress > div, .rd-barra i { background: var(--avz-accent); }
+
+/* ---------- Superfícies ---------- */
+/* Blocos que eram "papel 2" com texto suave por cima viram cartão branco com borda areia (contraste). */
+.st-growth, .pl-hoje div { background: var(--avz-surface); border: 1px solid var(--avz-border); }
+.rd-card, .rc2-card { border-color: var(--avz-border); }
+
+/* Radar e Reciclar: mesmos botões (pílula; laranja com texto branco só na ação principal). */
+.rd-btn, .rc2-btn { border-radius: var(--avz-radius-pill); }
+.rd-btn.laranja, .rc2-btn.laranja, .rd-nova { background: var(--avz-accent); color: var(--avz-on-accent); border-color: var(--avz-accent); }

@@ -34,6 +34,8 @@ app.use(express.json({ limit: '20mb' }));
 // Acesso por código (só quando APP_ACCESS_CODE está definido) + login.
 const access = require('./lib/access');
 access.registrarRotas(app);
+// Login único Avanteza ID: fica ANTES da verificação de acesso (é por aqui que o acesso é obtido).
+require('./lib/ssoRota').registrar(app);
 app.use('/api', access.exigeAcesso);
 
 // Routes
