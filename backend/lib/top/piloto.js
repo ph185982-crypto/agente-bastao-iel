@@ -233,12 +233,12 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
     try { const f = await (deps.faxinaVideos || ((o) => require('../videos').faxina(o)))({ agora }); if (f.apagados) r.faxina_videos = f; } catch (e) { r.avisos.push(`Faxina de vídeos falhou: ${String(e.message).slice(0, 100)}`); }
   }
   // 0d) Uma vez por dia, a partir das 8h: alertas de operação (banco, acesso ao Instagram, relógio que ficou parado).
-  if (hora >= '08:00' && est.alerta_dia !== dia && (process.env.VERCEL || deps.alertas)) {
+  if (hora >= '08:00' && est.alerta_dia !== dia && (process.env.VERCEL || process.env.K_SERVICE || deps.alertas)) {
     est.alerta_dia = dia;
     try { const al = await (deps.alertas || ((o) => require('../alertas').conferir(o)))({ agora, ultimaRodadaEm: est.ultima_rodada?.em || null }); if (al.frases?.length) r.alertas = al.frases; } catch { /* alerta nunca derruba a rodada */ }
   }
   // 0e) Uma vez por dia, a partir das 7h: lê os resultados reais dos posts (Meta) e refaz o placar que orienta a produção.
-  if (hora >= '07:00' && est.metricas_dia !== dia && restante() > 40000 && (process.env.VERCEL || deps.coletarMetricas)) {
+  if (hora >= '07:00' && est.metricas_dia !== dia && restante() > 40000 && (process.env.VERCEL || process.env.K_SERVICE || deps.coletarMetricas)) {
     est.metricas_dia = dia;
     try { const m = await (deps.coletarMetricas || ((o) => require('../placar').coletar(o)))({ agora, orcamentoMs: Math.min(22000, restante() - 18000) }); r.metricas = { posts: m.snapshot?.posts?.length || 0, parcial: !!m.snapshot?.parcial }; }
     catch (e) { r.avisos.push(`Leitura dos resultados falhou: ${String(e.meta?.amigavel || e.message).slice(0, 110)}`); }

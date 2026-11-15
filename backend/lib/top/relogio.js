@@ -7,6 +7,11 @@
 // horário (GitHub, app aberto, a própria fila) viram uma mensagem só; a trava da rodada recusa a que chegar no meio de outra.
 let cliente;
 const fila = () => (cliente ||= new (require('@vercel/queue').QueueClient)({ region: process.env.VERCEL_REGION || 'iad1' }));
+// No Google Cloud Run a mesma mensagem vira uma tarefa do Cloud Tasks que chama a rodada (que agenda a seguinte).
+const T = require('../nuvem/tarefas');
+const enviarNuvem = (m, o) => T.criar({ caminho: '/api/top/piloto/rodada', corpo: {}, atrasoS: o.delaySeconds, chave: o.idempotencyKey });
+const enviarPadrao = () => (T.naNuvem() ? enviarNuvem : (m, o) => fila().send(TOPICO, m, o));
+const podeAgendar = () => T.naNuvem() || (process.env.VERCEL && process.env.VERCEL_ENV === 'production');
 const TOPICO = 'pedro-piloto';
 const ATIVO_S = 300; const PARADO_MIN_S = 600; const PARADO_MAX_S = 3000; // econômico: o limite de CPU do plano gratuito estourou com tique a cada 1 min // a fila guarda a mensagem por 1 h: o atraso fica abaixo disso
 
@@ -26,20 +31,20 @@ function proximo(rodada, agora = Date.now()) {
 
 // Compromisso novo no meio do caminho (o Pedro agendou um post para daqui a pouco): garante um tique naquele horário.
 async function agendarEm(quando, { agora = Date.now(), enviar } = {}) {
-  if (!enviar && (!process.env.VERCEL || process.env.VERCEL_ENV !== 'production')) return null; // só produção agenda tiques
+  if (!enviar && !podeAgendar()) return null; // só produção agenda tiques
   const alvo = Math.ceil(Number(quando) / 60000) * 60000;
   if (!(alvo > agora) || alvo - agora > PARADO_MAX_S * 1000) return null; // longe: o tique normal chega antes
   try {
-    await (enviar || ((m, o) => fila().send(TOPICO, m, o)))({ alvo }, { idempotencyKey: `piloto:${alvo / 1000}`, retentionSeconds: 3600, delaySeconds: Math.max(1, Math.ceil((alvo - agora) / 1000)) });
+    await (enviar || enviarPadrao())({ alvo }, { idempotencyKey: `piloto:${alvo / 1000}`, retentionSeconds: 3600, delaySeconds: Math.max(1, Math.ceil((alvo - agora) / 1000)) });
     return { alvo };
   } catch (e) { console.error('[piloto] relógio sem fila:', String(e.message).slice(0, 120)); return null; }
 }
 
 async function agendarProxima(rodada, { agora = Date.now(), enviar } = {}) {
-  if (!enviar && (!process.env.VERCEL || process.env.VERCEL_ENV !== 'production')) return null; // só produção agenda tiques
+  if (!enviar && !podeAgendar()) return null; // só produção agenda tiques
   const p = proximo(rodada, agora);
   try {
-    await (enviar || ((m, o) => fila().send(TOPICO, m, o)))({ alvo: p.alvo }, { idempotencyKey: p.chave, retentionSeconds: 3600, delaySeconds: p.atrasoS });
+    await (enviar || enviarPadrao())({ alvo: p.alvo }, { idempotencyKey: p.chave, retentionSeconds: 3600, delaySeconds: p.atrasoS });
     return p;
   } catch (e) { console.error('[piloto] relógio sem fila:', String(e.message).slice(0, 120)); return null; }
 }
