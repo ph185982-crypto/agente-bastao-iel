@@ -25,10 +25,24 @@ function secretOrThrow(secret?: string) {
   return s;
 }
 
-export type Role = "admin" | "reviewer";
+export type Role = "admin" | "member" | "reviewer";
+export interface Session {
+  email: string;
+  role: Role;
+  /** IDs dos aplicativos liberados (membros). Administradores acessam todos. */
+  apps: string[];
+  name: string;
+}
 
-export async function signSession(email: string, secret?: string, ttl = SESSION_TTL_S, role: Role = "admin"): Promise<string> {
-  const payload = b64url(enc.encode(JSON.stringify({ e: email.toLowerCase(), x: Math.floor(Date.now() / 1000) + ttl, r: role })));
+export async function signSession(
+  email: string,
+  secret?: string,
+  ttl = SESSION_TTL_S,
+  role: Role = "admin",
+  extra: { apps?: string[]; name?: string } = {},
+): Promise<string> {
+  const body = { e: email.toLowerCase(), x: Math.floor(Date.now() / 1000) + ttl, r: role, a: extra.apps ?? [], n: extra.name ?? "" };
+  const payload = b64url(enc.encode(JSON.stringify(body)));
   const sig = await crypto.subtle.sign("HMAC", await key(secretOrThrow(secret)), enc.encode(payload));
   return `${payload}.${b64url(sig)}`;
 }
@@ -37,17 +51,18 @@ export async function verifySession(token: string | undefined, secret?: string):
   return (await verifySessionFull(token, secret))?.email ?? null;
 }
 
-/** Sessão completa: e-mail e papel (admin = acesso total; reviewer = só leitura). */
-export async function verifySessionFull(token: string | undefined, secret?: string): Promise<{ email: string; role: Role } | null> {
+/** Sessão completa: e-mail, papel (admin = tudo; member = apps liberados; reviewer = só leitura) e apps. */
+export async function verifySessionFull(token: string | undefined, secret?: string): Promise<Session | null> {
   if (!token) return null;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return null;
   try {
     const ok = await crypto.subtle.verify("HMAC", await key(secretOrThrow(secret)), fromB64url(sig), enc.encode(payload));
     if (!ok) return null;
-    const data = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { e: string; x: number; r?: Role };
+    const data = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as { e: string; x: number; r?: Role; a?: string[]; n?: string };
     if (!data.e || data.x < Math.floor(Date.now() / 1000)) return null;
-    return { email: data.e, role: data.r === "reviewer" ? "reviewer" : "admin" };
+    const role: Role = data.r === "reviewer" ? "reviewer" : data.r === "member" ? "member" : "admin";
+    return { email: data.e, role, apps: Array.isArray(data.a) ? data.a : [], name: data.n ?? "" };
   } catch {
     return null;
   }
@@ -59,8 +74,16 @@ export function isAllowedAdmin(email: string | null): boolean {
   return list.includes(email.toLowerCase());
 }
 
-/** Acesso ao painel: administradores da lista ADMIN_EMAILS ou contas de revisão (somente leitura). */
-export function canAccess(sess: { email: string; role: Role } | null): boolean {
+/** Sessão válida: administradores precisam estar em ADMIN_EMAILS; membros e revisores vêm do cadastro. */
+export function canAccess(sess: Session | null): boolean {
   if (!sess) return false;
-  return sess.role === "reviewer" || isAllowedAdmin(sess.email);
+  return sess.role !== "admin" || isAllowedAdmin(sess.email);
+}
+
+/** Pode usar o aplicativo? (admin: todos; reviewer: só marketplaces; member: os liberados) */
+export function canUseApp(sess: Session | null, appId: string): boolean {
+  if (!canAccess(sess)) return false;
+  if (sess!.role === "admin") return true;
+  if (sess!.role === "reviewer") return appId === "marketplaces";
+  return sess!.apps.includes(appId);
 }

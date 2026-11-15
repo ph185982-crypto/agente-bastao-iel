@@ -53,7 +53,7 @@ test("sessão: papel de revisão (somente leitura) e acesso", async () => {
   const secret = "s".repeat(40);
   process.env.ADMIN_EMAILS = "admin@avanteza.com.br";
   const rev = await verifySessionFull(await signSession("shopee-review@avanteza.com.br", secret, 3600, "reviewer"), secret);
-  assert.deepEqual(rev, { email: "shopee-review@avanteza.com.br", role: "reviewer" });
+  assert.deepEqual(rev, { email: "shopee-review@avanteza.com.br", role: "reviewer", apps: [], name: "" });
   assert.ok(canAccess(rev));
   const adm = await verifySessionFull(await signSession("admin@avanteza.com.br", secret), secret);
   assert.equal(adm?.role, "admin");

@@ -27,9 +27,14 @@ export function Shell({
     <>
       <header className="topbar">
         <div className="topbar-inner">
-          <Link href="/" style={{ textDecoration: "none" }}>
-            <Logo />
-          </Link>
+          <div className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
+            <Link href="/central" aria-label="Central: todas as ferramentas" title="Central" className="appswitch">
+              <span /><span /><span /><span />
+            </Link>
+            <Link href="/" style={{ textDecoration: "none" }}>
+              <Logo />
+            </Link>
+          </div>
           <nav className="topnav">
             {NAV.map((n) => (
               <Link key={n.href} href={n.href}>

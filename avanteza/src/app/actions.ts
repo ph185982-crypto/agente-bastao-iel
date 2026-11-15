@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
-import { requireAdmin, requireWriter } from "@/lib/auth";
+import { requireAdmin, requireWriter, requireOwner } from "@/lib/auth";
+import { APP_IDS } from "@/lib/apps";
+import bcrypt from "bcryptjs";
 import { SESSION_COOKIE, SESSION_TTL_S, signSession } from "@/lib/session";
 import { checkLogin, setPassword } from "@/lib/login";
 import { userDb, adminDb } from "@/lib/db";
@@ -38,14 +40,15 @@ export async function login(_prev: { error?: string; email?: string } | null, fd
   const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconhecido";
   const r = await checkLogin(email, password, ip);
   if (!r.ok) return { error: r.error, email };
-  (await cookies()).set(SESSION_COOKIE, await signSession(email, undefined, undefined, r.role ?? "admin"), {
+  (await cookies()).set(SESSION_COOKIE, await signSession(email, undefined, undefined, r.role ?? "admin", { apps: r.apps, name: r.name }), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_TTL_S,
   });
-  redirect("/");
+  const next = str(fd, "next");
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/central");
 }
 
 export async function changePassword(fd: FormData) {
@@ -205,7 +208,7 @@ export async function savePolicy(fd: FormData) {
 
 // ───────────── Configurações globais ─────────────
 export async function saveSettings(fd: FormData) {
-  const actor = await requireWriter();
+  const actor = await requireOwner();
   const db = adminDb();
   const { data: before } = await db.from("settings").select("*").single();
   const after = {
@@ -223,7 +226,7 @@ export async function saveSettings(fd: FormData) {
 }
 
 export async function togglePause(fd: FormData) {
-  const actor = await requireWriter();
+  const actor = await requireOwner();
   const db = adminDb();
   const pause = str(fd, "pause") === "1";
   await db.from("settings").update({ global_pause: pause, updated_at: new Date().toISOString() }).eq("id", true);
@@ -371,7 +374,7 @@ export async function runAgentNow(fd: FormData) {
 }
 
 export async function sendTestEmail(fd: FormData) {
-  await requireWriter();
+  await requireOwner();
   const { EmailChannel } = await import("@/lib/alerts/channels");
   const ch = new EmailChannel();
   if (!ch.enabled()) flash("/configuracoes", "E-mail não configurado (RESEND_API_KEY / ALERT_EMAIL_FROM).", "erro");
@@ -386,4 +389,27 @@ export async function sendTestEmail(fd: FormData) {
   }
   void fd;
   flash("/configuracoes", "E-mail de teste enviado. Confira a caixa de entrada (e o spam).");
+}
+
+// ───────────── Usuários e permissões (só administradores) ─────────────
+export async function saveUser(fd: FormData) {
+  const actor = await requireOwner();
+  const email = str(fd, "email").toLowerCase();
+  const role = str(fd, "role");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) flash("/usuarios", "E-mail inválido.", "erro");
+  if (!["admin", "member", "reviewer"].includes(role)) flash("/usuarios", "Papel inválido.", "erro");
+  const appsSel = APP_IDS.filter((id) => fd.get(`app_${id}`) === "on");
+  const password = String(fd.get("password") ?? "");
+  const db = adminDb();
+  const { data: existing } = await db.from("admins").select("email").eq("email", email).maybeSingle();
+  if (!existing && password.length < 10) flash("/usuarios", "Defina uma senha inicial com pelo menos 10 caracteres.", "erro");
+  if (password && password.length < 10) flash("/usuarios", "A senha precisa ter pelo menos 10 caracteres.", "erro");
+  const row: Record<string, unknown> = { email, name: str(fd, "name") || null, role, apps: appsSel, active: fd.get("active") === "on" };
+  if (password) row.password_hash = await bcrypt.hash(password, 12);
+  if (email === actor && (role !== "admin" || row.active === false)) flash("/usuarios", "Você não pode rebaixar ou desativar o próprio usuário.", "erro");
+  const { error } = existing ? await db.from("admins").update(row).eq("email", email) : await db.from("admins").insert(row);
+  if (error) flash("/usuarios", error.message, "erro");
+  await db.from("audit_log").insert({ event: existing ? "user_updated" : "user_created", actor, details: { email, role, apps: appsSel, active: row.active } });
+  revalidatePath("/usuarios");
+  flash("/usuarios", existing ? "Usuário atualizado." : "Usuário criado.");
 }
