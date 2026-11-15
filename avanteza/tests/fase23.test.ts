@@ -10,7 +10,7 @@ import { validatePayload } from "../src/lib/executor/policy";
 const base = (o: Partial<ProposedAction>): ProposedAction => ({
   tipo: "update_price", conta_id: "acc1", alvo: "MLB1", justificativa: "x", prioridade: "media",
   preco: null, estoque: null, titulo: null, descricao: null, resposta: null, verba: null,
-  status_campanha: null, preco_promocional: null, inicio: null, fim: null, ...o,
+  status_campanha: null, preco_promocional: null, inicio: null, fim: null, variacao: null, ...o,
 });
 
 test("IA: só passam ações com IDs reais, sem duplicata nem tipo bloqueado", () => {

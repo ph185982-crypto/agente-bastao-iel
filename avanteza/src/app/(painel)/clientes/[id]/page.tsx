@@ -45,7 +45,7 @@ export default async function Cliente({
 
   const [snaps, listings, questions, campaigns, rules, policies, actions, alerts, report] = await Promise.all([
     db.from("daily_snapshots").select("*").in("account_id", ids).gte("snapshot_date", addDays(today, -14)).order("snapshot_date"),
-    db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d, permalink").in("account_id", ids).order("sold_quantity", { ascending: false }).limit(300),
+    db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d, permalink, variations").in("account_id", ids).order("sold_quantity", { ascending: false }).limit(300),
     db.from("questions").select("*").in("account_id", ids).eq("status", "UNANSWERED").order("date_created").limit(50),
     db.from("ads_campaigns").select("*").in("account_id", ids).order("name"),
     db.from("alert_rules").select("*").eq("client_id", id),
@@ -227,7 +227,19 @@ export default async function Cliente({
             <tbody>
               {[...problemListings, ...L.filter((l) => !problemListings.includes(l))].slice(0, 60).map((l) => (
                 <tr key={l.account_id + l.external_id}>
-                  <td>{l.permalink ? <a href={l.permalink} target="_blank" rel="noreferrer">{l.title}</a> : l.title}<div className="small muted mono">{l.external_id}</div></td>
+                  <td>{l.permalink ? <a href={l.permalink} target="_blank" rel="noreferrer">{l.title}</a> : l.title}<div className="small muted mono">{l.external_id}</div>
+                    {Array.isArray(l.variations) && l.variations.length > 0 && (
+                      <details>
+                        <summary className="small">{l.variations.length} variações</summary>
+                        <ul className="list small">
+                          {l.variations.map((v: { id: string; name: string; price: number | null; stock: number | null }) => (
+                            <li key={v.id} style={{ padding: "4px 0" }}>
+                              <span className="mono">{v.id}</span> · {v.name} · {brl(v.price)} · estoque <strong style={v.stock === 0 ? { color: "var(--danger)" } : undefined}>{int(v.stock)}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}</td>
                   <td><span className={`pill ${l.status === "active" ? "pill-ok" : "pill-sand"}`}>{l.status}</span>{(l.sub_status ?? []).length > 0 && <div className="small muted">{(l.sub_status ?? []).join(", ")}</div>}</td>
                   <td className="num">{brl(l.price)}</td>
                   <td className="num" style={(l.available_quantity ?? 0) === 0 ? { color: "var(--danger)", fontWeight: 700 } : undefined}>{int(l.available_quantity)}</td>

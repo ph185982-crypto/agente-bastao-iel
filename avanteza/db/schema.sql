@@ -96,6 +96,7 @@ create table if not exists avanteza.listings (
   thumbnail text,
   listing_type_id text,
   has_variations boolean default false,
+  variations jsonb,               -- [{id, name, price, stock, sku}] (variações/modelos/SKUs)
   raw jsonb,
   updated_at timestamptz not null default now(),
   primary key (account_id, external_id)

@@ -39,7 +39,7 @@ export async function buildContext(clientId: string) {
 
   const [snaps, listings, questions, campaigns, alerts, actions, policies] = await Promise.all([
     db.from("daily_snapshots").select("*").in("account_id", accIds).gte("snapshot_date", addDays(today, -14)).order("snapshot_date"),
-    db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d").in("account_id", accIds),
+    db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d, variations").in("account_id", accIds),
     db.from("questions").select("account_id, external_id, item_id, text, date_created").in("account_id", accIds).eq("status", "UNANSWERED").order("date_created").limit(30),
     db.from("ads_campaigns").select("account_id, external_id, name, status, budget, strategy, roas_target, metrics_7d").in("account_id", accIds),
     db.from("alerts").select("rule_type, severity, title, message").eq("client_id", clientId).neq("status", "resolved").limit(30),
@@ -97,6 +97,7 @@ export async function buildContext(clientId: string) {
       estoque: l.available_quantity,
       vendidos_total: l.sold_quantity,
       visitas_30d: l.visits_30d,
+      variacoes: Array.isArray(l.variations) ? l.variations.slice(0, 12) : undefined,
     })),
     perguntas_sem_resposta: (questions.data ?? []).map((q) => ({
       conta_id: q.account_id,

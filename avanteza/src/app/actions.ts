@@ -256,6 +256,10 @@ export async function proposeManual(fd: FormData) {
       payload.finish_date = str(fd, "finish_date") ? new Date(str(fd, "finish_date")).toISOString() : undefined;
       break;
   }
+  if ((type === "update_price" || type === "update_stock") && str(fd, "variation_id")) {
+    payload.variation_id = str(fd, "variation_id");
+  }
+
   let msg = "";
   try {
     const r = await proposeAction({

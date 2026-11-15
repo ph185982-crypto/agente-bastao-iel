@@ -6,8 +6,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { fetchJson } from "../../http";
 import { env, envOptional } from "../../env";
+import { stateWithVariation, stockTarget } from "../variations";
 import type {
   ActionType,
+  Variation,
   AdsCampaign,
   AdsContext,
   DateRange,
@@ -60,6 +62,16 @@ const STATUS_MAP: Record<string, string> = {
   DELETED: "closed",
 };
 
+function mapSkus(p: Json): Variation[] {
+  return ((p.skus ?? []) as Json[]).map((sku) => ({
+    id: String(sku.id),
+    name: ((sku.sales_attributes ?? []) as Json[]).map((a) => a.value_name).filter(Boolean).join(" / ") || sku.seller_sku || String(sku.id),
+    price: sku.price?.sale_price != null ? Number(sku.price.sale_price) : sku.price?.tax_exclusive_price != null ? Number(sku.price.tax_exclusive_price) : null,
+    stock: ((sku.inventory ?? []) as Json[]).reduce((t, inv) => t + Number(inv.quantity ?? 0), 0),
+    sku: sku.seller_sku ?? null,
+  }));
+}
+
 function mapProduct(p: Json): Listing {
   const skus: Json[] = p.skus ?? [];
   const first = skus[0]?.price ?? {};
@@ -81,6 +93,7 @@ function mapProduct(p: Json): Listing {
     thumbnail: p.main_images?.[0]?.urls?.[0] ?? null,
     listingTypeId: null,
     hasVariations: skus.length > 1,
+    variations: skus.length > 1 ? mapSkus(p) : [],
     raw: null,
   };
 }
@@ -276,13 +289,17 @@ export class TikTokShopAdapter implements MarketplaceAdapter {
   }
 
   // ───────────── Escrita ─────────────
-  async getStateForAction(token: string, type: ActionType, targetId: string) {
+  async getStateForAction(token: string, type: ActionType, targetId: string, _ctx?: AdsContext | null, payload?: Record<string, unknown>) {
     if (!["update_price", "update_stock", "pause_listing", "activate_listing"].includes(type)) {
       throw new Error(`Ação ${type} ainda não suportada no TikTok Shop`);
     }
     const p = await this.getProduct(token, targetId);
     const l = mapProduct(p);
-    return { id: l.externalId, title: l.title, status: l.status, price: l.price, available_quantity: l.availableQuantity, has_variations: l.hasVariations };
+    return stateWithVariation(
+      { id: l.externalId, title: l.title, status: l.status, price: l.price, available_quantity: l.availableQuantity },
+      mapSkus(p).length > 1 ? mapSkus(p) : [],
+      ["update_price", "update_stock"].includes(type) ? payload?.variation_id : undefined,
+    );
   }
 
   async executeAction(token: string, type: ActionType, targetId: string, payload: Record<string, unknown>) {
@@ -293,21 +310,26 @@ export class TikTokShopAdapter implements MarketplaceAdapter {
       case "update_stock": {
         const p = await this.getProduct(token, targetId);
         const skus: Json[] = p.skus ?? [];
-        if (skus.length !== 1) throw new Error("Produto com variações: altere por SKU (ainda não suportado).");
-        const sku = skus[0];
+        if (!skus.length) throw new Error("Produto sem SKUs no TikTok Shop.");
+        const vars = mapSkus(p);
         if (type === "update_price") {
+          // Sem SKU escolhido, o preço vale para todos os SKUs do produto.
+          const chosen = payload.variation_id ? skus.filter((s) => String(s.id) === String(payload.variation_id)) : skus;
+          if (!chosen.length) throw new Error(`SKU ${String(payload.variation_id)} não encontrado.`);
           await this.call("POST", `/product/202309/products/${id}/prices/update`, t, {
             cipher,
-            body: { skus: [{ id: String(sku.id), price: { amount: Number(payload.price).toFixed(2), currency: sku.price?.currency ?? "BRL" } }] },
+            body: { skus: chosen.map((s) => ({ id: String(s.id), price: { amount: Number(payload.price).toFixed(2), currency: s.price?.currency ?? "BRL" } })) },
           });
-          return { price: payload.price };
+          return { price: payload.price, skus_atualizados: chosen.length };
         }
+        const target = stockTarget(vars, payload.variation_id)!;
+        const sku = skus.find((s) => String(s.id) === target.id)!;
         const warehouse = sku.inventory?.[0]?.warehouse_id;
         await this.call("POST", `/product/202309/products/${id}/inventory/update`, t, {
           cipher,
-          body: { skus: [{ id: String(sku.id), inventory: [{ ...(warehouse ? { warehouse_id: String(warehouse) } : {}), quantity: Number(payload.available_quantity) }] }] },
+          body: { skus: [{ id: target.id, inventory: [{ ...(warehouse ? { warehouse_id: String(warehouse) } : {}), quantity: Number(payload.available_quantity) }] }] },
         });
-        return { available_quantity: payload.available_quantity };
+        return { available_quantity: payload.available_quantity, variation_id: target.id, variation_name: target.name };
       }
       case "pause_listing":
         await this.call("POST", "/product/202309/products/deactivate", t, { cipher, body: { product_ids: [targetId] } });

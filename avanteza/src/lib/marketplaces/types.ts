@@ -22,6 +22,15 @@ export interface SellerProfile {
   raw: unknown;
 }
 
+/** Variação (ML), modelo (Shopee) ou SKU (TikTok Shop). */
+export interface Variation {
+  id: string;
+  name: string;
+  price: number | null;
+  stock: number | null;
+  sku: string | null;
+}
+
 export interface Listing {
   externalId: string;
   title: string;
@@ -35,6 +44,7 @@ export interface Listing {
   thumbnail: string | null;
   listingTypeId: string | null;
   hasVariations: boolean;
+  variations?: Variation[];
   raw: unknown;
 }
 
@@ -132,7 +142,13 @@ export interface MarketplaceAdapter {
   listAdsCampaigns(token: string, ctx: AdsContext, range: DateRange): Promise<AdsCampaign[]>;
 
   // Escrita
-  getStateForAction(token: string, type: ActionType, targetId: string, ctx?: AdsContext | null): Promise<Record<string, unknown>>;
+  getStateForAction(
+    token: string,
+    type: ActionType,
+    targetId: string,
+    ctx?: AdsContext | null,
+    payload?: Record<string, unknown>,
+  ): Promise<Record<string, unknown>>;
   executeAction(
     token: string,
     type: ActionType,

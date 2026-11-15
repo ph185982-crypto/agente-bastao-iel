@@ -38,6 +38,9 @@ export function resolvePolicy(type: ActionType, clientId: string, rows: PolicyRo
 }
 
 export function validatePayload(type: ActionType, payload: Record<string, unknown>): string | null {
+  if (payload.variation_id !== undefined && payload.variation_id !== null && !/^[0-9A-Za-z_-]{1,40}$/.test(String(payload.variation_id))) {
+    return "ID de variação inválido.";
+  }
   const pos = (k: string) => typeof payload[k] === "number" && Number.isFinite(payload[k]) && (payload[k] as number) > 0;
   switch (type) {
     case "update_price":

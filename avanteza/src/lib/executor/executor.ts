@@ -47,7 +47,7 @@ export async function proposeAction(input: ProposeInput) {
   try {
     const { token, account } = await getValidAccessToken(input.accountId);
     const ctx = await adsContext(account.id, account.site_id, account.ads_advertiser_id);
-    before = await getAdapter(account.marketplace).getStateForAction(token, input.type, input.targetId, ctx);
+    before = await getAdapter(account.marketplace).getStateForAction(token, input.type, input.targetId, ctx, input.payload);
   } catch (err) {
     before = { erro_leitura: err instanceof Error ? err.message : String(err) };
   }
@@ -149,7 +149,7 @@ export async function executeAction(actionId: string, actor: string) {
     const { token, account } = await getValidAccessToken(action.account_id);
     const ml = getAdapter(account.marketplace);
     const ctx = await adsContext(account.id, account.site_id, account.ads_advertiser_id);
-    const before = await ml.getStateForAction(token, type, action.target_id, ctx);
+    const before = await ml.getStateForAction(token, type, action.target_id, ctx, action.payload);
 
     // Limites diários (preço/verba)
     const field = limitField(type);
@@ -178,9 +178,6 @@ export async function executeAction(actionId: string, actor: string) {
       if (violation) return fail(`Bloqueado pelo limite: ${violation}`, before);
     }
 
-    if (type === "update_price" && before.has_variations) {
-      return fail("Anúncio com variações: alteração de preço por variação ainda não suportada.", before);
-    }
 
     const simulate = Boolean(settings?.dry_run || action.dry_run);
     if (simulate) {

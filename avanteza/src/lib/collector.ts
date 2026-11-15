@@ -83,6 +83,7 @@ export async function collectAccount(acc: AccountRow): Promise<CollectResult> {
       thumbnail: l.thumbnail,
       listing_type_id: l.listingTypeId,
       has_variations: l.hasVariations,
+      variations: l.variations?.length ? l.variations : null,
       raw: null,
       updated_at: now,
     }));

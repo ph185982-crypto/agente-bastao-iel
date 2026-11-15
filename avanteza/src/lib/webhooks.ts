@@ -77,6 +77,7 @@ async function processOne(ev: { id: number; marketplace: string; topic: string; 
           thumbnail: l.thumbnail,
           listing_type_id: l.listingTypeId,
           has_variations: l.hasVariations,
+          variations: l.variations?.length ? l.variations : null,
           updated_at: ts,
         });
       }

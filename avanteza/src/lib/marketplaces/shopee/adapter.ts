@@ -6,8 +6,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { fetchJson } from "../../http";
 import { env, envOptional } from "../../env";
+import { stateWithVariation, stockTarget } from "../variations";
 import type {
   ActionType,
+  Variation,
   AdsCampaign,
   AdsContext,
   DateRange,
@@ -172,7 +174,33 @@ export class ShopeeAdapter implements MarketplaceAdapter {
         });
       }
     }
+    // Modelos (variações) dos itens que têm: 1 chamada por item, limitada por rodada.
+    for (const l of out.filter((x) => x.hasVariations).slice(0, 100)) {
+      try {
+        l.variations = await this.getModels(token, l.externalId);
+      } catch {
+        /* modelos são complementares: não interrompem a coleta */
+      }
+    }
     return out;
+  }
+
+  /** VERIFICAR: /api/v2/product/get_model_list (modelos = variações da Shopee). */
+  async getModels(token: string, itemId: string): Promise<Variation[]> {
+    const [t, shopId] = this.split(token);
+    const r = await this.call(this.shopUrl("/api/v2/product/get_model_list", t, shopId, { item_id: itemId }));
+    const tiers: Json[] = r.response?.tier_variation ?? [];
+    return ((r.response?.model ?? []) as Json[]).map((m) => ({
+      id: String(m.model_id),
+      name:
+        ((m.tier_index ?? []) as number[])
+          .map((idx, i) => tiers[i]?.option_list?.[idx]?.option)
+          .filter(Boolean)
+          .join(" / ") || String(m.model_id),
+      price: m.price_info?.[0]?.current_price ?? m.price_info?.[0]?.original_price ?? null,
+      stock: m.stock_info_v2?.summary_info?.total_available_stock ?? null,
+      sku: m.model_sku || null,
+    }));
   }
 
   async getListingVisits(): Promise<Record<string, number>> {
@@ -249,13 +277,17 @@ export class ShopeeAdapter implements MarketplaceAdapter {
   }
 
   // ───────────── Escrita ─────────────
-  async getStateForAction(token: string, type: ActionType, targetId: string) {
+  async getStateForAction(token: string, type: ActionType, targetId: string, _ctx?: AdsContext | null, payload?: Record<string, unknown>) {
     if (!["update_price", "update_stock", "pause_listing", "activate_listing"].includes(type)) {
       throw new Error(`Ação ${type} ainda não suportada na Shopee`);
     }
     const [l] = await this.getListings(token, [targetId]);
     if (!l) throw new Error("Anúncio não encontrado na Shopee");
-    return { id: l.externalId, title: l.title, status: l.status, price: l.price, available_quantity: l.availableQuantity, has_variations: l.hasVariations };
+    return stateWithVariation(
+      { id: l.externalId, title: l.title, status: l.status, price: l.price, available_quantity: l.availableQuantity },
+      l.variations ?? [],
+      ["update_price", "update_stock"].includes(type) ? payload?.variation_id : undefined,
+    );
   }
 
   async executeAction(token: string, type: ActionType, targetId: string, payload: Record<string, unknown>) {
@@ -263,12 +295,29 @@ export class ShopeeAdapter implements MarketplaceAdapter {
     const post = (path: string, body: unknown) => this.call(this.shopUrl(path, t, shopId), { method: "POST", body: JSON.stringify(body) });
     const item_id = Number(targetId);
     switch (type) {
-      case "update_price":
-        await post("/api/v2/product/update_price", { item_id, price_list: [{ original_price: Number(payload.price) }] });
-        return { price: payload.price };
-      case "update_stock":
-        await post("/api/v2/product/update_stock", { item_id, stock_list: [{ seller_stock: [{ stock: Number(payload.available_quantity) }] }] });
-        return { available_quantity: payload.available_quantity };
+      case "update_price": {
+        const price = Number(payload.price);
+        const models = await this.getModels(token, targetId).catch(() => [] as Variation[]);
+        const chosen = payload.variation_id ? models.filter((m) => m.id === String(payload.variation_id)) : models;
+        if (payload.variation_id && !chosen.length) throw new Error(`Modelo ${String(payload.variation_id)} não encontrado.`);
+        await post("/api/v2/product/update_price", {
+          item_id,
+          price_list: chosen.length
+            ? chosen.map((m) => ({ model_id: Number(m.id), original_price: price }))
+            : [{ original_price: price }],
+        });
+        return { price, modelos_atualizados: chosen.length || undefined };
+      }
+      case "update_stock": {
+        const qty = Number(payload.available_quantity);
+        const models = await this.getModels(token, targetId).catch(() => [] as Variation[]);
+        const target = stockTarget(models, payload.variation_id);
+        await post("/api/v2/product/update_stock", {
+          item_id,
+          stock_list: [{ ...(target ? { model_id: Number(target.id) } : {}), seller_stock: [{ stock: qty }] }],
+        });
+        return { available_quantity: qty, ...(target ? { variation_id: target.id, variation_name: target.name } : {}) };
+      }
       case "pause_listing":
       case "activate_listing":
         await post("/api/v2/product/unlist_item", { item_list: [{ item_id, unlist: type === "pause_listing" }] });

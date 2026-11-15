@@ -22,7 +22,7 @@ export function ProposeForm({
 }: {
   clientId: string;
   accounts: { id: string; nickname: string | null }[];
-  defaults?: { type?: string; target?: string; accountId?: string };
+  defaults?: { type?: string; target?: string; accountId?: string; variationId?: string };
 }) {
   const [type, setType] = useState(defaults?.type ?? "update_price");
   const targetLabel =
@@ -55,6 +55,12 @@ export function ProposeForm({
       </div>
       {type === "update_price" && <div className="field"><label>Novo preço (R$)</label><input name="price" inputMode="decimal" required /></div>}
       {type === "update_stock" && <div className="field"><label>Novo estoque</label><input name="available_quantity" inputMode="numeric" required /></div>}
+      {(type === "update_price" || type === "update_stock") && (
+        <div className="field">
+          <label>ID da variação / modelo / SKU {type === "update_price" ? "(opcional: vazio = todas)" : "(obrigatório se houver mais de uma)"}</label>
+          <input name="variation_id" defaultValue={defaults?.variationId} placeholder="veja em Anúncios → variações" />
+        </div>
+      )}
       {type === "update_listing" && (
         <>
           <div className="field"><label>Novo título (até 60 caracteres)</label><input name="title" maxLength={60} /></div>

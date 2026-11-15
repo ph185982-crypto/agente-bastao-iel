@@ -6,7 +6,7 @@ dos clientes (Shopee na Fase 3). Next.js (App Router) + TypeScript na Vercel, Po
 - Produção: https://app.avanteza.com.br (também https://avanteza.vercel.app)
 - Projeto Vercel: `avanteza` (diretório `avanteza/` deste repositório)
 - Banco: **Neon** (Postgres, plano gratuito, São Paulo) via integração da Vercel — schema `avanteza` (`db/schema.sql`).
-- Agendador: pg_cron do projeto Supabase `nexo-vendedoria` só dispara as rotinas (nenhum dado fica lá).
+- Agendador: Vercel Cron (`vercel.json`).
 - Login: sessão própria (cookie HttpOnly assinado com `SESSION_SECRET`, senha bcrypt, limite de tentativas).
 
 ## Arquitetura
@@ -30,8 +30,7 @@ supabase/migrations/                     0001 schema + RLS, 0002 pg_cron
 ```
 
 ### Rotinas
-O plano Hobby da Vercel só permite cron **diário**; por isso as rotinas frequentes são disparadas pelo
-**pg_cron do Supabase** (horários agrupados para o Neon dormir entre as rodadas: 100 h de computação/mês no plano grátis), que chama as rotas com `Authorization: Bearer <CRON_SECRET>`
+As rotinas rodam na **Vercel Cron** (plano Pro), com `Authorization: Bearer <CRON_SECRET>` (horários agrupados para o Neon dormir entre as rodadas: 100 h de computação/mês no plano grátis). O Supabase não é mais usado., que chama as rotas com `Authorization: Bearer <CRON_SECRET>`
 (segredo guardado no Vault, nome `avanteza_cron_secret`):
 
 | Rotina | Frequência | O que faz |
@@ -87,7 +86,14 @@ conectar contas** (os tokens salvos deixariam de abrir; seria preciso reautoriza
 ```sh
 cd avanteza
 npm ci
-npm test          # testes unitários (criptografia, retry, regras, limites, banco, sessão)
+npm test          # testes unitários (criptografia, retry, regras, limites, banco, sessão, variações)
+DATABASE_URL=... npm run test:e2e   # ponta a ponta com Mercado Livre simulado (usa o banco real e limpa depois)
 DATABASE_URL=... node db/apply.mjs   # cria/atualiza o schema no Postgres
 npm run build
 ```
+
+## Variações (cor/tamanho)
+- Mercado Livre: estoque por variação; preço vale para todas as variações (o ML exige enviar todas).
+- Shopee: preço e estoque por modelo; sem modelo, o preço vale para todos.
+- TikTok Shop: preço e estoque por SKU; sem SKU, o preço vale para todos.
+Os IDs aparecem em Clientes → Anúncios → "N variações" e a IA também pode propor por variação.

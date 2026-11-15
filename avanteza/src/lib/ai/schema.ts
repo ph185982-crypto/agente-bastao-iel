@@ -19,6 +19,7 @@ export const ProposedActionSchema = z.object({
   alvo: z.string().describe("ID do anúncio (MLB...), da pergunta ou da campanha, exatamente como no contexto"),
   justificativa: z.string().describe("Por que esta ação, com os números que a sustentam"),
   prioridade: z.enum(["alta", "media", "baixa"]),
+  variacao: z.string().nullable().describe("update_price/update_stock: ID da variação (campo variacoes[].id); null = anúncio inteiro"),
   preco: z.number().nullable().describe("update_price: novo preço"),
   estoque: z.number().nullable().describe("update_stock: nova quantidade"),
   titulo: z.string().nullable().describe("update_listing: novo título (até 60 caracteres)"),
@@ -49,8 +50,8 @@ export type ProposedAction = z.infer<typeof ProposedActionSchema>;
 /** Converte a ação da IA para o payload do executor. */
 export function toExecutorPayload(a: ProposedAction): Record<string, unknown> {
   switch (a.tipo) {
-    case "update_price": return { price: a.preco };
-    case "update_stock": return { available_quantity: a.estoque };
+    case "update_price": return { price: a.preco, ...(a.variacao ? { variation_id: a.variacao } : {}) };
+    case "update_stock": return { available_quantity: a.estoque, ...(a.variacao ? { variation_id: a.variacao } : {}) };
     case "pause_listing":
     case "activate_listing": return {};
     case "update_listing": {

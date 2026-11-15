@@ -3,8 +3,10 @@
 // documentação pública incompleta e devem ser validados em modo simulação antes do uso real.
 import { fetchJson, ApiError } from "../../http";
 import { env, envOptional } from "../../env";
+import { stateWithVariation, stockTarget } from "../variations";
 import type {
   ActionType,
+  Variation,
   AdsCampaign,
   AdsContext,
   DateRange,
@@ -17,7 +19,8 @@ import type {
   WebhookNotification,
 } from "../types";
 
-export const ML_API = "https://api.mercadolibre.com";
+// ML_API_BASE só existe para o teste de ponta a ponta com o Mercado Livre simulado.
+export const ML_API = process.env.ML_API_BASE && process.env.NODE_ENV !== "production" ? process.env.ML_API_BASE : "https://api.mercadolibre.com";
 export const ML_AUTH = "https://auth.mercadolivre.com.br/authorization";
 
 const ITEM_ATTRIBUTES =
@@ -48,6 +51,16 @@ function toTokenSet(r: Json): TokenSet {
   };
 }
 
+function mapVariations(b: Json): Variation[] {
+  return ((b.variations ?? []) as Json[]).map((v) => ({
+    id: String(v.id),
+    name: ((v.attribute_combinations ?? []) as Json[]).map((a) => a.value_name).filter(Boolean).join(" / ") || String(v.id),
+    price: num(v.price),
+    stock: num(v.available_quantity),
+    sku: v.seller_custom_field ?? null,
+  }));
+}
+
 function mapListing(b: Json): Listing {
   return {
     externalId: b.id,
@@ -62,6 +75,7 @@ function mapListing(b: Json): Listing {
     thumbnail: b.thumbnail ?? null,
     listingTypeId: b.listing_type_id ?? null,
     hasVariations: Array.isArray(b.variations) && b.variations.length > 0,
+    variations: mapVariations(b),
     raw: b,
   };
 }
@@ -336,7 +350,7 @@ export class MercadoLivreAdapter implements MarketplaceAdapter {
   }
 
   // ───────────── Escrita ─────────────
-  async getStateForAction(token: string, type: ActionType, targetId: string, ctx?: AdsContext | null) {
+  async getStateForAction(token: string, type: ActionType, targetId: string, ctx?: AdsContext | null, payload?: Record<string, unknown>) {
     switch (type) {
       case "update_price":
       case "update_stock":
@@ -345,14 +359,11 @@ export class MercadoLivreAdapter implements MarketplaceAdapter {
       case "update_listing":
       case "create_promotion": {
         const it = await fetchJson<Json>(`${ML_API}/items/${targetId}?attributes=${ITEM_ATTRIBUTES}`, auth(token));
-        return {
-          id: it.id,
-          title: it.title,
-          status: it.status,
-          price: it.price,
-          available_quantity: it.available_quantity,
-          has_variations: Array.isArray(it.variations) && it.variations.length > 0,
-        };
+        return stateWithVariation(
+          { id: it.id, title: it.title, status: it.status, price: num(it.price), available_quantity: num(it.available_quantity) },
+          mapVariations(it),
+          type === "update_stock" ? payload?.variation_id : undefined,
+        );
       }
       case "answer_question": {
         const q = await this.getQuestion(token, targetId);
@@ -394,12 +405,30 @@ export class MercadoLivreAdapter implements MarketplaceAdapter {
 
     switch (type) {
       case "update_price": {
-        const r = await put(`${ML_API}/items/${targetId}`, { price: Number(payload.price) });
-        return { price: r.price, status: r.status };
+        // Com variações, o ML exige enviar TODAS (as omitidas seriam excluídas): o preço vale para todas.
+        const it = await fetchJson<Json>(`${ML_API}/items/${targetId}?attributes=variations`, auth(token));
+        const vars: Json[] = it.variations ?? [];
+        const price = Number(payload.price);
+        const r = vars.length
+          ? await put(`${ML_API}/items/${targetId}`, { variations: vars.map((v) => ({ id: v.id, price })) })
+          : await put(`${ML_API}/items/${targetId}`, { price });
+        return { price: r.price ?? price, status: r.status, variacoes_atualizadas: vars.length || undefined };
       }
       case "update_stock": {
-        const r = await put(`${ML_API}/items/${targetId}`, { available_quantity: Number(payload.available_quantity) });
-        return { available_quantity: r.available_quantity, status: r.status };
+        const qty = Number(payload.available_quantity);
+        const it = await fetchJson<Json>(`${ML_API}/items/${targetId}?attributes=variations`, auth(token));
+        const vars = mapVariations(it);
+        const target = stockTarget(vars, payload.variation_id);
+        if (!target) {
+          const r = await put(`${ML_API}/items/${targetId}`, { available_quantity: qty });
+          return { available_quantity: r.available_quantity, status: r.status };
+        }
+        // Envia todas as variações (só com o id, sem mudar nada) e o novo estoque só na escolhida.
+        const r = await put(`${ML_API}/items/${targetId}`, {
+          variations: vars.map((v) => (v.id === target.id ? { id: Number(v.id), available_quantity: qty } : { id: Number(v.id) })),
+        });
+        const after = ((r.variations ?? []) as Json[]).find((v) => String(v.id) === target.id);
+        return { variation_id: target.id, variation_name: target.name, available_quantity: after?.available_quantity ?? qty };
       }
       case "pause_listing": {
         const r = await put(`${ML_API}/items/${targetId}`, { status: "paused" });
