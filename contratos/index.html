@@ -1,0 +1,2069 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contratos · Avanteza</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin></script>
+
+<style>
+/* ── TOKENS ─────────────────────────────────── */
+:root {
+  /* Identidade Avanteza v2.0 — espelha packages/avanteza-kit/tokens.css.
+     Sem sombras nem degradês, bordas de 1px, raio 6px, laranja só para ação e destaque. */
+  --ink:      #0B1B33;  /* marinho */
+  --ink-2:    #132A4C;
+  --acao:     #FF6A1F;  /* laranja */
+  --acao-h:   #E85A12;
+  --gold:     #B45309;  /* aviso */
+  --green:    #047857;
+  --red:      #DC2626;
+  --paper:    #F5F0E6;  /* creme */
+  --paper-2:  #EAD9C2;  /* areia */
+  --muted:    #64748B;
+  --muted-2:  #94A3B8;
+  --border:   #EAD9C2;
+  --glass:    rgba(255,255,255,.08);
+  --glass-b:  rgba(255,255,255,.18);
+  --raio:     6px;
+  --fonte:    'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  --serif:    'Instrument Serif',Georgia,'Times New Roman',serif;
+  --barra-h:  56px;
+}
+
+/* ── BASE ─────────────────────────────────────*/
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--ink);font-family:var(--fonte)}
+
+/* ── UPLOAD SCREEN ────────────────────────────*/
+#upload-screen {
+  position:fixed;inset:0;
+  background:var(--ink);
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:0;z-index:100;
+  transition:opacity .4s ease;
+}
+#upload-screen.hidden{opacity:0;pointer-events:none}
+
+.us-brand {
+  font-family:var(--fonte);
+  font-size:clamp(20px,3vw,32px);
+  color:#fff;
+  letter-spacing:-.02em;
+  margin-bottom:clamp(32px,5vh,56px);
+}
+
+.us-zone {
+  width:clamp(280px,55vw,540px);
+  border:1px dashed rgba(255,255,255,.18);
+  padding:clamp(40px,6vh,64px) 32px;
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+  cursor:pointer;
+  transition:border-color .2s, background .2s;
+  position:relative;
+}
+.us-zone:hover,.us-zone.drag-over{
+  border-color:var(--acao);
+  background:rgba(255,106,31,.08);
+}
+.us-zone input[type=file]{
+  position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;
+}
+.us-icon {
+  width:56px;height:56px;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:50%;
+  display:grid;place-items:center;
+  color:rgba(255,255,255,.6);font-size:22px;
+}
+.us-label{font-size:15px;color:rgba(255,255,255,.55);text-align:center;line-height:1.5}
+.us-label strong{color:#fff;display:block;font-size:17px;margin-bottom:4px}
+.us-hint{font-size:11px;letter-spacing:.1em;color:rgba(255,255,255,.25);text-transform:uppercase}
+#btn-skip-to-contract{
+  margin-top:20px;background:none;border:1px solid rgba(200,150,30,.35);
+  color:rgba(200,150,30,.75);font-size:12px;letter-spacing:.08em;
+  padding:9px 20px;border-radius:8px;cursor:pointer;display:flex;
+  align-items:center;gap:7px;font-family:inherit;transition:border-color .2s,color .2s;
+}
+#btn-skip-to-contract:hover{border-color:rgba(200,150,30,.8);color:rgba(200,150,30,1)}
+
+/* ── VIEWER SCREEN ────────────────────────────*/
+#viewer-screen {
+  position:fixed;inset:0;
+  background:var(--ink);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity .5s ease;
+}
+#viewer-screen.active{opacity:1;pointer-events:auto}
+
+#pdf-canvas {
+  display:block;
+  max-width:100vw;
+  max-height:100vh;
+  object-fit:contain;
+  transition:opacity .3s ease;
+}
+#pdf-canvas.fade{opacity:0}
+
+/* Laser canvas sits on top of everything in viewer */
+#laser-canvas {
+  position:fixed;inset:0;
+  pointer-events:none;
+  z-index:50;
+}
+body.laser-active #laser-canvas{pointer-events:none}
+
+/* ── PROGRESS BAR ─────────────────────────────*/
+#progress {
+  position:fixed;top:0;left:0;height:3px;
+  background:var(--acao);
+  transition:width .45s cubic-bezier(.4,0,.2,1);
+  z-index:90;
+}
+
+/* ── NAVIGATION ───────────────────────────────*/
+#nav {
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:8px;
+  background:var(--ink-2);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:40px;
+  padding:6px 8px;
+  z-index:80;
+  opacity:0;
+  transition:opacity .3s ease;
+}
+#viewer-screen.active #nav{opacity:1}
+
+.nav-btn {
+  width:36px;height:36px;border-radius:50%;border:none;
+  background:transparent;
+  color:rgba(255,255,255,.6);font-size:16px;cursor:pointer;
+  display:grid;place-items:center;
+  transition:all .15s ease;
+}
+.nav-btn:hover{background:var(--glass-b);color:#fff}
+.nav-btn:disabled{opacity:.25;cursor:not-allowed}
+.nav-btn.active-btn{background:var(--acao);color:#fff}
+.nav-btn svg{width:16px;height:16px;fill:currentColor}
+
+#slide-counter {
+  font-size:11px;letter-spacing:.14em;
+  color:rgba(255,255,255,.4);
+  padding:0 6px;font-variant-numeric:tabular-nums;
+  min-width:52px;text-align:center;
+}
+
+.nav-divider{width:1px;height:20px;background:rgba(255,255,255,.1);margin:0 2px}
+
+/* ── CONTRACT PANEL ───────────────────────────*/
+#contract-panel {
+  position:fixed;inset:0;
+  background:var(--paper);
+  overflow-y:auto;
+  z-index:70;
+  opacity:0;pointer-events:none;
+  transform:translateY(24px);
+  transition:opacity .4s ease, transform .4s ease;
+  padding:clamp(28px,4vh,52px) clamp(24px,5vw,64px);
+}
+#contract-panel.open{opacity:1;pointer-events:auto;transform:translateY(0)}
+
+.cp-top {
+  display:flex;align-items:flex-start;justify-content:space-between;
+  margin-bottom:clamp(24px,3vh,36px);
+}
+.cp-brand {
+  font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;
+}
+.cp-brand strong{display:block;font-family:var(--fonte);
+  font-size:clamp(22px,3vw,34px);color:var(--ink);letter-spacing:-.02em;
+  text-transform:none;font-weight:400;margin-top:4px}
+.cp-brand em{color:var(--acao);font-style:italic}
+
+.cp-back {
+  border:none;background:none;cursor:pointer;
+  color:var(--muted);font-size:12px;letter-spacing:.08em;
+  display:flex;align-items:center;gap:6px;font-family:inherit;
+  padding:8px 0;
+  transition:color .15s;
+}
+.cp-back:hover{color:var(--ink)}
+.cp-back svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2}
+
+/* CNPJ fetch status */
+.cnpj-wrap{position:relative}
+.cnpj-status {
+  font-size:11px;margin-top:5px;min-height:16px;
+  color:var(--acao);letter-spacing:.02em;
+}
+.cnpj-status.err{color:var(--red)}
+.cnpj-status.ok{color:var(--green)}
+
+/* Form layout */
+.form-section-label {
+  font-size:10px;letter-spacing:.2em;text-transform:uppercase;
+  font-weight:700;color:var(--muted);margin:22px 0 12px;
+}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-grid.g3{grid-template-columns:1fr 1fr 1fr}
+.fg{display:flex;flex-direction:column;gap:5px}
+.fg label{
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  font-weight:600;color:var(--muted);
+}
+.fg input,.fg select{
+  width:100%;padding:11px 14px;
+  border:1px solid var(--border);
+  background:#fff;
+  font-size:14px;color:var(--ink);
+  outline:none;
+  font-family:var(--fonte);
+  transition:border-color .18s,box-shadow .18s;
+  border-radius:0;
+  -webkit-appearance:none;
+}
+.fg input:focus,.fg select:focus{
+  border-color:var(--acao);
+}
+.fg input:read-only{background:var(--paper-2);color:var(--muted);cursor:default}
+.fg input::placeholder{color:var(--muted-2)}
+
+/* Contract model selector */
+.model-selector{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 20px}
+.model-card{
+  border:1px solid var(--border);padding:14px 16px;cursor:pointer;
+  background:#fff;position:relative;transition:border-color .18s,box-shadow .18s;
+  display:flex;flex-direction:column;gap:4px;
+}
+.model-card:hover{border-color:var(--acao)}
+.model-card.selected{border-color:var(--acao);}
+.model-card input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+.model-card-name{font-weight:700;font-size:13px;color:var(--ink)}
+.model-card-desc{font-size:11px;color:var(--muted);line-height:1.4}
+
+/* 2nd payment selector */
+.pgto2-selector{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0 0}
+.pgto2-card{
+  border:1px solid var(--border);padding:12px 10px;cursor:pointer;text-align:center;
+  background:#fff;transition:border-color .18s,box-shadow .18s;
+}
+.pgto2-card:hover{border-color:var(--acao)}
+.pgto2-card.selected{border-color:var(--acao);}
+.pgto2-card input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+.pgto2-days{font-weight:800;font-size:22px;color:var(--acao);display:block;font-variant-numeric:tabular-nums}
+.pgto2-label{font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+
+/* Plan cards */
+.plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:12px 0 20px}
+.plan-card {
+  border:1px solid var(--border);
+  padding:16px 14px;cursor:pointer;
+  background:#fff;position:relative;
+  transition:border-color .18s,box-shadow .18s;
+}
+.plan-card:hover{border-color:var(--acao)}
+.plan-card.selected{
+  border-color:var(--acao);
+}
+.plan-card.popular::before{
+  content:'Mais escolhido';
+  position:absolute;top:-10px;left:12px;
+  background:var(--gold);color:#fff;
+  font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  font-weight:700;padding:3px 10px;
+}
+.plan-card input[type=radio]{position:absolute;opacity:0;pointer-events:none}
+.plan-name{font-weight:700;font-size:14px;color:var(--ink);display:block;margin-bottom:6px}
+.plan-price{
+  font-weight:800;font-size:24px;color:var(--acao);
+  font-variant-numeric:tabular-nums;
+  line-height:1;
+}
+.plan-price sub{font-size:.45em;color:var(--muted);font-weight:400;vertical-align:baseline}
+
+/* Contract CTA */
+#btn-gerar {
+  width:100%;padding:15px;margin-top:16px;
+  background:var(--ink);color:#fff;
+  border:none;cursor:pointer;font-size:15px;font-weight:700;
+  letter-spacing:.03em;font-family:var(--fonte);
+  transition:background .18s;
+}
+#btn-gerar:hover:not(:disabled){background:var(--acao)}
+#btn-gerar:disabled{background:#CBD5E1;cursor:not-allowed;color:#94A3B8}
+#btn-gerar.success{background:var(--green)}
+.btn-sub{
+  text-align:center;font-size:11px;color:var(--muted);
+  margin-top:10px;letter-spacing:.02em;
+}
+
+/* ZapSign */
+.zs-opt{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.zs-opt input{width:16px;height:16px}
+.zs-btn{width:100%;padding:12px;margin-top:10px;background:#fff;color:var(--acao);border:1px solid var(--acao);cursor:pointer;font-size:13px;font-weight:700;font-family:var(--fonte)}
+.zs-btn:hover:not(:disabled){background:var(--acao);color:#fff}
+.zs-btn:disabled{opacity:.5;cursor:not-allowed}
+#zs-list{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.zs-item{border:1px solid var(--border);padding:10px 12px;background:#fff;font-size:12px;display:flex;flex-direction:column;gap:6px}
+.zs-item-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.zs-item-name{font-weight:700;color:var(--ink);word-break:break-word}
+.zs-status{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border:1px solid currentColor;white-space:nowrap}
+.zs-status.pending{color:var(--gold)}.zs-status.signed{color:var(--green)}.zs-status.refused{color:#B91C1C}
+.zs-actions{display:flex;gap:6px;flex-wrap:wrap}
+.zs-actions button{font-size:11px;padding:5px 10px;border:1px solid var(--border);background:#fff;cursor:pointer;font-family:inherit;font-weight:600;color:var(--ink)}
+.zs-actions button:hover{border-color:var(--acao);color:var(--acao)}
+
+#edit-banner{margin-top:14px;padding:12px 14px;border:1px solid var(--gold);background:#FFFBEB;font-size:12px;color:var(--ink)}
+#edit-banner button{margin-top:8px;font-size:11px;padding:5px 10px;border:1px solid var(--border);background:#fff;cursor:pointer;font-family:inherit;font-weight:600}
+.zs-sec{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:10px}
+.zs-status.local{color:var(--muted)}.zs-status.recusado{color:#B91C1C}
+.zs-meta{color:var(--muted);line-height:1.5}
+
+/* ── TOAST ────────────────────────────────────*/
+#toast {
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(12px);
+  background:var(--ink);color:#fff;
+  padding:10px 20px;font-size:13px;font-weight:500;
+  border-radius:2px;z-index:200;
+  opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;
+  white-space:nowrap;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── RESPONSIVE ───────────────────────────────*/
+@media(max-width:640px){
+  .form-grid,.form-grid.g3{grid-template-columns:1fr}
+  .plans-grid{grid-template-columns:1fr}
+  .cp-top{flex-direction:column;gap:16px}
+}
+
+/* ── IDENTIDADE AVANTEZA: INTERFACE ───────────*/
+body{color:var(--ink);font-size:15px;line-height:1.5}
+button,input,select{font-family:var(--fonte)}
+.logo{font-family:var(--fonte);font-weight:800;letter-spacing:-.045em;line-height:1;color:inherit;text-decoration:none;white-space:nowrap;text-transform:lowercase}
+.logo .dot{display:inline-block;width:.2em;height:.2em;background:var(--acao);margin-left:.06em;vertical-align:baseline}
+
+/* Barra superior */
+#barra{position:fixed;top:0;left:0;right:0;height:var(--barra-h);z-index:150;background:var(--ink);color:var(--paper);
+  border-bottom:1px solid var(--ink-2);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px}
+#viewer-screen.active ~ #contract-panel:not(.open) ~ #barra{display:none} /* apresentação em tela cheia */
+.barra-marca{display:flex;align-items:baseline;gap:10px;flex-shrink:0}
+.barra-marca .logo{font-size:22px}
+.barra-app{font-size:10px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--paper-2)}
+.barra-acoes{display:flex;align-items:center;gap:8px;min-width:0}
+#acesso-quem{font-size:13px;font-weight:600;color:var(--paper);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#acesso-quem small{font-size:12px;font-weight:500;color:var(--paper-2)}
+.bt{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:10px 18px;border-radius:50px;
+  border:1px solid var(--ink);background:var(--ink);color:var(--paper);font:700 14px/1.2 var(--fonte);cursor:pointer;text-decoration:none;white-space:nowrap}
+.bt:hover{background:var(--ink-2)}
+.bt-acao{background:var(--acao);border-color:var(--acao);color:#fff}
+.bt-acao:hover{background:var(--acao-h);border-color:var(--acao-h)}
+.bt-linha{background:transparent;color:var(--ink);border-color:var(--paper-2)}
+.bt-linha:hover{background:var(--paper)}
+.bt-p{min-height:36px;padding:6px 14px;font-size:13px}
+#barra .bt-linha{color:var(--paper);border-color:var(--ink-2)}
+#barra .bt-linha:hover{background:var(--ink-2)}
+.bt[hidden]{display:none}
+.bt.desativado{background:var(--paper-2);border-color:var(--paper-2);color:var(--muted);pointer-events:none}
+/* Atalho para a Central (grade 2x2) — presente em todas as ferramentas */
+.appswitch{display:grid;grid-template-columns:6px 6px;gap:3px;padding:9px;border:1px solid var(--ink-2);border-radius:var(--raio);flex-shrink:0}
+.appswitch span{width:6px;height:6px;background:var(--paper-2);border-radius:1px}
+.appswitch:hover span{background:var(--acao)}
+
+/* Tela de acesso (login único + PIN de reserva) */
+#acesso{position:fixed;inset:0;z-index:140;background:var(--ink);color:var(--paper);display:none;place-items:center;
+  padding:calc(var(--barra-h) + 16px) 16px 16px;overflow-y:auto}
+#acesso.aberto{display:grid}
+.acesso-cx{width:100%;max-width:380px}
+.acesso-cx h1{font:800 26px/1.15 var(--fonte);letter-spacing:-.025em}
+.acesso-cx h1 em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--acao)}
+.acesso-cartao{margin-top:20px;background:#fff;color:var(--ink);border:1px solid var(--paper-2);border-radius:var(--raio);padding:20px;display:flex;flex-direction:column;gap:12px}
+.acesso-cartao .bt{width:100%}
+.acesso-msg{font-size:13px;color:var(--red);font-weight:600}
+.acesso-msg:empty{display:none}
+.acesso-nota{font-size:12px;color:var(--muted)}
+.acesso-nota:empty{display:none}
+.acesso-ou{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);border-top:1px solid var(--paper-2);padding-top:12px;margin-top:4px}
+#form-pin{display:flex;gap:8px}
+#form-pin input{flex:1;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--paper-2);border-radius:var(--raio);font-size:15px;color:var(--ink);background:#fff}
+#form-pin input:focus{outline:2px solid var(--acao);outline-offset:0;border-color:var(--acao)}
+#form-pin .bt{width:auto}
+
+/* Tela inicial (apresentação) */
+.us-brand{font-weight:800;letter-spacing:-.045em;text-align:center;line-height:1}
+.us-brand small{display:block;margin-top:10px;font-size:10px;font-weight:700;letter-spacing:.25em;text-transform:uppercase;color:var(--paper-2)}
+.us-zone{border-radius:var(--raio)}
+.us-icon{border-width:1px}
+#btn-skip-to-contract{border:1px solid rgba(234,217,194,.4);color:var(--paper-2);border-radius:50px;min-height:44px;padding:10px 20px;font-weight:600;letter-spacing:.02em;font-size:13px}
+#btn-skip-to-contract:hover{border-color:var(--acao);color:#fff}
+
+/* Painel do contrato (formulário) */
+#contract-panel{padding-top:calc(var(--barra-h) + clamp(24px,4vh,44px))}
+.cp-brand strong{font-weight:800;letter-spacing:-.025em;line-height:1.15}
+.cp-brand em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--acao)}
+.cnpj-status{color:var(--muted)}
+.form-section-label{font-size:12px;letter-spacing:.1em;font-weight:800;color:var(--ink);border-left:3px solid var(--acao);padding-left:9px;line-height:1.3}
+.fg label{letter-spacing:.08em;font-weight:700;font-size:11px}
+.fg input,.fg select{border-radius:var(--raio);min-height:44px;font-size:15px;padding:10px 12px}
+.fg select{padding-right:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%230B1B33' stroke-width='1.6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+.fg input:focus,.fg select:focus{outline:2px solid var(--acao);outline-offset:0}
+.model-card,.pgto2-card,.plan-card,.zs-item,#edit-banner{border-radius:var(--raio)}
+.model-card.selected,.pgto2-card.selected,.plan-card.selected{background:#FFF4EC}
+.pgto2-days,.plan-price{color:var(--ink)}
+.plan-card.popular::before{background:var(--ink);color:var(--paper);border-radius:50px}
+#btn-gerar{background:var(--acao);border-radius:50px;min-height:48px;font-weight:800;letter-spacing:0}
+#btn-gerar:hover:not(:disabled){background:var(--acao-h)}
+#btn-gerar:disabled{background:var(--paper-2);color:var(--muted)}
+#btn-gerar.success{background:var(--green);color:#fff}
+.zs-opt input{accent-color:var(--acao);flex-shrink:0}
+.zs-btn{background:transparent;color:var(--ink);border:1px solid var(--ink);border-radius:50px;min-height:44px;font-size:14px}
+.zs-btn:hover:not(:disabled){background:var(--ink);color:var(--paper)}
+.zs-status{border-radius:50px}
+.zs-actions button,#edit-banner button{border-radius:50px;min-height:32px;padding:6px 12px;font-size:12px;color:var(--ink)}
+.zs-actions button:hover{border-color:var(--ink);color:var(--ink);background:var(--paper)}
+#edit-banner{border:1px solid var(--gold);background:#fff}
+#toast{border-radius:var(--raio);border:1px solid var(--ink-2);max-width:calc(100vw - 32px);white-space:normal;text-align:center}
+.nav-btn.active-btn{background:var(--acao)}
+@media(max-width:640px){
+  #acesso-quem small,.barra-app,.so-largo{display:none}
+  #acesso-quem{max-width:96px}
+  #contract-panel{padding-left:16px;padding-right:16px}
+  #form-pin{flex-direction:column}
+  #form-pin .bt{width:100%}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ UPLOAD SCREEN ═══════════════ -->
+<div id="upload-screen">
+  <div class="us-brand"><span class="logo">avanteza<span class="dot"></span></span><small>Contratos</small></div>
+  <div class="us-zone" id="drop-zone">
+    <input type="file" id="file-input" accept=".pdf" aria-label="Selecionar PDF">
+    <div class="us-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="13" x2="12" y2="19"/><polyline points="9 16 12 13 15 16"/>
+      </svg>
+    </div>
+    <div class="us-label">
+      <strong>Arraste seu PDF aqui</strong>
+      ou clique para selecionar
+    </div>
+    <div class="us-hint">Apresentação comercial</div>
+  </div>
+  <button id="btn-skip-to-contract">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="flex-shrink:0">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+    </svg>
+    Gerar contrato sem apresentação
+  </button>
+</div>
+
+<!-- ═══════════════ VIEWER SCREEN ═══════════════ -->
+<div id="viewer-screen">
+  <canvas id="pdf-canvas"></canvas>
+  <canvas id="laser-canvas"></canvas>
+
+  <div id="progress"></div>
+
+  <div id="nav">
+    <!-- Voltar slides -->
+    <button class="nav-btn" id="btn-prev" title="Anterior (←)" disabled>
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+
+    <span id="slide-counter">1 / 1</span>
+
+    <!-- Próximo -->
+    <button class="nav-btn" id="btn-next" title="Próximo (→)">
+      <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+
+    <div class="nav-divider"></div>
+
+    <!-- Laser toggle -->
+    <button class="nav-btn" id="btn-laser" title="Ponteiro Laser (L)" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3" fill="#FF2222" stroke="#FF2222"/>
+        <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+        <line x1="4.93" y1="4.93" x2="7.05" y2="7.05"/>
+        <line x1="16.95" y1="16.95" x2="19.07" y2="19.07"/>
+        <line x1="4.93" y1="19.07" x2="7.05" y2="16.95"/>
+        <line x1="16.95" y1="7.05" x2="19.07" y2="4.93"/>
+      </svg>
+    </button>
+
+    <!-- Fullscreen -->
+    <button class="nav-btn" id="btn-fs" title="Tela cheia (F)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M8 3H5a2 2 0 00-2 2v3m18 0V5a2 2 0 00-2-2h-3m0 18h3a2 2 0 002-2v-3M3 16v3a2 2 0 002 2h3"/>
+      </svg>
+    </button>
+
+    <!-- Contrato -->
+    <div class="nav-divider"></div>
+    <button class="nav-btn" id="btn-contract" title="Abrir Contrato (C)" style="font-size:13px;font-weight:700;color:rgba(255,255,255,.7);width:auto;padding:0 12px;border-radius:20px;gap:6px;font-family:inherit">
+      Contrato
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════ CONTRACT PANEL ═══════════════ -->
+<div id="contract-panel">
+  <div class="cp-top">
+    <div class="cp-brand">
+      Avanteza · Contratos
+      <strong>Fechar o <em>contrato agora.</em></strong>
+    </div>
+    <button class="cp-back" id="btn-back-slides">
+      <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      Voltar aos slides
+    </button>
+  </div>
+
+  <!-- Model selector -->
+  <div class="form-section-label">Modelo de Contrato</div>
+  <div class="model-selector">
+    <label class="model-card selected" id="mc-growth">
+      <input type="radio" name="modelo" value="growth" checked>
+      <span class="model-card-name">Growth Engine®</span>
+      <span class="model-card-desc">Gestão de canais em marketplaces + publicidade (Ads) e consultoria</span>
+    </label>
+    <label class="model-card" id="mc-barbearia">
+      <input type="radio" name="modelo" value="barbearia">
+      <span class="model-card-name">Barbearia</span>
+      <span class="model-card-desc">Tráfego pago + gestão de mídias sociais + produção de vídeos</span>
+    </label>
+  </div>
+
+  <div class="fg" style="margin:0 0 18px">
+    <label for="f-marca">Marca da contratada no contrato</label>
+    <select id="f-marca">
+      <option value="avanteza">Avanteza Consultoria e Estratégia</option>
+      <option value="nexo">Nexo Consultoria &amp; Growth</option>
+    </select>
+  </div>
+
+  <!-- 2nd payment timing -->
+  <div id="pgto2-wrap">
+    <div class="form-section-label">2º Pagamento (após assinatura)</div>
+    <div class="pgto2-selector">
+      <label class="pgto2-card" id="pgto2-30">
+        <input type="radio" name="pgto2" value="30">
+        <span class="pgto2-days">30</span>
+        <span class="pgto2-label">dias</span>
+      </label>
+      <label class="pgto2-card selected" id="pgto2-45">
+        <input type="radio" name="pgto2" value="45" checked>
+        <span class="pgto2-days">45</span>
+        <span class="pgto2-label">dias</span>
+      </label>
+      <label class="pgto2-card" id="pgto2-60">
+        <input type="radio" name="pgto2" value="60">
+        <span class="pgto2-days">60</span>
+        <span class="pgto2-label">dias</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- CNPJ -->
+  <div class="form-section-label">Dados do Cliente</div>
+  <div class="form-grid">
+    <div class="fg cnpj-wrap">
+      <label for="f-cnpj">CNPJ do Cliente</label>
+      <input type="text" id="f-cnpj" placeholder="00.000.000/0001-00" maxlength="18" autocomplete="off">
+      <div class="cnpj-status" id="cnpj-status"></div>
+    </div>
+    <div class="fg">
+      <label for="f-razao">Razão Social</label>
+      <input type="text" id="f-razao" placeholder="Preenchido automaticamente">
+    </div>
+    <div class="fg">
+      <label for="f-fantasia">Nome Fantasia</label>
+      <input type="text" id="f-fantasia" placeholder="Preenchido automaticamente">
+    </div>
+    <div class="fg">
+      <label for="f-rep">Representante Legal</label>
+      <input type="text" id="f-rep" placeholder="Nome completo do sócio">
+    </div>
+    <div class="fg">
+      <label for="f-email">E-mail</label>
+      <input type="email" id="f-email" placeholder="contato@empresa.com.br">
+    </div>
+    <div class="fg">
+      <label for="f-whats">WhatsApp</label>
+      <input type="text" id="f-whats" placeholder="(62) 99999-9999">
+    </div>
+  </div>
+
+  <div class="fg" style="margin-top:14px">
+    <label for="f-end">Endereço completo</label>
+    <input type="text" id="f-end" placeholder="Preenchido automaticamente pelo CNPJ">
+  </div>
+
+  <!-- Plans -->
+  <div class="form-section-label">Plano Contratado</div>
+  <div class="plans-grid">
+    <label class="plan-card" id="pc-base">
+      <input type="radio" name="plan" value="BASE" data-price="1.497,90">
+      <span class="plan-name">BASE</span>
+      <div class="plan-price">R$1.497<sub>/mês</sub></div>
+      <span class="model-card-desc">Consultoria</span>
+    </label>
+    <label class="plan-card popular selected" id="pc-escale">
+      <input type="radio" name="plan" value="ESCALE" data-price="1.997,90" checked>
+      <span class="plan-name">ESCALE</span>
+      <div class="plan-price">R$1.997<sub>/mês</sub></div>
+      <span class="model-card-desc">Consultoria + Gestão de Publicidade</span>
+    </label>
+    <label class="plan-card" id="pc-growth">
+      <input type="radio" name="plan" value="GROWTH" data-price="4.497,90">
+      <span class="plan-name">GROWTH</span>
+      <div class="plan-price">R$4.497<sub>/mês</sub></div>
+      <span class="model-card-desc">Assessoria Estratégica + Gestão de Publicidade</span>
+    </label>
+    <label class="plan-card" id="pc-marketplace">
+      <input type="radio" name="plan" value="MARKETPLACE" data-price="1.997,00" data-renov="2.799,99">
+      <span class="plan-name">MARKETPLACE</span>
+      <div class="plan-price">R$1.997<sub>/mês</sub></div>
+      <span class="model-card-desc">3 canais: Mercado Livre, Shopee e TikTok Shop</span>
+    </label>
+  </div>
+
+  <!-- Custom price -->
+  <div class="form-grid" style="margin-top:10px">
+    <div class="fg" style="grid-column:1/-1">
+      <label for="f-preco">Valor mensal negociado (R$) <span style="color:var(--gold);font-size:9px;letter-spacing:.1em">EDITÁVEL</span></label>
+      <input type="text" id="f-preco" placeholder="Ex: 2.500,00" autocomplete="off">
+    </div>
+    <div class="fg" style="grid-column:1/-1">
+      <label for="f-renov">Valor mensal em caso de renovação (R$, opcional)</label>
+      <input type="text" id="f-renov" placeholder="Ex: 2.799,99" autocomplete="off">
+    </div>
+  </div>
+
+  <!-- Dates -->
+  <div class="form-section-label" style="margin-top:14px">Vigência e Pagamento</div>
+  <div class="form-grid g3">
+    <div class="fg">
+      <label for="f-inicio">Data de início</label>
+      <input type="date" id="f-inicio">
+    </div>
+    <div class="fg">
+      <label for="f-duracao">Duração (meses) <span style="color:var(--gold);font-size:9px;letter-spacing:.1em">EDITÁVEL</span></label>
+      <input type="number" id="f-duracao" value="12" min="1" max="60" placeholder="12">
+    </div>
+    <div class="fg">
+      <label for="f-venc">Vencimento mensal (dia)</label>
+      <input type="number" id="f-venc" placeholder="Ex: 10" min="1" max="31">
+    </div>
+  </div>
+  <label class="zs-opt"><input type="checkbox" id="f-garantia"> Incluir Garantia de Execução: restituição integral dos valores pagos se não houver nenhuma venda durante a vigência</label>
+
+  <button id="btn-gerar" disabled>Gerar Contrato PDF</button>
+  <p class="btn-sub">O PDF será baixado automaticamente após a geração</p>
+
+  <div id="edit-banner" style="display:none">
+    <div><strong>Editando:</strong> <span id="edit-banner-name"></span></div>
+    <label class="zs-opt" style="margin-top:6px;font-weight:500"><input type="checkbox" id="cancel-old" checked> Cancelar a versão anterior na plataforma de assinatura ao enviar a nova</label>
+    <button type="button" id="edit-banner-x">Descartar edição</button>
+  </div>
+
+  <div class="form-section-label" style="margin-top:22px">Assinatura Eletrônica</div>
+  <div class="form-grid" style="margin-top:6px">
+    <div class="fg">
+      <label for="f-assin">Plataforma de assinatura</label>
+      <select id="f-assin"><option value="clicksign">ClickSign</option><option value="zapsign">ZapSign</option></select>
+    </div>
+    <div class="fg">
+      <label for="f-canal">Enviar ao cliente por</label>
+      <select id="f-canal"><option value="email">E-mail</option><option value="whatsapp">WhatsApp</option></select>
+    </div>
+  </div>
+  <label class="zs-opt"><input type="checkbox" id="zs-auto" checked> Enviar para assinatura automaticamente ao gerar</label>
+  <div class="fg" style="margin-top:10px">
+    <label for="f-nexo-email">E-mail da Nexo — assina todos os contratos como CONTRATADA</label>
+    <input type="email" id="f-nexo-email" placeholder="seu@email.com">
+  </div>
+  <button type="button" class="zs-btn" id="btn-zs-send" disabled>Enviar último contrato para assinatura</button>
+  <button type="button" class="zs-btn" id="btn-zs-list">Histórico de contratos</button>
+  <div id="zs-list"></div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ═══════════════ ACESSO (login único Avanteza ID + PIN de reserva) ═══════════════ -->
+<div id="acesso" role="dialog" aria-modal="true" aria-labelledby="acesso-titulo">
+  <div class="acesso-cx">
+    <h1 id="acesso-titulo">Entre para <em>continuar.</em></h1>
+    <div class="acesso-cartao">
+      <p class="acesso-msg" id="acesso-msg" role="alert"></p>
+      <a class="bt bt-acao" id="btn-entrar" href="https://app.avanteza.com.br/sso/authorize?app=contratos&amp;return=%2F">Entrar com Avanteza</a>
+      <p class="acesso-nota" id="acesso-nota"></p>
+      <div class="acesso-ou">Ou use o PIN de acesso</div>
+      <form id="form-pin" autocomplete="off">
+        <input type="password" id="f-pin" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN de acesso">
+        <button type="submit" class="bt bt-linha">Entrar com PIN</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ BARRA SUPERIOR ═══════════════ -->
+<header id="barra">
+  <div class="barra-marca">
+    <span class="logo">avanteza<span class="dot"></span></span>
+    <span class="barra-app">Contratos</span>
+  </div>
+  <div class="barra-acoes">
+    <span id="acesso-quem"></span>
+    <a class="bt bt-acao bt-p" id="btn-entrar-barra" href="https://app.avanteza.com.br/sso/authorize?app=contratos&amp;return=%2F" hidden>Entrar<span class="so-largo">&nbsp;com Avanteza</span></a>
+    <button type="button" class="bt bt-linha bt-p" id="btn-sair" hidden>Sair</button>
+    <a class="appswitch" href="https://app.avanteza.com.br/central" title="Central Avanteza" aria-label="Central Avanteza"><span></span><span></span><span></span><span></span></a>
+  </div>
+</header>
+
+<script>
+// ── PDF.JS SETUP ──────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── STATE ─────────────────────────────────────────────
+let pdfDoc = null;
+let curPage = 1;
+let totalPages = 0;
+let rendering = false;
+let laserActive = false;
+let lastMouse = { x: -999, y: -999 };
+let laserHideTimer = null;
+let laserVisible = false;
+
+// ── ELEMENTS ──────────────────────────────────────────
+const uploadScreen   = document.getElementById('upload-screen');
+const viewerScreen   = document.getElementById('viewer-screen');
+const pdfCanvas      = document.getElementById('pdf-canvas');
+const laserCanvas    = document.getElementById('laser-canvas');
+const progressBar    = document.getElementById('progress');
+const slideCounter   = document.getElementById('slide-counter');
+const contractPanel  = document.getElementById('contract-panel');
+const btnPrev        = document.getElementById('btn-prev');
+const btnNext        = document.getElementById('btn-next');
+const btnLaser       = document.getElementById('btn-laser');
+const btnFs          = document.getElementById('btn-fs');
+const btnContract    = document.getElementById('btn-contract');
+const btnBackSlides  = document.getElementById('btn-back-slides');
+const toast          = document.getElementById('toast');
+const pdfCtx         = pdfCanvas.getContext('2d');
+const laserCtx       = laserCanvas.getContext('2d');
+
+// ── UPLOAD / DRAG ─────────────────────────────────────
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') loadPDF(f);
+});
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) loadPDF(f);
+});
+
+async function loadPDF(file) {
+  const buffer = await file.arrayBuffer();
+  pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
+  totalPages = pdfDoc.numPages;
+  curPage = 1;
+
+  uploadScreen.classList.add('hidden');
+  setTimeout(() => { uploadScreen.style.display = 'none'; }, 420);
+  viewerScreen.classList.add('active');
+
+  await renderPage(curPage);
+  resizeLaserCanvas();
+}
+
+// ── RENDER PAGE ───────────────────────────────────────
+async function renderPage(num) {
+  if (rendering) return;
+  rendering = true;
+  pdfCanvas.classList.add('fade');
+
+  const page = await pdfDoc.getPage(num);
+  const dpr = window.devicePixelRatio || 1;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  const viewport = page.getViewport({ scale: 1 });
+  const scaleW = vw / viewport.width;
+  const scaleH = vh / viewport.height;
+  const scale = Math.min(scaleW, scaleH) * dpr;
+
+  const vp = page.getViewport({ scale });
+  pdfCanvas.width  = vp.width;
+  pdfCanvas.height = vp.height;
+  pdfCanvas.style.width  = (vp.width  / dpr) + 'px';
+  pdfCanvas.style.height = (vp.height / dpr) + 'px';
+
+  await page.render({ canvasContext: pdfCtx, viewport: vp }).promise;
+
+  setTimeout(() => { pdfCanvas.classList.remove('fade'); }, 20);
+  rendering = false;
+
+  updateNav();
+}
+
+function updateNav() {
+  btnPrev.disabled = curPage <= 1;
+  btnNext.disabled = curPage >= totalPages && contractPanel.classList.contains('open');
+  slideCounter.textContent = `${curPage} / ${totalPages}`;
+  progressBar.style.width = `${(curPage / totalPages) * 100}%`;
+}
+
+// ── NAVIGATION ────────────────────────────────────────
+async function goNext() {
+  if (contractPanel.classList.contains('open')) return;
+  if (curPage < totalPages) {
+    curPage++;
+    await renderPage(curPage);
+  } else {
+    openContract();
+  }
+}
+
+async function goPrev() {
+  if (contractPanel.classList.contains('open')) {
+    closeContract();
+    return;
+  }
+  if (curPage > 1) {
+    curPage--;
+    await renderPage(curPage);
+  }
+}
+
+btnNext.addEventListener('click', goNext);
+btnPrev.addEventListener('click', goPrev);
+btnContract.addEventListener('click', openContract);
+btnBackSlides.addEventListener('click', closeContract);
+
+document.getElementById('btn-skip-to-contract').addEventListener('click', () => {
+  uploadScreen.classList.add('hidden');
+  setTimeout(() => { uploadScreen.style.display = 'none'; }, 420);
+  contractPanel.classList.add('open');
+  document.body.style.overflow = '';
+});
+
+function openContract() {
+  contractPanel.classList.add('open');
+  document.body.style.overflow = '';
+  updateNav();
+}
+function closeContract() {
+  contractPanel.classList.remove('open');
+  updateNav();
+}
+
+// ── KEYBOARD ──────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  switch (e.key) {
+    case 'ArrowRight': case 'ArrowDown': case ' ': e.preventDefault(); goNext(); break;
+    case 'ArrowLeft':  case 'ArrowUp':              goPrev(); break;
+    case 'l': case 'L': toggleLaser(); break;
+    case 'f': case 'F': toggleFullscreen(); break;
+    case 'c': case 'C': contractPanel.classList.contains('open') ? closeContract() : openContract(); break;
+    case 'Escape':
+      if (contractPanel.classList.contains('open')) closeContract();
+      break;
+  }
+});
+
+// ── FULLSCREEN ────────────────────────────────────────
+btnFs.addEventListener('click', toggleFullscreen);
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  const isFs = !!document.fullscreenElement;
+  btnFs.classList.toggle('active-btn', isFs);
+  if (pdfDoc) renderPage(curPage);
+});
+
+window.addEventListener('resize', () => {
+  resizeLaserCanvas();
+  if (pdfDoc && !contractPanel.classList.contains('open')) renderPage(curPage);
+});
+
+// ── LASER POINTER ─────────────────────────────────────
+function toggleLaser() {
+  laserActive = !laserActive;
+  btnLaser.classList.toggle('active-btn', laserActive);
+  btnLaser.setAttribute('aria-pressed', laserActive);
+  if (!laserActive) clearLaser();
+}
+
+function resizeLaserCanvas() {
+  laserCanvas.width  = window.innerWidth;
+  laserCanvas.height = window.innerHeight;
+}
+
+function drawLaser(x, y) {
+  laserCtx.clearRect(0, 0, laserCanvas.width, laserCanvas.height);
+  if (!laserActive || !laserVisible) return;
+
+  // Outer diffuse glow
+  const g1 = laserCtx.createRadialGradient(x, y, 0, x, y, 40);
+  g1.addColorStop(0,   'rgba(255, 30, 30, 0.45)');
+  g1.addColorStop(0.4, 'rgba(255, 30, 30, 0.15)');
+  g1.addColorStop(1,   'rgba(255, 30, 30, 0)');
+  laserCtx.fillStyle = g1;
+  laserCtx.beginPath();
+  laserCtx.arc(x, y, 40, 0, Math.PI * 2);
+  laserCtx.fill();
+
+  // Mid ring
+  const g2 = laserCtx.createRadialGradient(x, y, 2, x, y, 12);
+  g2.addColorStop(0,   'rgba(255, 60, 60, 0.9)');
+  g2.addColorStop(1,   'rgba(200, 0, 0, 0)');
+  laserCtx.fillStyle = g2;
+  laserCtx.beginPath();
+  laserCtx.arc(x, y, 12, 0, Math.PI * 2);
+  laserCtx.fill();
+
+  // Core dot
+  laserCtx.fillStyle = '#FF2020';
+  laserCtx.beginPath();
+  laserCtx.arc(x, y, 5, 0, Math.PI * 2);
+  laserCtx.fill();
+
+  // Bright white center
+  laserCtx.fillStyle = '#FFFFFF';
+  laserCtx.beginPath();
+  laserCtx.arc(x, y, 1.8, 0, Math.PI * 2);
+  laserCtx.fill();
+}
+
+function clearLaser() {
+  laserCtx.clearRect(0, 0, laserCanvas.width, laserCanvas.height);
+}
+
+document.addEventListener('mousemove', e => {
+  if (!laserActive) return;
+  lastMouse = { x: e.clientX, y: e.clientY };
+  laserVisible = true;
+  drawLaser(e.clientX, e.clientY);
+
+  clearTimeout(laserHideTimer);
+  laserHideTimer = setTimeout(() => {
+    laserVisible = false;
+    clearLaser();
+  }, 2200);
+});
+
+// ── CNPJ MASK & FETCH ─────────────────────────────────
+const fCnpj   = document.getElementById('f-cnpj');
+const cnpjSt  = document.getElementById('cnpj-status');
+const fRazao  = document.getElementById('f-razao');
+const fFanta  = document.getElementById('f-fantasia');
+const fRep    = document.getElementById('f-rep');
+const fEnd    = document.getElementById('f-end');
+
+function maskCNPJ(v) {
+  v = v.replace(/\D/g, '').slice(0, 14);
+  if (v.length > 12) v = v.slice(0,2)+'.'+v.slice(2,5)+'.'+v.slice(5,8)+'/'+v.slice(8,12)+'-'+v.slice(12);
+  else if (v.length > 8) v = v.slice(0,2)+'.'+v.slice(2,5)+'.'+v.slice(5,8)+'/'+v.slice(8);
+  else if (v.length > 5) v = v.slice(0,2)+'.'+v.slice(2,5)+'.'+v.slice(5);
+  else if (v.length > 2) v = v.slice(0,2)+'.'+v.slice(2);
+  return v;
+}
+
+function validCNPJ(c) {
+  c = c.replace(/\D/g, '');
+  if (c.length !== 14 || /^(\d)\1+$/.test(c)) return false;
+  const calc = (n) => {
+    let s = 0, w = n === 1 ? [5,4,3,2,9,8,7,6,5,4,3,2] : [6,5,4,3,2,9,8,7,6,5,4,3,2];
+    for (let i = 0; i < w.length; i++) s += parseInt(c[i]) * w[i];
+    const r = s % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return calc(1) === parseInt(c[12]) && calc(2) === parseInt(c[13]);
+}
+
+let cnpjFetchTimeout = null;
+
+fCnpj.addEventListener('input', e => {
+  fCnpj.value = maskCNPJ(e.target.value);
+  clearTimeout(cnpjFetchTimeout);
+  const raw = fCnpj.value.replace(/\D/g, '');
+
+  if (raw.length === 14) {
+    if (!validCNPJ(raw)) {
+      setCnpjStatus('err', 'CNPJ inválido — verifique os dígitos');
+      return;
+    }
+    setCnpjStatus('', 'Consultando Receita Federal…');
+    cnpjFetchTimeout = setTimeout(() => fetchCNPJ(raw), 500);
+  } else {
+    setCnpjStatus('', '');
+  }
+});
+
+function setCnpjStatus(type, msg) {
+  cnpjSt.textContent = msg;
+  cnpjSt.className = 'cnpj-status' + (type ? ' ' + type : '');
+}
+
+async function fetchCNPJ(cnpj) {
+  try {
+    const r = await fetch(`/api/cnpj?cnpj=${cnpj}`, { credentials: 'same-origin', headers: cabecalhosAcesso() });
+    if (r.status === 401) {
+      acessoNegado();
+      setCnpjStatus('err', 'Entre com Avanteza ou informe o PIN para consultar o CNPJ.');
+      return;
+    }
+    const d = await r.json();
+
+    if (!r.ok || d.error) {
+      setCnpjStatus('err', d.error || 'Não encontrado na Receita Federal');
+      return;
+    }
+
+    fRazao.value = d.razao_social || '';
+    fFanta.value = d.nome_fantasia || '';
+
+    // Build address
+    const addr = [d.logradouro, d.numero, d.complemento, d.bairro, d.municipio, d.uf]
+      .filter(Boolean).join(', ');
+    fEnd.value = addr || d.endereco_completo || '';
+
+    // Pre-fill representative from QSA (first socio-administrador)
+    if (d.qsa && d.qsa.length > 0) {
+      const adm = d.qsa.find(q => /adm|sócio/i.test(q.qualificacao_socio || q.qual || '')) || d.qsa[0];
+      const name = adm.nome_socio || adm.nome || '';
+      if (name && !fRep.value) fRep.value = name;
+    }
+
+    setCnpjStatus('ok', `✓ ${d.razao_social}`);
+    validateForm();
+  } catch (_) {
+    setCnpjStatus('err', 'Erro ao consultar. Verifique a conexão.');
+  }
+}
+
+// ── MODEL SELECTION ───────────────────────────────────
+const pgto2Wrap = document.getElementById('pgto2-wrap');
+const plansSection = document.getElementById('plans-section');
+
+function getModelo() {
+  const r = document.querySelector('input[name="modelo"]:checked');
+  return r ? r.value : 'growth';
+}
+
+document.querySelectorAll('.model-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    card.querySelector('input').checked = true;
+    const modelo = getModelo();
+    validateForm();
+  });
+});
+
+document.querySelectorAll('.pgto2-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.pgto2-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    card.querySelector('input').checked = true;
+    validateForm();
+  });
+});
+
+// ── PLAN SELECTION ────────────────────────────────────
+const fPreco = document.getElementById('f-preco');
+
+document.querySelectorAll('.plan-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    const radio = card.querySelector('input');
+    radio.checked = true;
+    // fill the editable price field with the plan's default price
+    fPreco.value = radio.dataset.price;
+    document.getElementById('f-renov').value = radio.dataset.renov || '';
+    validateForm();
+  });
+});
+
+// initialise field with the default selected plan price
+const defaultRadio = document.querySelector('input[name="plan"]:checked');
+if (defaultRadio) fPreco.value = defaultRadio.dataset.price;
+
+// ── FORM VALIDATION ───────────────────────────────────
+const formFields = ['f-razao', 'f-rep', 'f-inicio', 'f-duracao', 'f-venc', 'f-preco'];
+formFields.forEach(id => {
+  document.getElementById(id).addEventListener('input', validateForm);
+});
+
+function validateForm() {
+  const razao   = fRazao.value.trim();
+  const rep     = document.getElementById('f-rep').value.trim();
+  const inicio  = document.getElementById('f-inicio').value;
+  const duracao = document.getElementById('f-duracao').value;
+  const venc    = document.getElementById('f-venc').value;
+  const preco   = fPreco.value.trim();
+  const planOk  = !!document.querySelector('input[name="plan"]:checked');
+
+  const ok = razao && rep && inicio && duracao && venc && planOk && preco;
+  document.getElementById('btn-gerar').disabled = !ok;
+}
+
+// ── CONTRACT PDF GENERATION ───────────────────────────
+document.getElementById('btn-gerar').addEventListener('click', gerarPDF);
+
+async function gerarPDF() {
+  const btn = document.getElementById('btn-gerar');
+  btn.disabled = true;
+  btn.textContent = 'Gerando…';
+
+  const modelo    = getModelo();
+
+  const planRadio = document.querySelector('input[name="plan"]:checked');
+  const plano     = planRadio ? planRadio.value : 'ESCALE';
+  const preco     = fmtBRL(fPreco.value.trim() || (planRadio ? planRadio.dataset.price : '1.997,90'));
+
+  // 2nd payment days (barbearia only)
+  const pgto2Radio = document.querySelector('input[name="pgto2"]:checked');
+  const pgto2Dias  = pgto2Radio ? parseInt(pgto2Radio.value) : 45;
+
+  const duracaoMeses = parseInt(document.getElementById('f-duracao').value) || 12;
+  const inicioVal    = document.getElementById('f-inicio').value;
+
+  // 1st installment = inicio + 1 month
+  const primeiraParcelaDate = new Date(inicioVal + 'T00:00:00');
+  primeiraParcelaDate.setMonth(primeiraParcelaDate.getMonth() + 1);
+  const primeiraParcelaStr  = formatDate(isoLocal(primeiraParcelaDate));
+
+  // End date = inicio + duracaoMeses months
+  const fimDate = new Date(inicioVal + 'T00:00:00');
+  fimDate.setMonth(fimDate.getMonth() + duracaoMeses);
+  const fimStr  = formatDate(isoLocal(fimDate));
+
+  // Duration in words
+  function mesesPorExtenso(n) {
+    const words = ['','um','dois','três','quatro','cinco','seis','sete','oito','nove','dez',
+                   'onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito',
+                   'dezenove','vinte','vinte e um','vinte e dois','vinte e três','vinte e quatro'];
+    return words[n] || String(n);
+  }
+
+  const cliente = {
+    cnpj:    fCnpj.value,
+    razao:   fRazao.value.trim(),
+    fantasia: fFanta.value.trim(),
+    rep:     document.getElementById('f-rep').value.trim(),
+    email:   document.getElementById('f-email').value.trim(),
+    whats:   document.getElementById('f-whats').value.trim(),
+    end:     fEnd.value.trim(),
+    inicio:  inicioVal,
+    venc:    document.getElementById('f-venc').value,
+    plano,
+    preco,
+    duracao:        duracaoMeses,
+    duracaoExtenso: mesesPorExtenso(duracaoMeses),
+    fimStr,
+    primeiraParcelaStr,
+    renov:    fmtBRL(document.getElementById('f-renov').value.trim()),
+    garantia: document.getElementById('f-garantia').checked,
+    marca:    document.getElementById('f-marca').value,
+    modelo,
+  };
+  CUR_BRAND = BRANDS[cliente.marca] || BRANDS.avanteza;
+  const sched = calcCronograma(cliente.inicio, pgto2Dias, duracaoMeses);
+
+  try {
+    await gerarPDFAvanteza(cliente, sched);
+  } catch (err) {
+    console.error(err);
+    btn.textContent = 'Gerar Contrato PDF';
+    btn.disabled = false;
+    showToast('Erro ao gerar PDF. Tente novamente.');
+  }
+}
+
+// ── PDF HELPERS ───────────────────────────────────────
+function today() {
+  const d = new Date();
+  return d.toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' });
+}
+
+function formatDate(isoStr) {
+  if (!isoStr) return '';
+  const [y,m,d] = isoStr.split('-');
+  const months = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  return `${parseInt(d)} de ${months[parseInt(m)-1]} de ${y}`;
+}
+
+function ordinal(n) {
+  return n + 'º';
+}
+
+function fmtBRL(v) {
+  let t = String(v ?? '').replace(/[^\d.,]/g, '');
+  if (!t) return '';
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (!/^\d+\.\d{1,2}$/.test(t)) t = t.replace(/\./g, '');
+  const n = parseFloat(t);
+  return isNaN(n) ? String(v) : n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function numExtenso(n) {
+  const u = ['zero','um','dois','três','quatro','cinco','seis','sete','oito','nove','dez','onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
+  const d = ['','','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
+  const c = ['','cento','duzentos','trezentos','quatrocentos','quinhentos','seiscentos','setecentos','oitocentos','novecentos'];
+  if (n < 20) return u[n];
+  if (n < 100) return d[Math.floor(n / 10)] + (n % 10 ? ' e ' + u[n % 10] : '');
+  if (n === 100) return 'cem';
+  if (n < 1000) return c[Math.floor(n / 100)] + (n % 100 ? ' e ' + numExtenso(n % 100) : '');
+  if (n < 1000000) {
+    const m = Math.floor(n / 1000), r = n % 1000;
+    const head = m === 1 ? 'mil' : numExtenso(m) + ' mil';
+    return head + (r ? (r < 100 || r % 100 === 0 ? ' e ' : ' ') + numExtenso(r) : '');
+  }
+  return String(n);
+}
+
+function valorPorExtenso(preco) {
+  const f = fmtBRL(preco);
+  if (!f) return '';
+  const [r, cts] = f.replace(/\./g, '').split(',').map(x => parseInt(x, 10));
+  const reais = r === 1 ? 'um real' : numExtenso(r) + (r >= 1000000 || (r % 1000000 === 0 && r) ? ' de reais' : ' reais');
+  const cent = cts ? (cts === 1 ? 'um centavo' : numExtenso(cts) + ' centavos') : '';
+  return r === 0 ? cent : reais + (cent ? ' e ' + cent : '');
+}
+
+function isoLocal(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function addMonthsClamp(date, n) {
+  const d = new Date(date.getFullYear(), date.getMonth() + n, 1);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(date.getDate(), last));
+  return d;
+}
+
+const CONTRATADA = { razao: '51.112.136 PEDRO HENRIQUE MARTINS DA SILVA', cnpj: '51.112.136/0001-24', rep: 'Pedro Henrique Martins da Silva', cidade: 'Goiânia – GO' };
+
+const BRANDS = {
+  nexo: { fantasia: 'Nexo Consultoria & Growth', eyebrow: 'NEXO CONSULTORIA & GROWTH', title: 'Growth Engine', reg: true,
+    tagline: 'Gestão de Marketplaces & Publicidade Digital  ·  Consultoria e Aceleração de Vendas',
+    header: 'NEXO  CONSULTORIA & GROWTH  ·  GROWTH ENGINE®', footer: 'Growth Engine®  ·  Nexo Consultoria & Growth  ·  Confidencial',
+    mark: 'N', metodologia: 'da metodologia exclusiva Growth Engine®', gerado: 'Growth Engine®  ·  Nexo Consultoria & Growth', arquivo: 'GrowthEngine' },
+  avanteza: { fantasia: 'Avanteza Consultoria e Estratégia', eyebrow: 'AVANTEZA  ·  CONSULTORIA E ESTRATÉGIA', title: 'Plano de Crescimento', reg: false,
+    tagline: 'Gestão de Marketplaces & Publicidade Digital  ·  Consultoria e Estratégia',
+    header: 'AVANTEZA  ·  CONSULTORIA E ESTRATÉGIA', footer: 'Avanteza Consultoria e Estratégia  ·  Confidencial',
+    mark: 'A', metodologia: 'da metodologia de trabalho da CONTRATADA', gerado: 'Avanteza Consultoria e Estratégia', arquivo: 'Avanteza' },
+};
+let CUR_BRAND = BRANDS.avanteza;
+
+function calcCronograma(inicio, pgto2Dias, nParc) {
+  const ini = new Date(inicio + 'T00:00:00');
+  const p2 = new Date(ini); p2.setDate(p2.getDate() + pgto2Dias);
+  const n = parseInt(nParc) || 1;
+  const parts = Array.from({ length: n }, (_, i) => {
+    const dt = i === 0 ? formatDate(inicio) : formatDate(isoLocal(addMonthsClamp(p2, i - 1)));
+    return `${i + 1}ª parcela: ${dt}${i === 0 ? ' (assinatura)' : ''}`;
+  });
+  const itens = Array.from({ length: n }, (_, i) => ({ n: i + 1, iso: i === 0 ? inicio : isoLocal(addMonthsClamp(p2, i - 1)) }));
+  return { pgto2Dias, pgto2Str: formatDate(isoLocal(p2)), diaRec: p2.getDate(), cronograma: parts.join('; '), itens };
+}
+
+function garantiaTexto(cliente, n) {
+  return `${n}.1 A CONTRATADA oferece garantia contratual de execução: caso, ao longo dos ${cliente.duracao} (${cliente.duracaoExtenso}) meses de vigência deste contrato, os serviços prestados não gerem nenhum resultado, isto é, nenhuma venda nos canais de vendas geridos pela CONTRATADA, a CONTRATADA restituirá à CONTRATANTE a integralidade dos valores pagos a título de mensalidades durante esse período.\n\n` +
+    `${n}.2 A restituição será realizada em até 30 (trinta) dias contados da solicitação por escrito da CONTRATANTE, feita até o término da vigência, com base nos relatórios de vendas dos canais geridos.\n\n` +
+    `${n}.3 A garantia pressupõe o cumprimento, pela CONTRATANTE, das obrigações previstas neste contrato (acessos às contas, disponibilidade de produtos e estoque e pagamentos em dia) e não abrange os valores investidos diretamente pela CONTRATANTE em anúncios (Ads), pagos às plataformas.`;
+}
+
+const PLANOS = {
+  BASE: { nome: 'Growth Engine® BASE', tipo: 'Consultoria', canaisAds: '01 (um) canal de gestão de publicidade', reunioes: 'semanais', sla: '4h úteis', limiteAds: 'R$ 15.000,00',
+    solucoes: '1 (uma) solução tecnológica', canaisVenda: '01 (um) canal de vendas (marketplace)', planejamento: 'anual',
+    cadastro: 'até 10 (dez) produtos por mês',
+    extra: ['Gerenciamento completo da conta por 3 (três) meses, incluindo acompanhamento diário de campanhas, ajustes de lances e segmentação'] },
+  ESCALE: { nome: 'Growth Engine® ESCALE', tipo: 'Consultoria + Gestão de Publicidade', canaisAds: '02 (dois) canais de gestão de publicidade: Mercado Ads e Shopee Ads', reunioes: 'semanais', sla: '2h úteis', limiteAds: 'R$ 30.000,00',
+    solucoes: '2 (duas) soluções tecnológicas', canaisVenda: '02 (dois) canais de vendas (marketplaces)', planejamento: 'semestral',
+    disparos: '2 (dois) por mês', adsExternos: 'mensal', minhaPagina: 'trimestral' },
+  GROWTH: { nome: 'Growth Engine® GROWTH', tipo: 'Assessoria Estratégica + Gestão de Publicidade', canaisAds: 'Product Ads, Follow/Brand Ads, Display Ads e Video Ads', reunioes: 'ilimitadas', sla: '1h útil', limiteAds: 'R$ 60.000,00',
+    solucoes: '4 (quatro) soluções tecnológicas', canaisVenda: 'multicanal (múltiplos marketplaces)', planejamento: 'trimestral',
+    disparos: '5 (cinco) por mês', adsExternos: 'semanal', minhaPagina: 'quinzenal', cadastro: 'até 15 (quinze) produtos por mês', otimizacao: true },
+};
+
+PLANOS.MARKETPLACE = { nome: 'Plano Marketplace [3 Canais]', tipo: 'Gestão de 3 canais de vendas: Mercado Livre, Shopee e TikTok Shop',
+  escopo: [
+    'Gestão de 3 (três) canais de vendas em marketplaces: Mercado Livre, Shopee e TikTok Shop',
+    'Revisão e correção dos anúncios atuais (marca, unidade e atributos) em até 7 (sete) dias após o kickoff',
+    'Cadastro de produtos ilimitado nos canais contratados, com catálogo padronizado, fotos, infográficos e clipes',
+    'Estruturação da Loja Oficial no Mercado Livre e proteção da marca nos canais',
+    'Gestão de publicidade nos canais: Mercado Ads, Shopee Ads e anúncios no TikTok Shop',
+    'Produção de conteúdo e edição dos vídeos, com vídeos curtos semanais',
+    'Linha editorial de lives (TikTok Shop e Shopee Live)',
+    'Reuniões semanais de resultados',
+    'Dashboard de resultados em tempo real (faturamento por canal, pedidos e ticket médio, posição nas buscas, anúncios e retorno, reputação, lives e afiliadas)',
+    'Plano de ação de 90 dias: mês 1, organização dos canais (diagnóstico, Loja Oficial, fichas corrigidas e catálogo nos 3 canais); mês 2, ativação (Ads por linha de produto, Full no Mercado Livre, grade de lives e embaixadoras como afiliadas); mês 3, escala (otimização do investimento, preço e margem por canal e política de preço com revendedores)',
+  ] };
+
+function scopeByPlan(plano) {
+  const p = PLANOS[plano] || PLANOS.ESCALE;
+  if (p.escopo) return p.escopo.map(x => '• ' + x).join('\n');
+  const l = [
+    `Tipo de serviço: ${p.tipo}`,
+    `Gestão de publicidade (Ads): ${p.canaisAds}, com limite de investimento sob gestão de ${p.limiteAds}`,
+    `Gestão dos canais de vendas em marketplaces: ${p.canaisVenda}`,
+    `Reuniões ${p.reunioes} de alinhamento e resultados`,
+    `Grupo de WhatsApp para atendimento, com tempo máximo de resposta (SLA) de ${p.sla}`,
+    `Soluções tecnológicas: ${p.solucoes}`,
+    `Planejamento estratégico ${p.planejamento}`,
+  ];
+  if (p.disparos) l.push(`Disparos para a base de clientes: ${p.disparos}`);
+  if (p.adsExternos) l.push(`Gestão de Ads em outras plataformas (TikTok, Google, Facebook, entre outras): periodicidade ${p.adsExternos}`);
+  if (p.minhaPagina) l.push(`Minha Página — manutenção ${p.minhaPagina}`);
+  if (p.cadastro) l.push(`Cadastro de produtos nos marketplaces: ${p.cadastro}`);
+  if (p.otimizacao) l.push('Otimização de cadastros (títulos, descrições, imagens e ficha técnica) para maior conversão');
+  (p.extra || []).forEach(x => l.push(x));
+  return l.map(x => '• ' + x).join('\n');
+}
+
+// ── TOAST ─────────────────────────────────────────────
+function showToast(msg, duration = 3000) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), duration);
+}
+
+// ── ZAPSIGN + HISTÓRICO ───────────────────────────────
+let lastContract = null;
+let editing = null; // histórico entry being edited
+const btnZsSend = document.getElementById('btn-zs-send');
+const fNexoEmail = document.getElementById('f-nexo-email');
+const NEXO_EMAIL_DEFAULT = 'ph185982@gmail.com';
+fNexoEmail.value = NEXO_EMAIL_DEFAULT;
+try { const saved = localStorage.getItem('nexo_contratada_email'); if (saved !== null) fNexoEmail.value = saved; } catch (_) {}
+fNexoEmail.addEventListener('change', () => { try { localStorage.setItem('nexo_contratada_email', fNexoEmail.value.trim()); } catch (_) {} });
+
+const HIST_KEY = 'nexo_history_v1';
+function histLoad() { try { return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); } catch (_) { return []; } }
+function histSave(h) { try { localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(0, 300))); } catch (_) {} }
+function histUpdate(id, patch) { const h = histLoad(); const e = h.find(x => x.id === id); if (e) { Object.assign(e, patch); histSave(h); } }
+
+class ZsError extends Error { constructor(m, status) { super(m); this.status = status; } }
+
+const PROVIDERS = { clicksign: 'ClickSign', zapsign: 'ZapSign' };
+const fAssin = document.getElementById('f-assin');
+try { const sp = localStorage.getItem('nexo_provider'); if (sp && PROVIDERS[sp]) fAssin.value = sp; } catch (_) {}
+fAssin.addEventListener('change', () => { try { localStorage.setItem('nexo_provider', fAssin.value); } catch (_) {} });
+const getProvider = () => fAssin.value;
+
+// ── ACESSO: LOGIN ÚNICO (AVANTEZA ID) + PIN DE RESERVA ──
+// A sessão fica num cookie HttpOnly (a página só sabe o estado por /api/sessao).
+// O PIN continua valendo como reserva e segue guardado no localStorage, como antes.
+const ACESSO = { autenticado: false, email: '', nome: '', sso: true };
+const elAcesso = document.getElementById('acesso');
+const elAcessoMsg = document.getElementById('acesso-msg');
+const elQuem = document.getElementById('acesso-quem');
+const btnSair = document.getElementById('btn-sair');
+const btnEntrar = document.getElementById('btn-entrar');
+const btnEntrarBarra = document.getElementById('btn-entrar-barra');
+
+function pinSalvo() { try { return localStorage.getItem('nexo_pin') || ''; } catch (_) { return ''; } }
+function guardarPin(p) { try { p ? localStorage.setItem('nexo_pin', p) : localStorage.removeItem('nexo_pin'); } catch (_) {} }
+// Com sessão, o cookie (mesma origem) basta; sem sessão, manda o PIN salvo.
+function cabecalhosAcesso(extra = {}) {
+  const h = { ...extra };
+  if (!ACESSO.autenticado) { const p = pinSalvo(); if (p) h['x-nexo-pin'] = p; }
+  return h;
+}
+async function consultarSessao(pin) {
+  try {
+    const r = await fetch('/api/sessao', { credentials: 'same-origin', cache: 'no-store', headers: pin ? { 'x-nexo-pin': pin } : {} });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (_) { return null; }
+}
+function pintarAcesso(msg) {
+  const temPin = !!pinSalvo();
+  const dentro = ACESSO.autenticado || temPin;
+  elQuem.textContent = '';
+  if (ACESSO.autenticado) {
+    elQuem.append(ACESSO.nome || ACESSO.email);
+    if (ACESSO.nome && ACESSO.email) { const sm = document.createElement('small'); sm.textContent = ' · ' + ACESSO.email; elQuem.append(sm); }
+    elQuem.title = ACESSO.email;
+  } else if (temPin) { const sp = document.createElement('span'); sp.className = 'so-largo'; sp.textContent = 'Acesso por '; elQuem.append(sp, 'PIN'); elQuem.title = 'Acesso por PIN'; }
+  btnSair.hidden = !dentro;
+  btnEntrarBarra.hidden = ACESSO.autenticado || !temPin || !ACESSO.sso;
+  btnEntrar.classList.toggle('desativado', !ACESSO.sso);
+  btnEntrar.setAttribute('aria-disabled', String(!ACESSO.sso));
+  document.getElementById('acesso-nota').textContent = ACESSO.sso ? '' : 'Login único indisponível: falta configurar SESSION_SECRET no projeto. Use o PIN.';
+  elAcessoMsg.textContent = msg || '';
+  elAcesso.classList.toggle('aberto', !dentro);
+}
+// Chamado quando uma API responde 401: a sessão expirou ou o PIN salvo não vale mais.
+function acessoNegado() {
+  const eraSessao = ACESSO.autenticado;
+  ACESSO.autenticado = false;
+  guardarPin('');
+  pintarAcesso(eraSessao ? 'Sua sessão expirou. Entre novamente.' : 'PIN inválido. Entre com Avanteza ou informe o PIN.');
+  return eraSessao;
+}
+document.getElementById('form-pin').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const campo = document.getElementById('f-pin');
+  const pin = campo.value.trim();
+  if (!pin) return;
+  const s = await consultarSessao(pin);
+  if (s && s.pin === false) { elAcessoMsg.textContent = 'PIN inválido.'; campo.select(); return; }
+  guardarPin(pin); campo.value = '';
+  pintarAcesso();
+  if (!s) showToast('Não consegui conferir o PIN agora; ele será conferido no primeiro uso.', 5000);
+});
+btnSair.addEventListener('click', async () => {
+  if (ACESSO.autenticado) { try { await fetch('/api/sessao', { method: 'POST', credentials: 'same-origin' }); } catch (_) {} }
+  Object.assign(ACESSO, { autenticado: false, email: '', nome: '' });
+  guardarPin('');
+  pintarAcesso();
+});
+(async function iniciarAcesso() {
+  const erroSso = new URLSearchParams(location.search).get('erro') === 'sso';
+  if (erroSso) { try { history.replaceState(null, '', location.pathname); } catch (_) {} }
+  const pin = pinSalvo();
+  const s = await consultarSessao(pin);
+  if (s) {
+    Object.assign(ACESSO, { autenticado: !!s.autenticado, email: s.email || '', nome: s.nome || '', sso: s.sso !== false });
+    if (typeof s.entrar === 'string' && /^https:\/\//.test(s.entrar)) { btnEntrar.href = s.entrar; btnEntrarBarra.href = s.entrar; }
+    if (pin && !s.autenticado && s.pin === false) guardarPin(''); // PIN salvo não vale mais
+  }
+  pintarAcesso(erroSso && !ACESSO.autenticado ? 'Não foi possível entrar com Avanteza. Tente de novo ou use o PIN.' : '');
+})();
+
+async function signApi(provider, action, params = {}) {
+  if (!ACESSO.autenticado && !pinSalvo()) { pintarAcesso('Entre com Avanteza ou informe o PIN para continuar.'); throw new ZsError('acesso não liberado', 0); }
+  const r = await fetch(`/api/${provider}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: cabecalhosAcesso({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ action, ...params }),
+  });
+  const data = await r.json().catch(() => ({}));
+  // 401 do nosso controle de acesso (e não um 401 repassado pela plataforma de assinatura)
+  if (r.status === 401 && (data.error === 'invalid_pin' || data.error === 'nao_autenticado')) throw new ZsError(acessoNegado() ? 'sessão expirada' : 'PIN inválido', 401);
+  if (!r.ok) {
+    if (provider === 'zapsign' && r.status === 402) throw new ZsError('O ZapSign exige um Plano de API ativo para criar documentos. O contrato foi salvo no histórico; envie manualmente por enquanto.', 402);
+    const msg = data.message || data.detail || data.error || data.raw || `Erro ${r.status}`;
+    if (/E-mail do usuário da API/i.test(msg)) throw new ZsError('falta configurar o e-mail do usuário da API no ClickSign (Configurações → API). O contrato foi salvo no histórico.', r.status);
+    throw new ZsError(msg, r.status);
+  }
+  return data;
+}
+const zs = (action, params) => signApi('zapsign', action, params);
+
+function splitPhone(raw) {
+  let d = (raw || '').replace(/\D/g, '');
+  if (d.startsWith('55') && d.length >= 12) d = d.slice(2);
+  return { phone_country: '55', phone_number: d };
+}
+
+function collectForm() {
+  const g = id => document.getElementById(id).value.trim();
+  const plan = document.querySelector('input[name="plan"]:checked');
+  const p2 = document.querySelector('input[name="pgto2"]:checked');
+  return {
+    modelo: getModelo(), plano: plan ? plan.value : 'ESCALE', preco: fPreco.value.trim(),
+    pgto2: p2 ? p2.value : '45', cnpj: fCnpj.value, razao: fRazao.value.trim(), fantasia: fFanta.value.trim(),
+    rep: g('f-rep'), email: g('f-email'), whats: g('f-whats'), end: fEnd.value.trim(),
+    inicio: g('f-inicio'), duracao: g('f-duracao'), venc: g('f-venc'),
+    marca: g('f-marca'), renov: g('f-renov'), garantia: document.getElementById('f-garantia').checked,
+  };
+}
+
+function loadForm(f) {
+  const click = sel => { const el = document.querySelector(sel); if (el) el.closest('label').click(); };
+  click(`input[name="modelo"][value="${f.modelo}"]`);
+  click(`input[name="plan"][value="${f.plano}"]`);
+  click(`input[name="pgto2"][value="${f.pgto2}"]`);
+  fPreco.value = f.preco || fPreco.value;
+  fCnpj.value = f.cnpj || ''; fRazao.value = f.razao || ''; fFanta.value = f.fantasia || '';
+  document.getElementById('f-rep').value = f.rep || '';
+  document.getElementById('f-email').value = f.email || '';
+  document.getElementById('f-whats').value = f.whats || '';
+  fEnd.value = f.end || '';
+  document.getElementById('f-inicio').value = f.inicio || '';
+  document.getElementById('f-duracao').value = f.duracao || '12';
+  document.getElementById('f-venc').value = f.venc || '';
+  document.getElementById('f-marca').value = f.marca || 'avanteza';
+  document.getElementById('f-renov').value = f.renov || '';
+  document.getElementById('f-garantia').checked = !!f.garantia;
+  setCnpjStatus('', '');
+  validateForm();
+}
+
+function setEditing(entry) {
+  editing = entry;
+  document.getElementById('edit-banner').style.display = entry ? '' : 'none';
+  if (entry) document.getElementById('edit-banner-name').textContent = entry.filename;
+}
+document.getElementById('edit-banner-x').addEventListener('click', () => setEditing(null));
+
+async function afterPDF(doc, filename, cliente) {
+  const base64 = doc.output('datauristring').split(',')[1];
+  const entry = { id: 'h' + Date.now(), createdAt: new Date().toISOString(), filename, form: collectForm(), replaces: editing ? editing.id : null };
+  const h = histLoad(); h.unshift(entry); histSave(h);
+  lastContract = { base64, filename, cliente, entry, prev: editing };
+  btnZsSend.disabled = false;
+  if (document.getElementById('zs-auto').checked) await enviarAssinatura();
+}
+
+function zsFolder(form, razao) {
+  const modelo = form && form.modelo === 'barbearia' ? 'Barbearia' : 'Growth Engine';
+  const cli = (razao || 'Sem nome').replace(/[\\\/\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 50) || 'Sem nome';
+  return `/Contratos Nexo/${modelo}/${cli}/`;
+}
+
+const stripPdf = n => String(n || '').replace(/\.pdf$/i, '');
+
+async function enviarAssinatura() {
+  if (!lastContract) return;
+  const provider = getProvider();
+  const { base64, filename, cliente, entry, prev } = lastContract;
+  const tel = splitPhone(cliente.whats);
+  const hasPhone = tel.phone_number.length >= 10;
+  const canal = document.getElementById('f-canal').value;
+  if (!hasPhone && !cliente.email) { showToast('Preencha WhatsApp ou e-mail do cliente para enviar.'); return; }
+  if (canal === 'whatsapp' && !hasPhone) { showToast('Para enviar por WhatsApp, preencha o WhatsApp do cliente.'); return; }
+  if (canal === 'email' && !cliente.email) { showToast('Para enviar por e-mail, preencha o e-mail do cliente.'); return; }
+  btnZsSend.disabled = true;
+  btnZsSend.textContent = 'Enviando…';
+  try {
+    const nexoEmail = fNexoEmail.value.trim();
+    if (provider === 'clicksign') {
+      const signers = [{ name: cliente.rep || cliente.razao, email: cliente.email, phone: hasPhone ? tel.phone_number : '', channel: canal }];
+      if (nexoEmail) signers.push({ name: CONTRATADA.rep, email: nexoEmail, channel: 'email' });
+      const folder = ['01 - CLIENTES', (cliente.razao || 'Sem nome').toUpperCase()];
+      const res = await signApi('clicksign', 'create', { document: {
+        name: stripPdf(filename), filename, base64_pdf: base64,
+        subject: `Contrato ${CUR_BRAND.fantasia} · ${cliente.razao}`.slice(0, 100),
+        folder, signers,
+      } });
+      histUpdate(entry.id, { provider, zsToken: res.token, docId: res.document_id, sentAt: new Date().toISOString(), folder: '/' + folder.join('/') + '/' });
+      if (res.warning) showToast(res.warning, 5000);
+      if (!res.notified) showToast('Envelope ativado, mas a notificação não saiu: use "Reenviar link" no histórico.', 6000);
+    } else {
+      const signer = { name: cliente.rep || cliente.razao, auth_mode: 'assinaturaTela' };
+      if (hasPhone) Object.assign(signer, tel, { send_automatic_whatsapp: canal === 'whatsapp' });
+      else signer.blank_phone = true;
+      if (cliente.email) { signer.email = cliente.email; signer.send_automatic_email = canal === 'email' || !hasPhone; }
+      else signer.blank_email = true;
+      const signers = [signer];
+      if (nexoEmail) signers.push({ name: CONTRATADA.rep, email: nexoEmail, auth_mode: 'assinaturaTela', send_automatic_email: true, blank_phone: true });
+      const folder = zsFolder(entry.form, cliente.razao);
+      const res = await zs('create', { document: { name: filename, base64_pdf: base64, lang: 'pt-br', signers, folder_path: folder } });
+      histUpdate(entry.id, { provider, zsToken: res.token, sentAt: new Date().toISOString(), folder });
+    }
+    showToast(`Contrato enviado para assinatura via ${PROVIDERS[provider]}!`);
+
+    const oldTok = prev && prev.zsToken;
+    if (oldTok && document.getElementById('cancel-old').checked) {
+      try {
+        await signApi(prev.provider || 'zapsign', 'cancel', { token: oldTok, document_id: prev.docId, reason: 'Substituído por nova versão do contrato', notify: false });
+        showToast('Versão anterior cancelada.');
+      } catch (e) { showToast('Nova versão enviada, mas não cancelei a anterior: ' + e.message); }
+    }
+    setEditing(null);
+  } catch (e) {
+    showToast(`${PROVIDERS[provider]}: ${e.message}`, 7000);
+  } finally {
+    btnZsSend.disabled = false;
+    btnZsSend.textContent = 'Enviar último contrato para assinatura';
+  }
+}
+btnZsSend.addEventListener('click', enviarAssinatura);
+
+const ST_DOC = { pending: 'Aguardando assinatura', signed: 'Assinado', recusado: 'Cancelado/Recusado', refused: 'Cancelado/Recusado' };
+const ST_SIGNER = { nao_abriu: 'não abriu', abriu: 'abriu o link', assinou: 'assinou', recusou: 'recusou', expirou: 'expirou', cancelado: 'cancelado' };
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmtDate(iso) { try { return new Date(iso).toLocaleDateString('pt-BR') + ' ' + new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch (_) { return ''; } }
+
+function itemHTML({ title, meta, zsDoc, entry }) {
+  const st = zsDoc ? zsDoc.status : 'local';
+  const prov = (zsDoc && zsDoc.provider) || (entry && entry.provider) || 'zapsign';
+  const label = zsDoc ? (ST_DOC[st] || st) : 'Gerado · não enviado';
+  const sg = zsDoc ? (zsDoc.signers || []).map(s => `${esc(s.nome || s.name)}${s.status ? ': ' + esc(ST_SIGNER[s.status] || s.status) : ''}`).join(' · ') : '';
+  const link = zsDoc && (zsDoc.signers || []).find(s => s.link_para_assinar);
+  const btns = [];
+  if (entry) btns.push('<button data-act="edit">Editar</button>');
+  if (zsDoc && st === 'pending') {
+    btns.push('<button data-act="resend">Reenviar link</button>');
+    if (link) btns.push('<button data-act="copy">Copiar link</button><button data-act="wpp">Enviar no WhatsApp</button>');
+    btns.push('<button data-act="cancel">Cancelar</button>');
+  }
+  if (zsDoc && st === 'signed' && zsDoc.signed_file) btns.push(`<a href="${esc(zsDoc.signed_file)}" target="_blank" rel="noopener"><button type="button">Baixar assinado</button></a>`);
+  if (entry) btns.push('<button data-act="remove">Remover</button>');
+  return `<div class="zs-item" data-id="${esc(entry ? entry.id : '')}" data-provider="${esc(prov)}" data-token="${esc(zsDoc ? zsDoc.token : '')}" data-doc="${esc((entry && entry.docId) || '')}" data-link="${esc(link ? link.link_para_assinar : '')}" data-phone="${esc((entry && entry.form && entry.form.whats) || (zsDoc && (zsDoc.signers || [])[0] && (zsDoc.signers || [])[0].telefone) || '')}" data-rep="${esc((entry && entry.form && entry.form.rep) || '')}">
+    <div class="zs-item-top"><span class="zs-item-name">${esc(title)}</span><span class="zs-status ${esc(st)}">${esc(label)}</span></div>
+    <div class="zs-meta">${meta}${zsDoc ? ' · ' + esc(PROVIDERS[prov] || prov) : ''}</div>${sg ? `<div class="zs-meta">${sg}</div>` : ''}
+    <div class="zs-actions">${btns.join('')}</div></div>`;
+}
+
+async function listarHistorico() {
+  const box = document.getElementById('zs-list');
+  box.innerHTML = '<div class="btn-sub">Carregando…</div>';
+  const parts = [];
+  let docs = [];
+  for (const p of ['clicksign', 'zapsign']) {
+    try {
+      const st = await signApi(p, 'status');
+      const ok = p === 'zapsign' ? st.plan_active : st.ok;
+      if (!ok) parts.push(`<div class="zs-meta" style="color:#B91C1C;font-weight:600">${esc(PROVIDERS[p])}: ${esc(st.message || 'indisponível')}</div>`);
+    } catch (e) { parts.push(`<div class="zs-meta" style="color:#B91C1C;font-weight:600">${esc(PROVIDERS[p])}: ${esc(e.message)}</div>`); }
+    try {
+      const d = await signApi(p, 'list');
+      docs = docs.concat((Array.isArray(d) ? d : (d.results || [])).map(x => ({ ...x, provider: p })));
+    } catch (_) {}
+  }
+
+  const key = d => `${d.provider}:${d.token}`;
+  const byToken = new Map(docs.map(d => [key(d), d]));
+  const byName = new Map(); docs.forEach(d => { const n = stripPdf(d.name); if (!byName.has(n)) byName.set(n, d); });
+  const used = new Set();
+  const hist = histLoad();
+
+  if (hist.length) parts.push('<div class="zs-sec">Contratos emitidos aqui</div>');
+  const match = new Map();
+  hist.forEach(e => { const z = e.zsToken && byToken.get(`${e.provider || 'zapsign'}:${e.zsToken}`); if (z) { match.set(e.id, z); used.add(key(z)); } });
+  hist.forEach(e => { if (match.has(e.id) || e.zsToken) return; const z = byName.get(stripPdf(e.filename)); if (z && !used.has(key(z))) { match.set(e.id, z); used.add(key(z)); } });
+  hist.forEach(e => {
+    const z = match.get(e.id) || null;
+    const f = e.form || {};
+    const plano = (PLANOS[f.plano] && PLANOS[f.plano].nome) || f.plano || '';
+    const folder = (z && z.folder_path && z.folder_path !== '/') ? z.folder_path : (e.folder || '');
+    parts.push(itemHTML({
+      title: f.razao || f.fantasia || e.filename,
+      meta: `${esc(f.modelo === 'barbearia' ? 'Barbearia' : plano)} · R$ ${esc(f.preco)} · ${esc(fmtDate(e.createdAt))}${folder ? '<br>📁 ' + esc(folder) : ''}`,
+      zsDoc: z, entry: e }));
+  });
+
+  const others = docs.filter(d => !used.has(key(d)));
+  if (others.length) parts.push('<div class="zs-sec">Outros documentos nas plataformas de assinatura</div>');
+  others.forEach(d => parts.push(itemHTML({ title: d.name, meta: esc(fmtDate(d.created_at)) + (d.folder_path && d.folder_path !== '/' ? '<br>📁 ' + esc(d.folder_path) : ''), zsDoc: d, entry: null })));
+
+  box.innerHTML = parts.length ? parts.join('') : '<div class="btn-sub">Nenhum contrato ainda.</div>';
+}
+document.getElementById('btn-zs-list').addEventListener('click', listarHistorico);
+
+document.getElementById('zs-list').addEventListener('click', async ev => {
+  const b = ev.target.closest('button[data-act]');
+  if (!b) return;
+  const item = b.closest('.zs-item');
+  const { id, token, link, provider, doc } = item.dataset;
+  const act = b.dataset.act;
+  try {
+    if (act === 'edit') {
+      const e = histLoad().find(x => x.id === id);
+      if (!e) return;
+      loadForm(e.form); setEditing(e);
+      contractPanel.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast('Contrato carregado. Ajuste os dados e gere novamente.');
+    } else if (act === 'remove') {
+      if (!confirm('Remover do histórico local? (não afeta a plataforma de assinatura)')) return;
+      histSave(histLoad().filter(x => x.id !== id)); listarHistorico();
+    } else if (act === 'wpp') {
+      const { phone, rep } = item.dataset;
+      const tel = splitPhone(phone).phone_number;
+      const msg = `Olá${rep ? ', ' + rep.split(' ')[0] : ''}! Segue o contrato para assinatura eletrônica: ${link}`;
+      window.open(`https://wa.me/${tel.length >= 10 ? '55' + tel : ''}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+    } else if (act === 'copy') {
+      await navigator.clipboard.writeText(link); showToast('Link de assinatura copiado.');
+    } else if (act === 'cancel') {
+      if (!confirm('Cancelar este contrato? O cliente não poderá mais assinar.')) return;
+      await signApi(provider, 'cancel', { token, document_id: doc || undefined, reason: 'Contrato cancelado pela contratada', notify: false });
+      showToast('Contrato cancelado.'); setTimeout(listarHistorico, 1500);
+    } else if (act === 'resend') {
+      await signApi(provider, 'resend', { token }); showToast('Notificação reenviada ao cliente.');
+    }
+  } catch (e) { showToast(`${PROVIDERS[provider] || 'Assinatura'}: ${e.message}`, 6000); }
+});
+
+// ── VENCIMENTO AUTOMÁTICO (BARBEARIA) ─────────────────
+function syncVenc() {
+  const fv = document.getElementById('f-venc');
+  const ini = document.getElementById('f-inicio').value;
+  const dias = parseInt((document.querySelector('input[name="pgto2"]:checked') || {}).value || '45', 10);
+  if (!ini) return;
+  const d = new Date(ini + 'T00:00:00'); d.setDate(d.getDate() + dias);
+  fv.value = d.getDate(); fv.readOnly = true; fv.title = 'O vencimento mensal segue o dia do 2º pagamento';
+  validateForm();
+}
+document.querySelectorAll('.model-card, .pgto2-card').forEach(c => c.addEventListener('click', () => setTimeout(syncVenc, 0)));
+document.getElementById('f-inicio').addEventListener('input', syncVenc);
+fPreco.addEventListener('blur', () => { const f = fmtBRL(fPreco.value); if (f) fPreco.value = f; validateForm(); });
+
+function clausulasContrato(cliente, sched, dateStr, opt = {}) {
+  const P = PLANOS[cliente.plano] || PLANOS.ESCALE;
+  const bh = cliente.modelo === 'barbearia';
+  const ext = valorPorExtenso(cliente.preco);
+  const cron = opt.cronogramaTabela ? 'conforme o cronograma de pagamentos abaixo' : `Cronograma: ${sched.cronograma}`;
+  const out = [
+    { title: 'Objeto do contrato', paras: [bh ? 'O presente contrato tem por objeto a prestação de serviços de gestão de tráfego pago, gestão de mídias sociais e produção de conteúdo em vídeo pela CONTRATADA em favor da CONTRATANTE, conforme escopo detalhado na cláusula 2.' :
+      `O presente contrato tem por objeto a prestação de serviços de consultoria e gestão de canais de vendas em marketplaces (Mercado Livre, Shopee e demais canais contratados), incluindo a gestão de publicidade paga (Ads) nesses canais, por meio ${CUR_BRAND.metodologia}, no âmbito do ${P.nome} (${P.tipo}), conforme descrito neste instrumento.`] },
+    { title: 'Escopo de serviços', list: bh ? [
+      'Gestão de campanhas de tráfego pago no Facebook Ads e Instagram Ads',
+      'Criação e gerenciamento de campanhas de captação de novos clientes para a barbearia',
+      'Produção de vídeos: visitas mensais ao estabelecimento para gravação de conteúdo (antes/depois, depoimentos, bastidores, promoções)',
+      'Edição e publicação dos vídeos nas mídias sociais da CONTRATANTE',
+      'Criação de peças gráficas e posts para Instagram e Facebook (até 12 posts/mês)',
+      'Gestão do feed, stories e interações básicas nas plataformas contratadas',
+      'Relatório mensal de desempenho (alcance, engajamento, leads e agendamentos)',
+      'Suporte via WhatsApp em horário comercial'] : scopeByPlan(cliente.plano).split('\n').map(x => x.replace(/^•\s*/, '')) },
+    { title: 'Prazo de vigência', paras: [
+      `O contrato terá duração de ${cliente.duracao} (${cliente.duracaoExtenso}) meses, com início em ${dateStr} e encerramento em ${cliente.fimStr}, podendo ser renovado mediante acordo entre as partes com antecedência mínima de 30 dias.${cliente.renov ? ` Em caso de renovação, o valor mensal passará a ser de R$ ${cliente.renov} (${valorPorExtenso(cliente.renov)}), conforme proposta comercial aceita pela CONTRATANTE.` : ''}`] },
+    { title: 'Exclusividade e confidencialidade', paras: [
+      'A CONTRATADA compromete-se a manter sigilo absoluto sobre todas as informações estratégicas, comerciais, financeiras e operacionais da CONTRATANTE obtidas no decorrer deste contrato, conforme a Lei Geral de Proteção de Dados — Lei nº 13.709/2018.'] },
+    { title: 'Propriedade intelectual', paras: [
+      bh ? 'Todos os materiais, vídeos, artes e conteúdos criados pela CONTRATADA durante a vigência são de propriedade da CONTRATANTE após o pagamento integral de cada competência, exceto metodologias e processos internos da CONTRATADA, que permanecem de sua exclusiva propriedade intelectual.' :
+      'Todos os materiais, estratégias e conteúdos criados pela CONTRATADA durante a vigência do contrato são de propriedade da CONTRATANTE após o pagamento integral de cada competência, exceto metodologias, frameworks e processos internos da CONTRATADA, que permanecem de sua exclusiva propriedade intelectual.'] },
+    { key: 'pagamento', title: 'Valor e forma de pagamento', paras: [
+      `6.1 1º PAGAMENTO (ENTRADA / IMPLEMENTAÇÃO): O 1º pagamento, no valor de R$ ${cliente.preco} (${ext}), equivalente a 1 (uma) mensalidade, é devido na assinatura deste contrato (${dateStr}). ${bh ? 'Cobre a implementação inicial das campanhas e perfis.' : 'Cobre a configuração de estratégias, estruturação de processos e onboarding da equipe da CONTRATADA.'}`,
+      `6.2 DEMAIS PARCELAS: O valor mensal dos serviços é de R$ ${cliente.preco} (${ext}). O 2º pagamento vence ${sched.pgto2Dias} dias após a assinatura (${sched.pgto2Str}) e os seguintes todo dia ${sched.diaRec} de cada mês${sched.diaRec > 28 ? ' (ou no último dia do mês, quando este não existir)' : ''}, totalizando ${cliente.duracao} (${cliente.duracaoExtenso}) parcelas ao longo da vigência, ${cron}.`,
+      '6.3 FORMA DE PAGAMENTO: Os pagamentos serão realizados por meio de link de pagamento enviado pela CONTRATADA: o do 1º pagamento logo após a assinatura deste contrato e os demais antes de cada vencimento.',
+      '6.4 INADIMPLÊNCIA: O atraso no pagamento implica cobrança de multa de 2% sobre o valor em aberto, juros de 1% ao mês e honorários advocatícios de 20% em caso de cobrança judicial.'] },
+    { title: 'Obrigações da contratada', list: bh ? [
+      'Realizar as visitas mensais acordadas para gravação de conteúdo',
+      'Gerenciar ativamente as campanhas de tráfego pago',
+      'Cumprir o calendário de publicações acordado',
+      'Apresentar relatório mensal de resultados',
+      'Disponibilizar atendimento via WhatsApp em horário comercial'] : [
+      'Alocar equipe multidisciplinar dedicada ao projeto',
+      'Cumprir cronograma de entregas previamente acordado',
+      'Apresentar relatórios mensais de resultados e desempenho (KPIs)',
+      P.sla ? `Manter grupo de WhatsApp para atendimento, respeitando o tempo máximo de resposta (SLA) de ${P.sla}` : 'Manter canal de atendimento via WhatsApp em horário comercial',
+      'Respeitar os valores e a identidade da marca da CONTRATANTE'] },
+    { title: 'Obrigações da contratante', list: bh ? [
+      'Fornecer acesso às contas de Facebook, Instagram e demais plataformas necessárias',
+      'Disponibilizar o estabelecimento nas datas agendadas para gravação',
+      'Aprovar ou solicitar revisões em até 2 (dois) dias úteis',
+      'Efetuar os pagamentos nos prazos acordados',
+      'Indicar um responsável pela comunicação com a equipe da CONTRATADA'] : [
+      'Fornecer à CONTRATADA acesso às contas dos marketplaces e plataformas de publicidade, bem como catálogo, estoque, preços e demais informações necessárias',
+      `Arcar diretamente com o investimento em publicidade (Ads) nas plataformas, o qual não está incluído na mensalidade${P.limiteAds ? `, respeitado o limite de investimento sob gestão do plano contratado (${P.limiteAds})` : ', com verba definida em conjunto entre as partes'}`,
+      'Aprovar ou solicitar revisões nos materiais em até 3 (três) dias úteis',
+      'Efetuar os pagamentos nos prazos acordados',
+      'Indicar um ponto focal responsável pela comunicação com a equipe da CONTRATADA',
+      'Respeitar o prazo mínimo de contrato'] },
+    { title: 'Rescisão', paras: [
+      '9.1 RESCISÃO PELA CONTRATANTE: A CONTRATANTE poderá rescindir este contrato a qualquer momento, sem incidência de multa ou juros, desde que notifique a CONTRATADA por escrito com antecedência mínima de 30 (trinta) dias. Neste caso, ficará devida exclusivamente a parcela do último mês de serviços prestados (equivalente aos 30 dias de atendimento em curso), sem qualquer outro encargo adicional.',
+      '9.2 AUSÊNCIA DE AVISO PRÉVIO: Caso a CONTRATANTE não observe o prazo mínimo de aviso de 30 dias, fica devida a parcela correspondente aos 30 (trinta) dias de serviços que seriam prestados nesse período, a título de ressarcimento pela indisponibilização da equipe alocada, sem que isso configure multa.',
+      '9.3 RESCISÃO PELA CONTRATADA: A CONTRATADA poderá rescindir este contrato por descumprimento das obrigações da CONTRATANTE, em especial inadimplência superior a 15 dias, mediante notificação por escrito, sem qualquer ônus para a CONTRATANTE além das parcelas já vencidas.',
+      `9.4 ${cliente.garantia ? 'Ressalvada a Garantia de Execução (cláusula 10), não haverá devolução do valor do 1º pagamento (cláusula 6.1)' : 'Em nenhuma hipótese haverá devolução do valor do 1º pagamento (cláusula 6.1)'}, por tratar-se de serviço já executado.`] },
+  ];
+  if (cliente.garantia) out.push({ key: 'garantia', title: 'Garantia de execução', paras: garantiaTexto(cliente, 10).split('\n\n') });
+  out.push(
+    { title: 'Limitação de responsabilidade', paras: [
+      (cliente.garantia ? 'Ressalvada a Garantia de Execução prevista na cláusula 10, a' : 'A') + ' CONTRATADA não se responsabiliza por resultados que dependam exclusivamente de fatores externos ao seu controle, tais como sazonalidade do mercado, mudanças de algoritmos de plataformas de terceiros, crises econômicas ou inação da CONTRATANTE no cumprimento de suas obrigações.'] },
+    { title: 'Foro e legislação aplicável', paras: [
+      'As partes elegem o foro da comarca de Goiânia – GO para dirimir quaisquer dúvidas ou litígios decorrentes do presente contrato, com renúncia expressa a qualquer outro foro, por mais privilegiado que seja.'] },
+    { title: 'Aceite e validade jurídica', paras: [
+      'O presente contrato, assinado eletronicamente pelas partes, tem plena validade jurídica nos termos da Lei nº 14.063/2020. A assinatura eletrônica possui a mesma validade da assinatura manuscrita.'] },
+  );
+  return out;
+}
+
+// ── AVANTEZA CONTRACT ─────────────────────────────────
+let BRAND_FONT_B64 = null;
+async function loadBrandFont(doc) {
+  if (!BRAND_FONT_B64) {
+    const r = await fetch('fonts/ArchivoBlack-Regular.ttf');
+    if (!r.ok) throw new Error('font');
+    const buf = new Uint8Array(await r.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    BRAND_FONT_B64 = btoa(bin);
+  }
+  doc.addFileToVFS('ArchivoBlack-Regular.ttf', BRAND_FONT_B64);
+  doc.addFont('ArchivoBlack-Regular.ttf', 'ArchivoBlack', 'normal');
+}
+
+async function gerarPDFAvanteza(cliente, sched) {
+  const btn = document.getElementById('btn-gerar');
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+    let disp = ['helvetica', 'bold'];
+    try { await loadBrandFont(doc); disp = ['ArchivoBlack', 'normal']; } catch (_) {}
+
+    const W = 210, H = 297, ML = 20, MR = 20, TW = W - ML - MR;
+    const K = { blue: [36, 72, 255], paper: [246, 245, 240], ink: [24, 25, 29], lime: [223, 255, 112],
+      muted: [92, 94, 102], line: [216, 214, 206], white: [255, 255, 255], onBlue: [214, 222, 255] };
+    const fill = c => doc.setFillColor(c[0], c[1], c[2]);
+    const txt = c => doc.setTextColor(c[0], c[1], c[2]);
+    const draw = c => doc.setDrawColor(c[0], c[1], c[2]);
+    const D = size => doc.setFont(disp[0], disp[1]).setFontSize(size);
+    const B = (size, style = 'normal') => doc.setFont('helvetica', style).setFontSize(size);
+    const P = PLANOS[cliente.plano] || PLANOS.ESCALE;
+    const bh = cliente.modelo === 'barbearia';
+    const planoLabel = bh ? 'Gestão de Tráfego & Mídias Sociais · Barbearia' : P.nome;
+    const dateStr = formatDate(cliente.inicio);
+    const curto = iso => iso.split('-').reverse().join('/');
+    const BODY = 8.8, LH = 4.6;
+
+    const spaced = (s, x, y, cs, align) => {
+      const w = doc.getTextWidth(s) + cs * (s.length - 1);
+      const x0 = align === 'right' ? x - w : align === 'center' ? x - w / 2 : x;
+      doc.text(s, x0, y, { charSpace: cs });
+      return w;
+    };
+    const brackets = (x, y, w, h, c, t, tick) => {
+      fill(c);
+      doc.rect(x, y, t, h, 'F'); doc.rect(x, y, tick, t, 'F'); doc.rect(x, y + h - t, tick, t, 'F');
+      doc.rect(x + w - t, y, t, h, 'F'); doc.rect(x + w - tick, y, tick, t, 'F'); doc.rect(x + w - tick, y + h - t, tick, t, 'F');
+    };
+    const wordmark = (x, y, size, c, subSize, gap) => {
+      txt(c); D(size); doc.text('avanteza', x, y);
+      const w = doc.getTextWidth('avanteza');
+      const sub = 'CONSULTORIA E ESTRATÉGIA';
+      B(subSize, 'normal');
+      const cs = Math.max(0.2, (w * 0.9 - doc.getTextWidth(sub)) / (sub.length - 1));
+      spaced(sub, x + w / 2, y + gap, cs, 'center');
+      return w;
+    };
+
+    // ══ CAPA ═══════════════════════════════════════════
+    fill(K.blue); doc.rect(0, 0, W, H, 'F');
+    txt(K.white); B(6.8, 'bold'); spaced('CONTRATO DE PRESTAÇÃO DE SERVIÇOS', ML, 20, 0.6);
+    B(6.8, 'bold'); spaced(curto(cliente.inicio).replace(/\//g, '.'), W - MR, 20, 0.6, 'right');
+
+    wordmark(ML - 1.2, 56, 60, K.white, 7.4, 9.6);
+    brackets(W - MR - 30, 34, 30, 30, K.lime, 2.6, 7);
+
+    txt(K.white); D(38);
+    doc.text('Do plano', ML, 112);
+    doc.text('à prática', ML, 127.5);
+    const wp = doc.getTextWidth('à prática');
+    txt(K.lime); doc.text('.', ML + wp + 0.4, 127.5);
+    txt(K.onBlue); B(10, 'normal');
+    doc.text(`${planoLabel}  ·  ${cliente.fantasia || cliente.razao}`, ML, 139, { maxWidth: TW });
+
+    // Partes
+    const cy0 = 152, ch = 64, cw = (TW - 5) / 2;
+    const partes = [
+      ['CONTRATANTE', cliente.razao, [`CNPJ ${cliente.cnpj}`, cliente.rep && `Rep. legal: ${cliente.rep}`, cliente.email].filter(Boolean), cliente.end],
+      ['CONTRATADA', CONTRATADA.razao, [`Nome fantasia: ${CUR_BRAND.fantasia}`, `CNPJ ${CONTRATADA.cnpj}`, `Rep. legal: ${CONTRATADA.rep}`], CONTRATADA.cidade],
+    ];
+    partes.forEach(([lab, nome, linhas, rodape], i) => {
+      const x = ML + i * (cw + 5);
+      fill(K.paper); doc.rect(x, cy0, cw, ch, 'F');
+      txt(K.blue); B(6.4, 'bold'); spaced(lab, x + 6, cy0 + 9, 0.45);
+      txt(K.ink); D(10);
+      const nl = doc.splitTextToSize(nome, cw - 12);
+      doc.text(nl, x + 6, cy0 + 17);
+      let yy = cy0 + 17 + nl.length * 4.6 + 1.6;
+      txt(K.muted); B(7.4, 'normal');
+      linhas.forEach(l => { const ll = doc.splitTextToSize(l, cw - 12); doc.text(ll, x + 6, yy); yy += ll.length * 3.8 + 0.9; });
+      if (rodape) {
+        B(6.5, 'normal');
+        const fl = doc.splitTextToSize(rodape, cw - 12);
+        doc.text(fl, x + 6, cy0 + ch - 6 - (fl.length - 1) * 3.1);
+      }
+    });
+
+    // Faixa de condições
+    const by = 222, bandH = 27, mw = TW / 4;
+    fill(K.lime); doc.rect(ML, by, TW, bandH, 'F');
+    const metricas = [
+      ['VALOR MENSAL', `R$ ${cliente.preco}`], ['VIGÊNCIA', `${cliente.duracao} meses`],
+      ['1º PAGAMENTO', 'Na assinatura'], ['2º PAGAMENTO', curto(sched.itens[1] ? sched.itens[1].iso : cliente.inicio)],
+    ];
+    metricas.forEach(([l, v], i) => {
+      const x = ML + 6 + i * mw;
+      if (i) { draw(K.ink); doc.setLineWidth(0.2); doc.line(ML + i * mw, by + 7, ML + i * mw, by + bandH - 7); }
+      txt(K.ink); B(5.8, 'bold'); spaced(l, x, by + 10, 0.35);
+      D(11.5); doc.text(v, x, by + 19);
+    });
+
+    // ══ PÁGINAS INTERNAS ═══════════════════════════════
+    let y = 0;
+    const header = () => {
+      fill(K.paper); doc.rect(0, 0, W, H, 'F');
+      wordmark(ML, 16.5, 13, K.ink, 3.3, 2.9);
+      txt(K.muted); B(6.4, 'normal');
+      doc.text(`CONTRATO  ·  ${(cliente.fantasia || cliente.razao).toUpperCase()}`, W - MR, 16.5, { align: 'right' });
+      draw(K.ink); doc.setLineWidth(0.25); doc.line(ML, 24, W - MR, 24);
+      y = 36;
+    };
+    const newPage = () => { doc.addPage(); header(); };
+    const ensure = h => { if (y + h > H - 24) newPage(); };
+
+    const heading = (n, title) => {
+      ensure(20);
+      const num = `[${String(n).padStart(2, '0')}]`;
+      txt(K.blue); D(11); doc.text(num, ML, y);
+      const nw = doc.getTextWidth(num);
+      txt(K.ink); D(11); doc.text(title, ML + nw + 2.5, y);
+      y += 7;
+    };
+    const line = (s, x, c, style = 'normal') => { txt(c); B(BODY, style); doc.text(s, x, y); y += LH; };
+    const para = (text, c = K.ink, x = ML, w = TW) => {
+      B(BODY, 'normal');
+      const m = text.match(/^(\d+\.\d+)\s+([\s\S]*)$/);
+      if (m) {
+        const ind = 9;
+        const ls = doc.splitTextToSize(m[2], w - ind);
+        ensure(LH + 1);
+        txt(c === K.ink ? K.blue : K.lime); B(BODY, 'bold'); doc.text(m[1], x, y);
+        ls.forEach((s, i) => { if (i) ensure(LH); line(s, x + ind, c); });
+      } else {
+        doc.splitTextToSize(text, w).forEach(s => { ensure(LH); line(s, x, c); });
+      }
+      y += 2.4;
+    };
+    const lista = items => {
+      items.forEach(it => {
+        B(BODY, 'normal');
+        const ls = doc.splitTextToSize(it, TW - 6);
+        ensure(LH + 1);
+        fill(K.blue); doc.rect(ML + 0.3, y - 2.4, 1.7, 1.7, 'F');
+        ls.forEach((s, i) => { if (i) ensure(LH); line(s, ML + 6, K.ink); });
+        y += 1.1;
+      });
+      y += 2.4;
+    };
+    const tabela = () => {
+      const rows = sched.itens, rh = 7.6;
+      const total = (parseFloat(String(cliente.preco).replace(/\./g, '').replace(',', '.')) || 0) * rows.length;
+      ensure(rh * (rows.length + 2) + 6);
+      y += 1;
+      const top = y;
+      fill(K.ink); doc.rect(ML, y, TW, rh, 'F');
+      txt(K.white); B(6.4, 'bold');
+      spaced('PARCELA', ML + 5, y + 5, 0.35); spaced('VENCIMENTO', ML + 32, y + 5, 0.35); spaced('VALOR', W - MR - 5, y + 5, 0.35, 'right');
+      y += rh;
+      rows.forEach((r, i) => {
+        fill(i % 2 ? K.paper : K.white); doc.rect(ML, y, TW, rh, 'F');
+        txt(K.blue); D(9); doc.text(`${r.n}ª`, ML + 5, y + 5.1);
+        txt(K.ink); B(8.6, 'normal'); doc.text(r.n === 1 ? `${curto(r.iso)}  ·  na assinatura` : curto(r.iso), ML + 32, y + 5.1);
+        B(8.6, 'bold'); doc.text(`R$ ${cliente.preco}`, W - MR - 5, y + 5.1, { align: 'right' });
+        y += rh;
+      });
+      fill(K.lime); doc.rect(ML, y, TW, rh, 'F');
+      txt(K.ink); B(6.4, 'bold'); spaced('TOTAL DO PERÍODO', ML + 5, y + 5, 0.35);
+      D(9); doc.text(`R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, W - MR - 5, y + 5.2, { align: 'right' });
+      y += rh;
+      draw(K.line); doc.setLineWidth(0.2); doc.rect(ML, top, TW, y - top);
+      y += 7;
+    };
+    const destaque = paras => {
+      const pad = 7, w = TW - pad * 2;
+      B(BODY, 'normal');
+      const blocks = paras.map(p => {
+        const m = p.match(/^(\d+\.\d+)\s+([\s\S]*)$/);
+        return m ? { n: m[1], ls: doc.splitTextToSize(m[2], w - 9) } : { n: null, ls: doc.splitTextToSize(p, w) };
+      });
+      const h = pad + 8 + blocks.reduce((a, b) => a + b.ls.length * LH + 2.4, 0) + pad - 5;
+      if (h > H - 60) { paras.forEach(p => para(p)); return; }
+      ensure(h + 2);
+      fill(K.blue); doc.rect(ML, y, TW, h, 'F');
+      brackets(W - MR - 15, y + 4, 9, 6.5, K.lime, 0.9, 2.2);
+      txt(K.lime); B(6.6, 'bold'); spaced('RESULTADO OU SEU INVESTIMENTO DE VOLTA', ML + pad, y + pad + 2, 0.45);
+      let yy = y + pad + 9.5;
+      blocks.forEach(b => {
+        if (b.n) { txt(K.lime); B(BODY, 'bold'); doc.text(b.n, ML + pad, yy); }
+        txt(K.white); B(BODY, 'normal');
+        b.ls.forEach(s => { doc.text(s, ML + pad + (b.n ? 9 : 0), yy); yy += LH; });
+        yy += 2.4;
+      });
+      y += h + 6;
+    };
+
+    newPage();
+    const cls = clausulasContrato(cliente, sched, dateStr, { cronogramaTabela: true });
+    cls.forEach((c, i) => {
+      heading(i + 1, c.short || c.title);
+      if (c.list) lista(c.list);
+      else if (c.key === 'garantia') destaque(c.paras);
+      else if (c.key === 'pagamento') { c.paras.forEach((p, j) => { para(p); if (j === 1) tabela(); }); }
+      else c.paras.forEach(p => para(p));
+      y += 2;
+    });
+
+    // ── Assinaturas ──
+    const sh = 76;
+    if (y + sh > H - 24) newPage(); else y += 4;
+    const sy = y;
+    txt(K.ink); D(15);
+    const tw = doc.getTextWidth('Assinaturas');
+    brackets(ML, sy, tw + 12, 13, K.blue, 1.3, 3.2);
+    doc.text('Assinaturas', ML + 6, sy + 9.2);
+    txt(K.muted); B(8.2, 'normal'); doc.text(`Goiânia – GO, ${dateStr}`, ML, sy + 22);
+    const sc = (TW - 12) / 2;
+    [['CONTRATANTE', cliente.razao, `CNPJ ${cliente.cnpj}`, cliente.rep ? `Rep. legal: ${cliente.rep}` : ''],
+     ['CONTRATADA', CONTRATADA.razao, `CNPJ ${CONTRATADA.cnpj}  ·  ${CUR_BRAND.fantasia}`, `Rep. legal: ${CONTRATADA.rep}`]].forEach(([lab, nome, l1, l2], i) => {
+      const x = ML + i * (sc + 12), ly = sy + 44;
+      draw(K.ink); doc.setLineWidth(0.4); doc.line(x, ly, x + sc, ly);
+      txt(K.blue); B(6.4, 'bold'); spaced(lab, x, ly - 3, 0.45);
+      txt(K.ink); D(8.4); const nl = doc.splitTextToSize(nome, sc).slice(0, 2); doc.text(nl, x, ly + 6.5);
+      const off = (nl.length - 1) * 4;
+      txt(K.muted); B(7.2, 'normal');
+      doc.text(doc.splitTextToSize(l1, sc)[0], x, ly + 12 + off);
+      if (l2) doc.text(doc.splitTextToSize(l2, sc)[0], x, ly + 16.5 + off);
+    });
+    txt(K.muted); B(6.6, 'normal');
+    doc.text('Documento assinado eletronicamente pelas partes, com validade jurídica nos termos da Lei nº 14.063/2020.', ML, sy + 72);
+
+    // ── Rodapés ──
+    const n = doc.getNumberOfPages();
+    for (let pg = 1; pg <= n; pg++) {
+      doc.setPage(pg);
+      const capa = pg === 1;
+      if (!capa) { draw(K.line); doc.setLineWidth(0.25); doc.line(ML, H - 16, W - MR, H - 16); }
+      fill(K.lime); doc.rect(ML, H - 11.6, 6, 1.5, 'F');
+      txt(capa ? K.white : K.ink); B(7.6, 'bold'); doc.text('Visão para ir além.', ML + 8.5, H - 10.3);
+      D(8); doc.text(`${String(pg).padStart(2, '0')} / ${String(n).padStart(2, '0')}`, W - MR, H - 10.3, { align: 'right' });
+    }
+
+    const fname = `Contrato_${bh ? 'Barbearia' : CUR_BRAND.arquivo}_${cliente.razao.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30)}${bh ? '' : '_' + cliente.plano}.pdf`;
+    doc.save(fname);
+    btn.textContent = '✓ Contrato gerado!';
+    btn.classList.add('success');
+    showToast('Contrato PDF baixado com sucesso!');
+    await afterPDF(doc, fname, cliente);
+    setTimeout(() => { btn.textContent = 'Gerar Contrato PDF'; btn.classList.remove('success'); btn.disabled = false; }, 4000);
+  } catch (err) {
+    console.error(err);
+    btn.textContent = 'Gerar Contrato PDF';
+    btn.disabled = false;
+    showToast('Erro ao gerar PDF. Tente novamente.');
+  }
+}
+
+// ── INIT ──────────────────────────────────────────────
+resizeLaserCanvas();
+// Set today as default inicio date
+document.getElementById('f-inicio').valueAsDate = new Date();
+</script>
+</body>
+</html>
