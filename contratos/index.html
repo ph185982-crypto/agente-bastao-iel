@@ -1794,18 +1794,28 @@ function clausulasContrato(cliente, sched, dateStr, opt = {}) {
 }
 
 // ── AVANTEZA CONTRACT ─────────────────────────────────
-let BRAND_FONT_B64 = null;
+// Manrope (identidade Avanteza v2.0) em TTF estático, servido de fonts/ (licença em fonts/OFL.txt).
+// Três pesos: 800 nos títulos e no logotipo, 500 no texto e 700 no negrito do texto.
+const FONTES_MARCA = [
+  ['Manrope-ExtraBold.ttf', 'ManropeTitulo', 'normal'],
+  ['Manrope-Medium.ttf', 'Manrope', 'normal'],
+  ['Manrope-Bold.ttf', 'Manrope', 'bold'],
+];
+const FONTES_MARCA_B64 = {};
 async function loadBrandFont(doc) {
-  if (!BRAND_FONT_B64) {
-    const r = await fetch('fonts/ArchivoBlack-Regular.ttf');
+  await Promise.all(FONTES_MARCA.map(async ([arquivo]) => {
+    if (FONTES_MARCA_B64[arquivo]) return;
+    const r = await fetch('fonts/' + arquivo);
     if (!r.ok) throw new Error('font');
     const buf = new Uint8Array(await r.arrayBuffer());
     let bin = '';
     for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
-    BRAND_FONT_B64 = btoa(bin);
-  }
-  doc.addFileToVFS('ArchivoBlack-Regular.ttf', BRAND_FONT_B64);
-  doc.addFont('ArchivoBlack-Regular.ttf', 'ArchivoBlack', 'normal');
+    FONTES_MARCA_B64[arquivo] = btoa(bin);
+  }));
+  FONTES_MARCA.forEach(([arquivo, familia, estilo]) => {
+    doc.addFileToVFS(arquivo, FONTES_MARCA_B64[arquivo]);
+    doc.addFont(arquivo, familia, estilo);
+  });
 }
 
 async function gerarPDFAvanteza(cliente, sched) {
@@ -1813,17 +1823,19 @@ async function gerarPDFAvanteza(cliente, sched) {
   try {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-    let disp = ['helvetica', 'bold'];
-    try { await loadBrandFont(doc); disp = ['ArchivoBlack', 'normal']; } catch (_) {}
+    // Sem as fontes da marca (falha de rede), o contrato sai em Helvetica — nunca deixa de ser gerado.
+    let disp = ['helvetica', 'bold'], corpo = 'helvetica';
+    try { await loadBrandFont(doc); disp = ['ManropeTitulo', 'normal']; corpo = 'Manrope'; } catch (_) {}
 
     const W = 210, H = 297, ML = 20, MR = 20, TW = W - ML - MR;
-    const K = { blue: [36, 72, 255], paper: [246, 245, 240], ink: [24, 25, 29], lime: [223, 255, 112],
-      muted: [92, 94, 102], line: [216, 214, 206], white: [255, 255, 255], onBlue: [214, 222, 255] };
+    // Paleta Avanteza v2.0 (packages/avanteza-kit/tokens.css). Laranja só no quadrado do logotipo.
+    const K = { marinho: [11, 27, 51], creme: [245, 240, 230], areia: [234, 217, 194], laranja: [255, 106, 31],
+      suave: [100, 116, 139], branco: [255, 255, 255] };
     const fill = c => doc.setFillColor(c[0], c[1], c[2]);
     const txt = c => doc.setTextColor(c[0], c[1], c[2]);
     const draw = c => doc.setDrawColor(c[0], c[1], c[2]);
     const D = size => doc.setFont(disp[0], disp[1]).setFontSize(size);
-    const B = (size, style = 'normal') => doc.setFont('helvetica', style).setFontSize(size);
+    const B = (size, style = 'normal') => doc.setFont(corpo, style).setFontSize(size);
     const P = PLANOS[cliente.plano] || PLANOS.ESCALE;
     const bh = cliente.modelo === 'barbearia';
     const planoLabel = bh ? 'Gestão de Tráfego & Mídias Sociais · Barbearia' : P.nome;
@@ -1842,30 +1854,36 @@ async function gerarPDFAvanteza(cliente, sched) {
       doc.rect(x, y, t, h, 'F'); doc.rect(x, y, tick, t, 'F'); doc.rect(x, y + h - t, tick, t, 'F');
       doc.rect(x + w - t, y, t, h, 'F'); doc.rect(x + w - tick, y, tick, t, 'F'); doc.rect(x + w - tick, y + h - t, tick, t, 'F');
     };
+    // Logotipo: "avanteza" em minúsculas (peso 800, letras apertadas) com o quadrado laranja no lugar do
+    // ponto final e a assinatura em caixa alta espaçada — mesmas proporções do logotipo da interface.
     const wordmark = (x, y, size, c, subSize, gap) => {
-      txt(c); D(size); doc.text('avanteza', x, y);
-      const w = doc.getTextWidth('avanteza');
+      const em = size * 25.4 / 72;
+      txt(c); D(size);
+      const wl = spaced('avanteza', x, y, -0.045 * em);
+      const q = 0.2 * em;
+      fill(K.laranja); doc.rect(x + wl + 0.06 * em, y - q, q, q, 'F');
+      const w = wl + 0.06 * em + q;
       const sub = 'CONSULTORIA E ESTRATÉGIA';
-      B(subSize, 'normal');
-      const cs = Math.max(0.2, (w * 0.9 - doc.getTextWidth(sub)) / (sub.length - 1));
+      txt(c); B(subSize, 'normal');
+      const cs = Math.max(0.2, (w * 0.96 - doc.getTextWidth(sub)) / (sub.length - 1));
       spaced(sub, x + w / 2, y + gap, cs, 'center');
       return w;
     };
 
     // ══ CAPA ═══════════════════════════════════════════
-    fill(K.blue); doc.rect(0, 0, W, H, 'F');
-    txt(K.white); B(6.8, 'bold'); spaced('CONTRATO DE PRESTAÇÃO DE SERVIÇOS', ML, 20, 0.6);
+    fill(K.marinho); doc.rect(0, 0, W, H, 'F');
+    txt(K.creme); B(6.8, 'bold'); spaced('CONTRATO DE PRESTAÇÃO DE SERVIÇOS', ML, 20, 0.6);
     B(6.8, 'bold'); spaced(curto(cliente.inicio).replace(/\//g, '.'), W - MR, 20, 0.6, 'right');
 
-    wordmark(ML - 1.2, 56, 60, K.white, 7.4, 9.6);
-    brackets(W - MR - 30, 34, 30, 30, K.lime, 2.6, 7);
+    wordmark(ML - 1.2, 56, 60, K.creme, 7.4, 9.6);
+    brackets(W - MR - 30, 34, 30, 30, K.areia, 2.6, 7);
 
-    txt(K.white); D(38);
+    txt(K.creme); D(38);
     doc.text('Do plano', ML, 112);
     doc.text('à prática', ML, 127.5);
     const wp = doc.getTextWidth('à prática');
-    txt(K.lime); doc.text('.', ML + wp + 0.4, 127.5);
-    txt(K.onBlue); B(10, 'normal');
+    txt(K.areia); doc.text('.', ML + wp + 0.4, 127.5);
+    txt(K.areia); B(10, 'normal');
     doc.text(`${planoLabel}  ·  ${cliente.fantasia || cliente.razao}`, ML, 139, { maxWidth: TW });
 
     // Partes
@@ -1876,16 +1894,16 @@ async function gerarPDFAvanteza(cliente, sched) {
     ];
     partes.forEach(([lab, nome, linhas, rodape], i) => {
       const x = ML + i * (cw + 5);
-      fill(K.paper); doc.rect(x, cy0, cw, ch, 'F');
-      txt(K.blue); B(6.4, 'bold'); spaced(lab, x + 6, cy0 + 9, 0.45);
-      txt(K.ink); D(10);
+      fill(K.creme); doc.rect(x, cy0, cw, ch, 'F');
+      txt(K.suave); B(6.4, 'bold'); spaced(lab, x + 6, cy0 + 9, 0.45);
+      txt(K.marinho); D(10);
       const nl = doc.splitTextToSize(nome, cw - 12);
       doc.text(nl, x + 6, cy0 + 17);
       let yy = cy0 + 17 + nl.length * 4.6 + 1.6;
-      txt(K.muted); B(7.4, 'normal');
+      txt(K.marinho); B(7.4, 'normal');
       linhas.forEach(l => { const ll = doc.splitTextToSize(l, cw - 12); doc.text(ll, x + 6, yy); yy += ll.length * 3.8 + 0.9; });
       if (rodape) {
-        B(6.5, 'normal');
+        txt(K.suave); B(6.5, 'normal');
         const fl = doc.splitTextToSize(rodape, cw - 12);
         doc.text(fl, x + 6, cy0 + ch - 6 - (fl.length - 1) * 3.1);
       }
@@ -1893,26 +1911,26 @@ async function gerarPDFAvanteza(cliente, sched) {
 
     // Faixa de condições
     const by = 222, bandH = 27, mw = TW / 4;
-    fill(K.lime); doc.rect(ML, by, TW, bandH, 'F');
+    fill(K.areia); doc.rect(ML, by, TW, bandH, 'F');
     const metricas = [
       ['VALOR MENSAL', `R$ ${cliente.preco}`], ['VIGÊNCIA', `${cliente.duracao} meses`],
       ['1º PAGAMENTO', 'Na assinatura'], ['2º PAGAMENTO', curto(sched.itens[1] ? sched.itens[1].iso : cliente.inicio)],
     ];
     metricas.forEach(([l, v], i) => {
       const x = ML + 6 + i * mw;
-      if (i) { draw(K.ink); doc.setLineWidth(0.2); doc.line(ML + i * mw, by + 7, ML + i * mw, by + bandH - 7); }
-      txt(K.ink); B(5.8, 'bold'); spaced(l, x, by + 10, 0.35);
+      if (i) { draw(K.marinho); doc.setLineWidth(0.2); doc.line(ML + i * mw, by + 7, ML + i * mw, by + bandH - 7); }
+      txt(K.marinho); B(5.8, 'bold'); spaced(l, x, by + 10, 0.35);
       D(11.5); doc.text(v, x, by + 19);
     });
 
     // ══ PÁGINAS INTERNAS ═══════════════════════════════
     let y = 0;
     const header = () => {
-      fill(K.paper); doc.rect(0, 0, W, H, 'F');
-      wordmark(ML, 16.5, 13, K.ink, 3.3, 2.9);
-      txt(K.muted); B(6.4, 'normal');
+      fill(K.branco); doc.rect(0, 0, W, H, 'F');
+      wordmark(ML, 16.5, 13, K.marinho, 3.3, 2.9);
+      txt(K.suave); B(6.4, 'normal');
       doc.text(`CONTRATO  ·  ${(cliente.fantasia || cliente.razao).toUpperCase()}`, W - MR, 16.5, { align: 'right' });
-      draw(K.ink); doc.setLineWidth(0.25); doc.line(ML, 24, W - MR, 24);
+      draw(K.areia); doc.setLineWidth(0.4); doc.line(ML, 24, W - MR, 24);
       y = 36;
     };
     const newPage = () => { doc.addPage(); header(); };
@@ -1921,20 +1939,20 @@ async function gerarPDFAvanteza(cliente, sched) {
     const heading = (n, title) => {
       ensure(20);
       const num = `[${String(n).padStart(2, '0')}]`;
-      txt(K.blue); D(11); doc.text(num, ML, y);
+      txt(K.suave); D(11); doc.text(num, ML, y);
       const nw = doc.getTextWidth(num);
-      txt(K.ink); D(11); doc.text(title, ML + nw + 2.5, y);
+      txt(K.marinho); D(11); doc.text(title, ML + nw + 2.5, y);
       y += 7;
     };
     const line = (s, x, c, style = 'normal') => { txt(c); B(BODY, style); doc.text(s, x, y); y += LH; };
-    const para = (text, c = K.ink, x = ML, w = TW) => {
+    const para = (text, c = K.marinho, x = ML, w = TW) => {
       B(BODY, 'normal');
       const m = text.match(/^(\d+\.\d+)\s+([\s\S]*)$/);
       if (m) {
         const ind = 9;
         const ls = doc.splitTextToSize(m[2], w - ind);
         ensure(LH + 1);
-        txt(c === K.ink ? K.blue : K.lime); B(BODY, 'bold'); doc.text(m[1], x, y);
+        txt(c === K.marinho ? K.marinho : K.areia); B(BODY, 'bold'); doc.text(m[1], x, y);
         ls.forEach((s, i) => { if (i) ensure(LH); line(s, x + ind, c); });
       } else {
         doc.splitTextToSize(text, w).forEach(s => { ensure(LH); line(s, x, c); });
@@ -1946,8 +1964,8 @@ async function gerarPDFAvanteza(cliente, sched) {
         B(BODY, 'normal');
         const ls = doc.splitTextToSize(it, TW - 6);
         ensure(LH + 1);
-        fill(K.blue); doc.rect(ML + 0.3, y - 2.4, 1.7, 1.7, 'F');
-        ls.forEach((s, i) => { if (i) ensure(LH); line(s, ML + 6, K.ink); });
+        fill(K.marinho); doc.rect(ML + 0.3, y - 2.4, 1.7, 1.7, 'F');
+        ls.forEach((s, i) => { if (i) ensure(LH); line(s, ML + 6, K.marinho); });
         y += 1.1;
       });
       y += 2.4;
@@ -1958,22 +1976,22 @@ async function gerarPDFAvanteza(cliente, sched) {
       ensure(rh * (rows.length + 2) + 6);
       y += 1;
       const top = y;
-      fill(K.ink); doc.rect(ML, y, TW, rh, 'F');
-      txt(K.white); B(6.4, 'bold');
+      fill(K.marinho); doc.rect(ML, y, TW, rh, 'F');
+      txt(K.creme); B(6.4, 'bold');
       spaced('PARCELA', ML + 5, y + 5, 0.35); spaced('VENCIMENTO', ML + 32, y + 5, 0.35); spaced('VALOR', W - MR - 5, y + 5, 0.35, 'right');
       y += rh;
       rows.forEach((r, i) => {
-        fill(i % 2 ? K.paper : K.white); doc.rect(ML, y, TW, rh, 'F');
-        txt(K.blue); D(9); doc.text(`${r.n}ª`, ML + 5, y + 5.1);
-        txt(K.ink); B(8.6, 'normal'); doc.text(r.n === 1 ? `${curto(r.iso)}  ·  na assinatura` : curto(r.iso), ML + 32, y + 5.1);
+        fill(i % 2 ? K.creme : K.branco); doc.rect(ML, y, TW, rh, 'F');
+        txt(K.marinho); D(9); doc.text(`${r.n}ª`, ML + 5, y + 5.1);
+        txt(K.marinho); B(8.6, 'normal'); doc.text(r.n === 1 ? `${curto(r.iso)}  ·  na assinatura` : curto(r.iso), ML + 32, y + 5.1);
         B(8.6, 'bold'); doc.text(`R$ ${cliente.preco}`, W - MR - 5, y + 5.1, { align: 'right' });
         y += rh;
       });
-      fill(K.lime); doc.rect(ML, y, TW, rh, 'F');
-      txt(K.ink); B(6.4, 'bold'); spaced('TOTAL DO PERÍODO', ML + 5, y + 5, 0.35);
+      fill(K.areia); doc.rect(ML, y, TW, rh, 'F');
+      txt(K.marinho); B(6.4, 'bold'); spaced('TOTAL DO PERÍODO', ML + 5, y + 5, 0.35);
       D(9); doc.text(`R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, W - MR - 5, y + 5.2, { align: 'right' });
       y += rh;
-      draw(K.line); doc.setLineWidth(0.2); doc.rect(ML, top, TW, y - top);
+      draw(K.areia); doc.setLineWidth(0.2); doc.rect(ML, top, TW, y - top);
       y += 7;
     };
     const destaque = paras => {
@@ -1986,13 +2004,13 @@ async function gerarPDFAvanteza(cliente, sched) {
       const h = pad + 8 + blocks.reduce((a, b) => a + b.ls.length * LH + 2.4, 0) + pad - 5;
       if (h > H - 60) { paras.forEach(p => para(p)); return; }
       ensure(h + 2);
-      fill(K.blue); doc.rect(ML, y, TW, h, 'F');
-      brackets(W - MR - 15, y + 4, 9, 6.5, K.lime, 0.9, 2.2);
-      txt(K.lime); B(6.6, 'bold'); spaced('RESULTADO OU SEU INVESTIMENTO DE VOLTA', ML + pad, y + pad + 2, 0.45);
+      fill(K.marinho); doc.rect(ML, y, TW, h, 'F');
+      brackets(W - MR - 15, y + 4, 9, 6.5, K.areia, 0.9, 2.2);
+      txt(K.areia); B(6.6, 'bold'); spaced('RESULTADO OU SEU INVESTIMENTO DE VOLTA', ML + pad, y + pad + 2, 0.45);
       let yy = y + pad + 9.5;
       blocks.forEach(b => {
-        if (b.n) { txt(K.lime); B(BODY, 'bold'); doc.text(b.n, ML + pad, yy); }
-        txt(K.white); B(BODY, 'normal');
+        if (b.n) { txt(K.areia); B(BODY, 'bold'); doc.text(b.n, ML + pad, yy); }
+        txt(K.creme); B(BODY, 'normal');
         b.ls.forEach(s => { doc.text(s, ML + pad + (b.n ? 9 : 0), yy); yy += LH; });
         yy += 2.4;
       });
@@ -2014,24 +2032,24 @@ async function gerarPDFAvanteza(cliente, sched) {
     const sh = 76;
     if (y + sh > H - 24) newPage(); else y += 4;
     const sy = y;
-    txt(K.ink); D(15);
+    txt(K.marinho); D(15);
     const tw = doc.getTextWidth('Assinaturas');
-    brackets(ML, sy, tw + 12, 13, K.blue, 1.3, 3.2);
+    brackets(ML, sy, tw + 12, 13, K.marinho, 1.3, 3.2);
     doc.text('Assinaturas', ML + 6, sy + 9.2);
-    txt(K.muted); B(8.2, 'normal'); doc.text(`Goiânia – GO, ${dateStr}`, ML, sy + 22);
+    txt(K.suave); B(8.2, 'normal'); doc.text(`Goiânia – GO, ${dateStr}`, ML, sy + 22);
     const sc = (TW - 12) / 2;
     [['CONTRATANTE', cliente.razao, `CNPJ ${cliente.cnpj}`, cliente.rep ? `Rep. legal: ${cliente.rep}` : ''],
      ['CONTRATADA', CONTRATADA.razao, `CNPJ ${CONTRATADA.cnpj}  ·  ${CUR_BRAND.fantasia}`, `Rep. legal: ${CONTRATADA.rep}`]].forEach(([lab, nome, l1, l2], i) => {
       const x = ML + i * (sc + 12), ly = sy + 44;
-      draw(K.ink); doc.setLineWidth(0.4); doc.line(x, ly, x + sc, ly);
-      txt(K.blue); B(6.4, 'bold'); spaced(lab, x, ly - 3, 0.45);
-      txt(K.ink); D(8.4); const nl = doc.splitTextToSize(nome, sc).slice(0, 2); doc.text(nl, x, ly + 6.5);
+      draw(K.marinho); doc.setLineWidth(0.4); doc.line(x, ly, x + sc, ly);
+      txt(K.suave); B(6.4, 'bold'); spaced(lab, x, ly - 3, 0.45);
+      txt(K.marinho); D(8.4); const nl = doc.splitTextToSize(nome, sc).slice(0, 2); doc.text(nl, x, ly + 6.5);
       const off = (nl.length - 1) * 4;
-      txt(K.muted); B(7.2, 'normal');
+      txt(K.suave); B(7.2, 'normal');
       doc.text(doc.splitTextToSize(l1, sc)[0], x, ly + 12 + off);
       if (l2) doc.text(doc.splitTextToSize(l2, sc)[0], x, ly + 16.5 + off);
     });
-    txt(K.muted); B(6.6, 'normal');
+    txt(K.suave); B(6.6, 'normal');
     doc.text('Documento assinado eletronicamente pelas partes, com validade jurídica nos termos da Lei nº 14.063/2020.', ML, sy + 72);
 
     // ── Rodapés ──
@@ -2039,9 +2057,9 @@ async function gerarPDFAvanteza(cliente, sched) {
     for (let pg = 1; pg <= n; pg++) {
       doc.setPage(pg);
       const capa = pg === 1;
-      if (!capa) { draw(K.line); doc.setLineWidth(0.25); doc.line(ML, H - 16, W - MR, H - 16); }
-      fill(K.lime); doc.rect(ML, H - 11.6, 6, 1.5, 'F');
-      txt(capa ? K.white : K.ink); B(7.6, 'bold'); doc.text('Visão para ir além.', ML + 8.5, H - 10.3);
+      if (!capa) { draw(K.areia); doc.setLineWidth(0.4); doc.line(ML, H - 16, W - MR, H - 16); }
+      fill(K.areia); doc.rect(ML, H - 11.6, 6, 1.5, 'F');
+      txt(capa ? K.creme : K.marinho); B(7.6, 'bold'); doc.text('Visão para ir além.', ML + 8.5, H - 10.3);
       D(8); doc.text(`${String(pg).padStart(2, '0')} / ${String(n).padStart(2, '0')}`, W - MR, H - 10.3, { align: 'right' });
     }
 
