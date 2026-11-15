@@ -103,7 +103,6 @@ test('callback: JWT válido emite o token de acesso do app, no fragmento, e o mi
   assert.strictEqual((await fetch(`${base}/api/privado`, { method: 'POST', headers: { authorization: `Bearer ${token}` } })).status, 200);
   const st = await (await fetch(`${base}/api/auth/status`, { headers: { authorization: `Bearer ${token}` } })).json();
   assert.strictEqual(st.authenticated, true);
-  assert.strictEqual(st.central, 'https://app.avanteza.com.br/central');
 
   // Cookie de leitura (imagens): o mesmo do login por código.
   const cookie = r.headers.get('set-cookie');
@@ -177,6 +176,9 @@ test('servidor real (backend/server.js, a entrada da Vercel): /api/sso/callback 
   assert.strictEqual(r.status, 302);
   assert.strictEqual(r.headers.get('location'), '/#sso_erro=invalido');
   assert.strictEqual((await fetch(`${base}/api/sso/entrar`, { redirect: 'manual' })).status, 302);
+  const central = await fetch(`${base}/api/sso/central`, { redirect: 'manual' });
+  assert.strictEqual(central.status, 302);
+  assert.strictEqual(central.headers.get('location'), 'https://app.avanteza.com.br/central');
   assert.strictEqual((await fetch(`${base}/api/sso/outra`)).status, 401);
   assert.strictEqual((await fetch(`${base}/api/content/`)).status, 401);
 });

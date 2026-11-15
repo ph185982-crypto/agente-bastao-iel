@@ -119,8 +119,8 @@ function registraFalha(ip) {
 // ── Middleware ──────────────────────────────────────────────────────────────
 // /api/publico/midia: a Meta baixa as imagens daqui SEM o código do Pedro; a rota só entrega
 // com um token assinado (HMAC) que amarra o conteúdo, o hash aprovado e o slide, e expira.
-// /api/sso/(entrar|callback): login único Avanteza ID — o callback confere o JWT da Central antes de emitir qualquer coisa (ver ssoRota.js).
-const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/sso\/(entrar|callback)$/, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/, /^\/api\/videos\/blob$/];
+// /api/sso/(entrar|callback|central): login único Avanteza ID — o callback confere o JWT da Central antes de emitir qualquer coisa (ver ssoRota.js).
+const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/sso\/(entrar|callback|central)$/, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/, /^\/api\/videos\/blob$/];
 // Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
 // Vídeos: o worker de edição (GitHub Actions) chama /api/videos/worker/* e pede client tokens em /api/videos/blob com o CRON_SECRET.
 // Reciclagem: a coleta diária (GitHub Actions) chama /api/reciclagem/coletar.
@@ -193,7 +193,7 @@ function registrarRotas(app) {
   r.get('/status', async (req, res) => {
     await carregarDono();
     const est = estadoAcesso();
-    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : aberto(est), central: `${require('./avantezaSso').HUB}/central` });
+    res.json({ protected: est === 'protegido', configured: est !== 'nao_configurado', estado: est, authenticated: est === 'protegido' ? !!verify(tokenDe(req)) : aberto(est) });
   });
   r.post('/login', async (req, res) => {
     await carregarDono();

@@ -57,7 +57,7 @@ A tela de acesso tem o botão **Entrar com Avanteza**; o código de acesso conti
 `AVANTEZA_HUB_URL` é opcional (padrão `https://app.avanteza.com.br`). O login único depende do app estar em modo
 protegido: o token de acesso é assinado com o código (`APP_ACCESS_CODE` ou o código criado no app). Com
 `APP_ACCESS_MODE=public` o app fica aberto e a tela de acesso não aparece. O cabeçalho tem o atalho **Central**
-(`<AVANTEZA_HUB_URL>/central`).
+(`/api/sso/central` → `<AVANTEZA_HUB_URL>/central`).
 
 ### Identidade visual
 

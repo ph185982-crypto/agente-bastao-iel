@@ -6,7 +6,7 @@
 // com o token no FRAGMENTO (#sso=...). O fragmento não vai para o servidor nem para registros de acesso;
 // static/auth.js lê, guarda e limpa. Erros voltam como #sso_erro=<código curto>.
 const access = require('./access');
-const { verifyAvantezaToken, authorizeUrl } = require('./avantezaSso');
+const { verifyAvantezaToken, authorizeUrl, HUB } = require('./avantezaSso');
 
 const APP_ID = 'conteudo';
 
@@ -37,6 +37,9 @@ function redirecionar(res, destino) {
 function registrar(app, { keys } = {}) {
   // Início do login: manda para a Central, que devolve em /api/sso/callback.
   app.get('/api/sso/entrar', (req, res) => redirecionar(res, authorizeUrl(APP_ID, caminhoSeguro(req.query.return))));
+
+  // Atalho do cabeçalho para a Central (a URL da Central fica só no servidor: AVANTEZA_HUB_URL).
+  app.get('/api/sso/central', (req, res) => redirecionar(res, `${HUB}/central`));
 
   app.get('/api/sso/callback', async (req, res) => {
     const erro = (codigo) => redirecionar(res, `/#sso_erro=${codigo}`);

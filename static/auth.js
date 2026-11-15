@@ -4,7 +4,6 @@
 // Entrada principal: login único "Avanteza ID" (a Central autentica e /api/sso/callback devolve o token
 // no fragmento #sso=...). O código de acesso continua como alternativa de reserva.
 (function () {
-  const CENTRAL_PADRAO = 'https://app.avanteza.com.br/central';
   // Aparência das telas de acesso (identidade Avanteza: marinho, creme, areia, laranja; sem sombra, borda de 1px, raio 6px).
   const FONTE = "Manrope,'Manrope PD',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
   const FUNDO = `position:fixed;inset:0;z-index:9999;background:#0B1B33;display:flex;align-items:center;justify-content:center;padding:24px;font-family:${FONTE}`;
@@ -167,5 +166,5 @@
     })
     .catch(() => { window.__picoAuth = { protected: null }; });
 
-  window.PicoAuth = { central: () => window.__picoAuth?.central || CENTRAL_PADRAO, sair: () => { gravaToken(''); originalFetch('/api/auth/sair', { method: 'POST' }).finally(() => location.reload()); }, pedirCodigo, criarCodigo };
+  window.PicoAuth = { sair: () => { gravaToken(''); originalFetch('/api/auth/sair', { method: 'POST' }).finally(() => location.reload()); }, pedirCodigo, criarCodigo };
 })();
