@@ -1,6 +1,6 @@
 // Gasto com IA paga (OpenAI): preço por modelo, registro por chamada e teto mensal. Ao chegar no teto (ou passar do ritmo do
 // dia), a ferramenta deixa de chamar a OpenAI e segue com as IAs gratuitas até o mês virar. Nada é cobrado sem estar aqui.
-// Teto: IA_TETO_MENSAL_USD (padrão 30). Ritmo do dia: até o dobro da cota diária (teto ÷ 30 × 2), para um dia cheio não
+// Teto: IA_TETO_MENSAL_USD (padrão 5, pedido do Pedro em 15/11 para gastar menos). Ritmo do dia: até o dobro da cota diária (teto ÷ 30 × 2), para um dia cheio não
 // queimar o mês. Registro em config.gasto_ia = { mes, usd, chamadas, por_dia: { 'AAAA-MM-DD': usd }, por_modelo }.
 const { armazem } = require('./armazem');
 const { ACCOUNT } = require('./account');
@@ -10,9 +10,10 @@ const PRECOS = {
   'gpt-5.5': { entrada: 5, cache: 0.5, saida: 30 },
   'gpt-5.4': { entrada: 2.5, cache: 0.25, saida: 15 },
   'gpt-5.4-mini': { entrada: 0.75, cache: 0.075, saida: 4.5 },
+  'gpt-5.4-nano': { entrada: 0.2, cache: 0.02, saida: 1.25 },
   'gpt-4o-mini': { entrada: 0.15, cache: 0.075, saida: 0.6 },
 };
-const teto = () => (Number(process.env.IA_TETO_MENSAL_USD) > 0 ? Number(process.env.IA_TETO_MENSAL_USD) : 30);
+const teto = () => (Number(process.env.IA_TETO_MENSAL_USD) > 0 ? Number(process.env.IA_TETO_MENSAL_USD) : 5);
 const conta = () => ACCOUNT.ig_id;
 const OFFSET_MS = 3 * 3600000; // Brasília
 const diaSP = (t) => new Date(t - OFFSET_MS).toISOString().slice(0, 10);

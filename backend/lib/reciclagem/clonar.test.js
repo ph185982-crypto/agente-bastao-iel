@@ -258,3 +258,16 @@ test('nosso formato em inglês: uma chamada só de tradução, na IA gratuita', 
   assert.strictEqual(CLx.ehPortugues('Você não precisa de um negócio grande para ter um negócio que dá dinheiro.'), true);
   assert.deepStrictEqual(CLx.limparTrechos([{ texto: '1/10' }, { texto: '@codiesanchez' }, { texto: 'Swipe →' }, { texto: 'Texto de verdade aqui.' }], { handle: 'codiesanchez' }).map((t) => t.texto), ['Texto de verdade aqui.']);
 });
+
+test('citação: a linha de crédito do autor da frase sai e as aspas lidas como "66" também (caso Lori Greiner, 15/11)', () => {
+  const C = require('./clonar');
+  const ps = [{ texto: '66 Entrepreneurs are the only people who will work 80 hours a week to avoid working 40 hours a week.' }, { texto: 'Lori Greiner TV Personality and Entrepreneur' }];
+  const out = C.semCreditoDeCitacao(ps);
+  assert.strictEqual(out.length, 1);
+  assert.match(out[0].texto, /^Entrepreneurs are/);
+  assert.ok(C.ehCredito('— Steve Jobs')); assert.ok(C.ehCredito('Warren Buffett, CEO da Berkshire'));
+  assert.ok(!C.ehCredito('Você precisa vender mais'));
+  // sem linha de crédito, nada muda (número de verdade fica)
+  const normal = [{ texto: 'Título' }, { texto: '66 empreendedores fecharam a empresa em 2024.' }, { texto: 'Fonte: Sebrae.' }];
+  assert.deepStrictEqual(C.semCreditoDeCitacao(normal), normal);
+});

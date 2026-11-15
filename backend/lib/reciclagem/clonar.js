@@ -149,6 +149,36 @@ function limparTrechos(trechos, { handle = '', nome = '' } = {}) {
     return !CTA_AUTOR_RE.test(t);
   });
 }
+// Post de citação: a linha de crédito ("Lori Greiner TV Personality and Entrepreneur", "— Steve Jobs", "Warren Buffett,
+// CEO da Berkshire") não pode ir para a nossa página (pedido do Pedro, 15/11). É curta, sem verbo de frase, quase toda
+// em Maiúsculas e sem ponto final. Quando a página é citação, as aspas grandes que a OCR lê como "66"/"99" também saem.
+const PALAVRA_MIN = /^(de|da|do|das|dos|e|and|of|the|at|em|na|no|&|-|–|—|,)$/i;
+function ehCredito(texto) {
+  const t = String(texto || '').trim();
+  if (!t) return false;
+  if (/^[—–-]\s*\p{Lu}/u.test(t) && t.split(/\s+/).length <= 10) return true;
+  if (/[.!?:;"”]$/.test(t)) return false;
+  const ws = t.replace(/[,|·]/g, ' ').split(/\s+/).filter(Boolean);
+  if (ws.length < 2 || ws.length > 9) return false;
+  const conta = ws.filter((w) => !PALAVRA_MIN.test(w));
+  const maiusc = conta.filter((w) => /^\p{Lu}/u.test(w)).length;
+  return conta.length >= 2 && maiusc / conta.length >= 0.75 && /^\p{Lu}\p{Ll}+$/u.test(ws[0]) && /^\p{Lu}/u.test(ws[1]);
+}
+function semCreditoDeCitacao(paras) {
+  const ps = (paras || []).filter((p) => String(p.texto || '').trim());
+  if (ps.length < 2) return ps;
+  const ult = ps[ps.length - 1];
+  if (!ehCredito(ult.texto)) return ps;
+  const resto = ps.slice(0, -1);
+  // aspas grandes lidas como "66"/"99"/“ no começo da citação e ”/"99" no fim
+  return resto.map((p, i) => {
+    let t = String(p.texto);
+    if (i === 0) t = t.replace(/^\s*(?:66|99|[“”"«])\s*(?=\p{L})/u, '');
+    if (i === resto.length - 1) t = t.replace(/\s*(?:99|66|[“”"»])\s*$/u, '');
+    return { ...p, texto: t.trim() };
+  });
+}
+
 function tirarAutorDe(t, handle) {
   let s = String(t || '');
   if (handle) s = s.replace(new RegExp(`@?${handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), '');
@@ -236,7 +266,7 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
         if (cl.modo === 'nosso') {
           // NOSSO FORMATO, no automático: o texto vem da leitura da imagem (OCR, sem IA), a assinatura do autor sai por regra,
           // e só se o texto não estiver em português entra UMA chamada de tradução na IA gratuita.
-          const paras = cl.slides.map((s) => limparTrechos(s.paragrafos || [], { handle: handleAutor, nome: item?.conta?.nome }));
+          const paras = cl.slides.map((s) => semCreditoDeCitacao(limparTrechos(s.paragrafos || [], { handle: handleAutor, nome: item?.conta?.nome })));
           const tudo = [...paras.flat().map((p) => p.texto), cl.legenda_original || ''].join(' ');
           let trad = null;
           if (!ehPortugues(tudo)) trad = await traduzirFiel(paras.map((ps) => ({ paragrafos: ps })), cl.legenda_original, deps.pedirJson || require('../llmJson').pedirJson);
@@ -261,7 +291,7 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
           const slides = [];
           for (const [i, s] of cl.slides.entries()) {
             // Página só de texto: refeita no nosso padrão (página branca, nossa fonte, nosso @), sem depender da leitura das caixas.
-            const textosPt = (cl.visao[i].textos || []).map((t) => ({ texto: String(t.traducao || t.original || '').trim(), negrito: !!t.negrito })).filter((t) => t.texto);
+            const textosPt = semCreditoDeCitacao((cl.visao[i].textos || []).map((t) => ({ texto: String(t.traducao || t.original || '').trim(), negrito: !!t.negrito })).filter((t) => t.texto));
             if (cl.modo === 'nosso_visao' && cl.visao[i].tipo_pagina === 'texto' && textosPt.length) { // formato original: nunca refaz a página
               slides.push({ titulo: textosPt[0].texto.slice(0, 160), texto: textosPt.slice(1).map((t) => t.texto).join(' ').slice(0, 700), blocos: [], pagina: textosPt });
               continue;
@@ -333,4 +363,4 @@ async function passo(id, { orcamentoMs = 45000, deps = {} } = {}) {
 
 const resumo = (c) => ({ id: c.id, titulo: c.titulo, estado: c.clone?.estado, etapa: c.clone?.etapa, slides: c.clone?.n ?? null, lidos: c.clone?.slides?.length ?? 0, aviso: c.clone?.aviso || null, motivo: c.clone?.motivo || null, erro: (c.clone?.erros || []).slice(-1)[0] || null, concluido: c.clone?.estado !== 'em_andamento' });
 
-module.exports = { ehPortugues, limparTrechos, tirarAutorDe, MODOS, FUNDOS, SISTEMA_TRADUCAO_FIEL, CANAIS, ETAPAS, autorizar, buscarOriginal, faixaSemTexto, lerSlide, traduzir, montar, iniciar, passo, resumo, SISTEMA_TRADUCAO };
+module.exports = { ehCredito, semCreditoDeCitacao, ehPortugues, limparTrechos, tirarAutorDe, MODOS, FUNDOS, SISTEMA_TRADUCAO_FIEL, CANAIS, ETAPAS, autorizar, buscarOriginal, faixaSemTexto, lerSlide, traduzir, montar, iniciar, passo, resumo, SISTEMA_TRADUCAO };

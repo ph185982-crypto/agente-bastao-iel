@@ -55,7 +55,7 @@ test('cascata: roteiro e capas vão ao modelo forte, ângulo e júri ao barato, 
   try {
     const pedir = (o) => llmJson.pedirJson({ sistema: 'Instrução fixa da etapa.', usuario: 'oi', maxTokens: 300, preferirMelhor: true, ...o });
     assert.strictEqual((await pedir({ pago: 'premium', etapa: 'roteiro' })).llm.model, 'gpt-5.4');
-    assert.strictEqual((await pedir({ pago: 'mini', etapa: 'juri' })).llm.model, 'gpt-5.4-mini');
+    assert.strictEqual((await pedir({ pago: 'mini', etapa: 'juri' })).llm.model, 'gpt-5.4-nano');
     assert.ok(pedidos.every((p) => /^pd-/.test(p.prompt_cache_key)), 'chave de cache do prompt em toda chamada à OpenAI');
     assert.ok(pedidos.every((p) => p.reasoning_effort === 'low'), 'raciocínio curto');
     await assert.rejects(pedir({ pago: 'nunca', etapa: 'painel' }), 'painel nunca usa a OpenAI (aqui não há IA gratuita)');

@@ -46,8 +46,9 @@ const PROVIDERS = [
     name: 'openai',
     envKey: 'OPENAI_API_KEY',
     baseURL: undefined, // default da SDK
-    large: ['gpt-5.4-mini', 'gpt-4o-mini'],
-    small: ['gpt-5.4-mini', 'gpt-4o-mini'],
+    // Reserva paga de TEXTO no modelo mais barato (nano: US$ 0,20/1,25 por milhão; o mini custa ~4x). Pedido do Pedro, 15/11.
+    large: ['gpt-5.4-nano', 'gpt-5.4-mini'],
+    small: ['gpt-5.4-nano', 'gpt-5.4-mini'],
     paid: true,
     discover: false,
   },
@@ -249,7 +250,7 @@ async function cascade(opts, requestOptions) {
   // OpenAI (modelo barato) se todas falharem.
   const openaiP = (opts.pago === 'premium' || opts.pago === 'mini') && process.env.IA_PREMIUM !== '0' ? providers.find((p) => p.name === 'openai') : null;
   if (openaiP) {
-    const modelo = opts.pago === 'premium' ? (process.env.IA_PREMIUM_MODELO || 'gpt-5.4') : (process.env.IA_MINI_MODELO || 'gpt-5.4-mini');
+    const modelo = opts.pago === 'premium' ? (process.env.IA_PREMIUM_MODELO || 'gpt-5.4') : (process.env.IA_MINI_MODELO || 'gpt-5.4-nano');
     try { return await attempt(openaiP, modelo); } catch (err) { remember(openaiP, modelo, err); } // nunca derruba: cai na cascata
   }
 
