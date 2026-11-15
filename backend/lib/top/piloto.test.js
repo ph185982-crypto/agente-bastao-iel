@@ -123,23 +123,23 @@ test('aprovação durante a rodada não some da agenda; rodada simultânea é re
   assert.strictEqual(outra.executou, true); // a trava foi liberada no fim
 });
 
-test('relógio: 1 min com produção; parado dorme até o próximo compromisso (5 a 45 min); correntes simultâneas caem na mesma chave', async () => {
+test('relógio: 5 min com produção; parado dorme até o próximo compromisso (10 a 50 min); correntes simultâneas caem na mesma chave', async () => {
   const R = require('./relogio'); const t = Date.parse('2026-10-29T10:00:05Z');
   const ativo = R.proximo({ avancados: [{ id: 'x', estado: 'em_andamento' }] }, t);
-  assert.strictEqual(ativo.alvo, Date.parse('2026-10-29T10:01:00Z'));
+  assert.strictEqual(ativo.alvo, Date.parse('2026-10-29T10:05:00Z'));
   assert.strictEqual(R.proximo({ avancados: [{ id: 'x', estado: 'em_andamento' }] }, t + 20000).chave, ativo.chave);
-  // parado e sem compromisso informado: teto de 45 min, na grade (duas correntes caem na mesma chave)
-  assert.strictEqual(R.proximo({ avancados: [] }, t).alvo, Date.parse('2026-10-29T10:30:00Z'));
+  // parado e sem compromisso informado: teto de 50 min, na grade (duas correntes caem na mesma chave)
+  assert.strictEqual(R.proximo({ avancados: [] }, t).alvo, Date.parse('2026-10-29T10:50:00Z'));
   assert.strictEqual(R.proximo(null, t + 60000).chave, R.proximo(null, t).chave);
-  // compromisso em 20 min: acorda nele; em 2 min: espera o mínimo de 5; em 3 h: fica no teto de 45 min
+  // compromisso em 20 min: acorda nele; em 2 min: espera o mínimo de 10; em 3 h: fica no teto de 50 min
   assert.strictEqual(R.proximo({ proxima_em: Date.parse('2026-10-29T10:20:00Z') }, t).alvo, Date.parse('2026-10-29T10:20:00Z'));
-  assert.strictEqual(R.proximo({ proxima_em: Date.parse('2026-10-29T10:02:00Z') }, t).alvo, Date.parse('2026-10-29T10:06:00Z'));
-  assert.ok(R.proximo({ proxima_em: Date.parse('2026-10-29T13:00:00Z') }, t).alvo <= t + 45 * 60000);
+  assert.strictEqual(R.proximo({ proxima_em: Date.parse('2026-10-29T10:02:00Z') }, t).alvo, Date.parse('2026-10-29T10:11:00Z'));
+  assert.ok(R.proximo({ proxima_em: Date.parse('2026-10-29T13:00:00Z') }, t).alvo <= t + 50 * 60000);
   const nudge = []; assert.deepStrictEqual(await R.agendarEm(Date.parse('2026-10-29T10:15:00Z'), { agora: t, enviar: async (m, o) => nudge.push(o) }), { alvo: Date.parse('2026-10-29T10:15:00Z') });
   assert.strictEqual(nudge[0].delaySeconds, 895);
   assert.strictEqual(await R.agendarEm(Date.parse('2026-10-29T13:00:00Z'), { agora: t, enviar: async () => {} }), null); // longe: o tique normal chega antes
   const enviados = []; await R.agendarProxima({ criado: { id: 'n' } }, { agora: t, enviar: async (m, o) => enviados.push(o) });
-  assert.strictEqual(enviados[0].delaySeconds, 55);
+  assert.strictEqual(enviados[0].delaySeconds, 295);
   assert.ok(await R.agendarProxima({}, { agora: t, enviar: async () => { throw new Error('fila fora'); } }) === null);
 });
 

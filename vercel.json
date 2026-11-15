@@ -78,5 +78,11 @@
       "path": "/api/top/piloto/rodada",
       "schedule": "40 16 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "claude/*": false
+    }
+  }
 }
