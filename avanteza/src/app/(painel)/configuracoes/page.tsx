@@ -2,7 +2,7 @@ import { userDb, adminDb } from "@/lib/db";
 import { Flash } from "@/components/Flash";
 import { Submit } from "@/components/Submit";
 import { CopyButton } from "@/components/CopyButton";
-import { saveSettings, savePolicy, changePassword } from "@/app/actions";
+import { saveSettings, savePolicy, changePassword, sendTestEmail } from "@/app/actions";
 import { ACTION_LABEL, ACTION_TYPES } from "@/lib/executor/policy";
 import { appUrl, missingConfig } from "@/lib/env";
 import { redirectUri } from "@/lib/oauth";
@@ -39,6 +39,9 @@ export default async function Configuracoes({ searchParams }: { searchParams: Pr
         <div className="field"><label htmlFor="ma">Máximo de ações automáticas por cliente/dia (acima disso, vira pedido de aprovação)</label><input id="ma" name="max_auto_actions_per_day" inputMode="numeric" defaultValue={settings?.max_auto_actions_per_day ?? 20} /></div>
         <div className="field"><label htmlFor="ae">E-mail para alertas</label><input id="ae" name="alert_email" type="email" defaultValue={settings?.alert_email ?? ""} placeholder="(usa ALERT_EMAIL_TO se vazio)" /></div>
         <Submit className="btn">Salvar</Submit>
+      </form>
+      <form action={sendTestEmail} style={{ marginTop: 8 }}>
+        <Submit className="btn btn-sm btn-ghost">Enviar e-mail de teste</Submit>
       </form>
 
       <h2>Modos padrão por tipo de ação</h2>

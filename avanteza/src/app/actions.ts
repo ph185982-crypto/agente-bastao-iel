@@ -369,3 +369,21 @@ export async function runAgentNow(fd: FormData) {
   revalidatePath("/relatorios");
   flash(path, msg);
 }
+
+export async function sendTestEmail(fd: FormData) {
+  await requireAdmin();
+  const { EmailChannel } = await import("@/lib/alerts/channels");
+  const ch = new EmailChannel();
+  if (!ch.enabled()) flash("/configuracoes", "E-mail não configurado (RESEND_API_KEY / ALERT_EMAIL_FROM).", "erro");
+  const { data: settings } = await adminDb().from("settings").select("alert_email").single();
+  try {
+    await ch.send(
+      [{ clientName: "Avanteza", title: "E-mail de teste", message: "Se você recebeu esta mensagem, os alertas por e-mail estão funcionando.", severity: "info" }],
+      settings?.alert_email,
+    );
+  } catch (e) {
+    flash("/configuracoes", `Falha ao enviar: ${errMsg(e)}`, "erro");
+  }
+  void fd;
+  flash("/configuracoes", "E-mail de teste enviado. Confira a caixa de entrada (e o spam).");
+}
