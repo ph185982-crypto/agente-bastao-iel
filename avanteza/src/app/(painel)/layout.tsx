@@ -1,6 +1,7 @@
 import { Shell } from "@/components/Shell";
 import { requireAdmin, currentSession } from "@/lib/auth";
 import { userDb } from "@/lib/db";
+import { podeVerDashboards } from "@/lib/dashboards/nav";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function PainelLayout({ children }: { children: React.React
       dryRun={Boolean(settings.data?.dry_run)}
       reviewer={reviewer}
       admin={sess?.role === "admin"}
+      dashboards={podeVerDashboards(sess)}
       who={sess?.name || sess?.email}
     >
       {children}

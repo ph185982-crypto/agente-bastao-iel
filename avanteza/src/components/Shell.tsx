@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppShell, type NavGroup } from "./shell/AppShell";
-import { logout } from "@/app/actions";
+import { ITEM_DASHBOARDS } from "@/lib/dashboards/nav";
+import { SairButton } from "@/components/shell/SairButton";
 
 /** Casca do painel Marketplaces (admin): sidebar de vidro agrupada + faixas de estado. */
 export function Shell({
@@ -10,6 +11,7 @@ export function Shell({
   dryRun,
   reviewer = false,
   admin = false,
+  dashboards = false,
   who,
 }: {
   children: React.ReactNode;
@@ -18,10 +20,12 @@ export function Shell({
   dryRun: boolean;
   reviewer?: boolean;
   admin?: boolean;
+  /** Mostra "Dashboards" como primeiro item (administrador e revisor). */
+  dashboards?: boolean;
   who?: string;
 }) {
   const groups: NavGroup[] = [
-    { items: [{ href: "/central", label: "Central", icon: "grid", exact: true }] },
+    { items: [...(dashboards ? [ITEM_DASHBOARDS] : []), { href: "/central", label: "Central", icon: "grid", exact: true }] },
     {
       label: "Operação",
       items: [
@@ -71,7 +75,7 @@ export function Shell({
       bottom={
         <>
           {who && <div className="sb-who" title={who}>{who}</div>}
-          <form action={logout}><button className="btn btn-sm btn-ghost">Sair</button></form>
+          <SairButton />
         </>
       }
     >

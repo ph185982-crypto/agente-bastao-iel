@@ -7,6 +7,12 @@ import { useEffect, useState } from "react";
 import { Logo } from "../Logo";
 import { Icon } from "./Icons";
 import { ThemeToggle } from "../ThemeToggle";
+import { SIDEBAR_KEY, type SidebarState } from "@/lib/theme";
+
+function lembrarMenu(v: SidebarState) {
+  try { localStorage.setItem(SIDEBAR_KEY, v); } catch { /* navegação privada: vale só nesta aba */ }
+  try { document.cookie = `${SIDEBAR_KEY}=${v}; path=/; max-age=31536000; samesite=lax`; } catch { /* sem cookie */ }
+}
 
 export type NavItem = { href: string; label: string; icon: string; badge?: number; exact?: boolean };
 export type NavGroup = { label?: string; items: NavItem[] };
@@ -34,6 +40,17 @@ export function AppShell({
 }) {
   const path = usePathname() ?? "/";
   const [open, setOpen] = useState(false);
+  // O visual do menu recolhido vem do atributo data-sidebar no <html>, posto por um script antes da pintura (sem flash).
+  // Aqui só espelhamos o estado para o botão, o aria-pressed e os rótulos de dica.
+  const [recolhido, setRecolhido] = useState(false);
+  useEffect(() => setRecolhido(document.documentElement.getAttribute("data-sidebar") === "collapsed"), []);
+  const alternarMenu = () => {
+    const prox: SidebarState = recolhido ? "expanded" : "collapsed";
+    if (prox === "collapsed") document.documentElement.setAttribute("data-sidebar", "collapsed");
+    else document.documentElement.removeAttribute("data-sidebar");
+    lembrarMenu(prox);
+    setRecolhido(prox === "collapsed");
+  };
   const current = (i: NavItem) => (i.exact ? path === i.href : path === i.href || path.startsWith(i.href + "/"));
   // Em vários itens com prefixo comum, vale o mais específico.
   const all = groups.flatMap((g) => g.items);
@@ -63,6 +80,7 @@ export function AppShell({
             </Link>
             {tag && <span className="pill pill-orange">{tag}</span>}
           </div>
+          <Link href={homeHref} className="sb-mark" aria-label="Início"><span aria-hidden="true">a<i /></span></Link>
           <ThemeToggle className="sb-theme" />
           <button type="button" className="icon-btn sb-close" aria-label="Fechar menu" onClick={() => setOpen(false)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
@@ -74,15 +92,26 @@ export function AppShell({
             <div key={gi} role="group" aria-label={g.label}>
               {g.label && <div className="sb-label">{g.label}</div>}
               {g.items.map((i) => (
-                <Link key={i.href} href={i.href} className="sb-link" aria-current={i.href === best ? "page" : undefined}>
+                <Link key={i.href} href={i.href} className="sb-link" title={recolhido ? i.label : undefined} aria-current={i.href === best ? "page" : undefined}>
                   <Icon name={i.icon} />
-                  <span>{i.label}</span>
+                  <span className="sb-text">{i.label}</span>
                   {i.badge ? <span className="sb-badge" aria-label={`${i.badge} pendentes`}>{i.badge}</span> : null}
                 </Link>
               ))}
             </div>
           ))}
         </nav>
+        <button
+          type="button"
+          className="sb-collapse"
+          onClick={alternarMenu}
+          aria-pressed={recolhido}
+          aria-controls="menu-lateral"
+          title={recolhido ? "Expandir menu" : "Recolher menu"}
+        >
+          <Icon name={recolhido ? "chevrons-right" : "chevrons-left"} />
+          <span className="sb-text">{recolhido ? "Expandir menu" : "Recolher menu"}</span>
+        </button>
         {bottom && <div className="sb-foot">{bottom}</div>}
       </aside>
       <div className="shell-body">

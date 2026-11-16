@@ -452,3 +452,11 @@ create table if not exists avanteza.client_user_clients (
   primary key (user_email, client_id)
 );
 create index if not exists client_user_clients_client_idx on avanteza.client_user_clients(client_id);
+
+-- Cache do painel Dashboards (respostas da Meta Marketing API por período; TTL de ~15 min aplicado no código).
+-- Só guarda agregados de marketing; nenhum segredo. Idempotente.
+create table if not exists avanteza.dashboard_cache (
+  key text primary key,
+  payload jsonb not null,
+  fetched_at timestamptz not null default now()
+);

@@ -17,6 +17,9 @@ const P: Record<string, React.ReactNode> = {
   user: <><circle cx="12" cy="8.5" r="3.8" /><path d="M4.5 20c.7-4 3.5-6 7.5-6s6.8 2 7.5 6" /></>,
   logout: <><path d="M14 4.5h3.5A2.5 2.5 0 0 1 20 7v10a2.5 2.5 0 0 1-2.5 2.5H14" /><path d="M10 8.5 5.5 12 10 15.5M5.5 12H15" /></>,
   menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
+  "chevrons-left": <><path d="m11 7-5 5 5 5" /><path d="m18 7-5 5 5 5" /></>,
+  "chevrons-right": <><path d="m6 7 5 5-5 5" /><path d="m13 7 5 5-5 5" /></>,
+  dashboard: <><rect x="3.5" y="3.5" width="7.5" height="9" rx="2" /><rect x="13" y="3.5" width="7.5" height="5.5" rx="2" /><rect x="13" y="11" width="7.5" height="9.5" rx="2" /><rect x="3.5" y="14.5" width="7.5" height="6" rx="2" /></>,
   close: <><path d="M6 6l12 12M18 6 6 18" /></>,
 };
 

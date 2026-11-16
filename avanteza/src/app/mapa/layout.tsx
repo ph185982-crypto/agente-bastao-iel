@@ -5,7 +5,7 @@ import { AppShell, type NavGroup } from "@/components/shell/AppShell";
 import { CompanySwitch } from "@/components/mapa/CompanySwitch";
 import { navFor } from "@/lib/mapa/nav";
 import { exitPreview } from "./actions";
-import { logout } from "@/app/actions";
+import { SairButton } from "@/components/shell/SairButton";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Mapa — Avanteza" };
@@ -34,7 +34,7 @@ export default async function MapaLayout({ children }: { children: React.ReactNo
           </div>
         ) : undefined
       }
-      bottom={!scope.previewBy ? <form action={logout}><button className="btn btn-sm btn-ghost">Sair</button></form> : undefined}
+      bottom={!scope.previewBy ? <SairButton /> : undefined}
     >
       {children}
     </AppShell>

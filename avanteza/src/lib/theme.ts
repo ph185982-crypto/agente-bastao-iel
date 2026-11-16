@@ -10,3 +10,11 @@ if(t!=="light"&&t!=="dark"){t=null;try{var m=document.cookie.match(/(?:^|; )${TH
 if(!t){try{t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}catch(e){t="dark"}}
 d.setAttribute("data-theme",t)})();`;
 
+
+// Menu lateral recolhido (só telas largas): lembrado em localStorage e, se não houver, em cookie. O script roda no <head>,
+// antes da pintura, e põe data-sidebar="collapsed" no <html>; o CSS faz o resto (sem flash e sem esperar a hidratação).
+export const SIDEBAR_KEY = "avanteza-menu";
+export type SidebarState = "expanded" | "collapsed";
+export const SIDEBAR_INIT_SCRIPT = `(function(){var d=document.documentElement,v=null;try{v=localStorage.getItem("${SIDEBAR_KEY}")}catch(e){}
+if(v!=="collapsed"&&v!=="expanded"){v=null;try{var m=document.cookie.match(/(?:^|; )${SIDEBAR_KEY}=(collapsed|expanded)/);if(m)v=m[1]}catch(e){}}
+if(v==="collapsed")d.setAttribute("data-sidebar","collapsed")})();`;

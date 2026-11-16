@@ -8,7 +8,8 @@ import { Flash } from "@/components/Flash";
 import { AppShell } from "@/components/shell/AppShell";
 import { PageHeader } from "@/components/shell/GlassCard";
 import { currentSession } from "@/lib/auth";
-import { logout } from "@/app/actions";
+import { SairButton } from "@/components/shell/SairButton";
+import { ITEM_DASHBOARDS } from "@/lib/dashboards/nav";
 
 export const dynamic = "force-dynamic";
 const ROLE: Record<string, string> = { admin: "Administrador (tudo)", member: "Membro (apps marcados)", reviewer: "Revisor (só leitura em Marketplaces)" };
@@ -40,12 +41,12 @@ export default async function Usuarios({ searchParams }: { searchParams: Promise
   const sess = await currentSession();
   return (
     <AppShell
-      groups={[{ items: [{ href: "/central", label: "Todas as ferramentas", icon: "grid", exact: true }, { href: "/usuarios", label: "Usuários e acessos", icon: "users" }] }]}
+      groups={[{ items: [ITEM_DASHBOARDS, { href: "/central", label: "Todas as ferramentas", icon: "grid", exact: true }, { href: "/usuarios", label: "Usuários e acessos", icon: "users" }] }]}
       homeHref="/central"
       bottom={
         <>
           <div className="sb-who" title={sess?.email}>{sess?.name || sess?.email}</div>
-          <form action={logout}><button className="btn btn-sm btn-ghost">Sair</button></form>
+          <SairButton />
         </>
       }
     >

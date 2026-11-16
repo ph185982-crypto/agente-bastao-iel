@@ -103,6 +103,12 @@ TEST_DATABASE_URL=postgres://postgres@localhost:54329/mapa_test npm test        
 Sem `TEST_DATABASE_URL`, os testes que precisam de banco são ignorados (os demais rodam). URL `localhost` em `DATABASE_URL` usa o driver `pg`
 (só desenvolvimento); produção segue na Neon. Acesso do cliente: Clientes → cliente → “Acesso do cliente” (a senha aparece uma vez).
 
+## Dashboards e menu recolhível
+
+Aba inicial `/dashboards` (admin/revisor): comercial e financeiro do Vendedor IA, marketing da Meta Marketing API (somente leitura),
+cache de ~15 min. Variáveis: `META_ACCESS_TOKEN`, `AVANTEZA_METRICS_KEY`, `VENDEDORIA_URL` (opcional). Dados simulados só em
+desenvolvimento com `DASHBOARDS_FIXTURE=1`. Detalhes em `docs/dashboards.md`.
+
 ## Variações (cor/tamanho)
 - Mercado Livre: estoque por variação; preço vale para todas as variações (o ML exige enviar todas).
 - Shopee: preço e estoque por modelo; sem modelo, o preço vale para todos.

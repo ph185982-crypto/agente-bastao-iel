@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { canUseApp } from "@/lib/session";
+import { ITEM_DASHBOARDS, podeVerDashboards } from "@/lib/dashboards/nav";
 import { apps, ssoEnabled } from "@/lib/apps";
 import { adminDb } from "@/lib/db";
 import { AppShell } from "@/components/shell/AppShell";
 import { GlassCard, PageHeader } from "@/components/shell/GlassCard";
 import { Flash } from "@/components/Flash";
-import { logout } from "@/app/actions";
+import { SairButton } from "@/components/shell/SairButton";
 
 export const dynamic = "force-dynamic";
 
@@ -29,12 +30,12 @@ export default async function Central({ searchParams }: { searchParams: Promise<
   const first = (sess.name || sess.email.split("@")[0]).split(" ")[0];
   return (
     <AppShell
-      groups={[{ items: [{ href: "/central", label: "Todas as ferramentas", icon: "grid", exact: true }, ...(sess.role === "admin" ? [{ href: "/usuarios", label: "Usuários e acessos", icon: "users" }] : [])] }]}
+      groups={[{ items: [...(podeVerDashboards(sess) ? [ITEM_DASHBOARDS] : []), { href: "/central", label: "Todas as ferramentas", icon: "grid", exact: true }, ...(sess.role === "admin" ? [{ href: "/usuarios", label: "Usuários e acessos", icon: "users" }] : [])] }]}
       homeHref="/central"
       bottom={
         <>
           <div className="sb-who" title={sess.email}>{sess.name || sess.email}</div>
-          <form action={logout}><button className="btn btn-sm btn-ghost">Sair</button></form>
+          <SairButton />
         </>
       }
     >
