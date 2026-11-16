@@ -122,16 +122,16 @@ export interface OpcoesGraph extends Pick<RetryOptions, "sleep" | "fetchImpl" | 
   tentativas?: number;
 }
 
-const CODIGOS_TRANSITORIOS = new Set([1, 2, 4, 17, 32, 341, 613]);
+export const CODIGOS_TRANSITORIOS = new Set([1, 2, 4, 17, 32, 341, 613]);
 const CODIGOS_TOKEN = new Set([102, 190]);
 const CODIGOS_PERMISSAO = new Set([10, 200, 294]);
 
-interface ErroGraph { message?: string; code?: number; is_transient?: boolean; error_subcode?: number }
-function erroGraph(e: ApiError): ErroGraph {
+export interface ErroGraph { message?: string; code?: number; is_transient?: boolean; error_subcode?: number }
+export function erroGraph(e: ApiError): ErroGraph {
   const b = e.body as { error?: ErroGraph } | null;
   return b && typeof b === "object" && b.error && typeof b.error === "object" ? b.error : {};
 }
-const limiteDeUso = (c?: number) => c === 4 || c === 17 || c === 32 || c === 613 || (c != null && c >= 80000 && c <= 80014);
+export const limiteDeUso = (c?: number) => c === 4 || c === 17 || c === 32 || c === 613 || (c != null && c >= 80000 && c <= 80014);
 
 /** Traduz erros da Meta em mensagens curtas em português, sem detalhes internos. */
 export function traduzirErroMeta(e: unknown): MetaErro {

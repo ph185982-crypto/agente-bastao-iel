@@ -66,10 +66,25 @@ Mesmo domínio e mesmo `/login`; o usuário de cliente (papel `client`) cai em `
 - **Plano de 12 meses**: `src/lib/mapa/plan.ts` (função pura) gera as 4 fases e as ações por tipo a partir de `start_date`; botão admin “Gerar plano”.
 - **Reuniões → ações**: `ingestMeeting()` (`src/lib/mapa/meetings.ts`) usa `src/lib/ai` (método `extract`, saída validada por zod). Sem `ANTHROPIC_API_KEY`
   a reunião fica “aguardando análise” e a equipe preenche à mão. `POST /api/mapa/reunioes` (admin ou `Authorization: Bearer $CRON_SECRET`).
-- **Tráfego (V2)**: `TrafficProvider` (`src/lib/mapa/traffic.ts`); na V1 só o provedor vazio (“Conectando fontes de dados”). Windsor.ai entra aqui.
+- **Tráfego**: a tela Canais usa a seção “Canais” abaixo (Meta Graph direto, somente leitura). A interface `TrafficProvider` (`src/lib/mapa/traffic.ts`) continua só na Visão geral e não é usada por Canais.
 - **Admin** (Central): `/clientes` (tipo e andamento do plano), `/clientes/[id]` (abas Plano, Arquivos, Reuniões, Acesso, Dados), `/entregas` (pendências de todos).
   Só administradores escrevem; revisor só lê. Senha de cliente é gerada, exibida uma vez e guardada só como hash (bcrypt).
 - **Variáveis**: `MAPA_CONTATO_NOME`, `MAPA_CONTATO_EMAIL`, `MAPA_CONTATO_WHATSAPP` (contato da Avanteza na tela Conta).
+
+## Canais (painel de mídia e tráfego do cliente)
+- **Fonte**: Meta Graph API v21.0, SOMENTE GET (`src/lib/channels/graph.ts`; retry/backoff de `src/lib/http.ts`, pausa entre chamadas, paginação, janelas de 30 dias).
+  Anúncios: insights por dia de campanha e de anúncio + criativo (miniatura, vídeo, status); resultado = `actions` do tipo configurado
+  (padrão `onsite_conversion.messaging_conversation_started_7d`). Instagram: perfil (seguidores), `follower_count` diário (~30 dias), métricas do dia em
+  `total_value` (reach, views, profile_views, accounts_engaged, total_interactions; as indisponíveis viram “indisponível”) e mídias recentes com insights.
+- **Dados**: `client_channels` (1 por cliente/provedor; token AES-256-GCM em `token_enc`, só `token_hint` de 4 caracteres visível; `use_platform_token` autoriza o
+  `META_ACCESS_TOKEN` da plataforma como reserva) e `channel_snapshots` (kind `campaign_daily`/`ad_daily`/`ig_daily`/`ig_media`, upsert idempotente por
+  (cliente, tipo, dia, chave); é o histórico que alimenta a Evolução).
+- **Rotina**: `/api/cron/channels` 1×/dia (10:03 UTC, junto do `ai-daily`), um canal por vez, com tempo máximo; 1ª coleta/“Atualizar agora” = 90 dias, depois 7 dias
+  (reprocessa a atribuição recente) e o histórico diário do Instagram é completado aos poucos.
+- **Isolamento**: `src/lib/channels/cliente.ts` exige o escopo da sessão (`assertScope`); a saída não tem token, hint, conta, Página, Instagram nem IDs de campanha/anúncio/mídia.
+  Admin: só `requireOwner` conecta, testa, atualiza ou desconecta; revisor só lê. A fixture (`CHANNELS_FIXTURE=1`) é ignorada em produção.
+- **Ranking de criativos**: só anúncios com gasto mínimo de R$ 30 no período, ordenados por resultados e depois pelo menor custo por resultado; selos melhor/pior com ≥ 2 comparáveis.
+- **Central**: o bloco Marketing de `/dashboards` ganhou “Canais dos clientes” como SUBTOTAL separado; conta já lida pela Meta da agência não é somada de novo.
 
 ## Identidade visual única
 `packages/avanteza-kit/tokens.css` é a fonte única: Marinho #0B1B33, Creme #F5F0E6, Areia #EAD9C2,

@@ -6,6 +6,7 @@
     { "path": "/api/cron/tick", "schedule": "0,20,40 * * * *" },
     { "path": "/api/cron/collect", "schedule": "1,41 * * * *" },
     { "path": "/api/cron/alerts", "schedule": "2 * * * *" },
-    { "path": "/api/cron/ai-daily", "schedule": "3,23,43 10,11 * * *" }
+    { "path": "/api/cron/ai-daily", "schedule": "3,23,43 10,11 * * *" },
+    { "path": "/api/cron/channels", "schedule": "3 10 * * *" }
   ]
 }

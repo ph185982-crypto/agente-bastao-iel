@@ -7,6 +7,7 @@ import { brl, brlCompacto, compacto, hora, inteiro, percentual, vezes } from "@/
 import { Kpi, type DeltaProps } from "./Kpi";
 import { LineChart, Legenda } from "./LineChart";
 import { HBars, type ItemBarra } from "./HBars";
+import type { CanaisClientesDash } from "@/lib/channels/dashboards";
 
 const dlt = (atual: number | null | undefined, ant: number | null | undefined, rotuloAnt: string, inverso = false): DeltaProps => ({
   pct: variacaoPct(atual, ant), inverso, anterior: rotuloAnt,
@@ -314,3 +315,31 @@ export function SecaoMarketing({ d }: { d: Dashboards }) {
   );
 }
 
+
+/** Canais dos clientes (Meta somente leitura). Subtotal separado: contas já lidas pela Meta da agência não são somadas de novo. */
+export function SecaoCanaisClientes({ c }: { c: CanaisClientesDash | null }) {
+  if (!c || c.linhas.length === 0) return null;
+  const rot = { somada: "Somada ao subtotal", "ja-na-agencia": "Já está na Meta da agência (não somada)", incerto: "Meta da agência indisponível (não somada)" } as const;
+  return (
+    <SEC titulo="Canais dos clientes" sub="Contas de anúncios conectadas na aba Canais de cada cliente. Conta que já aparece na Meta da agência acima não é somada de novo.">
+      <div className="card">
+        <div className="table-wrap">
+          <table className="t">
+            <thead><tr><th>Cliente</th><th className="num">Investimento</th><th className="num">Resultados</th><th>Situação</th></tr></thead>
+            <tbody>
+              {c.linhas.map((l) => (
+                <tr key={`${l.cliente}${l.conta}`}>
+                  <td className="ctitle">{l.cliente}</td>
+                  <td className="num">{l.semDados ? "—" : brl(l.gasto, true)}</td>
+                  <td className="num">{l.semDados ? "—" : inteiro(l.resultados)}</td>
+                  <td><span className={`pill ${l.situacao === "somada" ? "pill-ok" : "pill-outline"}`}>{rot[l.situacao]}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="small muted" style={{ margin: "10px 0 0" }}>Subtotal fora da agência: <b>{brl(c.gastoSomado, true)}</b> de investimento e <b>{inteiro(c.resultadosSomados)}</b> resultados.</p>
+      </div>
+    </SEC>
+  );
+}

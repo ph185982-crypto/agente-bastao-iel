@@ -119,3 +119,15 @@ Os IDs aparecem em Clientes → Anúncios → "N variações" e a IA também pod
 
 - **Tema claro/escuro:** botão sol/lua no topo (sidebar no desktop, barra superior no celular, canto da tela no login). A escolha fica em `localStorage` + cookie `avanteza-tema`; na primeira visita vale o `prefers-color-scheme`. Tokens em `src/app/globals.css` por `[data-theme]`; `tests/visual.test.ts` confere contraste AA nos dois temas.
 - **Fotos:** `listings.thumbnail` (miniatura https) e `listings.image_urls` (jsonb, até 6) são preenchidas pelo coletor a partir das mesmas chamadas de antes (ML multiget, Shopee `get_item_base_info`, TikTok `get_product`). Anúncios já coletados sem foto são preenchidos no próximo ciclo do coletor (ou ao chegar um webhook `items`); até lá aparece a inicial do título. Em bancos existentes rode `node db/apply.mjs` (adiciona `image_urls`).
+
+## Canais (painel de mídia e tráfego do cliente)
+`/mapa/canais` (clientes `midia`/`ambos`): Anúncios (Meta), Instagram e Evolução, com período 7/30/90 dias ou mês atual. A Central conecta o canal em
+Clientes → cliente → aba **Canais** (conta de anúncios, campanhas, IDs do Instagram/Página e token, que fica criptografado e nunca volta à tela;
+“Testar conexão”, “Atualizar agora” com 90 dias de histórico, “Desconectar”). Somente leitura na Meta (só GET). Coleta diária em `/api/cron/channels`
+(03 10 UTC, com `CRON_SECRET`), gravando em `channel_snapshots` (histórico para a Evolução). Código em `src/lib/channels/`.
+```sh
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/apply.mjs
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-canais-showman.mjs   # canal do Showman, sem token; recusa banco remoto
+CHANNELS_FIXTURE=1 npm run dev   # dados simulados (6 anúncios do Showman); depois "Atualizar agora" na aba Canais ou GET /api/cron/channels com o CRON_SECRET
+```
+Passo a passo para o Cowork gerar e colar o token: `docs/PROMPT_COWORK_META_CLIENTE.md`.

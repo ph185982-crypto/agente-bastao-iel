@@ -13,11 +13,11 @@ export interface Serie {
   /** Preenchimento em degradê sob a linha (padrão: só na primeira série). */
   area?: boolean;
 }
-export type FormatoValor = "brl" | "inteiro";
+export type FormatoValor = "brl" | "inteiro" | "brl2";
 
-const fmt = (f: FormatoValor, v: number) => (f === "brl" ? brl(v, Math.abs(v) < 100) : inteiro(v));
+const fmt = (f: FormatoValor, v: number) => (f === "brl2" ? brl(v, true) : f === "brl" ? brl(v, Math.abs(v) < 100) : inteiro(v));
 
-function escalaBonita(max: number, min: number): { min: number; max: number; ticks: number[] } {
+export function escalaBonita(max: number, min: number): { min: number; max: number; ticks: number[] } {
   const topo = Math.max(max, 0), base = Math.min(min, 0);
   const alvo = (topo - base) / 4 || 1;
   const mag = 10 ** Math.floor(Math.log10(alvo));
@@ -28,9 +28,12 @@ function escalaBonita(max: number, min: number): { min: number; max: number; tic
   return { min: lo, max: hi, ticks };
 }
 
-export function LineChart({ datas, series, formato, titulo, altura = 210 }: {
+export function LineChart({ datas, series, formato, titulo, altura = 210, nomes }: {
   datas: string[]; series: Serie[]; formato: FormatoValor; titulo: string; altura?: number;
+  /** Rótulos do eixo/dica no lugar de dd/mm (ex.: meses). Mesmo tamanho de `datas`. */
+  nomes?: string[];
 }) {
+  const lab = (i: number) => nomes?.[i] ?? ddmm(datas[i] ?? "");
   const id = useId().replace(/:/g, "");
   const caixa = useRef<HTMLDivElement>(null);
   const [largura, setLargura] = useState(640);
@@ -64,7 +67,7 @@ export function LineChart({ datas, series, formato, titulo, altura = 210 }: {
   const resumo = series.map((s) => {
     const total = s.valores.reduce((a, b) => a + b, 0);
     const pico = Math.max(...s.valores);
-    return `${s.nome}: total ${fmt(formato, total)}, máximo ${fmt(formato, pico)} em ${ddmm(datas[s.valores.indexOf(pico)] ?? datas[0] ?? "")}`;
+    return `${s.nome}: total ${fmt(formato, total)}, máximo ${fmt(formato, pico)} em ${lab(Math.max(0, s.valores.indexOf(pico)))}`;
   }).join(". ");
 
   const mover = (clientX: number) => {
@@ -106,7 +109,7 @@ export function LineChart({ datas, series, formato, titulo, altura = 210 }: {
             </g>
           ))}
           {rotulos.map((i, k) => (
-            <text key={i} x={x(i)} y={H - 6} textAnchor={k === 0 && n > 1 ? "start" : k === rotulos.length - 1 && n > 1 ? "end" : "middle"}>{ddmm(datas[i])}</text>
+            <text key={i} x={x(i)} y={H - 6} textAnchor={k === 0 && n > 1 ? "start" : k === rotulos.length - 1 && n > 1 ? "end" : "middle"}>{lab(i)}</text>
           ))}
         </g>
         {series.map((s, si) => {
@@ -134,13 +137,13 @@ export function LineChart({ datas, series, formato, titulo, altura = 210 }: {
       </svg>
       {idx != null && (
         <div className="ch-tip" style={{ left: tipEsq ? undefined : x(idx) + 12, right: tipEsq ? W - x(idx) + 12 : undefined, top: 6 }} aria-hidden="true">
-          <div className="ch-tip-d">{ddmm(datas[idx])}</div>
+          <div className="ch-tip-d">{lab(idx)}</div>
           {series.map((s) => (
             <div key={s.nome} className="ch-tip-r"><span className={`sw c-${s.cor}`} /> {s.nome}: <b>{fmt(formato, s.valores[idx] ?? 0)}</b></div>
           ))}
         </div>
       )}
-      <div className="sr" aria-live="polite">{idx != null ? `${ddmm(datas[idx])}: ${series.map((s) => `${s.nome} ${fmt(formato, s.valores[idx] ?? 0)}`).join(", ")}` : ""}</div>
+      <div className="sr" aria-live="polite">{idx != null ? `${lab(idx)}: ${series.map((s) => `${s.nome} ${fmt(formato, s.valores[idx] ?? 0)}`).join(", ")}` : ""}</div>
     </div>
   );
 }

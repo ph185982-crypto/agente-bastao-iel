@@ -460,3 +460,42 @@ create table if not exists avanteza.dashboard_cache (
   payload jsonb not null,
   fetched_at timestamptz not null default now()
 );
+
+-- ───────────────────────── Canais do cliente (painel de mídia e tráfego, Meta somente leitura) ─────────────────────────
+-- Um canal por cliente e provedor. O token do cliente (se houver) fica CRIPTOGRAFADO (AES-256-GCM, ENCRYPTION_KEY) em token_enc
+-- e nunca sai do servidor: nem para o navegador, nem para logs. token_hint guarda só os 4 últimos caracteres.
+create table if not exists avanteza.client_channels (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  provider text not null default 'meta' check (provider in ('meta')),
+  ad_account_id text,                                   -- ex.: act_605261696580859
+  campaign_ids text[] not null default '{}',            -- filtro opcional (vazio = todas as campanhas da conta)
+  ig_user_id text,                                      -- ID do Instagram profissional
+  page_id text,                                         -- ID da Página do Facebook
+  result_action_type text not null default 'onsite_conversion.messaging_conversation_started_7d',
+  token_enc text,                                       -- token do cliente (cifrado)
+  token_hint text,                                      -- últimos 4 caracteres
+  use_platform_token boolean not null default false,    -- usa META_ACCESS_TOKEN da plataforma quando não há token do cliente
+  status text not null default 'pendente' check (status in ('pendente','ativo','erro','desconectado')),
+  info jsonb not null default '{}'::jsonb,              -- dados não secretos do último teste (nome da conta, moeda, @ do Instagram)
+  last_sync_at timestamptz,
+  last_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (client_id, provider)
+);
+create index if not exists client_channels_status_idx on avanteza.client_channels(status, last_sync_at);
+
+-- Histórico das séries coletadas (backup para a Evolução). Upsert idempotente por (cliente, tipo, dia, chave).
+--   kind: campaign_daily (key = campanha) | ad_daily (key = anúncio) | ig_daily (key = 'account') | ig_media (key = mídia; date = dia da postagem)
+create table if not exists avanteza.channel_snapshots (
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  provider text not null default 'meta',
+  kind text not null check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media')),
+  date date not null,
+  key text not null,
+  metrics jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (client_id, kind, date, key)
+);
+create index if not exists channel_snapshots_lookup_idx on avanteza.channel_snapshots(client_id, kind, date);

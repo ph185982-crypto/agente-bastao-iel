@@ -4,8 +4,9 @@ import Link from "next/link";
 import { requireDashboards } from "@/lib/auth";
 import { carregarDashboards } from "@/lib/dashboards";
 import { ROTULO_PERIODO, PERIODOS, parsePeriodo, ddmm } from "@/lib/dashboards/periodo";
+import { carregarCanaisClientes } from "@/lib/channels/dashboards";
 import { PageHeader } from "@/components/shell/GlassCard";
-import { SecaoComercial, SecaoFinanceiro, SecaoPrevistos, SecaoMarketing, StatusFontes } from "@/components/dashboards/Secoes";
+import { SecaoComercial, SecaoFinanceiro, SecaoPrevistos, SecaoMarketing, SecaoCanaisClientes, StatusFontes } from "@/components/dashboards/Secoes";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,6 +17,8 @@ export default async function Dashboards({ searchParams }: { searchParams: Promi
   const id = parsePeriodo(sp.periodo);
   const d = await carregarDashboards(id);
   const { atual, anterior } = d.periodo;
+  // Canais dos clientes: falha de banco nunca derruba a página (o bloco só some).
+  const canais = d.fixture ? null : await carregarCanaisClientes(atual, d.meta).catch(() => null);
   return (
     <>
       <PageHeader eyebrow="Central Avanteza" title={<>Dash<span className="accent">boards</span></>}>
@@ -34,6 +37,7 @@ export default async function Dashboards({ searchParams }: { searchParams: Promi
       <SecaoFinanceiro d={d} />
       <SecaoPrevistos d={d} />
       <SecaoMarketing d={d} />
+      <SecaoCanaisClientes c={canais} />
     </>
   );
 }
