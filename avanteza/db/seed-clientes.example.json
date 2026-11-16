@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Cliente Exemplo Marketplace",
+    "slug": "exemplo-marketplace",
+    "kind": "marketplace",
+    "drive_folder_id": "ID_DA_PASTA_NO_DRIVE",
+    "files": [
+      { "title": "Contrato de exemplo", "url": "https://docs.google.com/document/d/ID_DO_ARQUIVO/edit", "drive_file_id": "ID_DO_ARQUIVO", "kind": "contrato", "date": "2026-11-01" }
+    ],
+    "meetings": [
+      { "title": "Kickoff", "date": "2026-11-05", "recording_url": null, "transcript_url": "https://docs.google.com/document/d/ID_DA_TRANSCRICAO/edit" }
+    ]
+  },
+  { "name": "Cliente Exemplo Mídia", "slug": "exemplo-midia", "kind": "midia", "drive_folder_id": null, "files": [], "meetings": [] },
+  { "name": "Empresa do Grupo A", "slug": "grupo-a", "kind": "marketplace", "titular": "Titular Exemplo", "grupo": "titular-exemplo", "drive_folder_id": "ID_A", "drive_folder_ids": ["ID_A", "ID_A2"], "files": [], "meetings": [] }
+]

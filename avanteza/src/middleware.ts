@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, canAccess, verifySessionFull } from "@/lib/session";
+import { SESSION_COOKIE, canAccess, isMapaPath, verifySessionFull } from "@/lib/session";
 
-const PUBLIC = [/^\/\.well-known\//, /^\/login/, /^\/conectado/, /^\/api\/auth\//, /^\/api\/webhooks\//, /^\/api\/cron\//, /^\/api\/health/];
+const PUBLIC = [/^\/\.well-known\//, /^\/login/, /^\/conectado/, /^\/api\/auth\//, /^\/api\/webhooks\//, /^\/api\/cron\//, /^\/api\/health/, /^\/api\/mapa\/reunioes\/?$/]; // a rota de reuniões confere CRON_SECRET/admin por conta própria
 
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
@@ -12,6 +12,11 @@ export async function middleware(req: NextRequest) {
     const to = new URL("/login", req.url);
     if (path !== "/") to.searchParams.set("next", path + req.nextUrl.search);
     return NextResponse.redirect(to);
+  }
+  // Usuário de cliente: só o Mapa (nunca Central, painel, usuários, SSO nem APIs administrativas).
+  if (sess!.role === "client" && !isMapaPath(path)) {
+    if (path.startsWith("/api/")) return NextResponse.json({ error: "acesso negado" }, { status: 403 });
+    return NextResponse.redirect(new URL("/mapa", req.url));
   }
   return NextResponse.next();
 }

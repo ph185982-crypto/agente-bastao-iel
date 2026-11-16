@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:e2e": "tsx tests/e2e/ml-simulado.ts"
   },
   "engines": {
@@ -25,8 +25,10 @@
   },
   "devDependencies": {
     "@types/node": "22.10.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "19.1.8",
     "@types/react-dom": "19.1.6",
+    "pg": "^8.23.1",
     "tsx": "^4.19.2",
     "typescript": "5.7.2"
   }

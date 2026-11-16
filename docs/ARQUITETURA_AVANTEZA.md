@@ -51,6 +51,26 @@ Papéis: **admin** (tudo; precisa constar em `ADMIN_EMAILS`), **member** (só os
 Funciona com qualquer domínio (hoje `*.vercel.app`). Quando os subdomínios existirem
 (`crm.`, `vendas.`, `contratos.`, `conteudo.avanteza.com.br`), basta trocar as variáveis `APP_*_URL` na Central.
 
+## Mapa — área do cliente (`app.avanteza.com.br/mapa`)
+Mesmo domínio e mesmo `/login`; o usuário de cliente (papel `client`) cai em `/mapa`, a equipe continua na Central.
+- **Tipos**: `marketplace` (Início, Plano, Marketplaces, Reuniões, Arquivos, Conta), `midia` (Início, Plano, Canais, …) e `ambos` (união).
+- **Dados**: estende `clients` (slug, kind, start_date, drive_folder_id, group_slug, owner_name) e `admins` (papel `client`); novas tabelas
+  `plan_phases`, `plan_actions`, `meetings`, `client_files`, `client_user_clients` (usuário ↔ empresas do grupo). Tudo em `db/schema.sql`, idempotente.
+- **Isolamento (requisito crítico)**: o client_id NUNCA vem de URL, corpo ou formulário. A sessão assinada carrega a LISTA de empresas do usuário;
+  `src/lib/mapa/scope.ts` emite o único objeto de escopo aceito por `src/lib/mapa/repo.ts`, onde toda consulta filtra por `scope.clientId`
+  (a empresa ativa, escolhida no seletor só se estiver na lista). A lista é conferida no banco a cada acesso (só pode diminuir).
+  O middleware confina o papel `client` a `/mapa`. Cliente nunca recebe tokens de contas, transcrições, notas internas ou arquivos ocultos.
+- **Grupo**: um login pode ver várias empresas do mesmo titular (ex.: Vulk Jeans, Lumiere, Plenitude → grupo `rodrigo`), com seletor no topo
+  (some com uma só empresa) e visão consolidada no Início.
+- **Ver como cliente**: cookie assinado (`avz_view`, 2 h, preso ao e-mail da equipe), somente leitura, com faixa “Visualizando como …”.
+- **Plano de 12 meses**: `src/lib/mapa/plan.ts` (função pura) gera as 4 fases e as ações por tipo a partir de `start_date`; botão admin “Gerar plano”.
+- **Reuniões → ações**: `ingestMeeting()` (`src/lib/mapa/meetings.ts`) usa `src/lib/ai` (método `extract`, saída validada por zod). Sem `ANTHROPIC_API_KEY`
+  a reunião fica “aguardando análise” e a equipe preenche à mão. `POST /api/mapa/reunioes` (admin ou `Authorization: Bearer $CRON_SECRET`).
+- **Tráfego (V2)**: `TrafficProvider` (`src/lib/mapa/traffic.ts`); na V1 só o provedor vazio (“Conectando fontes de dados”). Windsor.ai entra aqui.
+- **Admin** (Central): `/clientes` (tipo e andamento do plano), `/clientes/[id]` (abas Plano, Arquivos, Reuniões, Acesso, Dados), `/entregas` (pendências de todos).
+  Só administradores escrevem; revisor só lê. Senha de cliente é gerada, exibida uma vez e guardada só como hash (bcrypt).
+- **Variáveis**: `MAPA_CONTATO_NOME`, `MAPA_CONTATO_EMAIL`, `MAPA_CONTATO_WHATSAPP` (contato da Avanteza na tela Conta).
+
 ## Identidade visual única
 `packages/avanteza-kit/tokens.css` é a fonte única: Marinho #0B1B33, Creme #F5F0E6, Areia #EAD9C2,
 Laranja #FF6A1F; Manrope + Instrument Serif; sem sombras, sem degradês, bordas de 1px, laranja só para ação.

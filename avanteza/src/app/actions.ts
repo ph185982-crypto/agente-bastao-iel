@@ -6,7 +6,7 @@ import { cookies, headers } from "next/headers";
 import { requireAdmin, requireWriter, requireOwner } from "@/lib/auth";
 import { APP_IDS } from "@/lib/apps";
 import bcrypt from "bcryptjs";
-import { SESSION_COOKIE, SESSION_TTL_S, signSession } from "@/lib/session";
+import { SESSION_COOKIE, SESSION_TTL_S, VIEW_COOKIE, signSession } from "@/lib/session";
 import { checkLogin, setPassword } from "@/lib/login";
 import { userDb, adminDb } from "@/lib/db";
 import { createAuthorizationLink } from "@/lib/oauth";
@@ -29,7 +29,9 @@ function flash(path: string, msg: string, kind: "ok" | "erro" = "ok"): never {
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function logout() {
-  (await cookies()).delete(SESSION_COOKIE);
+  const jar = await cookies();
+  jar.delete(SESSION_COOKIE);
+  jar.delete(VIEW_COOKIE);
   redirect("/login");
 }
 
@@ -40,7 +42,7 @@ export async function login(_prev: { error?: string; email?: string } | null, fd
   const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || "desconhecido";
   const r = await checkLogin(email, password, ip);
   if (!r.ok) return { error: r.error, email };
-  (await cookies()).set(SESSION_COOKIE, await signSession(email, undefined, undefined, r.role ?? "admin", { apps: r.apps, name: r.name }), {
+  (await cookies()).set(SESSION_COOKIE, await signSession(email, undefined, undefined, r.role ?? "admin", { apps: r.apps, name: r.name, clientId: r.clientId, clientIds: r.clientIds }), {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
@@ -48,6 +50,7 @@ export async function login(_prev: { error?: string; email?: string } | null, fd
     maxAge: SESSION_TTL_S,
   });
   const next = str(fd, "next");
+  if (r.role === "client") redirect(next.startsWith("/mapa") && !next.startsWith("//") ? next : "/mapa");
   redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/central");
 }
 
@@ -82,6 +85,7 @@ export async function createClient(fd: FormData) {
       contact_email: str(fd, "contact_email") || null,
       contact_phone: str(fd, "contact_phone") || null,
       notes: str(fd, "notes") || null,
+      kind: ["marketplace", "midia", "ambos"].includes(str(fd, "kind")) ? str(fd, "kind") : "marketplace",
     })
     .select("id")
     .single();
@@ -401,7 +405,8 @@ export async function saveUser(fd: FormData) {
   const appsSel = APP_IDS.filter((id) => fd.get(`app_${id}`) === "on");
   const password = String(fd.get("password") ?? "");
   const db = adminDb();
-  const { data: existing } = await db.from("admins").select("email").eq("email", email).maybeSingle();
+  const { data: existing } = await db.from("admins").select("email, role").eq("email", email).maybeSingle();
+  if (existing?.role === "client") flash("/usuarios", "Este e-mail é de um usuário de cliente: gerencie em Clientes > Acesso do cliente.", "erro");
   if (!existing && password.length < 10) flash("/usuarios", "Defina uma senha inicial com pelo menos 10 caracteres.", "erro");
   if (password && password.length < 10) flash("/usuarios", "A senha precisa ter pelo menos 10 caracteres.", "erro");
   const row: Record<string, unknown> = { email, name: str(fd, "name") || null, role, apps: appsSel, active: fd.get("active") === "on" };
