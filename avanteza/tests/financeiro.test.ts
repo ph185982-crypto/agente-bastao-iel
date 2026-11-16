@@ -93,7 +93,7 @@ test("menu por departamentos: cada papel vê só o que pode; Pessoal só o dono;
   assert.deepEqual(rotulos(dono), ["(topo)", "Operações", "Comercial", "Marketing", "Financeiro", "Sistema"]);
   const g = menuEquipe(dono);
   const itens = (l: string) => g.find((x) => x.label === l)!.items.map((i) => i.label);
-  assert.deepEqual(itens("Operações"), ["Marketplaces", "Clientes e Mapa", "Entregas"]);
+  assert.deepEqual(itens("Operações"), ["Marketplaces", "Clientes e Mapa", "Funil de Entrega", "Entregas do plano"]);
   assert.deepEqual(itens("Comercial"), ["Vendedor IA", "CRM", "Contratos"]);
   assert.deepEqual(itens("Marketing"), ["Conteúdo", "Anúncios", "Canais"]);
   assert.deepEqual(itens("Financeiro"), ["Financeiro da empresa", "Pessoal"]);

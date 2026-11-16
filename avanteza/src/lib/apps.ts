@@ -18,6 +18,7 @@ const env = (k: string, d: string) => (process.env[k] && process.env[k]!.length 
 export function apps(): AppDef[] {
   return [
     { id: "marketplaces", name: "Marketplaces", tagline: "Contas de Mercado Livre, Shopee e TikTok Shop: alertas, aprovações e relatórios.", url: "", callback: "", internalPath: "/", group: "Operações" },
+    { id: "entregas", name: "Funil de Entrega", tagline: "Quadro por etapa e pilar, renovações e modelos das entregas aos clientes (dados do CRM).", url: "", callback: "", internalPath: "/operacoes/entregas", group: "Operações" },
     { id: "crm", name: "CRM", tagline: "Funil, contatos, tarefas, agenda e propostas.", url: env("APP_CRM_URL", "https://nexo-crm-tawny.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
     { id: "vendas", name: "Vendedor IA", tagline: "Atendimento e prospecção no WhatsApp com IA.", url: env("APP_VENDAS_URL", "https://nexo-vendedoria.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
     { id: "contratos", name: "Contratos", tagline: "Geração de contratos e assinatura digital.", url: env("APP_CONTRATOS_URL", "https://nexo-presenter.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
@@ -27,7 +28,7 @@ export function apps(): AppDef[] {
   ];
 }
 
-export const APP_IDS = ["marketplaces", "crm", "vendas", "contratos", "conteudo", "financeiro"] as const;
+export const APP_IDS = ["marketplaces", "entregas", "crm", "vendas", "contratos", "conteudo", "financeiro"] as const;
 
 /** Aplicativos que já aceitam o login único (os demais abrem com o login próprio até serem integrados). */
 export function ssoEnabled(id: string): boolean {

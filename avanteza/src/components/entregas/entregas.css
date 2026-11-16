@@ -1,0 +1,115 @@
+/* Funil de Entrega (Operações → Entregas). Só usa os tokens do tema (claro e escuro) definidos em globals.css. */
+.ent-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; margin-top: 14px; }
+.ent-kpis .kpi { padding: 12px 14px; }
+.ent-kpis .kpi .value { font-size: 22px; }
+.ent-kpis .kpi.alerta .value { color: var(--danger); }
+.ent-kpis .kpi.atencao .value { color: var(--orange-2); }
+
+.ent-filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; margin-top: 12px; }
+.ent-filtros .field { margin: 0; }
+.ent-filtros .check { min-height: 44px; display: flex; align-items: center; }
+.ent-filtros-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.ent-modo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.ent-modo .rot { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* Quadro */
+.ent-board-wrap { margin-top: 12px; }
+.ent-board {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(240px, 1fr); gap: 12px; align-items: start; overflow-x: auto; padding: 2px 2px 14px;
+  scroll-snap-type: x proximity; overscroll-behavior-x: contain;
+}
+.ent-col {
+  scroll-snap-align: start; display: flex; flex-direction: column; min-width: 0; border-radius: 18px; border: 1px solid var(--glass-border);
+  background: var(--glass); padding: 10px; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ent-col.alvo { border-color: var(--orange); background: rgb(var(--tint) / 0.14); }
+.ent-col-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 10px; }
+.ent-col-h h3 { margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.01em; color: var(--heading); }
+.ent-col-h .n { font-size: 12px; font-weight: 800; min-width: 24px; text-align: center; padding: 1px 8px; border-radius: 999px; background: rgb(var(--tint) / 0.14); color: var(--text); }
+.ent-col-corpo { display: flex; flex-direction: column; gap: 8px; min-height: 64px; }
+.ent-vazio { font-size: 12.5px; color: var(--muted); padding: 14px 6px; text-align: center; border: 1px dashed rgb(var(--tint) / 0.22); border-radius: 14px; }
+
+.ent-card {
+  display: block; border-radius: 14px; border: 1px solid var(--glass-border); background: var(--solid); padding: 10px 12px 10px; box-shadow: var(--shadow-sm);
+  color: var(--text); text-decoration: none; cursor: grab; transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.ent-card:hover { border-color: rgb(var(--tint) / 0.4); }
+.ent-card.arrastando { opacity: 0.45; }
+.ent-card.atrasado { border-left: 4px solid var(--danger); }
+.ent-card.somente { cursor: default; }
+.ent-card .tit { font-size: 14px; font-weight: 700; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.ent-card .cli { font-size: 12px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ent-card .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.ent-card .tags .pill { font-size: 11px; padding: 1px 9px; }
+.ent-card .rodape { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.ent-card .atraso { color: var(--danger); font-weight: 800; }
+.ent-card .quem { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.ent-card .quem b { width: 22px; height: 22px; border-radius: 50%; background: var(--sand); color: var(--navy); display: inline-grid; place-items: center; font-size: 11px; flex: none; }
+.ent-card .quem span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ent-mover { display: inline-flex; gap: 4px; }
+.ent-mover button {
+  width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--glass-border); background: rgb(var(--tint) / 0.1); color: var(--text); cursor: pointer; font-size: 16px; line-height: 1; font-family: inherit;
+}
+.ent-mover button:hover:not(:disabled) { background: rgb(var(--tint) / 0.22); }
+.ent-mover button:disabled { opacity: 0.3; cursor: default; }
+.ent-aviso { margin-top: 10px; }
+
+/* Lista de clientes (entregas) */
+.ent-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-top: 12px; }
+.ent-lista .card + .card { margin-top: 0; }
+.ent-cli { display: flex; flex-direction: column; gap: 10px; padding: 16px; text-decoration: none; color: var(--text); }
+.ent-cli .topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ent-cli h3 { margin: 0; font-size: 16px; line-height: 1.25; }
+.ent-cli .sub { font-size: 12.5px; color: var(--muted); }
+.ent-cli .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); }
+.ent-cli .prog { display: flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 700; }
+.ent-cli .prog .progress { flex: 1; }
+.ent-saude { display: inline-block; font-size: 11.5px; font-weight: 800; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--glass-border); white-space: nowrap; }
+.ent-saude.SAUDAVEL { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+.ent-saude.ATENCAO { background: rgb(var(--tint) / 0.1); color: var(--orange-2); border-color: var(--orange-2); }
+.ent-saude.EM_RISCO { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+.ent-late { color: var(--danger); font-weight: 800; }
+.ent-ren { color: var(--orange-2); font-weight: 800; }
+
+/* Tabelas (renovações, modelos) e blocos */
+.ent-tab { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ent-tab th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--heading); padding: 8px 10px; border-bottom: 1px solid var(--hairline); white-space: nowrap; }
+.ent-tab td { padding: 10px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+.ent-tab tr:last-child td { border-bottom: 0; }
+.ent-tab .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ent-scroll { overflow-x: auto; }
+.ent-bloco { margin-top: 14px; }
+.ent-bloco h2 { margin: 0 0 8px; font-size: 16px; }
+.ent-itens { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.ent-itens li { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13.5px; }
+
+/* Ficha */
+.ent-ficha { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; align-items: start; }
+.ent-ficha .card + .card { margin-top: 0; }
+.ent-ficha .col { display: grid; gap: 14px; }
+.ent-linha { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; }
+.ent-hist { list-style: none; margin: 8px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--hairline); display: grid; gap: 12px; }
+.ent-hist li { position: relative; font-size: 13.5px; }
+.ent-hist li::before { content: ""; position: absolute; left: -20px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--orange); }
+.ent-hist .quando { display: block; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ent-check { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.ent-check li { display: flex; gap: 8px; align-items: baseline; }
+.ent-check .ok { color: var(--ok); font-weight: 800; }
+.ent-miolo { display: grid; gap: 6px; font-size: 14px; }
+.ent-miolo dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--heading); font-weight: 700; }
+.ent-miolo dd { margin: 0 0 6px; }
+.ent-voltar { display: inline-block; margin-bottom: 4px; font-size: 13px; font-weight: 700; text-decoration: none; color: var(--muted); }
+.ent-voltar:hover { color: var(--text); }
+.ent-diag { white-space: pre-wrap; font-size: 13.5px; }
+
+@media (max-width: 760px) {
+  .ent-board { grid-auto-columns: 84vw; scroll-snap-type: x mandatory; margin-inline: -4px; }
+  .ent-ficha { grid-template-columns: minmax(0, 1fr); }
+  .ent-lista { grid-template-columns: minmax(0, 1fr); }
+  .ent-card { padding: 12px; }
+  .ent-mover button { width: 40px; height: 40px; font-size: 18px; }
+}
+@media (prefers-reduced-motion: reduce) { .ent-card, .ent-col { transition: none; } }
+.ent-card-link { display: block; color: inherit; text-decoration: none; }
+.ent-card-link:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; border-radius: 8px; }
