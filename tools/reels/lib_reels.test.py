@@ -403,14 +403,9 @@ class Destrava(unittest.TestCase):
         g = D.ass_graficos(b)
         self.assertIn('Instrument Serif', g)
         f = D.ass_final(b, pal, dur)
-        self.assertIn('@PEDRO_DESTRAVA', f)
         self.assertEqual(sum(1 for ln in f.splitlines() if ',Legenda,' in ln), len(pal))   # uma palavra por evento
-        # sem marca d'água lateral (pedido do Pedro, 14/11): o @ só aparece na tela final
-        ini_fim = b[-1]['t0']
-        for ln in f.splitlines():
-            if 'PEDRO_DESTRAVA' in ln:
-                hh, mm, ss = ln.split(',')[1].split(':')
-                self.assertGreaterEqual(int(hh) * 3600 + int(mm) * 60 + float(ss), ini_fim - 0.01, ln)
+        # sem @ nem logo do Instagram em lugar nenhum (pedidos do Pedro, 14 e 16/11)
+        self.assertNotIn('PEDRO_DESTRAVA', f); self.assertNotIn('Forma', ''.join(ln for ln in f.splitlines() if 'p1' in ln and 'circulo' in ln))
 
     def test_sem_marca_lateral_sem_tela_final(self):
         import lib_destrava as D
@@ -580,7 +575,7 @@ class Pedido15Nov(unittest.TestCase):
         self.assertIn('Lele Sadoughi', g)                                 # rótulo com informação nova
         self.assertNotIn('Fake', g)
         f = D.ass_final(b, pal, dur)
-        self.assertIn('@PEDRO_DESTRAVA', f)
+        self.assertNotIn('PEDRO_DESTRAVA', f)
         self.assertIn('\\alpha&H00&', f)                                # fundo da tela final opaco: nada aparece por baixo
 
     def test_sem_plano_nao_repete_palavra_na_etiqueta(self):
