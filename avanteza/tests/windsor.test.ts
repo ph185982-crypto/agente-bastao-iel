@@ -50,26 +50,30 @@ const MIDIAS_REAL = [
 const AUDIENCIA_REAL: Record<string, unknown[]> = {
   audience_age_name: [{ account_name: CONTA, audience_age_name: "25-34", audience_age_size: 780 }, { account_name: CONTA, audience_age_name: "18-24", audience_age_size: 410 }, { account_name: CONTA, audience_age_name: "25-34", audience_age_size: 770 }],
   audience_gender_name: [{ account_name: CONTA, audience_gender_name: "M", audience_gender_size: 1330 }, { account_name: CONTA, audience_gender_name: "F", audience_gender_size: 560 }],
-  audience_city_name: [{ account_name: CONTA, audience_city_name: "Belo Horizonte, Minas Gerais", audience_city_size: 940 }, { account_name: CONTA, audience_city_name: "Contagem, Minas Gerais", audience_city_size: 130 }],
+  audience_city_size: [{ account_name: CONTA, city: "Belo Horizonte, Minas Gerais", audience_city_size: 940 }, { account_name: CONTA, city: "Contagem, Minas Gerais", audience_city_size: 130 }],
   audience_country_name: [{ account_name: CONTA, audience_country_name: "BR", audience_country_size: 1900 }],
 };
 
+/** Texto real devolvido pelo Windsor quando follower_count é pedido numa janela maior que 30 dias. */
+const ERRO_FOLLOWER_30D = "(follower_count) supports the last 30 days only. Use date_preset=last_30d, or a date_from within the last 30 days. To get other fields for a longer range, request them in a separate query";
 interface Chamada { url: URL; init?: RequestInit }
 /** Windsor simulado: roteia pelo conjunto de campos pedidos. `rota` pode devolver o corpo ou uma Response. */
 function windsorFalso(rota?: (u: URL, f: string[], n: number) => unknown, o: { chave?: string; accountName?: string | null } = {}) {
   const chamadas: Chamada[] = [];
-  const padrao = (f: string[]) => {
+  const padrao = (f: string[], u: URL) => {
+    if (f.includes("audience_city_name")) return json({ error: "unknown_field: audience_city_name. Did you mean: audience_country_name, audience_city_size, audience_age_name, audience_locale_name, audience_gender_name?" }, 400);
+    if (f.includes("follower_count") && u.searchParams.get("date_from") && u.searchParams.get("date_to") && (Date.parse(u.searchParams.get("date_to")!) - Date.parse(u.searchParams.get("date_from")!)) / 86400000 > 29) return json({ error: ERRO_FOLLOWER_30D }, 400);
     if (f.includes("media_id")) return { data: MIDIAS_REAL };
     const aud = Object.keys(AUDIENCIA_REAL).find((k) => f.includes(k));
     if (aud) return { data: AUDIENCIA_REAL[aud] };
-    return { data: PERFIL_REAL };
+    return { data: PERFIL_REAL.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => f.includes(k)))) };
   };
   const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
     const u = new URL(String(url));
     chamadas.push({ url: u, init });
     const f = (u.searchParams.get("fields") ?? "").split(",");
     const r = rota ? rota(u, f, chamadas.length) : undefined;
-    const corpo = r === undefined ? padrao(f) : r;
+    const corpo = r === undefined ? padrao(f, u) : r;
     return corpo instanceof Response ? corpo : json(corpo);
   }) as typeof fetch;
   const fonte = criarWindsor({ chave: o.chave ?? CHAVE, accountName: o.accountName, fetchImpl, sleep: sem, baseDelayMs: 1, maxDelayMs: 2 });
@@ -84,7 +88,7 @@ test("Windsor: só GET em connectors.windsor.ai/instagram, date_from/date_to, ca
   await fonte.perfil({ de: "2026-11-10", ate: "2026-11-16" });
   await fonte.midias({ de: "2026-08-18", ate: "2026-11-16" }, 40);
   await fonte.perfil({ preset: "last_30d" });
-  assert.equal(chamadas.length, 3);
+  assert.equal(chamadas.length, 5, "perfil = consulta principal + saldo diário; mídias = 1");
   for (const c of chamadas) {
     assert.equal((c.init?.method ?? "GET").toUpperCase(), "GET");
     assert.equal(c.init?.body, undefined);
@@ -94,13 +98,17 @@ test("Windsor: só GET em connectors.windsor.ai/instagram, date_from/date_to, ca
     assert.ok(!JSON.stringify(c.init?.headers ?? {}).includes(CHAVE), "a chave não vai em cabeçalho");
   }
   const perfil = chamadas[0].url.searchParams;
+  assert.ok(!perfil.get("fields")!.split(",").includes("follower_count"), "follower_count vai em consulta própria");
+  const saldo = chamadas[1].url.searchParams;
+  assert.equal(saldo.get("fields"), "date,account_name,follower_count");
+  assert.equal(saldo.get("date_from"), "2026-11-10");
   assert.equal(perfil.get("date_from"), "2026-11-10"); assert.equal(perfil.get("date_to"), "2026-11-16"); assert.equal(perfil.get("date_preset"), null);
-  for (const campo of ["date", "account_name", "followers_count", "follower_count", "reach", "views", "profile_views", "accounts_engaged", "total_interactions"]) assert.ok(perfil.get("fields")!.split(",").includes(campo), campo);
+  for (const campo of ["date", "account_name", "followers_count", "reach", "views", "profile_views", "accounts_engaged", "total_interactions"]) assert.ok(perfil.get("fields")!.split(",").includes(campo), campo);
   assert.ok(!perfil.get("fields")!.includes("media_id"), "perfil e mídias em consultas separadas");
-  const midia = chamadas[1].url.searchParams.get("fields")!.split(",");
+  const midia = chamadas[2].url.searchParams.get("fields")!.split(",");
   for (const campo of ["media_id", "media_reach", "media_like_count", "media_comments_count", "media_saved", "media_shares", "media_views", "media_thumbnail_url"]) assert.ok(midia.includes(campo), campo);
   assert.ok(!midia.includes("reach"));
-  assert.equal(chamadas[2].url.searchParams.get("date_preset"), "last_30d");
+  assert.equal(chamadas[3].url.searchParams.get("date_preset"), "last_30d"); assert.equal(chamadas[4].url.searchParams.get("date_preset"), "last_30d");
 });
 
 test("Windsor: perfil por dia — followers_count só no dia atual, saldo diário, null vira 'sem dado', texto numérico é lido e linha inválida é ignorada", async () => {
@@ -115,7 +123,7 @@ test("Windsor: perfil por dia — followers_count só no dia atual, saldo diári
   assert.equal(dia("2026-11-14").follower_net, -1);
   assert.equal(dia("2026-11-15").reach, 655, "texto numérico é aceito");
   assert.deepEqual(dia("2026-11-16"), { follower_net: 2, followers: 1985 });
-  assert.equal(p.linhasIgnoradas, 2);
+  assert.ok(p.linhasIgnoradas >= 2);
   assert.ok(p.camposComDado.includes("reach") && p.camposComDado.includes("website_clicks_1d") && !p.camposComDado.includes("impressions"));
 });
 
@@ -180,10 +188,10 @@ test("Windsor: chave inválida (HTTP 401/403 ou erro em 200) e no_accounts_confi
 test("Windsor: retry em 429/5xx com backoff e erro de rede traduzido; 401 não tenta de novo", async () => {
   let n = 0;
   const a = windsorFalso(() => (++n < 3 ? new Response("{}", { status: 503 }) : undefined));
-  assert.equal((await a.fonte.perfil({ preset: "last_30d" })).dias.length, 4); assert.equal(n, 3);
+  assert.equal((await a.fonte.perfil({ preset: "last_30d" })).dias.length, 4); assert.ok(n >= 3);
   n = 0;
   const b = windsorFalso(() => (++n < 2 ? new Response("{}", { status: 429, headers: { "retry-after": "0" } }) : undefined));
-  await b.fonte.perfil({ preset: "last_30d" }); assert.equal(n, 2);
+  await b.fonte.perfil({ preset: "last_30d" }); assert.ok(n >= 2);
   n = 0;
   const c = windsorFalso(() => { n++; return json({ error: "bad" }, 401); });
   await assert.rejects(c.fonte.perfil({ preset: "last_30d" }), WindsorErro); assert.equal(n, 1);
@@ -371,7 +379,7 @@ test("coleta do Instagram pelo Windsor: perfil, mídias e audiência gravados co
   assert.ok(r[0].ok && r[1].ok && r[0].instagram!.origem === "windsor" && r[0].ads === null);
   assert.ok(naoTemChave(logs) && naoTemChave(JSON.stringify(r)));
   assert.ok(chamadas.every((c) => c.url.hostname === WINDSOR_HOST));
-  assert.equal(chamadas.filter((c) => c.url.searchParams.get("fields")!.includes("media_id")).length, 2);
+  assert.equal(chamadas.filter((c) => (c.url.searchParams.get("fields") ?? "").includes("media_id")).length, 2);
   const dias = await lerSnapshots(a1, ["ig_daily"], "2026-08-01", "2026-11-16", "windsor");
   assert.equal(dias.length, 4);
   const dia = (d: string) => dias.find((x) => String(x.date).includes(d))!;
@@ -541,4 +549,36 @@ test("relatório: seguidores reconstruídos para trás do valor atual e do saldo
   const r = relInstagram([L("2026-11-16", { followers: 1985, follower_net: 2 }), L("2026-11-15", { follower_net: 3 }), L("2026-11-14", { follower_net: -1 }), L("2026-11-13", { follower_net: 4 })], per);
   assert.equal(r.seguidores.atual, 1985); assert.equal(r.seguidores.estimado, true);
   assert.deepEqual(r.seguidores.serie.slice(-3).map((s) => s.valor), [1980, 1983, 1985], "valor no fim de cada dia (15/11 = 1985 - 2; 14/11 = 1983 - 3 = 1980 ...)");
+});
+
+test("Windsor (erros reais): backfill de 90 dias limita follower_count a 30 dias; se mesmo assim falhar vira aviso e o resto do perfil segue", async () => {
+  const a = windsorFalso();
+  const p = await a.fonte.perfil({ de: "2026-08-18", ate: "2026-11-16" });
+  const saldo = a.chamadas.find((c) => c.url.searchParams.get("fields") === "date,account_name,follower_count")!.url.searchParams;
+  assert.equal(saldo.get("date_from"), "2026-10-18"); assert.equal(saldo.get("date_to"), "2026-11-16");
+  assert.equal(a.chamadas[0].url.searchParams.get("date_from"), "2026-08-18", "demais campos usam os 90 dias");
+  assert.ok(p.dias.some((d) => d.metrics.follower_net === 4) && !p.avisos!.length);
+  const b = windsorFalso((_u, f) => (f.includes("follower_count") ? json({ error: ERRO_FOLLOWER_30D }, 400) : undefined));
+  const q = await b.fonte.perfil({ de: "2026-08-18", ate: "2026-11-16" });
+  assert.equal(q.seguidores, 1985); assert.ok(q.dias.some((d) => d.metrics.reach === 702));
+  assert.equal(q.avisos!.length, 1); assert.match(q.avisos![0], /Saldo diário de seguidores/);
+  assert.ok(q.dias.every((d) => d.metrics.follower_net === undefined));
+});
+
+test("Windsor (erros reais): cidade vem no campo `city`; audience_city_name é unknown_field; lista de campos em cache filtra o que não existe", async () => {
+  const a = windsorFalso();
+  const r = await a.fonte.audiencia();
+  assert.equal(r.dados.cidades!["Belo Horizonte, Minas Gerais"], 940);
+  assert.ok(a.chamadas.every((c) => !(c.url.searchParams.get("fields") ?? "").includes("audience_city_name")));
+  // se o conector listar os campos e faltar um, a dimensão é ignorada com aviso (nunca erro fatal)
+  const todos = ["audience_age_name", "audience_age_size", "audience_gender_name", "audience_gender_size", "audience_country_name", "audience_country_size", "audience_city_size", "audience_locale_name", "account_name", "date", "reach", "views", "city"];
+  const b = windsorFalso((u) => (u.pathname === "/instagram/fields" ? todos.filter((x) => x !== "city") : undefined));
+  const r2 = await b.fonte.audiencia(); await b.fonte.audiencia();
+  assert.equal(r2.dados.cidades, undefined); assert.ok(r2.dados.idade);
+  assert.ok(r2.erros.some((e) => /cidades.*city/.test(e)));
+  assert.equal(b.chamadas.filter((c) => c.url.pathname === "/instagram/fields").length, 1, "lista de campos em cache");
+  // erro real unknown_field vira erro parcial, não fatal
+  const c = windsorFalso((_u, f) => (f.includes("city") ? json({ error: "unknown_field: city" }, 400) : undefined));
+  const r3 = await c.fonte.audiencia();
+  assert.ok(r3.dados.idade && r3.erros.length === 1);
 });

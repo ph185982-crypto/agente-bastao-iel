@@ -9,6 +9,7 @@
 // aplicam ao dia: nada é inventado, null vira "sem dado".
 import { z } from "zod";
 import { ApiError, fetchJson, type RetryOptions } from "@/lib/http";
+import { addDays as somarDias } from "@/lib/dates";
 import { safeImageUrl } from "@/lib/marketplaces/images";
 import type { IgMidiaBruta, MetricasIgAudiencia, MetricasIgDia } from "./types";
 
@@ -32,11 +33,15 @@ export const MIDIA_CAMPOS = ["date", "account_name", "media_id", "media_product_
 const AUDIENCIA_DIMENSOES = [
   { chave: "idade", nome: "audience_age_name", tamanho: "audience_age_size" },
   { chave: "genero", nome: "audience_gender_name", tamanho: "audience_gender_size" },
-  { chave: "cidades", nome: "audience_city_name", tamanho: "audience_city_size" },
+  // O conector não tem audience_city_name (unknown_field): o nome da cidade vem no campo `city`, junto de audience_city_size.
+  { chave: "cidades", nome: "city", tamanho: "audience_city_size" },
   { chave: "paises", nome: "audience_country_name", tamanho: "audience_country_size" },
 ] as const;
 
 type Linha = Record<string, unknown>;
+/** follower_count (saldo diário) só aceita os últimos 30 dias; os demais campos do perfil aceitam janelas maiores, em consulta separada. */
+const PERFIL_CAMPOS_SALDO = ["date", "account_name", "follower_count"] as const;
+const PERFIL_CAMPOS_PRINCIPAIS = PERFIL_CAMPOS.filter((c) => c !== "follower_count");
 export type Intervalo = { de: string; ate: string } | { preset: string };
 
 // ─── Esquemas (zod) ──────────────────────────────────────────────────────────
@@ -114,6 +119,8 @@ export interface PerfilWindsor {
   /** Campos do perfil que vieram com valor em ao menos uma linha. */
   camposComDado: string[];
   linhasIgnoradas: number;
+  /** Consultas opcionais que falharam (ex.: saldo diário de seguidores); o resto do perfil continua valendo. */
+  avisos?: string[];
 }
 export interface ResultadoTesteWindsor {
   ok: boolean;
@@ -170,7 +177,19 @@ export function criarWindsor(o: OpcoesWindsor): FonteWindsor {
   }
 
   async function perfil(i: Intervalo): Promise<PerfilWindsor> {
-    const bruto = await consultar(PERFIL_CAMPOS, i);
+    const avisos: string[] = [];
+    // Consulta principal (janela inteira, sem follower_count). Falha aqui é fatal para o perfil.
+    const principal = await consultar(PERFIL_CAMPOS_PRINCIPAIS, i);
+    // Saldo diário: janela limitada a 30 dias, em consulta própria; se falhar vira aviso e não derruba o resto.
+    let saldo: Linha[] = [];
+    try {
+      const j: Intervalo = "preset" in i ? i : { de: i.de < somarDias(i.ate, -29) ? somarDias(i.ate, -29) : i.de, ate: i.ate };
+      saldo = await consultar(PERFIL_CAMPOS_SALDO, j);
+    } catch (e) {
+      if (e instanceof WindsorErro && (e.codigo === "chave" || e.codigo === "sem_contas")) throw e;
+      avisos.push(`Saldo diário de seguidores: ${e instanceof WindsorErro ? e.message : "falha inesperada"}`);
+    }
+    const bruto = [...principal, ...saldo];
     const { linhas, conta, contas } = porConta(bruto);
     const porDia = new Map<string, Partial<MetricasIgDia>>();
     const campos = new Set<string>();
@@ -191,7 +210,7 @@ export function criarWindsor(o: OpcoesWindsor): FonteWindsor {
       if (Object.keys(m).length) porDia.set(d, m);
     }
     const dias = [...porDia.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, metrics]) => ({ date, metrics }));
-    return { conta, contas, seguidores, seguidoresDia, dias, camposComDado: [...campos].sort(), linhasIgnoradas: ignoradas };
+    return { conta, contas, seguidores, seguidoresDia, dias, camposComDado: [...campos].sort(), linhasIgnoradas: ignoradas, avisos };
   }
 
   async function midias(i: Intervalo, limite: number): Promise<IgMidiaBruta[]> {
@@ -229,10 +248,27 @@ export function criarWindsor(o: OpcoesWindsor): FonteWindsor {
     return out.sort((a, b) => b.data.localeCompare(a.data)).slice(0, limite);
   }
 
+  /** Lista de campos do conector (cacheada por instância). Falhou ou formato desconhecido = null (não filtra, tenta mesmo assim). */
+  let camposConhecidos: Set<string> | null | undefined;
+  async function listaDeCampos(): Promise<Set<string> | null> {
+    if (camposConhecidos !== undefined) return camposConhecidos;
+    try {
+      const qs = new URLSearchParams({ api_key: o.chave });
+      const corpo = await fetchJson<unknown>(`https://${WINDSOR_HOST}/${CONECTOR}/fields?${qs.toString()}`, { method: "GET", headers: { Accept: "application/json" } }, { retries: 1, baseDelayMs: o.baseDelayMs ?? 500, maxDelayMs: o.maxDelayMs ?? 8000, sleep: o.sleep, fetchImpl: o.fetchImpl });
+      const itens: unknown[] = Array.isArray(corpo) ? corpo : corpo && typeof corpo === "object" ? (Array.isArray((corpo as any).data) ? (corpo as any).data : Object.keys(corpo as object)) : [];
+      const nomes = itens.map((x) => (typeof x === "string" ? x : x && typeof x === "object" ? (x as any).id ?? (x as any).name ?? (x as any).field : null)).filter((x): x is string => typeof x === "string");
+      camposConhecidos = nomes.length > 10 ? new Set(nomes) : null;
+    } catch { camposConhecidos = null; }
+    return camposConhecidos;
+  }
+
   async function audiencia(): Promise<{ dados: MetricasIgAudiencia; erros: string[] }> {
     const dados: MetricasIgAudiencia = {};
     const erros: string[] = [];
+    const conhecidos = await listaDeCampos();
     for (const dim of AUDIENCIA_DIMENSOES) {
+      const faltam = conhecidos ? [dim.nome, dim.tamanho].filter((c) => !conhecidos.has(c)) : [];
+      if (faltam.length) { erros.push(`${dim.chave}: campo(s) ${faltam.join(", ")} não existem neste conector; dimensão ignorada.`); continue; }
       try {
         const bruto = await consultar(["account_name", dim.nome, dim.tamanho], { preset: "last_30d" });
         const { linhas } = porConta(bruto);

@@ -144,6 +144,7 @@ async function coletarInstagramWindsor(cfg: CanalConfig, fonte: FonteWindsor, ch
   const ontem = addDays(hoje, -1);
   await parte("Instagram (perfil)", async () => {
     const p = await fonte.perfil({ de, ate: hoje });
+    for (const a of p.avisos ?? []) r.avisos.push(esconderChave(a, chave).slice(0, 200));
     if (p.conta) info.ig_username = p.conta.replace(/^@/, "");
     const porDia = new Map<string, Record<string, unknown>>();
     for (const d of p.dias) {
