@@ -1,81 +1,81 @@
 import Link from "next/link";
-import { Logo } from "./Logo";
+import { AppShell, type NavGroup } from "./shell/AppShell";
 import { logout } from "@/app/actions";
 
-const NAV = [
-  { href: "/", label: "Visão geral", ico: "◧" },
-  { href: "/clientes", label: "Clientes", ico: "◉" },
-  { href: "/aprovacoes", label: "Aprovações", ico: "✓", key: "approvals" },
-  { href: "/alertas", label: "Alertas", ico: "!", key: "alerts" },
-  { href: "/configuracoes", label: "Ajustes", ico: "⚙" },
-];
-
+/** Casca do painel Marketplaces (admin): sidebar de vidro agrupada + faixas de estado. */
 export function Shell({
   children,
   counts,
   paused,
   dryRun,
   reviewer = false,
+  admin = false,
+  who,
 }: {
   children: React.ReactNode;
   counts: { approvals: number; alerts: number };
   paused: boolean;
   dryRun: boolean;
   reviewer?: boolean;
+  admin?: boolean;
+  who?: string;
 }) {
-  return (
+  const groups: NavGroup[] = [
+    { items: [{ href: "/central", label: "Central", icon: "grid", exact: true }] },
+    {
+      label: "Operação",
+      items: [
+        { href: "/", label: "Visão geral", icon: "home", exact: true },
+        { href: "/clientes", label: "Clientes", icon: "users" },
+        { href: "/aprovacoes", label: "Aprovações", icon: "check", badge: counts.approvals },
+        { href: "/alertas", label: "Alertas", icon: "bell", badge: counts.alerts },
+        { href: "/entregas", label: "Entregas", icon: "truck" },
+      ],
+    },
+    {
+      label: "Análise",
+      items: [
+        { href: "/relatorios", label: "Relatórios", icon: "chart" },
+        { href: "/auditoria", label: "Auditoria", icon: "shield" },
+      ],
+    },
+    {
+      label: "Sistema",
+      items: [
+        { href: "/configuracoes", label: "Ajustes", icon: "settings" },
+        ...(admin ? [{ href: "/usuarios", label: "Usuários", icon: "user" }] : []),
+      ],
+    },
+  ];
+  const banner = (reviewer || paused || dryRun) && (
     <>
-      <header className="topbar">
-        <div className="topbar-inner">
-          <div className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
-            <Link href="/central" aria-label="Central: todas as ferramentas" title="Central" className="appswitch">
-              <span /><span /><span /><span />
-            </Link>
-            <Link href="/" style={{ textDecoration: "none" }}>
-              <Logo />
-            </Link>
-          </div>
-          <nav className="topnav">
-            {NAV.map((n) => (
-              <Link key={n.href} href={n.href}>
-                {n.label}
-                {n.key && counts[n.key as "approvals" | "alerts"] > 0 ? ` (${counts[n.key as "approvals" | "alerts"]})` : ""}
-              </Link>
-            ))}
-            <Link href="/entregas">Entregas</Link>
-            <Link href="/relatorios">Relatórios</Link>
-            <Link href="/auditoria">Auditoria</Link>
-          </nav>
-          <form action={logout}>
-            <button className="btn btn-sm btn-ghost" style={{ color: "var(--sand)", borderColor: "var(--navy-2)" }}>
-              Sair
-            </button>
-          </form>
-        </div>
-      </header>
       {reviewer && (
-        <div style={{ background: "var(--navy-2)", color: "var(--cream)", textAlign: "center", padding: "6px 12px", fontSize: 13, fontWeight: 700 }}>
+        <div className="banner" role="status">
           Acesso de revisão — somente leitura. Você pode navegar, cadastrar um cliente de teste e gerar o link de autorização.
         </div>
       )}
       {(paused || dryRun) && (
-        <div style={{ background: paused ? "var(--orange)" : "var(--sand)", color: paused ? "#fff" : "var(--navy)", textAlign: "center", padding: "6px 12px", fontSize: 13, fontWeight: 700 }}>
+        <div className={`banner${paused ? " orange" : ""}`} role="status">
           {paused ? "PAUSA GERAL ATIVA — nenhuma ação de escrita será executada." : "Modo simulação ativo — ações aprovadas são apenas simuladas."}{" "}
-          <Link href="/configuracoes">Alterar</Link>
+          <Link href="/configuracoes" style={{ fontWeight: 800 }}>Alterar</Link>
         </div>
       )}
-      <main className="main">{children}</main>
-      <nav className="bottomnav" aria-label="Navegação">
-        {NAV.map((n) => (
-          <Link key={n.href} href={n.href}>
-            <span className="ico" aria-hidden="true">{n.ico}</span>
-            {n.label}
-            {n.key && counts[n.key as "approvals" | "alerts"] > 0 && (
-              <span className="badge-count">{counts[n.key as "approvals" | "alerts"]}</span>
-            )}
-          </Link>
-        ))}
-      </nav>
     </>
+  );
+  return (
+    <AppShell
+      groups={groups}
+      tag="Marketplaces"
+      homeHref="/"
+      banner={banner || undefined}
+      bottom={
+        <>
+          {who && <div className="sb-who" title={who}>{who}</div>}
+          <form action={logout}><button className="btn btn-sm btn-ghost">Sair</button></form>
+        </>
+      }
+    >
+      {children}
+    </AppShell>
   );
 }

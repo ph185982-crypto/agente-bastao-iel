@@ -33,7 +33,7 @@ export default async function Inicio() {
   return (
     <>
       <div className="eyebrow">{client.name}</div>
-      <h1>Olá, <span className="serif">{first}</span></h1>
+      <h1>Olá, <span className="accent">{first}</span></h1>
       <p className="muted" style={{ marginTop: 4 }}>Seu mapa de 12 meses com a Avanteza: onde estamos, o que vem agora e o que depende de cada um.</p>
 
       {cur && (

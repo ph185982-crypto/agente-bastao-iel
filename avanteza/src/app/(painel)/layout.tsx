@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 
 export default async function PainelLayout({ children }: { children: React.ReactNode }) {
   await requireAdmin();
-  const reviewer = (await currentSession())?.role === "reviewer";
+  const sess = await currentSession();
+  const reviewer = sess?.role === "reviewer";
   const db = await userDb();
   const [approvals, alerts, settings] = await Promise.all([
     db.from("actions").select("id", { count: "exact", head: true }).eq("status", "proposed"),
@@ -19,6 +20,8 @@ export default async function PainelLayout({ children }: { children: React.React
       paused={Boolean(settings.data?.global_pause)}
       dryRun={Boolean(settings.data?.dry_run)}
       reviewer={reviewer}
+      admin={sess?.role === "admin"}
+      who={sess?.name || sess?.email}
     >
       {children}
     </Shell>

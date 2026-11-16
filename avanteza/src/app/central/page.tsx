@@ -4,7 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { canUseApp } from "@/lib/session";
 import { apps, ssoEnabled } from "@/lib/apps";
 import { adminDb } from "@/lib/db";
-import { Logo } from "@/components/Logo";
+import { AppShell } from "@/components/shell/AppShell";
+import { GlassCard, PageHeader } from "@/components/shell/GlassCard";
 import { Flash } from "@/components/Flash";
 import { logout } from "@/app/actions";
 
@@ -27,46 +28,49 @@ export default async function Central({ searchParams }: { searchParams: Promise<
   }
   const first = (sess.name || sess.email.split("@")[0]).split(" ")[0];
   return (
-    <>
-      <header className="topbar">
-        <div className="topbar-inner">
-          <Logo />
-          <div className="btn-row">
-            {sess.role === "admin" && <Link href="/usuarios" className="btn btn-sm btn-ghost" style={{ color: "var(--sand)", borderColor: "var(--navy-2)" }}>Usuários</Link>}
-            <form action={logout}><button className="btn btn-sm btn-ghost" style={{ color: "var(--sand)", borderColor: "var(--navy-2)" }}>Sair</button></form>
-          </div>
-        </div>
-      </header>
-      <main className="main">
-        <Flash sp={sp} />
-        <div className="eyebrow">Central Avanteza</div>
-        <h1>Olá, <span className="serif">{first}</span></h1>
-        <p className="muted" style={{ marginTop: 4 }}>Escolha a ferramenta. Você entra uma vez e todas abrem com o mesmo acesso.</p>
-        {groups.map((g) => (
-          <section key={g}>
-            <h2>{g}</h2>
-            <div className="grid two">
-              {list.filter((a) => a.group === g).map((a) => {
-                const href = a.external ? a.url : a.url ? (ssoEnabled(a.id) ? `/sso/authorize?app=${a.id}` : a.url) : a.internalPath ?? "/";
-                const badges = a.id === "marketplaces" ? [approvals ? `${approvals} aprovações` : "", alerts ? `${alerts} alertas` : ""].filter(Boolean) : [];
-                return (
-                  <a key={a.id} href={href} className="card" style={{ textDecoration: "none", display: "block", marginTop: 0 }} {...(a.external ? { target: "_blank", rel: "noreferrer" } : {})}>
-                    <div className="row">
+    <AppShell
+      groups={[{ items: [{ href: "/central", label: "Todas as ferramentas", icon: "grid", exact: true }, ...(sess.role === "admin" ? [{ href: "/usuarios", label: "Usuários e acessos", icon: "users" }] : [])] }]}
+      homeHref="/central"
+      bottom={
+        <>
+          <div className="sb-who" title={sess.email}>{sess.name || sess.email}</div>
+          <form action={logout}><button className="btn btn-sm btn-ghost">Sair</button></form>
+        </>
+      }
+    >
+      <Flash sp={sp} />
+      <PageHeader eyebrow="Central Avanteza" title={<>Olá, <span className="accent">{first}</span></>}>
+        <p className="muted" style={{ marginTop: 6 }}>Escolha a ferramenta. Você entra uma vez e todas abrem com o mesmo acesso.</p>
+      </PageHeader>
+      {groups.map((g) => (
+        <section key={g}>
+          <h2>{g}</h2>
+          <div className="grid three">
+            {list.filter((a) => a.group === g).map((a) => {
+              const href = a.external ? a.url : a.url ? (ssoEnabled(a.id) ? `/sso/authorize?app=${a.id}` : a.url) : a.internalPath ?? "/";
+              const badges = a.id === "marketplaces" ? [approvals ? `${approvals} aprovações` : "", alerts ? `${alerts} alertas` : ""].filter(Boolean) : [];
+              return (
+                <GlassCard as="a" key={a.id} href={href} className="tile" style={{ marginTop: 0 }} {...(a.external ? { target: "_blank", rel: "noreferrer" } : {})}>
+                  <span className="mono-ico" aria-hidden="true">{a.name[0]}</span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="row" style={{ flexWrap: "nowrap" }}>
                       <h3>{a.name}</h3>
-                      <div className="btn-row">
-                        {badges.map((b) => <span key={b} className="pill pill-orange">{b}</span>)}
-                        {a.url && !a.external && !ssoEnabled(a.id) && <span className="pill pill-outline">login próprio</span>}
-                        <span aria-hidden="true">›</span>
-                      </div>
+                      <span className="go" aria-hidden="true">›</span>
                     </div>
                     <p className="small muted" style={{ margin: "6px 0 0" }}>{a.tagline}</p>
-                  </a>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </main>
-    </>
+                    {(badges.length > 0 || (a.url && !a.external && !ssoEnabled(a.id))) && (
+                      <div className="btn-row" style={{ marginTop: 10 }}>
+                        {badges.map((b) => <span key={b} className="pill pill-orange">{b}</span>)}
+                        {a.url && !a.external && !ssoEnabled(a.id) && <span className="pill pill-outline">login próprio</span>}
+                      </div>
+                    )}
+                  </div>
+                </GlassCard>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </AppShell>
   );
 }

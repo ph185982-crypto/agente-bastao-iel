@@ -32,7 +32,7 @@ export default async function Plano({ searchParams }: { searchParams: Promise<SP
     <>
       <Flash sp={sp} />
       <div className="eyebrow">Plano de 12 meses</div>
-      <h1>Fases e <span className="serif">ações</span></h1>
+      <h1>Fases e <span className="accent">ações</span></h1>
       <p className="muted small" style={{ marginTop: 4 }}>{sum.done} de {sum.total} ações concluídas ({sum.pct}%){sum.overdue ? ` · ${sum.overdue} atrasada(s)` : ""}</p>
 
       <div className="chips" aria-label="Filtrar por responsável">

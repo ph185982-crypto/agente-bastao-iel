@@ -36,7 +36,7 @@ export default async function Aprovacoes({ searchParams }: { searchParams: Promi
   return (
     <>
       <Flash sp={sp} />
-      <div className="page-head"><div><div className="eyebrow">Executor</div><h1>Fila de <span className="serif">aprovações</span></h1></div></div>
+      <div className="page-head"><div><div className="eyebrow">Executor</div><h1>Fila de <span className="accent">aprovações</span></h1></div></div>
 
       <h2>Aguardando você ({(pending ?? []).length})</h2>
       {(pending ?? []).length === 0 && <div className="card empty">Nada para aprovar agora.</div>}

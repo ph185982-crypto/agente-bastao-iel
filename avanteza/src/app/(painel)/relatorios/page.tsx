@@ -16,7 +16,7 @@ export default async function Relatorios({ searchParams }: { searchParams: Promi
   return (
     <>
       <div className="page-head">
-        <div><div className="eyebrow">Fase 2 · Agente</div><h1>Relatórios <span className="serif">diários</span></h1></div>
+        <div><div className="eyebrow">Fase 2 · Agente</div><h1>Relatórios <span className="accent">diários</span></h1></div>
         <form className="btn-row">
           <input type="date" name="data" defaultValue={date} style={{ width: 170 }} />
           <button className="btn btn-sm btn-ghost">Ver</button>
