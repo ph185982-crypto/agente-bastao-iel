@@ -114,9 +114,9 @@ test("middleware: cliente só enxerga /mapa; rotas admin ficam fora", () => {
 
 test("menu por tipo: marketplace, mídia e ambos (união)", () => {
   const labels = (k: string) => navFor(k).map((i) => i.label);
-  assert.deepEqual(labels("marketplace"), ["Início", "Plano", "Marketplaces", "Reuniões", "Arquivos", "Conta"]);
-  assert.deepEqual(labels("midia"), ["Início", "Plano", "Canais", "Reuniões", "Arquivos", "Conta"]);
-  assert.deepEqual(labels("ambos"), ["Início", "Plano", "Marketplaces", "Canais", "Reuniões", "Arquivos", "Conta"]);
+  assert.deepEqual(labels("marketplace"), ["Início", "Para aprovar", "Plano", "Marketplaces", "Relatórios", "Reuniões", "Arquivos", "Conta"]);
+  assert.deepEqual(labels("midia"), ["Início", "Para aprovar", "Plano", "Canais", "Relatórios", "Reuniões", "Arquivos", "Conta"]);
+  assert.deepEqual(labels("ambos"), ["Início", "Para aprovar", "Plano", "Marketplaces", "Canais", "Relatórios", "Reuniões", "Arquivos", "Conta"]);
 });
 
 test("POST /api/mapa/reunioes: só CRON_SECRET ou administrador (cliente, revisor e anônimo são recusados)", async () => {

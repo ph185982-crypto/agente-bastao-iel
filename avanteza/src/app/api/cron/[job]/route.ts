@@ -13,6 +13,8 @@ import { rotinaCanais } from "@/lib/channels/servico";
 import { rotinaEntregas } from "@/lib/motor/rotina";
 import { spDate } from "@/lib/dates";
 import { processarPendentes } from "@/lib/eventos/barramento";
+import { gerarRelatoriosDaSemana, publicarVencidos } from "@/lib/relatorios/gerar";
+import { rotinaLembretes } from "@/lib/relatorios/lembretes";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Fluid compute (Hobby permite até 300 s)
@@ -51,6 +53,7 @@ const JOBS: Record<string, () => Promise<unknown>> = {
     webhooks: await processWebhookQueue(20_000),
     execute: await runApprovedQueue(10_000),
     eventos: await processarPendentes({ tempoMaxMs: 30_000, limite: 10 }),
+    relatorios: await publicarVencidos(),
   }),
   // Fase 2: agente de IA + relatório diário (um cliente por vez)
   "ai-daily": () => runDailyAgent(200_000),
@@ -60,6 +63,9 @@ const JOBS: Record<string, () => Promise<unknown>> = {
   entregas: () => rotinaEntregas(spDate()),
   // Barramento de eventos (contrato.assinado…): processa os pendentes vencidos, com retentativa e backoff.
   eventos: () => processarPendentes({ tempoMaxMs: 240_000 }),
+  // Mapa (F7): relatório semanal do cliente (segunda cedo; idempotente por cliente e semana) e lembretes (1×/dia, máx. 1 por cliente).
+  relatorios: () => gerarRelatoriosDaSemana(spDate()),
+  lembretes: () => rotinaLembretes(spDate()),
   // "daily": fallback diário da Vercel Cron
   daily: async () => ({
     tokens: await refreshTokens(),

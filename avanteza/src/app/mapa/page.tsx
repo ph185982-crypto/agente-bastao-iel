@@ -11,6 +11,11 @@ import { PERIODO_PADRAO, parsePeriodo, type PeriodoId } from "@/lib/dashboards/p
 import { hasChannels, hasMarketplaces } from "@/lib/mapa/nav";
 import { DependeDeVoce } from "@/components/mapa/DependeDeVoce";
 import { Flash } from "@/components/Flash";
+import { listarAprovacoes } from "@/lib/mapa/aprovacoes";
+import { lembreteDeHoje, listarRelatorios } from "@/lib/mapa/relatorios";
+import { aprovacaoAtrasada, ROTULO_TIPO_PECA, type TipoPeca } from "@/lib/aprovacoes/tipos";
+import { fmtPeriodo } from "@/lib/relatorios/semana";
+import "@/components/aprovacoes/aprovacoes.css";
 
 export const dynamic = "force-dynamic";
 
@@ -21,12 +26,17 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<R
   const today = spDate();
   const client = await getClient(scope);
   if (!client) return <div className="empty">Cliente não encontrado.</div>;
-  const [phases, actions, mkt, group] = await Promise.all([
+  const [phases, actions, mkt, group, aprovacoes, lembrete, relatorios] = await Promise.all([
     listPhases(scope),
     listActions(scope),
     hasMarketplaces(client.kind) ? marketplaceData(scope, addDays(today, -60)) : null,
     scope.allowedClientIds.length > 1 ? groupOverview(scope, addDays(today, -30)) : null,
+    listarAprovacoes(scope),
+    lembreteDeHoje(scope, today),
+    listarRelatorios(scope),
   ]);
+  const paraAprovar = aprovacoes.filter((a) => a.status === "pendente");
+  const ultimoRelatorio = relatorios[0] ?? null;
   const canais = hasChannels(client.kind) ? await carregarCanaisDoCliente(scope, periodoId) : null;
   const hrefPeriodo = (p: PeriodoId) => (p === PERIODO_PADRAO ? "/mapa" : `/mapa?periodo=${p}`);
 
@@ -44,7 +54,35 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<R
       <div className="eyebrow">{client.name}</div>
       <h1>Olá, <span className="accent">{first}</span></h1>
       <p className="muted" style={{ marginTop: 4 }}>Seu mapa de 12 meses com a Avanteza: onde estamos, o que vem agora e o que depende de cada um.</p>
+      {lembrete && (
+        <div className="ap-banner" role="status" aria-label="Lembrete de hoje">
+          <h2>Lembrete de hoje: {lembrete.length === 1 ? "1 item precisa" : `${lembrete.length} itens precisam`} de você</h2>
+          <ul className="small">{lembrete.slice(0, 5).map((i) => <li key={i.id}>{i.titulo} <span className={i.atrasada ? "late" : "muted"}>({i.atrasada ? "atrasado desde" : "prazo"} {fmtDate(i.prazo)})</span></li>)}</ul>
+        </div>
+      )}
+      {paraAprovar.length > 0 && (
+        <section className="mt-voce" aria-label="Para aprovar" style={{ marginTop: 18 }}>
+          <div className="row"><h2 style={{ margin: 0 }}>Para aprovar <span className="pill pill-orange">{paraAprovar.length}</span></h2><Link className="small" href="/mapa/aprovacoes">Ver todas ›</Link></div>
+          <div className="ap-lista">
+            {paraAprovar.slice(0, 3).map((a) => {
+              const atrasada = aprovacaoAtrasada(a, today);
+              return (
+                <Link key={a.id} href={`/mapa/aprovacoes/${a.id}`} className={`ap-item ${atrasada ? "atrasada" : "pendente"}`}>
+                  <div className="ap-main"><div className="tit">{a.titulo}</div><div className="meta"><span>{ROTULO_TIPO_PECA[a.tipo as TipoPeca] ?? a.tipo}</span>{a.prazo && <span className={atrasada ? "late" : ""}>{atrasada ? "Atrasada, prazo " : "Prazo "}{fmtDate(a.prazo)}</span>}</div></div>
+                  <div className="lado"><span className="btn btn-sm btn-orange">Revisar</span></div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
       <DependeDeVoce acoes={actions} hoje={today} readOnly={scope.readOnly} voltar="/mapa" limite={3} />
+      {ultimoRelatorio && (
+        <div className="card row" style={{ marginTop: 14 }}>
+          <div><div className="small muted">Relatório semanal</div><strong>Semana de {fmtPeriodo(ultimoRelatorio.semana, ultimoRelatorio.periodo_fim)}</strong></div>
+          <div className="btn-row"><Link className="btn btn-sm btn-ghost" href={`/mapa/relatorios/${ultimoRelatorio.id}`}>Ler</Link><a className="btn btn-sm btn-ghost" href={`/mapa/relatorios/${ultimoRelatorio.id}/pdf`} target="_blank" rel="noopener">PDF</a></div>
+        </div>
+      )}
 
       {canais && <InicioMidia d={canais} hrefPeriodo={hrefPeriodo} />}
 

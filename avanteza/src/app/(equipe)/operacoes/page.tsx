@@ -12,6 +12,8 @@ import { podeTrabalharMotor, podeVerMotor } from "@/lib/motor/acesso";
 import { acoesDaFila, clientesAtivos, idDoUsuario, isUuid, listarEquipe } from "@/lib/motor/repo";
 import { filtrar, montarFila, type FiltroFila } from "@/lib/motor/fila";
 import { ROTULO_DEPARTAMENTO, type Departamento } from "@/lib/motor/tipos";
+import { contarPendentes } from "@/lib/aprovacoes/equipe";
+import { rawQuery } from "@/lib/db/client";
 import "@/components/motor/motor.css";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +29,10 @@ export default async function Hoje({ searchParams }: { searchParams: Promise<SP>
   if (!podeVerMotor(sess)) redirect("/central");
   const sp = await searchParams;
   const hoje = spDate();
-  const [meuId, equipe, clientes, { acoes, concluidasHoje }] = await Promise.all([idDoUsuario(sess.email), listarEquipe(), clientesAtivos(), acoesDaFila(hoje)]);
+  const [meuId, equipe, clientes, { acoes, concluidasHoje }, aprov, [rasc]] = await Promise.all([
+    idDoUsuario(sess.email), listarEquipe(), clientesAtivos(), acoesDaFila(hoje), contarPendentes(),
+    rawQuery<{ n: number }>("select count(*)::int n from avanteza.relatorios_semanais where status = 'rascunho'"),
+  ]);
   // Padrão: o membro vê a própria fila; o administrador e o revisor veem a de todos.
   const respParam = one(sp.resp) || (sess.role === "member" && meuId ? "eu" : "todos");
   const responsavel = respParam === "eu" ? meuId ?? "ninguem" : respParam === "todos" ? "" : respParam === "ninguem" || isUuid(respParam) ? respParam : "";
@@ -73,6 +78,13 @@ export default async function Hoje({ searchParams }: { searchParams: Promise<SP>
         <a role="listitem" href="#cliente" className="kpi"><div className="label">Com o cliente</div><div className="value">{fila.contadores.bloqueadas}</div></a>
         <div role="listitem" className={`kpi ${fila.contadores.concluidasHoje ? "feito" : ""}`}><div className="label">Concluídas hoje</div><div className="value">{fila.contadores.concluidasHoje}</div></div>
       </div>
+
+      {(aprov.pendentes > 0 || aprov.ajustes > 0 || (rasc?.n ?? 0) > 0) && (
+        <p className="small" style={{ margin: "10px 0 0" }}>
+          <Link href="/operacoes/aprovacoes">Aprovações: {aprov.pendentes} com o cliente{aprov.ajustes ? `, ${aprov.ajustes} ajuste(s) pedido(s)` : ""}</Link>
+          {(rasc?.n ?? 0) > 0 && <> · <Link href="/operacoes/relatorios">{rasc.n} relatório(s) semanal(is) para revisar</Link></>}
+        </p>
+      )}
 
       <form className="mt-filtros card" method="get" aria-label="Filtros" style={{ padding: 14 }}>
         <div className="field"><label htmlFor="f-resp">Responsável</label>

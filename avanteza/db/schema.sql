@@ -791,3 +791,105 @@ create table if not exists avanteza.captura_conversas (
   atualizado_em timestamptz not null default now()
 );
 alter table avanteza.capturas add column if not exists conversa text;
+
+-- ───────────────────────── F7: Mapa — aprovações, relatório semanal e lembretes ao cliente ─────────────────────────
+-- Preferências por cliente (ficha do cliente → aba "Aprovações e relatórios").
+--   relatorio_modo: auto (publica sozinho se ninguém revisar em relatorio_horas) | revisao (só publica quando a equipe aprova) | desligado
+alter table avanteza.clients add column if not exists relatorio_modo text not null default 'auto';
+alter table avanteza.clients add column if not exists relatorio_horas integer not null default 12;
+alter table avanteza.clients add column if not exists lembretes_ativos boolean not null default true;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'clients_relatorio_modo_check') then
+    alter table avanteza.clients add constraint clients_relatorio_modo_check check (relatorio_modo in ('auto','revisao','desligado'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'clients_relatorio_horas_check') then
+    alter table avanteza.clients add constraint clients_relatorio_horas_check check (relatorio_horas between 1 and 168);
+  end if;
+  -- ações criadas por um pedido de ajuste do cliente
+  if exists (select 1 from pg_constraint where conname = 'plan_actions_origin_check' and pg_get_constraintdef(oid) not like '%aprovacao%') then
+    alter table avanteza.plan_actions drop constraint plan_actions_origin_check;
+    alter table avanteza.plan_actions add constraint plan_actions_origin_check check (origin in ('plano','reuniao','manual','playbook','captura','ia','aprovacao'));
+  end if;
+end $$;
+
+-- Peça enviada ao cliente para aprovação. action_id = tarefa da equipe ligada (aprovar conclui); ajuste_action_id = última
+-- ação criada por um pedido de ajuste (a nova versão a conclui).
+create table if not exists avanteza.aprovacoes (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  tipo text not null default 'criativo' check (tipo in ('criativo','post','legenda','calendario','contrato_midia','relatorio','outro')),
+  titulo text not null,
+  descricao text,
+  prazo date,
+  status text not null default 'pendente' check (status in ('pendente','aprovada','ajuste','cancelada')),
+  versao_atual integer not null default 1,
+  action_id uuid references avanteza.plan_actions(id) on delete set null,
+  ajuste_action_id uuid references avanteza.plan_actions(id) on delete set null,
+  criado_por text not null,
+  decidido_por text,
+  decidido_em timestamptz,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+create index if not exists aprovacoes_cliente_idx on avanteza.aprovacoes(client_id, status, prazo);
+create index if not exists aprovacoes_pendentes_idx on avanteza.aprovacoes(prazo) where status = 'pendente';
+
+-- Versões da peça (link ou arquivo do cliente). Uma linha por versão.
+create table if not exists avanteza.aprovacao_versoes (
+  id uuid primary key default gen_random_uuid(),
+  aprovacao_id uuid not null references avanteza.aprovacoes(id) on delete cascade,
+  numero integer not null,
+  link text not null,
+  arquivo_id uuid references avanteza.client_files(id) on delete set null,
+  nota text,
+  criado_por text not null,
+  criado_em timestamptz not null default now(),
+  unique (aprovacao_id, numero)
+);
+
+-- Histórico: envio, nova versão, aprovação, pedido de ajuste (com comentário), comentário e cancelamento.
+create table if not exists avanteza.aprovacao_eventos (
+  id uuid primary key default gen_random_uuid(),
+  aprovacao_id uuid not null references avanteza.aprovacoes(id) on delete cascade,
+  versao integer not null,
+  tipo text not null check (tipo in ('enviada','nova_versao','aprovada','ajuste','comentario','cancelada')),
+  autor text not null,
+  autor_tipo text not null check (autor_tipo in ('equipe','cliente')),
+  texto text,
+  criado_em timestamptz not null default now()
+);
+create index if not exists aprovacao_eventos_idx on avanteza.aprovacao_eventos(aprovacao_id, criado_em);
+
+-- Relatório semanal do cliente: um por cliente e semana (segunda-feira da semana relatada). Só "publicado" aparece no Mapa.
+create table if not exists avanteza.relatorios_semanais (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  semana date not null,
+  periodo_fim date not null,
+  status text not null default 'rascunho' check (status in ('rascunho','publicado','descartado')),
+  dados jsonb not null default '{}'::jsonb,
+  abertura text not null default '',
+  abertura_origem text not null default 'modelo' check (abertura_origem in ('ia','modelo','equipe')),
+  destaques jsonb not null default '[]'::jsonb,
+  publicar_apos timestamptz,
+  revisado_por text,
+  publicado_por text,
+  publicado_em timestamptz,
+  email_status text,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  unique (client_id, semana)
+);
+create index if not exists relatorios_semanais_fila_idx on avanteza.relatorios_semanais(publicar_apos) where status = 'rascunho';
+
+-- Lembretes ao cliente (pendências dele atrasadas ou vencendo em 2 dias): no máximo UM por cliente por dia, agrupado.
+create table if not exists avanteza.lembretes_cliente (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  dia date not null,
+  itens jsonb not null default '[]'::jsonb,
+  email_status text,
+  criado_em timestamptz not null default now(),
+  unique (client_id, dia)
+);

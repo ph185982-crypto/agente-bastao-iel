@@ -25,7 +25,7 @@ export const ROTULO_PRIORIDADE: Record<Prioridade, string> = { 1: "Alta", 2: "M�
 export const DIAS_SEMANA = ["", "segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo"];
 
 export const ROTULO_ORIGEM: Record<string, string> = {
-  plano: "Plano de 12 meses", reuniao: "Reunião", manual: "Manual", playbook: "Playbook", captura: "Conversa", ia: "IA",
+  plano: "Plano de 12 meses", reuniao: "Reunião", manual: "Manual", playbook: "Playbook", captura: "Conversa", ia: "IA", aprovacao: "Pedido de ajuste",
 };
 
 export const isPapel = (v: unknown): v is Papel => typeof v === "string" && (PAPEIS as string[]).includes(v);

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireMapa } from "@/lib/mapa/auth";
 import { getClient, listCompanies } from "@/lib/mapa/repo";
+import { contarParaAprovar } from "@/lib/mapa/aprovacoes";
 import { AppShell, type NavGroup } from "@/components/shell/AppShell";
 import { CompanySwitch } from "@/components/mapa/CompanySwitch";
 import { navFor } from "@/lib/mapa/nav";
@@ -12,13 +13,13 @@ export const metadata: Metadata = { title: "Mapa — Avanteza" };
 
 const ICON: Record<string, string> = {
   "/mapa": "home", "/mapa/plano": "flag", "/mapa/marketplaces": "store", "/mapa/canais": "signal",
-  "/mapa/reunioes": "calendar", "/mapa/arquivos": "folder", "/mapa/conta": "user",
+  "/mapa/reunioes": "calendar", "/mapa/arquivos": "folder", "/mapa/conta": "user", "/mapa/aprovacoes": "check", "/mapa/relatorios": "doc",
 };
 
 export default async function MapaLayout({ children }: { children: React.ReactNode }) {
   const { scope } = await requireMapa();
-  const [client, companies] = await Promise.all([getClient(scope), listCompanies(scope)]);
-  const items = navFor(client?.kind ?? "marketplace").map((i) => ({ ...i, icon: ICON[i.href] ?? "grid", exact: i.href === "/mapa" }));
+  const [client, companies, paraAprovar] = await Promise.all([getClient(scope), listCompanies(scope), contarParaAprovar(scope)]);
+  const items = navFor(client?.kind ?? "marketplace").map((i) => ({ ...i, icon: ICON[i.href] ?? "grid", exact: i.href === "/mapa", ...(i.href === "/mapa/aprovacoes" && paraAprovar ? { badge: paraAprovar } : {}) }));
   const groups: NavGroup[] = [{ label: client?.name ? `Mapa · ${client.name}` : "Mapa", items }];
   return (
     <AppShell

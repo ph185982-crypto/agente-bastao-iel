@@ -25,7 +25,7 @@ src/lib/alerts/                          regras (puras), motor, canais (e-mail; 
 src/lib/executor/                        políticas, limites, dry-run, pausa geral, auditoria
 src/app/api/auth/mercadolivre/callback   callback OAuth (state anti-CSRF, uso único)
 src/app/api/webhooks/mercadolivre        notificações (grava na fila e responde 200)
-src/app/api/cron/[job]                   tick | collect | alerts | webhooks | execute | refresh-tokens | daily
+src/app/api/cron/[job]                   tick | collect | alerts | webhooks | execute | refresh-tokens | daily | entregas | eventos | relatorios | lembretes
 supabase/migrations/                     0001 schema + RLS, 0002 pg_cron
 ```
 
@@ -132,6 +132,22 @@ Contrato completo em `docs/eventos.md`. Código em `src/lib/eventos/`, `src/lib/
   .zip; `TRANSCRIPTION_MODEL`, padrão `whisper-1`). Usa as já existentes `ENCRYPTION_KEY` (cifra da senha inicial),
   `AVANTEZA_CAPTURE_KEY`, `AVANTEZA_FINANCE_KEY`/`VENDEDORIA_URL` e `ANTHROPIC_API_KEY` (extração dos combinados).
 - Schema: `node db/apply.mjs` (aditivo: `clients.cnpj`, `eventos`, `onboardings`, `notificacoes`, `captura_mensagens`, `captura_conversas`, `capturas.conversa`).
+
+## Mapa F7: aprovações, relatório semanal e lembretes ao cliente
+Detalhes em `docs/mapa-f7.md`. Código: `src/lib/aprovacoes/`, `src/lib/relatorios/`, `src/lib/mapa/{aprovacoes,relatorios}.ts` (lado do cliente, escopo da sessão).
+- **Aprovações**: a equipe envia a peça (link ou arquivo do cliente, prazo, tarefa ligada) em Operações → **Aprovações**
+  (`/operacoes/aprovacoes`) ou na ficha do cliente (aba **Aprovações e relatórios**). O cliente vê em **Para aprovar** (menu e Início),
+  aprova (conclui a tarefa ligada) ou pede ajuste com comentário (cria ação no Motor, origem `aprovacao`, com o responsável da tarefa
+  original ou o responsável pela conta, prazo D+2). Nova versão conclui a ação de ajuste. Histórico de versões e comentários; sino da equipe.
+- **Relatório semanal**: cron `relatorios` (segunda 11:17 UTC) gera 1 por cliente e semana (idempotente), com marketplaces, Meta/Instagram,
+  entregas, o que vem e o que depende do cliente; abertura pela IA (`ANTHROPIC_API_KEY`) ou modelo fixo. Revisão em Operações → **Relatórios**
+  (`/operacoes/relatorios`); modo por cliente: `auto` (publica sozinho após N horas, padrão 12, pelo `tick`), `revisao` ou `desligado`.
+  Publicado aparece no Mapa → **Relatórios** e em PDF (`/mapa/relatorios/<id>/pdf`, pdf-lib + Manrope embutida); e-mail ao contato do cliente.
+- **Lembretes**: cron `lembretes` (diário 12:33 UTC): pendências do cliente atrasadas ou vencendo em 2 dias (ações e peças), no máximo
+  1 por cliente por dia, no Início do Mapa e por e-mail; desligável por cliente; log na ficha.
+- E-mail: `RESEND_API_KEY` + `ALERT_EMAIL_FROM` (sem eles, nada é enviado e o status fica `sem_configuracao`). Link: `APP_URL`.
+- Schema: `node db/apply.mjs` (aditivo: `clients.relatorio_modo/relatorio_horas/lembretes_ativos`, `aprovacoes`, `aprovacao_versoes`,
+  `aprovacao_eventos`, `relatorios_semanais`, `lembretes_cliente`, origem `aprovacao` em `plan_actions`).
 
 ## Dashboards e menu recolhível
 
