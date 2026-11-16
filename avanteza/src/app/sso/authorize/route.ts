@@ -28,7 +28,10 @@ export async function GET(req: NextRequest) {
   if (!app.url) return NextResponse.redirect(new URL(app.internalPath ?? "/", appUrl()));
 
   const target = new URL(app.url + app.callback);
-  target.searchParams.set("token", issueToken(sess, appId, ret));
+  // App montado sob um caminho desta Central (ex.: Vendedor IA em /comercial): sem destino, volta para a entrada dele.
+  const base = new URL(app.url).pathname.replace(/\/$/, "");
+  const volta = ret === "/" && base ? base : ret;
+  target.searchParams.set("token", issueToken(sess, appId, volta));
   await adminDb().from("audit_log").insert({ event: "sso_login", actor: sess.email, details: { app: appId } });
   return NextResponse.redirect(target);
 }

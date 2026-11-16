@@ -13,14 +13,25 @@ export interface AppDef {
   external?: boolean; // site público: sem login
 }
 
+import { appUrl } from "@/lib/env";
+import { zonaComercialLigada } from "@/lib/comercial/zona";
+
 const env = (k: string, d: string) => (process.env[k] && process.env[k]!.length ? process.env[k]! : d).replace(/\/$/, "");
+
+/**
+ * Vendedor IA/Comercial: sob esta Central, em /comercial (reescrita; login único volta para /comercial/api/sso/callback).
+ * APP_VENDAS_URL ainda vence (apague-a na Vercel se apontar para o domínio antigo); COMERCIAL_ZONA=0 volta ao antigo.
+ */
+function urlVendas(): string {
+  return env("APP_VENDAS_URL", zonaComercialLigada() ? `${appUrl()}/comercial` : "https://nexo-vendedoria.vercel.app");
+}
 
 export function apps(): AppDef[] {
   return [
     { id: "marketplaces", name: "Marketplaces", tagline: "Contas de Mercado Livre, Shopee e TikTok Shop: alertas, aprovações e relatórios.", url: "", callback: "", internalPath: "/", group: "Operações" },
     { id: "entregas", name: "Funil de Entrega", tagline: "Quadro por etapa e pilar, renovações e modelos das entregas aos clientes (dados do CRM).", url: "", callback: "", internalPath: "/operacoes/entregas", group: "Operações" },
     { id: "crm", name: "CRM", tagline: "Funil, contatos, tarefas, agenda e propostas.", url: env("APP_CRM_URL", "https://nexo-crm-tawny.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
-    { id: "vendas", name: "Vendedor IA", tagline: "Atendimento e prospecção no WhatsApp com IA.", url: env("APP_VENDAS_URL", "https://nexo-vendedoria.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
+    { id: "vendas", name: "Vendedor IA", tagline: "Atendimento e prospecção no WhatsApp com IA.", url: urlVendas(), callback: "/api/sso/callback", group: "Comercial" },
     { id: "contratos", name: "Contratos", tagline: "Geração de contratos e assinatura digital.", url: env("APP_CONTRATOS_URL", "https://nexo-presenter.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
     { id: "conteudo", name: "Conteúdo", tagline: "Produção e publicação para Instagram e LinkedIn.", url: env("APP_CONTEUDO_URL", "https://agente-bastao-iel.vercel.app"), callback: "/api/sso/callback", group: "Marketing" },
     { id: "financeiro", name: "Financeiro", tagline: "Lançamentos, contas, contratos, DRE e metas da Avanteza (e a área pessoal do dono).", url: "", callback: "", internalPath: "/financeiro", group: "Financeiro" },

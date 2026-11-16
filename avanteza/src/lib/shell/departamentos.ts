@@ -1,6 +1,7 @@
 // Departamentos da Central e os módulos de cada um. Fonte única do menu lateral, das páginas de entrada
 // (/operacoes, /comercial, /marketing, /financeiro) e da Central de ferramentas.
 import { apps, getApp, hrefDoApp } from "@/lib/apps";
+import { MODULOS_ZONA, zonaComercialLigada } from "@/lib/comercial/zona";
 import { canUseApp, type Session } from "@/lib/session";
 import { podeVerPessoal, podeVerFinanceiro } from "@/lib/financeiro/acesso";
 import { podeVerDashboards } from "@/lib/dashboards/nav";
@@ -46,6 +47,8 @@ export function departamentos(): Departamento[] {
         { id: "calendario", nome: "Calendário", icon: "calendar", href: "/operacoes/calendario", descricao: "Entregas da semana e do mês, por cliente e responsável.", requer: "motor" },
         { id: "capturas", nome: "Capturas", icon: "chat", href: "/operacoes/capturas", descricao: "Conversas do WhatsApp (Max e exportadas) viram combinados e ações dos clientes.", requer: "motor" },
         { id: "onboarding", nome: "Onboarding", icon: "flag", href: "/operacoes/onboarding", descricao: "Contratos assinados viram cliente, serviços, plano, acesso e receita — com o andamento de cada um.", requer: "motor" },
+        { id: "aprovacoes", nome: "Aprovações", icon: "check", href: "/operacoes/aprovacoes", descricao: "Peças e criativos para o cliente aprovar ou pedir ajuste (vira ação).", requer: "motor" },
+        { id: "relatorios-clientes", nome: "Relatórios de clientes", icon: "doc", href: "/operacoes/relatorios", descricao: "Relatório semanal de cada cliente, em PDF.", requer: "motor" },
         { id: "playbooks", nome: "Playbooks", icon: "list", href: "/operacoes/playbooks", descricao: "Serviços vendidos, tarefas-modelo, prazos e recorrências.", requer: "motor" },
         { id: "funil-entrega", nome: "Funil de Entrega", icon: "truck", href: "/operacoes/entregas", descricao: "Quadro por etapa e pilar, renovações e modelos das entregas aos clientes (dados do CRM).", requer: "entregas" },
         { id: "clientes", nome: "Clientes e Mapa", icon: "users", href: "/clientes", descricao: "Cadastro, plano de ação, reuniões e acessos dos clientes.", requer: { app: "marketplaces" } },
@@ -54,12 +57,22 @@ export function departamentos(): Departamento[] {
     },
     {
       id: "comercial", nome: "Comercial", icon: "briefcase", href: "/comercial",
-      descricao: "Vendedor IA, CRM e contratos — hoje como atalhos com login único.",
-      modulos: [
-        appModulo("vendas", "Vendedor IA", "chat", "Atendimento e prospecção no WhatsApp com IA."),
-        appModulo("crm", "CRM", "funnel", "Funil, contatos, tarefas, agenda e propostas."),
-        appModulo("contratos", "Contratos", "doc", "Geração de contratos e assinatura digital."),
-      ],
+      descricao: zonaComercialLigada()
+        ? "Oportunidades, contatos, contratos e o Vendedor IA, aqui mesmo em /comercial (login único)."
+        : "Vendedor IA, CRM e contratos — hoje como atalhos com login único.",
+      modulos: zonaComercialLigada()
+        ? [
+          // Telas do Vendedor IA sob /comercial (reescrita): navegação "dura" (outro aplicativo). Sem sessão lá, o
+          // próprio Vendedor IA manda para /sso/authorize?app=vendas&return=<tela>.
+          ...MODULOS_ZONA.map((m): Modulo => ({ id: m.id, nome: m.nome, icon: m.icon, descricao: m.descricao, href: m.caminho, externo: true, requer: { app: "vendas" } })),
+          // CRM antigo até o corte (C13): depois some daqui.
+          appModulo("crm", "CRM antigo", "funnel", "Somente até o corte: o Comercial acima já é o novo CRM."),
+        ]
+        : [
+          appModulo("vendas", "Vendedor IA", "chat", "Atendimento e prospecção no WhatsApp com IA."),
+          appModulo("crm", "CRM", "funnel", "Funil, contatos, tarefas, agenda e propostas."),
+          appModulo("contratos", "Contratos", "doc", "Geração de contratos e assinatura digital."),
+        ],
     },
     {
       id: "marketing", nome: "Marketing", icon: "megaphone", href: "/marketing",
