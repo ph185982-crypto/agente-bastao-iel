@@ -5,6 +5,7 @@ import { spDate } from "@/lib/dates";
 import { OWNER_LABEL, STATUS_LABEL, fmtDate, isOverdue, planSummary, phaseState, PHASE_STATE_LABEL } from "@/lib/mapa/progress";
 import { Flash } from "@/components/Flash";
 import { updateMyAction } from "../actions";
+import { DependeDeVoce } from "@/components/mapa/DependeDeVoce";
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
@@ -34,6 +35,7 @@ export default async function Plano({ searchParams }: { searchParams: Promise<SP
       <div className="eyebrow">Plano de 12 meses</div>
       <h1>Fases e <span className="accent">ações</span></h1>
       <p className="muted small" style={{ marginTop: 4 }}>{sum.done} de {sum.total} ações concluídas ({sum.pct}%){sum.overdue ? ` · ${sum.overdue} atrasada(s)` : ""}</p>
+      <div id="voce"><DependeDeVoce acoes={all} hoje={today} readOnly={scope.readOnly} voltar="/mapa/plano" /></div>
 
       <div className="chips" aria-label="Filtrar por responsável">
         <Link className="chip" aria-current={!resp} href={link({ resp: "" })}>Todos</Link>
@@ -61,7 +63,7 @@ export default async function Plano({ searchParams }: { searchParams: Promise<SP
           {g.phase && <div className="small muted">Meses {g.phase.start_month}–{g.phase.end_month} · {fmtDate(g.phase.starts_on)} a {fmtDate(g.phase.ends_on)}</div>}
           <div style={{ marginTop: 8 }}>
             {g.items.map((a) => (
-              <div className="act" key={a.id}>
+              <div className="act" key={a.id} style={a.status !== "concluida" && (a.owner === "cliente" || a.status === "bloqueada") ? { borderLeft: "4px solid var(--orange)", paddingLeft: 10 } : undefined}>
                 <div className="row">
                   <strong>{a.title}</strong>
                   <span className={`pill ${a.status === "concluida" ? "pill-ok" : a.status === "bloqueada" ? "pill-danger" : a.status === "em_execucao" ? "pill-orange" : "pill-sand"}`}>{STATUS_LABEL[a.status as keyof typeof STATUS_LABEL]}</span>
@@ -71,6 +73,8 @@ export default async function Plano({ searchParams }: { searchParams: Promise<SP
                   <span className="muted">{OWNER_LABEL[a.owner as "cliente"]}</span>
                   {a.due_date && <span className={isOverdue(a, today) ? "late" : "muted"}> · {isOverdue(a, today) ? "atrasada, " : "prazo "}{fmtDate(a.due_date)}</span>}
                   {a.origin === "reuniao" && a.meeting_id && <> · <Link href={`/mapa/reunioes/${a.meeting_id}`}>veio de uma reunião</Link></>}
+                  {a.status === "bloqueada" && <> · <b>depende de você</b>{a.blocked_reason ? `: ${a.blocked_reason}` : ""}</>}
+                  {a.evidence_url && <> · <a href={a.evidence_url} target="_blank" rel="noreferrer">ver entrega</a></>}
                 </div>
                 {a.owner === "cliente" && !scope.readOnly && (
                   <form action={updateMyAction} className="btn-row" style={{ marginTop: 8 }}>

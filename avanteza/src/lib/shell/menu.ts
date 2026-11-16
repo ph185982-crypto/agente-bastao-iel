@@ -22,7 +22,7 @@ export function menuEquipe(sess: Session, extra: NavGroup[] = []): NavGroup[] {
         ext: m.externo,
         // /financeiro e /financeiro/pessoal: o da empresa só fica ativo fora do Pessoal
         exact: m.id === "fin-visao" ? false : undefined,
-        ...(m.id === "marketplaces" ? { exact: true } : {}),
+        ...(m.id === "marketplaces" || m.id === "hoje" ? { exact: true } : {}),
       })),
     });
   }

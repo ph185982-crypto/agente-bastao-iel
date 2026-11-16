@@ -550,3 +550,166 @@ begin
   end if;
 end $$;
 create index if not exists channel_snapshots_lookup_idx on avanteza.channel_snapshots(client_id, kind, date);
+
+
+-- ═════════════════════════ Motor de Entregas (Operações, F1) ═════════════════════════
+-- Estende clients/admins/plan_phases/plan_actions (não duplica). Idempotente: `node db/apply.mjs` quantas vezes quiser.
+-- Ideia: o que cada cliente contratou (client_services) aplica playbooks (tarefas-modelo com prazo relativo e recorrência)
+-- e vira ações em plan_actions — as mesmas que o Mapa já mostra ao cliente. A chave recurrence_key impede duplicatas.
+
+-- Usuários da equipe ganham um id (para responsável das ações) e os papéis de entrega que cobrem.
+alter table avanteza.admins add column if not exists id uuid not null default gen_random_uuid();
+create unique index if not exists admins_id_uniq on avanteza.admins(id);
+alter table avanteza.admins add column if not exists delivery_roles text[] not null default '{}'; -- gestor_conta, marketplace, trafego, social, design
+
+-- Responsável pela conta do cliente (aparece na Carteira; é o padrão quando o papel da tarefa não tem dono).
+alter table avanteza.clients add column if not exists manager_id uuid references avanteza.admins(id) on delete set null;
+
+-- Catálogo do que a Avanteza vende.
+create table if not exists avanteza.service_catalog (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  name text not null,
+  description text,
+  kind text not null default 'marketplace' check (kind in ('marketplace','midia','ambos','geral')),
+  default_monthly_value numeric,
+  position integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Playbook = conjunto de tarefas-modelo de um serviço.
+create table if not exists avanteza.playbooks (
+  id uuid primary key default gen_random_uuid(),
+  service_id uuid not null references avanteza.service_catalog(id) on delete cascade,
+  slug text not null unique,
+  name text not null,
+  description text,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists playbooks_service_idx on avanteza.playbooks(service_id);
+
+-- Tarefa-modelo. offset_days = prazo relativo (D+n) a partir do início do serviço; com recorrência, é quando ela começa.
+--   recurrence: none | semanal | quinzenal | mensal; recurrence_day: dia da semana ISO (1=seg … 7=dom) ou dia do mês (1–28).
+create table if not exists avanteza.playbook_tasks (
+  id uuid primary key default gen_random_uuid(),
+  playbook_id uuid not null references avanteza.playbooks(id) on delete cascade,
+  slug text not null,
+  title text not null,
+  description text,
+  phase_position integer not null default 1 check (phase_position between 1 and 4),
+  role text not null default 'gestor_conta' check (role in ('gestor_conta','marketplace','trafego','social','design')),
+  offset_days integer not null default 0 check (offset_days between 0 and 400),
+  recurrence text not null default 'none' check (recurrence in ('none','semanal','quinzenal','mensal')),
+  recurrence_day integer check (recurrence_day between 1 and 31),
+  checklist jsonb not null default '[]'::jsonb,
+  done_criteria text,
+  client_dependent boolean not null default false,
+  client_visible boolean not null default true,
+  estimated_min integer,
+  priority smallint not null default 2 check (priority between 1 and 3), -- 1 alta · 2 média · 3 baixa
+  position integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (playbook_id, slug)
+);
+
+-- O que cada cliente contratou.
+create table if not exists avanteza.client_services (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  service_id uuid not null references avanteza.service_catalog(id) on delete restrict,
+  start_date date not null,
+  end_date date,
+  monthly_value numeric,
+  contract_ref text,
+  assignee_id uuid references avanteza.admins(id) on delete set null,   -- responsável pelo serviço (vence o papel)
+  status text not null default 'ativo' check (status in ('ativo','pausado','encerrado')),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (client_id, service_id)
+);
+create index if not exists client_services_client_idx on avanteza.client_services(client_id, status);
+
+-- Registro de cada geração (por cliente e dia): quantas ações criou/atualizou/arquivou. A idempotência real é a recurrence_key.
+create table if not exists avanteza.delivery_runs (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  period_start date not null,
+  period_end date not null,
+  created_count integer not null default 0,
+  updated_count integer not null default 0,
+  archived_count integer not null default 0,
+  actor text,
+  created_at timestamptz not null default now(),
+  unique (client_id, period_start)
+);
+
+-- Saúde do cliente calculada pela rotina diária (histórico; a Carteira recalcula ao abrir).
+create table if not exists avanteza.client_health (
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  day date not null,
+  level text not null check (level in ('verde','amarelo','vermelho')),
+  reasons jsonb not null default '[]'::jsonb,
+  metrics jsonb not null default '{}'::jsonb,
+  computed_at timestamptz not null default now(),
+  primary key (client_id, day)
+);
+
+-- Capturas (Inbox de combinados): WhatsApp pelo Max, conversa exportada, extensão, reunião ou manual. hash impede duplicata.
+create table if not exists avanteza.capturas (
+  id uuid primary key default gen_random_uuid(),
+  origem text not null check (origem in ('whatsapp_max','whatsapp_export','extensao','reuniao','manual')),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  autor text,
+  texto text,
+  midia_url text,
+  transcricao text,
+  hash text not null unique,
+  status text not null default 'recebida' check (status in ('recebida','processada','sem_ia','erro')),
+  erro text,
+  acoes_geradas uuid[] not null default '{}',
+  ai_provider text,
+  ai_model text,
+  criado_em timestamptz not null default now()
+);
+create index if not exists capturas_client_idx on avanteza.capturas(client_id, criado_em desc);
+
+-- Ações do plano ganham o que o Motor precisa.
+alter table avanteza.plan_actions add column if not exists playbook_task_id uuid references avanteza.playbook_tasks(id) on delete set null;
+alter table avanteza.plan_actions add column if not exists client_service_id uuid references avanteza.client_services(id) on delete set null;
+alter table avanteza.plan_actions add column if not exists assignee_id uuid references avanteza.admins(id) on delete set null;
+alter table avanteza.plan_actions add column if not exists role text;
+alter table avanteza.plan_actions add column if not exists recurrence_key text;
+alter table avanteza.plan_actions add column if not exists checklist jsonb not null default '[]'::jsonb;  -- [{"t":"item","ok":false}]
+alter table avanteza.plan_actions add column if not exists done_criteria text;
+alter table avanteza.plan_actions add column if not exists blocked_reason text;
+alter table avanteza.plan_actions add column if not exists evidence_url text;
+alter table avanteza.plan_actions add column if not exists sla_due date;              -- prazo original (adiar muda due_date, não o SLA)
+alter table avanteza.plan_actions add column if not exists priority smallint not null default 2;
+alter table avanteza.plan_actions add column if not exists estimated_min integer;
+alter table avanteza.plan_actions add column if not exists client_dependent boolean not null default false;
+alter table avanteza.plan_actions add column if not exists visible_to_client boolean not null default true;
+alter table avanteza.plan_actions add column if not exists ai_generated boolean not null default false;
+alter table avanteza.plan_actions add column if not exists captura_id uuid references avanteza.capturas(id) on delete set null;
+alter table avanteza.plan_actions add column if not exists edited_at timestamptz;     -- editada à mão: o gerador não sobrescreve mais
+alter table avanteza.plan_actions add column if not exists archived_at timestamptz;   -- dispensada: some das listas e não volta
+alter table avanteza.plan_actions add column if not exists blocked_at timestamptz;
+create unique index if not exists plan_actions_recurrence_uniq on avanteza.plan_actions(client_id, recurrence_key) where recurrence_key is not null;
+create index if not exists plan_actions_assignee_idx on avanteza.plan_actions(assignee_id, status, due_date) where archived_at is null;
+create index if not exists plan_actions_due_idx on avanteza.plan_actions(due_date) where archived_at is null and status <> 'concluida';
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'plan_actions_origin_check' and pg_get_constraintdef(oid) not like '%playbook%') then
+    alter table avanteza.plan_actions drop constraint plan_actions_origin_check;
+    alter table avanteza.plan_actions add constraint plan_actions_origin_check check (origin in ('plano','reuniao','manual','playbook','captura','ia'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'plan_actions_priority_check') then
+    alter table avanteza.plan_actions add constraint plan_actions_priority_check check (priority between 1 and 3);
+  end if;
+end $$;

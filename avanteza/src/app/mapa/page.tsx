@@ -9,12 +9,15 @@ import { InicioMidia } from "@/components/canais/InicioMidia";
 import { carregarCanaisDoCliente } from "@/lib/channels/cliente";
 import { PERIODO_PADRAO, parsePeriodo, type PeriodoId } from "@/lib/dashboards/periodo";
 import { hasChannels, hasMarketplaces } from "@/lib/mapa/nav";
+import { DependeDeVoce } from "@/components/mapa/DependeDeVoce";
+import { Flash } from "@/components/Flash";
 
 export const dynamic = "force-dynamic";
 
 export default async function Inicio({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { scope } = await requireMapa();
-  const periodoId = parsePeriodo((await searchParams).periodo);
+  const sp = await searchParams;
+  const periodoId = parsePeriodo(sp.periodo);
   const today = spDate();
   const client = await getClient(scope);
   if (!client) return <div className="empty">Cliente não encontrado.</div>;
@@ -37,9 +40,11 @@ export default async function Inicio({ searchParams }: { searchParams: Promise<R
 
   return (
     <>
+      <Flash sp={sp} />
       <div className="eyebrow">{client.name}</div>
       <h1>Olá, <span className="accent">{first}</span></h1>
       <p className="muted" style={{ marginTop: 4 }}>Seu mapa de 12 meses com a Avanteza: onde estamos, o que vem agora e o que depende de cada um.</p>
+      <DependeDeVoce acoes={actions} hoje={today} readOnly={scope.readOnly} voltar="/mapa" limite={3} />
 
       {canais && <InicioMidia d={canais} hrefPeriodo={hrefPeriodo} />}
 

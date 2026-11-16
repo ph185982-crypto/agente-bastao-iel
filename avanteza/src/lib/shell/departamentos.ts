@@ -5,10 +5,11 @@ import { canUseApp, type Session } from "@/lib/session";
 import { podeVerPessoal, podeVerFinanceiro } from "@/lib/financeiro/acesso";
 import { podeVerDashboards } from "@/lib/dashboards/nav";
 import { podeVerEntregas } from "@/lib/entregas/acesso";
+import { podeVerMotor } from "@/lib/motor/acesso";
 
 export type DepId = "operacoes" | "comercial" | "marketing" | "financeiro";
 /** O que o usuário precisa poder para ver o módulo. */
-type Requisito = { app: string } | "dashboards" | "financeiro" | "pessoal" | "entregas";
+type Requisito = { app: string } | "dashboards" | "financeiro" | "pessoal" | "entregas" | "motor";
 
 export interface Modulo {
   id: string;
@@ -38,12 +39,15 @@ export function departamentos(): Departamento[] {
   return [
     {
       id: "operacoes", nome: "Operações", icon: "truck", href: "/operacoes",
-      descricao: "Contas de marketplace, clientes do Mapa e o funil de entrega.",
+      descricao: "O que fazer hoje, para quem e até quando: entregas de cada cliente, carteira, calendário e playbooks.",
       modulos: [
-        { id: "marketplaces", nome: "Marketplaces", icon: "store", href: "/", descricao: "Contas de Mercado Livre, Shopee e TikTok Shop: visão geral, alertas e aprovações.", requer: { app: "marketplaces" } },
-        { id: "clientes", nome: "Clientes e Mapa", icon: "users", href: "/clientes", descricao: "Cadastro, plano de ação, reuniões e acessos dos clientes.", requer: { app: "marketplaces" } },
+        { id: "hoje", nome: "Hoje", icon: "check", href: "/operacoes", descricao: "Sua fila do dia: atrasadas, hoje e próximos 7 dias, com ações rápidas.", requer: "motor" },
+        { id: "carteira", nome: "Carteira", icon: "shield", href: "/operacoes/carteira", descricao: "Saúde de cada cliente (semáforo), motivos e próximos marcos.", requer: "motor" },
+        { id: "calendario", nome: "Calendário", icon: "calendar", href: "/operacoes/calendario", descricao: "Entregas da semana e do mês, por cliente e responsável.", requer: "motor" },
+        { id: "playbooks", nome: "Playbooks", icon: "list", href: "/operacoes/playbooks", descricao: "Serviços vendidos, tarefas-modelo, prazos e recorrências.", requer: "motor" },
         { id: "funil-entrega", nome: "Funil de Entrega", icon: "truck", href: "/operacoes/entregas", descricao: "Quadro por etapa e pilar, renovações e modelos das entregas aos clientes (dados do CRM).", requer: "entregas" },
-        { id: "entregas", nome: "Entregas do plano", icon: "list", href: "/entregas", descricao: "Ações do plano dos clientes do Mapa: o que está em aberto e o que atrasou.", requer: { app: "marketplaces" } },
+        { id: "clientes", nome: "Clientes e Mapa", icon: "users", href: "/clientes", descricao: "Cadastro, plano de ação, reuniões e acessos dos clientes.", requer: { app: "marketplaces" } },
+        { id: "marketplaces", nome: "Marketplaces", icon: "store", href: "/", descricao: "Contas de Mercado Livre, Shopee e TikTok Shop: visão geral, alertas e aprovações.", requer: { app: "marketplaces" } },
       ],
     },
     {
@@ -88,6 +92,7 @@ export function moduloVisivel(sess: Session | null, m: Modulo): boolean {
   if (r === "financeiro") return podeVerFinanceiro(sess);
   if (r === "pessoal") return podeVerPessoal(sess);
   if (r === "entregas") return podeVerEntregas(sess);
+  if (r === "motor") return podeVerMotor(sess);
   return canUseApp(sess, r.app);
 }
 

@@ -3,6 +3,7 @@
 // Colunas são listadas uma a uma: tokens de contas, notas internas, instruções da IA e transcrições nunca saem daqui.
 import bcrypt from "bcryptjs";
 import { adminDb } from "../db";
+import { rawQuery } from "../db/client";
 import { assertScope, assertWritable, type ClientScope } from "./scope";
 import type { ActionStatus } from "./progress";
 
@@ -23,7 +24,8 @@ export async function getClient(scope: ClientScope) {
 }
 
 const PHASE_COLS = "id, position, name, description, start_month, end_month, starts_on, ends_on";
-const ACTION_COLS = "id, phase_id, title, description, status, owner, due_date, origin, meeting_id, position, completed_at";
+// blocked_reason é o que a equipe espera do cliente (texto escrito para ele); notas internas nunca entram aqui.
+const ACTION_COLS = "id, phase_id, title, description, status, owner, due_date, origin, meeting_id, position, completed_at, client_dependent, blocked_reason, evidence_url";
 
 export async function listPhases(scope: ClientScope) {
   assertScope(scope);
@@ -33,7 +35,8 @@ export async function listPhases(scope: ClientScope) {
 
 export async function listActions(scope: ClientScope, f: { status?: string; owner?: string; phaseId?: string } = {}) {
   assertScope(scope);
-  let q = adminDb().from("plan_actions").select(ACTION_COLS).eq("client_id", scope.clientId);
+  // Só o que é visível ao cliente e não foi dispensado (rotinas internas do Motor ficam de fora).
+  let q = adminDb().from("plan_actions").select(ACTION_COLS).eq("client_id", scope.clientId).eq("visible_to_client", true).is("archived_at", null);
   if (f.status) q = q.eq("status", f.status);
   if (f.owner) q = q.eq("owner", f.owner);
   if (f.phaseId) q = q.eq("phase_id", isUuid(f.phaseId) ? f.phaseId : NONE);
@@ -44,7 +47,7 @@ export async function listActions(scope: ClientScope, f: { status?: string; owne
 export async function getAction(scope: ClientScope, id: string) {
   assertScope(scope);
   if (!isUuid(id)) return null;
-  const { data } = await adminDb().from("plan_actions").select(ACTION_COLS).eq("id", id).eq("client_id", scope.clientId).maybeSingle();
+  const { data } = await adminDb().from("plan_actions").select(ACTION_COLS).eq("id", id).eq("client_id", scope.clientId).eq("visible_to_client", true).is("archived_at", null).maybeSingle();
   return data as any | null;
 }
 
@@ -58,8 +61,38 @@ export async function updateOwnActionStatus(scope: ClientScope, id: string, stat
     .eq("id", id)
     .eq("client_id", scope.clientId)
     .eq("owner", "cliente")
+    .eq("visible_to_client", true)
+    .is("archived_at", null)
     .select("id");
   return (data ?? []).length === 1;
+}
+
+/**
+ * "Feito" do cliente numa pendência dele (só da empresa ativa do escopo, só ações visíveis e não dispensadas):
+ *  - ação do cliente (owner = cliente): vira concluída, com o link de evidência se houver;
+ *  - ação da Avanteza parada esperando o cliente (bloqueada): volta para a fila da equipe (planejada), com o link.
+ * Nunca mexe em ação de outro cliente nem em ação da Avanteza que não está esperando o cliente.
+ */
+export async function resolverPendencia(scope: ClientScope, id: string, link: string | null): Promise<boolean> {
+  assertWritable(scope);
+  if (!isUuid(id)) return false;
+  if (link && !(/^https?:\/\/\S+$/i.test(link) && link.length <= 2000)) return false;
+  const r = await rawQuery(
+    `update avanteza.plan_actions set
+       status = case when owner = 'cliente' then 'concluida' else 'planejada' end,
+       completed_at = case when owner = 'cliente' then now() else completed_at end,
+       blocked_reason = case when owner = 'cliente' then blocked_reason else null end,
+       blocked_at = case when owner = 'cliente' then blocked_at else null end,
+       evidence_url = coalesce($3, evidence_url), updated_at = now()
+     where id = $1 and client_id = $2 and visible_to_client and archived_at is null and status <> 'concluida'
+       and (owner = 'cliente' or status = 'bloqueada')
+     returning id`,
+    [id, scope.clientId, link || null],
+  );
+  if (r.length === 1) {
+    await rawQuery("insert into avanteza.audit_log (event, actor, client_id, details) values ('mapa_pendencia_resolvida', $1, $2, $3)", [scope.userEmail, scope.clientId, JSON.stringify({ id, link: Boolean(link) })]);
+  }
+  return r.length === 1;
 }
 
 export async function listMeetings(scope: ClientScope) {
@@ -82,7 +115,7 @@ export async function getMeeting(scope: ClientScope, id: string) {
     .eq("client_id", scope.clientId)
     .maybeSingle();
   if (!meeting) return null;
-  const { data: actions } = await adminDb().from("plan_actions").select(ACTION_COLS).eq("meeting_id", id).eq("client_id", scope.clientId).order("position");
+  const { data: actions } = await adminDb().from("plan_actions").select(ACTION_COLS).eq("meeting_id", id).eq("client_id", scope.clientId).eq("visible_to_client", true).is("archived_at", null).order("position");
   return { meeting: meeting as any, actions: (actions ?? []) as any[] };
 }
 

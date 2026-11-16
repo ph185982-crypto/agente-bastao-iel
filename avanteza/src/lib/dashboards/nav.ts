@@ -9,7 +9,9 @@ export function podeVerDashboards(sess: Session | null): boolean {
   return canAccess(sess) && (sess!.role === "admin" || sess!.role === "reviewer");
 }
 
-/** Para onde o login leva quando não há `next`: administrador e revisor caem nos Dashboards; os demais na Central. */
+/** Para onde o login leva quando não há `next`: administrador e revisor caem nos Dashboards (Visão geral); o membro da
+ *  equipe cai em "Hoje" (Operações), a fila do dia dele; o resto na Central. */
 export function destinoPadrao(role: string | undefined): string {
-  return role === "admin" || role === "reviewer" ? DESTINO_PADRAO_EQUIPE : "/central";
+  if (role === "admin" || role === "reviewer") return DESTINO_PADRAO_EQUIPE;
+  return role === "member" ? "/operacoes" : "/central";
 }

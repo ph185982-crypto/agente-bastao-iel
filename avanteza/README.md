@@ -103,6 +103,20 @@ TEST_DATABASE_URL=postgres://postgres@localhost:54329/mapa_test npm test        
 Sem `TEST_DATABASE_URL`, os testes que precisam de banco são ignorados (os demais rodam). URL `localhost` em `DATABASE_URL` usa o driver `pg`
 (só desenvolvimento); produção segue na Neon. Acesso do cliente: Clientes → cliente → “Acesso do cliente” (a senha aparece uma vez).
 
+## Motor de Entregas (Operações → Hoje, Carteira, Calendário, Playbooks)
+Descrição completa em `docs/ARQUITETURA_AVANTEZA.md` (seção “Motor de Entregas”). Código em `src/lib/motor/` (gerador, saúde e fila são funções puras).
+```sh
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/apply.mjs
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-playbooks.mjs                      # só o catálogo e os playbooks padrão
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-playbooks.mjs --aplicar-clientes   # + serviços pelo tipo e ações (idempotente)
+#   --previa (só mostra), --inicio=AAAA-MM-DD (início de quem ainda não tem plano; padrão: hoje), --permitir-remoto (produção, de propósito)
+```
+- Rotina diária `entregas` (Vercel Cron, 09:12 UTC): recorrências dos próximos 30 dias, saúde da carteira, resumo matinal e alerta de risco por e-mail
+  (`RESEND_API_KEY` + `ALERT_EMAIL_FROM`; destino do dono em Ajustes ou `ALERT_EMAIL_TO`).
+- `POST /api/capturas` (Inbox de combinados; o Max usa na F2): `Authorization: Bearer $AVANTEZA_CAPTURE_KEY`, JSON
+  `{ "clienteSlug"|"clienteId"|"clienteNome", "origem": "whatsapp_max"|"whatsapp_export"|"extensao"|"reuniao"|"manual", "autor", "texto", "midiaUrl", "transcricao", "data" }`.
+- Em Playbooks → “Quem cobre cada papel”, marque quem é gestor da conta, analista de marketplace, tráfego, social media e design: as ações novas vão para essas pessoas.
+
 ## Dashboards e menu recolhível
 
 Aba inicial `/dashboards` (admin/revisor): comercial e financeiro do Vendedor IA, marketing da Meta Marketing API (somente leitura),

@@ -93,7 +93,7 @@ test("menu por departamentos: cada papel vê só o que pode; Pessoal só o dono;
   assert.deepEqual(rotulos(dono), ["(topo)", "Operações", "Comercial", "Marketing", "Financeiro", "Sistema"]);
   const g = menuEquipe(dono);
   const itens = (l: string) => g.find((x) => x.label === l)!.items.map((i) => i.label);
-  assert.deepEqual(itens("Operações"), ["Marketplaces", "Clientes e Mapa", "Funil de Entrega", "Entregas do plano"]);
+  assert.deepEqual(itens("Operações"), ["Hoje", "Carteira", "Calendário", "Playbooks", "Funil de Entrega", "Clientes e Mapa", "Marketplaces"]);
   assert.deepEqual(itens("Comercial"), ["Vendedor IA", "CRM", "Contratos"]);
   assert.deepEqual(itens("Marketing"), ["Conteúdo", "Anúncios", "Canais"]);
   assert.deepEqual(itens("Financeiro"), ["Financeiro da empresa", "Pessoal"]);
@@ -107,13 +107,14 @@ test("menu por departamentos: cada papel vê só o que pode; Pessoal só o dono;
   assert.deepEqual(gr.map((x) => x.label ?? "(topo)"), ["(topo)", "Operações", "Marketing", "Financeiro", "Sistema"]);
   assert.deepEqual(gr.find((x) => x.label === "Financeiro")!.items.map((i) => i.label), ["Financeiro da empresa"]);
   assert.ok(!JSON.stringify(gr).includes("/financeiro/pessoal"));
-  // Membro só com o app financeiro: só o Financeiro (sem Pessoal), sem Dashboards
+  // Membro só com o app financeiro: o Motor de Entregas (Hoje…) e o Financeiro (sem Pessoal), sem Dashboards
   const gm = menuEquipe(membroFin);
-  assert.deepEqual(gm.map((x) => x.label ?? "(topo)"), ["(topo)", "Financeiro"]);
+  assert.deepEqual(gm.map((x) => x.label ?? "(topo)"), ["(topo)", "Operações", "Financeiro"]);
+  assert.deepEqual(gm.find((x) => x.label === "Operações")!.items.map((i) => i.label), ["Hoje", "Carteira", "Calendário", "Playbooks"]);
   assert.ok(!JSON.stringify(gm).includes("/dashboards"));
   // Membro com Vendedor IA e Conteúdo
-  assert.deepEqual(departamentosVisiveis(membroVendas).map((d) => d.id), ["comercial"]);
-  assert.deepEqual(departamentosVisiveis({ ...membroVendas, apps: ["vendas", "conteudo"] }).map((d) => d.id), ["comercial", "marketing"]);
+  assert.deepEqual(departamentosVisiveis(membroVendas).map((d) => d.id), ["operacoes", "comercial"], "Hoje é de toda a equipe");
+  assert.deepEqual(departamentosVisiveis({ ...membroVendas, apps: ["vendas", "conteudo"] }).map((d) => d.id), ["operacoes", "comercial", "marketing"]);
   // Cliente do Mapa nunca vê departamentos
   assert.deepEqual(departamentosVisiveis(cliente), []);
 });

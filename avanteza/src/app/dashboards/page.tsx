@@ -6,6 +6,10 @@ import { carregarDashboards } from "@/lib/dashboards";
 import { ROTULO_PERIODO, PERIODOS, parsePeriodo, ddmm } from "@/lib/dashboards/periodo";
 import { carregarCanaisClientes } from "@/lib/channels/dashboards";
 import { PageHeader } from "@/components/shell/GlassCard";
+import { EntregasEmRisco } from "@/components/motor/EntregasEmRisco";
+import { carteira } from "@/lib/motor/repo";
+import { ordenarPorRisco } from "@/lib/motor/saude";
+import { spDate } from "@/lib/dates";
 import { SecaoComercial, SecaoFinanceiro, SecaoPrevistos, SecaoMarketing, SecaoCanaisClientes, StatusFontes } from "@/components/dashboards/Secoes";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +23,8 @@ export default async function Dashboards({ searchParams }: { searchParams: Promi
   const { atual, anterior } = d.periodo;
   // Canais dos clientes: falha de banco nunca derruba a página (o bloco só some).
   const canais = d.fixture ? null : await carregarCanaisClientes(atual, d.meta).catch(() => null);
+  // Motor de Entregas: saúde da carteira (falha de banco só esconde o cartão).
+  const entregas = await carteira(spDate()).then(ordenarPorRisco).catch(() => null);
   return (
     <>
       <PageHeader eyebrow="Central Avanteza" title={<>Dash<span className="accent">boards</span></>}>
@@ -32,6 +38,7 @@ export default async function Dashboards({ searchParams }: { searchParams: Promi
         ))}
       </nav>
       {d.fixture && <div className="notice" role="note" style={{ margin: "10px 0" }}><b>Dados simulados</b> (DASHBOARDS_FIXTURE, só desenvolvimento). Nada aqui é real.</div>}
+      {entregas && entregas.length > 0 && <EntregasEmRisco cartoes={entregas} />}
       <StatusFontes d={d} />
       <SecaoComercial d={d} />
       <SecaoFinanceiro d={d} />

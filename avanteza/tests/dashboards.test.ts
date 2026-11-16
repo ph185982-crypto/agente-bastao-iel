@@ -232,7 +232,7 @@ test("acesso: admin e revisor veem (revisor só lê); membro e cliente não; log
   assert.equal(isMapaPath("/dashboards"), false, "o middleware barra cliente em /dashboards");
   assert.equal(destinoPadrao("admin"), "/dashboards");
   assert.equal(destinoPadrao("reviewer"), "/dashboards");
-  assert.equal(destinoPadrao("member"), "/central");
+  assert.equal(destinoPadrao("member"), "/operacoes", "a equipe cai em Hoje");
   assert.equal(destinoPadrao("client"), "/central");
   assert.match(readFileSync("src/app/actions.ts", "utf8"), /destinoPadrao\(r\.role\)/);
   assert.match(readFileSync("src/app/dashboards/layout.tsx", "utf8"), /requireDashboards/);

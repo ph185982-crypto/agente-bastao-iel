@@ -10,6 +10,8 @@ import { runAlerts } from "@/lib/alerts/engine";
 import { runApprovedQueue } from "@/lib/executor/executor";
 import { runDailyAgent } from "@/lib/ai/agent";
 import { rotinaCanais } from "@/lib/channels/servico";
+import { rotinaEntregas } from "@/lib/motor/rotina";
+import { spDate } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // Fluid compute (Hobby permite até 300 s)
@@ -52,6 +54,8 @@ const JOBS: Record<string, () => Promise<unknown>> = {
   "ai-daily": () => runDailyAgent(200_000),
   // Canais dos clientes (Meta, somente leitura): coleta 1×/dia, um canal por vez, com tempo máximo.
   channels: () => rotinaCanais(240_000),
+  // Motor de Entregas (1×/dia, cedo): recorrências dos próximos 30 dias, saúde da carteira, resumo matinal e alerta de risco.
+  entregas: () => rotinaEntregas(spDate()),
   // "daily": fallback diário da Vercel Cron
   daily: async () => ({
     tokens: await refreshTokens(),

@@ -71,6 +71,37 @@ Mesmo domínio e mesmo `/login`; o usuário de cliente (papel `client`) cai em `
   Só administradores escrevem; revisor só lê. Senha de cliente é gerada, exibida uma vez e guardada só como hash (bcrypt).
 - **Variáveis**: `MAPA_CONTATO_NOME`, `MAPA_CONTATO_EMAIL`, `MAPA_CONTATO_WHATSAPP` (contato da Avanteza na tela Conta).
 
+## Motor de Entregas (Operações, F1 — `app.avanteza.com.br/operacoes`)
+Objetivo: ninguém depende de memória — o sistema diz **o que fazer hoje, para quem e até quando** em cada cliente.
+- **Modelo** (`db/schema.sql`, idempotente; estende sem duplicar): `service_catalog` (o que a Avanteza vende), `playbooks` + `playbook_tasks`
+  (fase 1–4 do plano, papel, prazo relativo D+n, recorrência `none|semanal|quinzenal|mensal` com dia preferido, checklist, critério de pronto,
+  depende do cliente, visível ao cliente, tempo estimado, prioridade), `client_services` (cliente, serviço, início/fim, valor, contrato, responsável, situação),
+  `delivery_runs` (registro de cada geração), `client_health` (semáforo diário) e `capturas` (Inbox de combinados, hash único).
+  `plan_actions` ganhou `playbook_task_id`, `client_service_id`, `assignee_id` (→ `admins.id`, coluna nova), `role`, `recurrence_key` (única por cliente),
+  `checklist`, `done_criteria`, `blocked_reason`, `evidence_url`, `sla_due`, `priority`, `estimated_min`, `client_dependent`, `visible_to_client`,
+  `ai_generated`, `captura_id`, `edited_at`, `archived_at`; `origin` aceita também `playbook`, `captura` e `ia`. `admins.delivery_roles` diz quem cobre cada papel
+  e `clients.manager_id` é o responsável pela conta.
+- **Gerador** (`src/lib/motor/gerador.ts`, puro e testado): a partir dos serviços (ou do tipo do cliente: marketplace → Onboarding + Marketplace; mídia →
+  Onboarding + Tráfego + Mídias; ambos → todos) gera as tarefas de prazo único e as recorrências dos próximos 30 dias (3 dias de recuperação para trás).
+  Chave `tarefa` ou `tarefa@AAAA-MM-DD`: rodar 2× não duplica. Concluídas, em andamento, bloqueadas, editadas (`edited_at`) e dispensadas (`archived_at`) nunca
+  são sobrescritas; intocadas acompanham a mudança do modelo; serviço pausado/encerrado arquiva as geradas intocadas. Tarefa com o mesmo título de uma ação
+  do plano de 12 meses é **vinculada** a ela (sem duplicar). Sem plano, o plano de 12 meses é gerado e as ações entram nas fases certas.
+- **Saúde** (`src/lib/motor/saude.ts`, pura): atrasadas, bloqueadas pelo cliente, dias sem entrega concluída, dias sem reunião, canais/contas com erro ou
+  desconectados → verde/amarelo/vermelho com motivos legíveis; a Carteira ordena por risco.
+- **Telas** (vidro, claro/escuro, celular): **Hoje** (`/operacoes`, fila atrasadas → hoje → 7 dias → esperando o cliente, filtros e ações rápidas: concluir com
+  evidência, “depende do cliente” com motivo, reatribuir, adiar, checklist, editar, dispensar, desfazer IA), **Carteira**, **Calendário** (semana/mês),
+  **Playbooks** (admin edita serviços, tarefas, recorrências e papéis; “aplicar a clientes existentes” com prévia) e a aba **Entregas** do cliente
+  (serviços, aplicar playbooks, quadro fase × situação). O membro da equipe cai em Hoje ao logar; o dono continua na Visão geral com o cartão “Entregas em risco”.
+  Permissões em `src/lib/motor/acesso.ts`: equipe vê; admin e membro trabalham nas ações; só admin edita playbooks/serviços; revisor só lê.
+- **Mapa**: o cliente só vê ações `visible_to_client` não dispensadas; o bloco **Depende de você** (Início e Plano) lista as ações dele e as da Avanteza paradas
+  esperando por ele; “Marcar como feito”/“Já enviei” com link opcional (`resolverPendencia`, filtrada pelo escopo da sessão; testado contra IDOR).
+- **Capturas** (`src/lib/motor/capturas.ts`): `ingestCaptura()` reaproveita o extrator das reuniões (provedor de `src/lib/ai`, zod); ações entram direto com selo
+  “gerado por IA” (sem prazo dito: D+3). `POST /api/capturas` com `Authorization: Bearer $AVANTEZA_CAPTURE_KEY` (503 sem variável, 401 errada, comparação em tempo
+  constante; cliente por id, slug ou nome, 409 se ambíguo). A integração com o Max e a importação de conversa exportada ficam para a F2.
+- **Rotina** `/api/cron/entregas` (1×/dia, 09:12 UTC = 06:12 em Brasília): recorrências, saúde (`client_health`), resumo matinal por e-mail a cada responsável e
+  alerta de risco ao dono (`settings.alert_email` ou `ALERT_EMAIL_TO`); sem Resend configurado registra `semConfiguracao` e segue.
+- **Semente**: `db/seed-playbooks.mjs` (idempotente; recusa banco remoto sem `--permitir-remoto`); `--aplicar-clientes` cria os serviços pelo tipo e as ações.
+
 ## Canais (painel de mídia e tráfego do cliente)
 - **DUAS FONTES INDEPENDENTES** (cada uma com credencial, teste, coleta, status e erro próprios; nunca somadas nem misturadas):
   1. **Tráfego/anúncios = Meta Ads** (`ads_source` = `meta`|`none`; token do cliente via Graph; Windsor `facebook` fica para o futuro). Status em `last_sync_at`/`last_error`.

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, canAccess, isMapaPath, verifySessionFull } from "@/lib/session";
 
-const PUBLIC = [/^\/\.well-known\//, /^\/login/, /^\/conectado/, /^\/api\/auth\//, /^\/api\/webhooks\//, /^\/api\/cron\//, /^\/api\/health/, /^\/api\/mapa\/reunioes\/?$/]; // a rota de reuniões confere CRON_SECRET/admin por conta própria
+const PUBLIC = [/^\/\.well-known\//, /^\/login/, /^\/conectado/, /^\/api\/auth\//, /^\/api\/webhooks\//, /^\/api\/cron\//, /^\/api\/health/, /^\/api\/mapa\/reunioes\/?$/, /^\/api\/capturas\/?$/]; // reuniões e capturas conferem a própria chave (CRON_SECRET/admin; AVANTEZA_CAPTURE_KEY)
 
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;

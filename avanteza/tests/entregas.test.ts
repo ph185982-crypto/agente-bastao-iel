@@ -100,11 +100,13 @@ test("acesso: admin escreve; revisor lê; membro só com o app; cliente nunca", 
   assert.match(recusaDeEscrita(membroVendas)!, /não tem acesso/);
 });
 
-test("menu: Funil de Entrega e Entregas do plano distintos", () => {
+test("menu: Motor de Entregas (Hoje, Carteira, Calendário, Playbooks) e o Funil de Entrega distintos", () => {
   const itens = (s: Session) => menuEquipe(s).find((g) => g.label === "Operações")?.items.map((i) => `${i.label}=${i.href}`);
-  assert.deepEqual(itens(dono), ["Marketplaces=/", "Clientes e Mapa=/clientes", "Funil de Entrega=/operacoes/entregas", "Entregas do plano=/entregas"]);
-  assert.deepEqual(itens(membroEnt), ["Funil de Entrega=/operacoes/entregas"]);
-  assert.deepEqual(departamentosVisiveis(membroVendas).map((d) => d.id), ["comercial"]);
+  const motor = ["Hoje=/operacoes", "Carteira=/operacoes/carteira", "Calendário=/operacoes/calendario", "Playbooks=/operacoes/playbooks"];
+  assert.deepEqual(itens(dono), [...motor, "Funil de Entrega=/operacoes/entregas", "Clientes e Mapa=/clientes", "Marketplaces=/"]);
+  assert.deepEqual(itens(membroEnt), [...motor, "Funil de Entrega=/operacoes/entregas"]);
+  assert.deepEqual(departamentosVisiveis(membroVendas).map((d) => d.id), ["operacoes", "comercial"]);
+  assert.equal(menuEquipe(dono).find((g) => g.label === "Operações")!.items[0].exact, true, "Hoje (/operacoes) não acende nas subpáginas");
 });
 
 test("vínculo com o Mapa: nome/slug, sem acento nem sufixo; em dúvida não vincula; falha = vazio", async () => {

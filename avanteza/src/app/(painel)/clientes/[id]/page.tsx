@@ -17,13 +17,14 @@ import { ACTION_LABEL, ACTION_TYPES } from "@/lib/executor/policy";
 import { currentSession } from "@/lib/auth";
 import { AbaMapa } from "./AbaMapa";
 import { AbaCanais } from "./AbaCanais";
+import { AbaEntregas } from "./AbaEntregas";
 import { verComoCliente } from "../mapa-actions";
 
 // “Atualizar agora” (aba Canais) coleta 90 dias na Meta dentro da própria ação do servidor.
 export const maxDuration = 120;
 
 const ABAS = [
-  { k: "", label: "Contas e vendas" }, { k: "plano", label: "Plano" }, { k: "arquivos", label: "Arquivos" },
+  { k: "", label: "Contas e vendas" }, { k: "entregas", label: "Entregas" }, { k: "plano", label: "Plano" }, { k: "arquivos", label: "Arquivos" },
   { k: "reunioes", label: "Reuniões" }, { k: "canais", label: "Canais" }, { k: "acesso", label: "Acesso do cliente" }, { k: "contato", label: "Dados e contato" },
 ];
 
@@ -65,7 +66,7 @@ export default async function Cliente({
     </div>
   );
   if (aba) {
-    return (<><Flash sp={sp} />{head}{tabs}{aba === "canais" ? <AbaCanais client={client} owner={isOwner} /> : <AbaMapa client={client} aba={aba} owner={isOwner} />}</>);
+    return (<><Flash sp={sp} />{head}{tabs}{aba === "canais" ? <AbaCanais client={client} owner={isOwner} /> : aba === "entregas" ? <AbaEntregas client={client} previa={sp.previa === "1"} /> : <AbaMapa client={client} aba={aba} owner={isOwner} />}</>);
   }
 
   const today = spDate();
