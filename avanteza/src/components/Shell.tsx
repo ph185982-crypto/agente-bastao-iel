@@ -1,56 +1,32 @@
 import Link from "next/link";
-import { AppShell, type NavGroup } from "./shell/AppShell";
-import { ITEM_DASHBOARDS } from "@/lib/dashboards/nav";
-import { SairButton } from "@/components/shell/SairButton";
+import type { NavGroup } from "./shell/AppShell";
+import { EquipeShell } from "./shell/EquipeShell";
+import type { Session } from "@/lib/session";
 
-/** Casca do painel Marketplaces (admin): sidebar de vidro agrupada + faixas de estado. */
+/** Casca do painel Marketplaces: menu por departamentos + atalhos do módulo (aprovações, alertas, relatórios, auditoria) + faixas de estado. */
 export function Shell({
   children,
+  sess,
   counts,
   paused,
   dryRun,
-  reviewer = false,
-  admin = false,
-  dashboards = false,
-  who,
 }: {
   children: React.ReactNode;
+  sess: Session;
   counts: { approvals: number; alerts: number };
   paused: boolean;
   dryRun: boolean;
-  reviewer?: boolean;
-  admin?: boolean;
-  /** Mostra "Dashboards" como primeiro item (administrador e revisor). */
-  dashboards?: boolean;
-  who?: string;
 }) {
-  const groups: NavGroup[] = [
-    { items: [...(dashboards ? [ITEM_DASHBOARDS] : []), { href: "/central", label: "Central", icon: "grid", exact: true }] },
-    {
-      label: "Operação",
-      items: [
-        { href: "/", label: "Visão geral", icon: "home", exact: true },
-        { href: "/clientes", label: "Clientes", icon: "users" },
-        { href: "/aprovacoes", label: "Aprovações", icon: "check", badge: counts.approvals },
-        { href: "/alertas", label: "Alertas", icon: "bell", badge: counts.alerts },
-        { href: "/entregas", label: "Entregas", icon: "truck" },
-      ],
-    },
-    {
-      label: "Análise",
-      items: [
-        { href: "/relatorios", label: "Relatórios", icon: "chart" },
-        { href: "/auditoria", label: "Auditoria", icon: "shield" },
-      ],
-    },
-    {
-      label: "Sistema",
-      items: [
-        { href: "/configuracoes", label: "Ajustes", icon: "settings" },
-        ...(admin ? [{ href: "/usuarios", label: "Usuários", icon: "user" }] : []),
-      ],
-    },
-  ];
+  const reviewer = sess.role === "reviewer";
+  const modulo: NavGroup = {
+    label: "Marketplaces",
+    items: [
+      { href: "/aprovacoes", label: "Aprovações", icon: "check", badge: counts.approvals },
+      { href: "/alertas", label: "Alertas", icon: "bell", badge: counts.alerts },
+      { href: "/relatorios", label: "Relatórios", icon: "chart" },
+      { href: "/auditoria", label: "Auditoria", icon: "shield" },
+    ],
+  };
   const banner = (reviewer || paused || dryRun) && (
     <>
       {reviewer && (
@@ -67,19 +43,8 @@ export function Shell({
     </>
   );
   return (
-    <AppShell
-      groups={groups}
-      tag="Marketplaces"
-      homeHref="/"
-      banner={banner || undefined}
-      bottom={
-        <>
-          {who && <div className="sb-who" title={who}>{who}</div>}
-          <SairButton />
-        </>
-      }
-    >
+    <EquipeShell sess={sess} extra={[modulo]} tag="Marketplaces" homeHref="/" banner={banner || undefined}>
       {children}
-    </AppShell>
+    </EquipeShell>
   );
 }

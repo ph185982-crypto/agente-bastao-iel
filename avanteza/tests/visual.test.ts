@@ -189,8 +189,11 @@ test("menu lateral: AppShell com sidebar e gaveta, usado por painel, Mapa, Centr
   assert.match(shell, /aria-label="Abrir menu"/);
   assert.match(css, /\.sidebar \{[^}]*position: fixed/);
   assert.match(css, /\.sb-link\[aria-current="page"\] \{[^}]*background: var\(--orange\)/);
-  for (const f of ["src/components/Shell.tsx", "src/app/mapa/layout.tsx", "src/app/central/page.tsx", "src/app/usuarios/page.tsx"]) {
+  for (const f of ["src/components/shell/EquipeShell.tsx", "src/app/mapa/layout.tsx"]) {
     assert.match(read(f), /AppShell/, f);
+  }
+  for (const f of ["src/components/Shell.tsx", "src/app/central/page.tsx", "src/app/usuarios/page.tsx"]) {
+    assert.match(read(f), /EquipeShell/, f);
   }
   assert.match(read("src/app/mapa/layout.tsx"), /top=\{[^}]*CompanySwitch/, "seletor de empresa no topo da sidebar");
   assert.match(read("src/app/mapa/layout.tsx"), /Visualizando como/);

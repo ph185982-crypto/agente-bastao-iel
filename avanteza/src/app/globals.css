@@ -161,12 +161,14 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 .shell { min-height: 100vh; }
 .sidebar {
   position: fixed; z-index: 40; top: 16px; bottom: 16px; left: 16px; width: var(--sidebar-w);
-  border-radius: 26px; padding: 18px 12px 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto;
+  border-radius: 26px; padding: 18px 12px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden;
   --blur: 20px; scrollbar-width: thin;
 }
 .sb-brand { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 10px; }
 .sb-top { padding: 0 4px; }
-.sb-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.sb-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin: 0 -4px; padding: 0 4px; }
+.sb-label a { color: inherit; text-decoration: none; }
+.sb-label a:hover, .sb-label a[aria-current="page"] { color: var(--orange-2); }
 .sb-label { font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); padding: 14px 12px 6px; }
 .sb-link {
   display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 9px 12px; border-radius: 16px;
@@ -379,6 +381,7 @@ details[open] > summary::before { content: "– "; }
 /* Central: tiles de ferramentas */
 .tile { display: flex; gap: 16px; align-items: flex-start; text-decoration: none; }
 .tile .mono-ico { flex: none; width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; font-weight: 800; font-size: 20px; color: var(--navy); background: linear-gradient(140deg, #FFA06A, var(--orange)); box-shadow: var(--glow); }
+.tile .mono-ico svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .tile .go { margin-left: auto; color: var(--orange-2); font-size: 22px; line-height: 1; transition: transform 0.2s ease; }
 .tile:hover .go { transform: translateX(4px); }
 
@@ -528,3 +531,50 @@ details[open] > summary::before { content: "– "; }
 .aud-bar { height: 8px; border-radius: 999px; background: var(--hairline); overflow: hidden; display: block; }
 .aud-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--orange); }
 .aud-list b { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* ───── Financeiro: tabelas, formulários inline e barras de progresso (só tokens do tema) ───── */
+.pos { color: var(--ok); } .neg { color: var(--danger); }
+.nowrap { white-space: nowrap; }
+.mes-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0 4px; }
+.mes-nav strong { min-width: 150px; text-align: center; }
+.tabs.escopo { margin-bottom: 0; }
+.tbl-card { padding-bottom: 10px; }
+.tbl-wrap { overflow-x: auto; margin: 6px -4px 0; padding: 0 4px; -webkit-overflow-scrolling: touch; }
+.tbl-wrap table.t { min-width: 560px; }
+.tbl-wrap table.t th.num { text-align: right; }
+.acoes { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; min-width: 190px; }
+.acoes form { margin: 0; }
+.acoes .btn-sm { min-height: 34px; padding: 4px 12px; font-size: 12.5px; }
+details.mini > summary { display: inline-flex; align-items: center; min-height: 34px; padding: 4px 12px; border-radius: var(--radius-pill); border: 1px solid rgb(var(--tint) / 0.26); font-size: 12.5px; }
+details.mini > summary::before { content: ""; }
+details.mini[open] { flex-basis: 100%; }
+details.mini[open] > summary { background: rgb(var(--tint) / 0.12); }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; margin-top: 12px; }
+.fgrid .field + .field { margin-top: 0; }
+.fgrid .wide { grid-column: 1 / -1; }
+.mini-form { padding: 12px; margin-top: 8px; border: 1px solid var(--hairline); border-radius: 16px; background: rgb(var(--shade) / 0.35); min-width: 260px; }
+.filtros { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; align-items: end; margin-top: 14px; }
+.filtros .field + .field { margin-top: 0; }
+details.novo > summary { font-size: 15px; }
+.meta-bar { height: 10px; border-radius: var(--radius-pill); background: rgb(var(--tint) / 0.12); overflow: hidden; margin-top: 8px; }
+.meta-bar > span { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--ok); }
+.dre td:first-child { overflow-wrap: anywhere; }
+.dre .dre-pre { display: inline-block; min-width: 26px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dre tr.dre-total td { font-weight: 800; background: rgb(var(--tint) / 0.06); }
+.dre tr.dre-subtotal td { font-weight: 700; }
+.dre tr.dre-margem td { color: var(--muted); font-style: italic; }
+.dkpi .value.neg { color: var(--danger); }
+@media (max-width: 899px) {
+  .mes-nav strong { min-width: 0; flex: 1; }
+  .acoes { min-width: 330px; }
+}
+
+/* Menu por departamentos é comprido: em telas baixas fica mais compacto; o rodapé (recolher, usuário, sair) nunca sai da vista. */
+@media (max-height: 900px) {
+  .sb-link { min-height: 38px; padding-top: 6px; padding-bottom: 6px; }
+  .sb-label { padding-top: 10px; padding-bottom: 4px; }
+  .sb-foot { padding-top: 8px; gap: 6px; }
+}
+.grid.kpis.seis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 700px) { .grid.kpis.seis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1500px) { .grid.kpis.seis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

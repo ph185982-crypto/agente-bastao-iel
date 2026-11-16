@@ -237,8 +237,9 @@ test("acesso: admin e revisor veem (revisor só lê); membro e cliente não; log
   assert.match(readFileSync("src/app/actions.ts", "utf8"), /destinoPadrao\(r\.role\)/);
   assert.match(readFileSync("src/app/dashboards/layout.tsx", "utf8"), /requireDashboards/);
   assert.match(readFileSync("src/app/dashboards/page.tsx", "utf8"), /requireDashboards/);
-  for (const f of ["src/components/Shell.tsx", "src/app/central/page.tsx", "src/app/usuarios/page.tsx", "src/app/dashboards/layout.tsx"]) assert.match(readFileSync(f, "utf8"), /ITEM_DASHBOARDS/, f);
-  assert.match(readFileSync("src/components/Shell.tsx", "utf8"), /\[\.\.\.\(dashboards \? \[ITEM_DASHBOARDS\] : \[\]\), \{ href: "\/central"/, "Dashboards é o primeiro item");
+  // Todas as telas da equipe usam o menu por departamentos (menuEquipe), cujo primeiro item é "Visão geral" (Dashboards)
+  for (const f of ["src/components/Shell.tsx", "src/app/central/page.tsx", "src/app/usuarios/page.tsx", "src/app/dashboards/layout.tsx"]) assert.match(readFileSync(f, "utf8"), /EquipeShell/, f);
+  assert.match(readFileSync("src/lib/shell/menu.ts", "utf8"), /\.\.\.\(podeVerDashboards\(sess\) \? \[\{ \.\.\.ITEM_DASHBOARDS, label: "Visão geral" \}\] : \[\]\), \{ href: "\/central"/, "Visão geral (Dashboards) é o primeiro item");
 });
 
 test("somente leitura e sem segredos: nenhum método de escrita na Meta e nenhum token no código", () => {

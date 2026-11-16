@@ -1,4 +1,5 @@
 // Seções do painel Dashboards (servidor). Cada seção lida com o estado da própria fonte: ok, sem dados, indisponível ou não configurada.
+import Link from "next/link";
 import type { Dashboards } from "@/lib/dashboards";
 import type { BlocoVendedoria, MetricasVendedoria } from "@/lib/dashboards/vendedoria";
 import { custoPorLead, resultados, roas, type MetaResultado } from "@/lib/dashboards/meta";
@@ -22,8 +23,8 @@ function Aviso({ titulo, texto, tipo = "danger" }: { titulo: string; texto: stri
   );
 }
 
-const SEC = (props: { titulo: string; sub?: string; children: React.ReactNode }) => (
-  <section className="dsec" aria-label={props.titulo}>
+const SEC = (props: { titulo: string; sub?: string; id?: string; children: React.ReactNode }) => (
+  <section className="dsec" id={props.id ?? props.titulo.toLowerCase().normalize("NFD").replace(/[^a-z]+/g, "-")} aria-label={props.titulo}>
     <h2>{props.titulo}</h2>
     {props.sub && <p className="small muted dsub">{props.sub}</p>}
     {props.children}
@@ -124,6 +125,9 @@ export function SecaoFinanceiro({ d }: { d: Dashboards }) {
   const rec: ItemBarra[] = a.financeiro.receitasPorCategoria.map((c) => ({ rotulo: c.categoria, valor: c.valor, texto: brl(c.valor), cor: "ok" }));
   return (
     <SEC titulo="Financeiro" sub={`Escopo: empresa Avanteza (nunca o pessoal). ${v.escopo.observacao.startsWith("Dados simulados") ? v.escopo.observacao : ""}`.trim()}>
+      <p className="small dsub" style={{ marginTop: -4 }}>
+        Só lançamentos confirmados da empresa, nos últimos dias escolhidos (o mês fechado, com lançar e conciliar, está no <Link href="/financeiro">Financeiro</Link>).
+      </p>
       <div className="grid kpis auto">
         <Kpi label="Faturamento" valor={brlCompacto(a.faturamento.vendido)} delta={dlt(a.faturamento.vendido, p.faturamento.vendido, ra)}
           sub={a.faturamento.contratosRecorrentesNovos ? `${inteiro(a.faturamento.contratosRecorrentesNovos)} contratos recorrentes novos (${brl(a.faturamento.valorMensalRecorrenteNovo)}/mês)` : "valor dos negócios fechados"} spark={serie(a, "vendas")} />
@@ -321,7 +325,7 @@ export function SecaoCanaisClientes({ c }: { c: CanaisClientesDash | null }) {
   if (!c || c.linhas.length === 0) return null;
   const rot = { somada: "Somada ao subtotal", "ja-na-agencia": "Já está na Meta da agência (não somada)", incerto: "Meta da agência indisponível (não somada)" } as const;
   return (
-    <SEC titulo="Canais dos clientes" sub="Contas de anúncios conectadas na aba Canais de cada cliente. Conta que já aparece na Meta da agência acima não é somada de novo.">
+    <SEC id="canais" titulo="Canais dos clientes" sub="Contas de anúncios conectadas na aba Canais de cada cliente. Conta que já aparece na Meta da agência acima não é somada de novo.">
       <div className="card">
         <div className="table-wrap">
           <table className="t">

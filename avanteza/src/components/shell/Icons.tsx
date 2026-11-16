@@ -20,6 +20,15 @@ const P: Record<string, React.ReactNode> = {
   "chevrons-left": <><path d="m11 7-5 5 5 5" /><path d="m18 7-5 5 5 5" /></>,
   "chevrons-right": <><path d="m6 7 5 5-5 5" /><path d="m13 7 5 5-5 5" /></>,
   dashboard: <><rect x="3.5" y="3.5" width="7.5" height="9" rx="2" /><rect x="13" y="3.5" width="7.5" height="5.5" rx="2" /><rect x="13" y="11" width="7.5" height="9.5" rx="2" /><rect x="3.5" y="14.5" width="7.5" height="6" rx="2" /></>,
+  wallet: <><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3" /><path d="M4 7.5V17a2.5 2.5 0 0 0 2.5 2.5H19a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5z" /><circle cx="16" cy="13.5" r="1.2" /></>,
+  briefcase: <><rect x="3.5" y="7.5" width="17" height="12" rx="3" /><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M3.5 13h17" /></>,
+  megaphone: <><path d="M4 10.5v3a1 1 0 0 0 1 1h2.5l7 4v-13l-7 4H5a1 1 0 0 0-1 1z" /><path d="M18 9.5a4 4 0 0 1 0 5" /></>,
+  chat: <><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H11l-4.5 3.5V16.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z" /></>,
+  funnel: <><path d="M4 5.5h16l-6 7v5.5l-4 2v-7.5z" /></>,
+  doc: <><path d="M7 3.5h7l4 4v13H7z" /><path d="M14 3.5v4h4M9.5 12h5M9.5 15.5h5" /></>,
+  pen: <><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z" /><path d="m14.5 6.5 3 3" /></>,
+  list: <><path d="M8.5 6.5H20M8.5 12H20M8.5 17.5H20" /><circle cx="4.8" cy="6.5" r="1" /><circle cx="4.8" cy="12" r="1" /><circle cx="4.8" cy="17.5" r="1" /></>,
+  lock: <><rect x="5" y="10.5" width="14" height="10" rx="3" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" /></>,
   close: <><path d="M6 6l12 12M18 6 6 18" /></>,
 };
 

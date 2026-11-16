@@ -14,8 +14,10 @@ function lembrarMenu(v: SidebarState) {
   try { document.cookie = `${SIDEBAR_KEY}=${v}; path=/; max-age=31536000; samesite=lax`; } catch { /* sem cookie */ }
 }
 
-export type NavItem = { href: string; label: string; icon: string; badge?: number; exact?: boolean };
-export type NavGroup = { label?: string; items: NavItem[] };
+/** `ext`: abre outro aplicativo (login único); usa <a> comum, sem pré-carregar a rota de redirecionamento. */
+export type NavItem = { href: string; label: string; icon: string; badge?: number; exact?: boolean; ext?: boolean };
+/** `href`: o rótulo do grupo vira link para a página de entrada do departamento. */
+export type NavGroup = { label?: string; href?: string; items: NavItem[] };
 
 export function AppShell({
   groups,
@@ -51,12 +53,16 @@ export function AppShell({
     lembrarMenu(prox);
     setRecolhido(prox === "collapsed");
   };
-  const current = (i: NavItem) => (i.exact ? path === i.href : path === i.href || path.startsWith(i.href + "/"));
+  const current = (i: NavItem) => (i.ext ? false : i.exact ? path === i.href : path === i.href || path.startsWith(i.href + "/"));
   // Em vários itens com prefixo comum, vale o mais específico.
   const all = groups.flatMap((g) => g.items);
   const best = all.filter(current).sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   useEffect(() => setOpen(false), [path]);
+  // O menu por departamentos é comprido: deixa o item da página atual à vista dentro da lista rolável.
+  useEffect(() => {
+    document.querySelector<HTMLElement>('.sb-nav [aria-current="page"].sb-link')?.scrollIntoView({ block: "nearest" });
+  }, [path]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
@@ -90,14 +96,25 @@ export function AppShell({
         <nav className="sb-nav" aria-label="Principal">
           {groups.map((g, gi) => (
             <div key={gi} role="group" aria-label={g.label}>
-              {g.label && <div className="sb-label">{g.label}</div>}
-              {g.items.map((i) => (
-                <Link key={i.href} href={i.href} className="sb-link" title={recolhido ? i.label : undefined} aria-current={i.href === best ? "page" : undefined}>
-                  <Icon name={i.icon} />
-                  <span className="sb-text">{i.label}</span>
-                  {i.badge ? <span className="sb-badge" aria-label={`${i.badge} pendentes`}>{i.badge}</span> : null}
-                </Link>
-              ))}
+              {g.label && (
+                <div className="sb-label">
+                  {g.href ? <Link href={g.href} aria-current={path === g.href ? "page" : undefined}>{g.label}</Link> : g.label}
+                </div>
+              )}
+              {g.items.map((i) => {
+                const conteudo = (
+                  <>
+                    <Icon name={i.icon} />
+                    <span className="sb-text">{i.label}</span>
+                    {i.badge ? <span className="sb-badge" aria-label={`${i.badge} pendentes`}>{i.badge}</span> : null}
+                  </>
+                );
+                return i.ext ? (
+                  <a key={i.href} href={i.href} className="sb-link" title={recolhido ? i.label : undefined}>{conteudo}</a>
+                ) : (
+                  <Link key={i.href} href={i.href} className="sb-link" title={recolhido ? i.label : undefined} aria-current={i.href === best ? "page" : undefined}>{conteudo}</Link>
+                );
+              })}
             </div>
           ))}
         </nav>
