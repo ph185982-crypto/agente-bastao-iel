@@ -1,11 +1,14 @@
 // Lógica da rota POST /api/capturas (separada para ser testável sem o Next).
 // API de serviço: Authorization: Bearer {AVANTEZA_CAPTURE_KEY}. Sem a variável → 503; chave errada → 401 (comparação em
 // tempo constante: as duas chaves passam por SHA-256 antes do timingSafeEqual, então o tamanho não vaza). Quem chama: o Max (F2).
-import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { rawQuery } from "../db/client";
 import { ORIGENS, ingestCaptura } from "./capturas";
 import type { AiProvider } from "../ai/provider";
+import { autorizarServico, chaveConfere, jsonResp } from "../servico";
+import { notificar } from "../notificacoes";
+
+export { chaveConfere };
 
 const Body = z.object({
   clienteId: z.string().uuid().optional(),
@@ -18,12 +21,6 @@ const Body = z.object({
   transcricao: z.string().max(100_000).nullish(),
   data: z.string().nullish(),
 }).refine((b) => b.clienteId || b.clienteSlug || b.clienteNome, { message: "Informe clienteId, clienteSlug ou clienteNome" });
-
-export function chaveConfere(recebida: string, esperada: string): boolean {
-  const a = createHash("sha256").update(recebida).digest();
-  const b = createHash("sha256").update(esperada).digest();
-  return timingSafeEqual(a, b) && recebida.length === esperada.length;
-}
 
 const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -48,12 +45,9 @@ export async function resolverCliente(b: { clienteId?: string; clienteSlug?: str
 }
 
 export async function handleCaptura(req: Request, deps: { provider?: AiProvider; hoje?: string } = {}): Promise<Response> {
-  const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
-  const chave = process.env.AVANTEZA_CAPTURE_KEY?.trim();
-  if (!chave) return json({ error: "AVANTEZA_CAPTURE_KEY não configurada" }, 503);
-  const header = req.headers.get("authorization") ?? "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  if (!chaveConfere(bearer, chave)) return json({ error: "não autorizado" }, 401);
+  const json = jsonResp;
+  const negado = autorizarServico(req, "AVANTEZA_CAPTURE_KEY");
+  if (negado) return negado;
   if (!(req.headers.get("content-type") ?? "").includes("application/json")) return json({ error: "Use Content-Type: application/json" }, 415);
   let raw: unknown;
   try {
@@ -67,9 +61,20 @@ export async function handleCaptura(req: Request, deps: { provider?: AiProvider;
   if ("erro" in cli) return json({ error: cli.erro, ...(cli.candidatos ? { candidatos: cli.candidatos } : {}) }, cli.status);
   try {
     const r = await ingestCaptura({ origem: p.data.origem, clientId: cli.id, autor: p.data.autor, texto: p.data.texto, midiaUrl: p.data.midiaUrl, transcricao: p.data.transcricao, data: p.data.data }, deps);
+    if (!r.duplicada) await notificarCaptura(cli.id, p.data.origem, r.acoesCriadas).catch(() => undefined);
     return json(r, r.duplicada ? 200 : 201);
   } catch (e) {
     if (e instanceof z.ZodError) return json({ error: "Dados inválidos", detalhes: e.issues.map((i) => `${i.path.join(".")}: ${i.message}`) }, 400);
     return json({ error: "Falha ao registrar a captura" }, 422);
   }
+}
+
+export async function notificarCaptura(clientId: string, origem: string, acoes: number, extra = "") {
+  const [c] = await rawQuery<{ name: string }>("select name from avanteza.clients where id = $1", [clientId]);
+  const via: Record<string, string> = { whatsapp_max: "pelo Max (WhatsApp)", whatsapp_export: "por conversa exportada", extensao: "pela extensão", reuniao: "de reunião", manual: "manualmente" };
+  await notificar({
+    tipo: "captura", para: "equipe", clientId, link: `/operacoes/capturas?cliente=${clientId}`,
+    titulo: `Captura registrada: ${c?.name ?? "cliente"}`,
+    corpo: `Recebida ${via[origem] ?? origem}${extra}. ${acoes ? `${acoes} ação(ões) criada(s) pela IA.` : "Nenhuma ação nova."}`,
+  });
 }

@@ -26,6 +26,8 @@ export function AppShell({
   top,
   bottom,
   banner,
+  acoesSidebar,
+  acoesBarra,
   children,
 }: {
   groups: NavGroup[];
@@ -38,6 +40,9 @@ export function AppShell({
   bottom?: React.ReactNode;
   /** Faixas acima do conteúdo (ex.: "Visualizando como …"). */
   banner?: React.ReactNode;
+  /** Botões ao lado do seletor de tema (ex.: sino de notificações da equipe), na sidebar e na barra do celular. */
+  acoesSidebar?: React.ReactNode;
+  acoesBarra?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const path = usePathname() ?? "/";
@@ -87,6 +92,7 @@ export function AppShell({
             {tag && <span className="pill pill-orange">{tag}</span>}
           </div>
           <Link href={homeHref} className="sb-mark" aria-label="Início"><span aria-hidden="true">a<i /></span></Link>
+          {acoesSidebar}
           <ThemeToggle className="sb-theme" />
           <button type="button" className="icon-btn sb-close" aria-label="Fechar menu" onClick={() => setOpen(false)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
@@ -141,6 +147,7 @@ export function AppShell({
           </div>
           <div className="mb-left">
             {tag && <span className="pill pill-orange">{tag}</span>}
+            {acoesBarra}
             <ThemeToggle />
           </div>
         </header>

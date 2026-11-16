@@ -102,7 +102,7 @@ test("acesso: admin escreve; revisor lê; membro só com o app; cliente nunca", 
 
 test("menu: Motor de Entregas (Hoje, Carteira, Calendário, Playbooks) e o Funil de Entrega distintos", () => {
   const itens = (s: Session) => menuEquipe(s).find((g) => g.label === "Operações")?.items.map((i) => `${i.label}=${i.href}`);
-  const motor = ["Hoje=/operacoes", "Carteira=/operacoes/carteira", "Calendário=/operacoes/calendario", "Playbooks=/operacoes/playbooks"];
+  const motor = ["Hoje=/operacoes", "Carteira=/operacoes/carteira", "Calendário=/operacoes/calendario", "Capturas=/operacoes/capturas", "Onboarding=/operacoes/onboarding", "Playbooks=/operacoes/playbooks"];
   assert.deepEqual(itens(dono), [...motor, "Funil de Entrega=/operacoes/entregas", "Clientes e Mapa=/clientes", "Marketplaces=/"]);
   assert.deepEqual(itens(membroEnt), [...motor, "Funil de Entrega=/operacoes/entregas"]);
   assert.deepEqual(departamentosVisiveis(membroVendas).map((d) => d.id), ["operacoes", "comercial"]);

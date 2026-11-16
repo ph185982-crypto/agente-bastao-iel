@@ -44,6 +44,8 @@ export function departamentos(): Departamento[] {
         { id: "hoje", nome: "Hoje", icon: "check", href: "/operacoes", descricao: "Sua fila do dia: atrasadas, hoje e próximos 7 dias, com ações rápidas.", requer: "motor" },
         { id: "carteira", nome: "Carteira", icon: "shield", href: "/operacoes/carteira", descricao: "Saúde de cada cliente (semáforo), motivos e próximos marcos.", requer: "motor" },
         { id: "calendario", nome: "Calendário", icon: "calendar", href: "/operacoes/calendario", descricao: "Entregas da semana e do mês, por cliente e responsável.", requer: "motor" },
+        { id: "capturas", nome: "Capturas", icon: "chat", href: "/operacoes/capturas", descricao: "Conversas do WhatsApp (Max e exportadas) viram combinados e ações dos clientes.", requer: "motor" },
+        { id: "onboarding", nome: "Onboarding", icon: "flag", href: "/operacoes/onboarding", descricao: "Contratos assinados viram cliente, serviços, plano, acesso e receita — com o andamento de cada um.", requer: "motor" },
         { id: "playbooks", nome: "Playbooks", icon: "list", href: "/operacoes/playbooks", descricao: "Serviços vendidos, tarefas-modelo, prazos e recorrências.", requer: "motor" },
         { id: "funil-entrega", nome: "Funil de Entrega", icon: "truck", href: "/operacoes/entregas", descricao: "Quadro por etapa e pilar, renovações e modelos das entregas aos clientes (dados do CRM).", requer: "entregas" },
         { id: "clientes", nome: "Clientes e Mapa", icon: "users", href: "/clientes", descricao: "Cadastro, plano de ação, reuniões e acessos dos clientes.", requer: { app: "marketplaces" } },

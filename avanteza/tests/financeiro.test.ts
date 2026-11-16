@@ -93,7 +93,7 @@ test("menu por departamentos: cada papel vê só o que pode; Pessoal só o dono;
   assert.deepEqual(rotulos(dono), ["(topo)", "Operações", "Comercial", "Marketing", "Financeiro", "Sistema"]);
   const g = menuEquipe(dono);
   const itens = (l: string) => g.find((x) => x.label === l)!.items.map((i) => i.label);
-  assert.deepEqual(itens("Operações"), ["Hoje", "Carteira", "Calendário", "Playbooks", "Funil de Entrega", "Clientes e Mapa", "Marketplaces"]);
+  assert.deepEqual(itens("Operações"), ["Hoje", "Carteira", "Calendário", "Capturas", "Onboarding", "Playbooks", "Funil de Entrega", "Clientes e Mapa", "Marketplaces"]);
   assert.deepEqual(itens("Comercial"), ["Vendedor IA", "CRM", "Contratos"]);
   assert.deepEqual(itens("Marketing"), ["Conteúdo", "Anúncios", "Canais"]);
   assert.deepEqual(itens("Financeiro"), ["Financeiro da empresa", "Pessoal"]);
@@ -110,7 +110,7 @@ test("menu por departamentos: cada papel vê só o que pode; Pessoal só o dono;
   // Membro só com o app financeiro: o Motor de Entregas (Hoje…) e o Financeiro (sem Pessoal), sem Dashboards
   const gm = menuEquipe(membroFin);
   assert.deepEqual(gm.map((x) => x.label ?? "(topo)"), ["(topo)", "Operações", "Financeiro"]);
-  assert.deepEqual(gm.find((x) => x.label === "Operações")!.items.map((i) => i.label), ["Hoje", "Carteira", "Calendário", "Playbooks"]);
+  assert.deepEqual(gm.find((x) => x.label === "Operações")!.items.map((i) => i.label), ["Hoje", "Carteira", "Calendário", "Capturas", "Onboarding", "Playbooks"]);
   assert.ok(!JSON.stringify(gm).includes("/dashboards"));
   // Membro com Vendedor IA e Conteúdo
   assert.deepEqual(departamentosVisiveis(membroVendas).map((d) => d.id), ["operacoes", "comercial"], "Hoje é de toda a equipe");

@@ -117,6 +117,22 @@ DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-playbooks
   `{ "clienteSlug"|"clienteId"|"clienteNome", "origem": "whatsapp_max"|"whatsapp_export"|"extensao"|"reuniao"|"manual", "autor", "texto", "midiaUrl", "transcricao", "data" }`.
 - Em Playbooks → “Quem cobre cada papel”, marque quem é gestor da conta, analista de marketplace, tráfego, social media e design: as ações novas vão para essas pessoas.
 
+## Barramento de eventos, onboarding automático, notificações e capturas (F2)
+Contrato completo em `docs/eventos.md`. Código em `src/lib/eventos/`, `src/lib/capturas/`, `src/lib/notificacoes.ts`.
+- `POST /api/eventos` (`AVANTEZA_EVENTS_KEY`): idempotente pelo `id`; consumidor no cron `eventos` (e no `tick`) com backoff.
+  `contrato.assinado` → cliente (CNPJ/nome), serviços, plano, Kickoff D+2, playbooks, acesso ao Mapa (senha uma vez no sino),
+  receita recorrente no Financeiro do Vendedor IA (`AVANTEZA_FINANCE_KEY`) e auditoria.
+- Operações → **Onboarding**: andamento de cada contrato, pendências, reprocessar e **Simular contrato assinado** (admin;
+  em produção, confirmação dupla).
+- Operações → **Capturas**: importar conversa exportada do WhatsApp (.txt/.zip até 4 MB; Android e iOS; só mensagens novas;
+  cliente lembrado por conversa/grupo) e a lista das capturas por cliente, com desfazer das ações da IA.
+- APIs do Max (`AVANTEZA_CAPTURE_KEY`): `GET /api/capturas/pendencias`, `POST /api/capturas/concluir`, `POST /api/capturas/importar`.
+- Sino de notificações no menu da equipe (`/api/notificacoes`).
+- Variáveis novas: `AVANTEZA_EVENTS_KEY` (obrigatória para receber eventos), `OPENAI_API_KEY` (opcional: transcrever áudios do
+  .zip; `TRANSCRIPTION_MODEL`, padrão `whisper-1`). Usa as já existentes `ENCRYPTION_KEY` (cifra da senha inicial),
+  `AVANTEZA_CAPTURE_KEY`, `AVANTEZA_FINANCE_KEY`/`VENDEDORIA_URL` e `ANTHROPIC_API_KEY` (extração dos combinados).
+- Schema: `node db/apply.mjs` (aditivo: `clients.cnpj`, `eventos`, `onboardings`, `notificacoes`, `captura_mensagens`, `captura_conversas`, `capturas.conversa`).
+
 ## Dashboards e menu recolhível
 
 Aba inicial `/dashboards` (admin/revisor): comercial e financeiro do Vendedor IA, marketing da Meta Marketing API (somente leitura),

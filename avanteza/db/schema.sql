@@ -713,3 +713,81 @@ begin
     alter table avanteza.plan_actions add constraint plan_actions_priority_check check (priority between 1 and 3);
   end if;
 end $$;
+
+-- ───────────────────────── F2: barramento de eventos, onboarding automático, notificações e importação de conversas ─────────────────────────
+-- CNPJ do cliente (só dígitos): chave do casamento do contrato assinado com o cadastro.
+alter table avanteza.clients add column if not exists cnpj text;
+create unique index if not exists clients_cnpj_uniq on avanteza.clients(cnpj) where cnpj is not null;
+
+-- Barramento de eventos entre módulos. id determinístico (ex.: "contrato.assinado:<envelopeId>") = idempotência na entrada.
+-- O consumidor (cron "eventos" e a própria rota, logo após receber) processa com retentativa e backoff exponencial.
+create table if not exists avanteza.eventos (
+  id text primary key,
+  tipo text not null,
+  origem text not null,
+  ocorrido_em timestamptz,
+  payload jsonb not null,
+  recebido_em timestamptz not null default now(),
+  status text not null default 'pendente' check (status in ('pendente','processado','falhou')),
+  processado_em timestamptz,
+  tentativas integer not null default 0,
+  proxima_tentativa_em timestamptz not null default now(),
+  erro text,
+  resultado jsonb
+);
+create index if not exists eventos_fila_idx on avanteza.eventos(proxima_tentativa_em) where status = 'pendente';
+create index if not exists eventos_recebido_idx on avanteza.eventos(recebido_em desc);
+
+-- Estado do onboarding de cada contrato (um por envelope): o que já foi feito, para rodar de novo sem duplicar.
+create table if not exists avanteza.onboardings (
+  envelope_id text primary key,
+  evento_id text not null,
+  client_id uuid references avanteza.clients(id) on delete set null,
+  cliente_criado boolean not null default false,
+  kickoff_action_id uuid references avanteza.plan_actions(id) on delete set null,
+  acesso_email text,
+  acesso_status text,                 -- criado | vinculado | sem_email | email_da_equipe
+  financeiro_status text not null default 'pendente' check (financeiro_status in ('pendente','feito','sem_valor','simulacao')),
+  financeiro_ref text,
+  financeiro_erro text,
+  financeiro_tentativas integer not null default 0,
+  pendencias jsonb not null default '[]'::jsonb,
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+
+-- Notificações da equipe (sino do AppShell). para: admin (só administradores) | equipe (admin, membro e revisor).
+-- segredo_enc: senha inicial do acesso do cliente cifrada (AES-256-GCM); revelada UMA vez e apagada.
+create table if not exists avanteza.notificacoes (
+  id uuid primary key default gen_random_uuid(),
+  tipo text not null,
+  titulo text not null,
+  corpo text,
+  link text,
+  para text not null default 'admin' check (para in ('admin','equipe')),
+  client_id uuid references avanteza.clients(id) on delete cascade,
+  segredo_enc text,
+  segredo_revelado_em timestamptz,
+  dedup_key text unique,
+  lidas_por text[] not null default '{}',
+  criado_em timestamptz not null default now()
+);
+create index if not exists notificacoes_criado_idx on avanteza.notificacoes(criado_em desc);
+
+-- Importação de conversa exportada do WhatsApp: cada mensagem entra uma vez por cliente (hash de autor + data + texto).
+create table if not exists avanteza.captura_mensagens (
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  hash text not null,
+  captura_id uuid references avanteza.capturas(id) on delete set null,
+  enviada_em timestamptz,
+  criado_em timestamptz not null default now(),
+  primary key (client_id, hash)
+);
+-- Conversa/grupo → cliente lembrado para as próximas importações.
+create table if not exists avanteza.captura_conversas (
+  chave text primary key,
+  titulo text not null,
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  atualizado_em timestamptz not null default now()
+);
+alter table avanteza.capturas add column if not exists conversa text;
