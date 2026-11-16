@@ -603,3 +603,9 @@ details.novo > summary { font-size: 15px; }
 @media (min-width: 1100px) { .grid.kpis.k5 { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 .grid.kpis.k4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 700px) { .grid.kpis.k4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* Financeiro: 13 abas não cabem em uma linha — quebram em linhas (a aba atual nunca fica escondida) */
+.tabs.wrap { flex-wrap: wrap; overflow: visible; width: auto; border-radius: 24px; gap: 4px; }
+.tabs.wrap a { padding: 7px 13px; font-size: 13.5px; }
+@media (max-width: 480px) { .tabs.wrap a { padding: 7px 10px; font-size: 13px; } }
+.dbig > .small { margin-left: 0.4em; letter-spacing: 0; font-weight: 600; }

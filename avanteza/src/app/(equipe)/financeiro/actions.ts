@@ -79,6 +79,41 @@ const OPS: Record<string, Op> = {
 
   "contrato.encerrar": { msg: "Contrato encerrado: as parcelas futuras em aberto viraram perdidas.", entidade: "contrato", run: ({ prov, escopo, fd, id }) => prov.acaoContrato(escopo, id, { acao: "encerrar", motivo: s(fd, "motivo").trim().slice(0, 300) || undefined }) },
 
+  "orcamento.salvar": { msg: "Limite do orçamento salvo.", entidade: "orcamento", soPessoal: true, run: async ({ prov, fd }) => {
+    const o = z.object({ categoria: texto(80), limite: valor }).parse({ categoria: s(fd, "categoria"), limite: num(fd, "limite") });
+    await prov.salvarOrcamento({ categoria: o.categoria, limite_mensal: o.limite });
+  } },
+  "orcamento.excluir": { msg: "Limite removido (fica guardado no histórico do Vendedor IA).", entidade: "orcamento", soPessoal: true, run: ({ prov, fd }) => prov.excluirOrcamento(texto(80).parse(s(fd, "categoria"))) },
+
+  "divida.pagar": { msg: "Parcela registrada e lançada como despesa pessoal.", entidade: "divida", soPessoal: true, run: async ({ prov, fd, id }) => {
+    const v = valor.parse(num(fd, "valor"));
+    await prov.acaoDivida(id, { acao: "pagar_parcela", valor: v });
+  } },
+  "divida.quitar": { msg: "Dívida marcada como quitada.", entidade: "divida", soPessoal: true, run: ({ prov, id }) => prov.acaoDivida(id, { acao: "quitar" }) },
+
+  "contrato_despesa.criar": { msg: "Contrato criado: as contas do mês e do seguinte já entram em Contas a pagar.", entidade: "contrato_despesa", run: async ({ prov, escopo, fd }) => {
+    const intOpt = z.string().trim().transform((x) => (x === "" ? undefined : Number(x))).pipe(z.number().int().optional());
+    const valorOpt = z.string().transform((x) => (x.trim() === "" ? undefined : parseValor(x))).pipe(valor.optional());
+    const c = z.object({
+      descricao: texto(200), valor, parcelas: intOpt.pipe(z.number().int().min(1).max(600).optional()), primeiro: dataZ, dia: intOpt.pipe(z.number().int().min(1).max(31).optional()),
+      credor: opt(120), categoria: opt(80), saldo: valorOpt, estimada: z.enum(["", "sim"]),
+    }).parse({ descricao: s(fd, "descricao"), valor: num(fd, "valor"), parcelas: s(fd, "parcelas"), primeiro: s(fd, "primeiro"), dia: s(fd, "dia"), credor: s(fd, "credor"), categoria: s(fd, "categoria"), saldo: s(fd, "saldo"), estimada: s(fd, "estimada") });
+    await prov.criarContratoDespesa(escopo, {
+      descricao: c.descricao, valor_parcela: c.valor, primeiro_vencimento: c.primeiro, parcelas_total: c.parcelas ?? null, dia_vencimento: c.dia, credor: c.credor ?? null,
+      categoria: c.categoria, saldo_devedor: c.saldo ?? null, estimada: c.estimada === "sim",
+    });
+  } },
+  "contrato_despesa.editar": { msg: "Contrato atualizado.", entidade: "contrato_despesa", run: async ({ prov, escopo, fd, id }) => {
+    const saldoTxt = s(fd, "saldo").trim();
+    const c = z.object({ descricao: texto(200), valor, credor: opt(120), saldo: valor.nullable() }).parse({ descricao: s(fd, "descricao"), valor: num(fd, "valor"), credor: s(fd, "credor"), saldo: saldoTxt ? parseValor(saldoTxt) : null });
+    await prov.acaoContratoDespesa(escopo, id, { acao: "editar", descricao: c.descricao, valor_parcela: c.valor, credor: c.credor ?? null, saldo_devedor: c.saldo });
+  } },
+  "contrato_despesa.encerrar": { msg: "Contrato encerrado: as contas pendentes que ainda não venceram foram canceladas.", entidade: "contrato_despesa", run: ({ prov, escopo, id }) => prov.acaoContratoDespesa(escopo, id, { acao: "encerrar" }) },
+  "contrato_despesa.reativar": { msg: "Contrato reativado.", entidade: "contrato_despesa", run: ({ prov, escopo, id }) => prov.acaoContratoDespesa(escopo, id, { acao: "reativar" }) },
+  "contrato_despesa.reclassificar": { msg: "Contrato reclassificado.", entidade: "contrato_despesa", run: ({ prov, escopo, fd, id }) => prov.acaoContratoDespesa(escopo, id, { acao: "editar", tipo_negocio: negocio(fd) }) },
+
+  "historico.restaurar": { msg: "Item restaurado com os mesmos dados de antes da exclusão.", entidade: "historico", run: ({ prov, escopo, id }) => prov.restaurar(escopo, id) },
+
   "aporte.criar": { msg: "Aporte registrado.", entidade: "meta", soPessoal: true, run: async ({ prov, fd, id }) => {
     const a = z.object({ valor: z.number().finite().refine((v) => v !== 0).refine((v) => Math.abs(v) <= 1_000_000_000), data: dataOpt, obs: opt(300) }).parse({ valor: s(fd, "tipo_aporte") === "retirada" ? -Math.abs(num(fd, "valor")) : num(fd, "valor"), data: s(fd, "data"), obs: s(fd, "obs") });
     await prov.aporte({ meta_id: id, valor: a.valor, data: a.data, observacao: a.obs });
@@ -88,7 +123,7 @@ const OPS: Record<string, Op> = {
 
 function voltarSeguro(fd: FormData): string {
   const v = s(fd, "voltar");
-  return /^\/financeiro(\/[a-z-]+)*(\?[\w=&%.-]*)?$/.test(v) ? v : "/financeiro";
+  return /^\/financeiro(\/[a-z-]+)*(\?[\w=&%.+-]*)?$/.test(v) ? v : "/financeiro";
 }
 function ir(voltar: string, tipo: "ok" | "erro", msg: string): never {
   const [path, qs = ""] = voltar.split("?");

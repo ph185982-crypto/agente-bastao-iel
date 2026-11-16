@@ -35,3 +35,11 @@ export function mesDaUrl(v: string | string[] | undefined, hoje = hojeBrasilia()
   const s = Array.isArray(v) ? v[0] : v;
   return isMes(s) ? s : mesDe(hoje);
 }
+
+/** ISO (UTC) → "dd/mm/aa HH:MM" no horário de Brasília. */
+export function dataHoraBr(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "—";
+  const d = new Date(t - 3 * 3_600_000).toISOString();
+  return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(2, 4)} ${d.slice(11, 16)}`;
+}

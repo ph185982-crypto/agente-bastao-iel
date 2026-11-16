@@ -1,6 +1,7 @@
 // Dados simulados do Financeiro SÓ para desenvolvimento e capturas de tela. Ativados por FINANCEIRO_FIXTURE=1 e
 // ignorados em produção (NODE_ENV=production ou VERCEL_ENV=production: Vercel produção e previews). Não há nada real aqui.
 // O provedor simulado é com estado (em memória): criar, editar, confirmar e excluir funcionam, para testar a tela inteira.
+import { estenderFixture, semente2 } from "./fixture-etapa2";
 import { hojeBrasilia, rotuloMes, mesDe, somarMeses, ultimoDia, ddmm } from "./periodo";
 import {
   FinanceiroErro, type Conta, type Contrato, type Dre, type DreValores, type EscopoFin, type FinanceiroProvider, type FiltroTransacoes,
@@ -101,6 +102,7 @@ export function criarProvedorFixture(modo: ModoFixtureFin, hoje = hojeBrasilia()
     return new Proxy({}, { get: () => falha }) as FinanceiroProvider;
   }
   const s = semente(hoje, modo === "vazio");
+  const s2 = semente2(s, hoje, modo === "vazio");
   const id = (p: string) => `fx-${p}-${++s.seq}`;
   const somaTx = (e: EscopoFin, tipo: "receita" | "despesa", de: string, ate: string) =>
     r2(doEscopo(s.tx, e).filter((t) => t.confirmado && t.tipo === tipo && t.data_transacao.slice(0, 10) >= de && t.data_transacao.slice(0, 10) <= ate).reduce((a, t) => a + t.valor, 0));
@@ -114,7 +116,7 @@ export function criarProvedorFixture(modo: ModoFixtureFin, hoje = hojeBrasilia()
   };
   const tx = (e: EscopoFin, t: string) => { const x = s.tx.find((y) => y.id === t && doEscopo([y], e).length); return x ?? nf(); };
 
-  return {
+  const base: Omit<FinanceiroProvider, "projecao" | "orcamentos" | "salvarOrcamento" | "excluirOrcamento" | "dividas" | "acaoDivida" | "contratosDespesa" | "criarContratoDespesa" | "acaoContratoDespesa" | "historico" | "restaurar"> = {
     async resumo(e, p) {
       const { de, ate, mes, label } = intervalo(p, hoje);
       const m = mes ?? mesDe(ate);
@@ -250,4 +252,5 @@ export function criarProvedorFixture(modo: ModoFixtureFin, hoje = hojeBrasilia()
       return { escopo: e, receitas: ord(xs.filter((t) => t.tipo === "receita").map((t) => t.categoria)), despesas: ord([...xs.filter((t) => t.tipo === "despesa").map((t) => t.categoria), ...doEscopo(s.contas, e).map((c) => c.categoria)]) };
     },
   };
+  return estenderFixture(base, s, s2, hoje);
 }

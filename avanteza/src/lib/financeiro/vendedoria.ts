@@ -90,6 +90,38 @@ export type Dre = z.infer<typeof dreSchema>;
 export const categoriasSchema = z.object({ escopo: z.string(), receitas: z.array(z.string()), despesas: z.array(z.string()) });
 export type Categorias = z.infer<typeof categoriasSchema>;
 
+// Etapa 2: projeção de caixa, orçamentos, dívidas, contratos de despesa e histórico.
+export const projecaoSchema = z.object({
+  escopo: z.string(), saldo_atual: n, burn_rate: n, primeiro_negativo: z.string().nullable(),
+  dias: z.array(z.object({ data: z.string(), saldo: n, eventos: z.array(z.string()) })),
+});
+export type Projecao = z.infer<typeof projecaoSchema>;
+
+export const orcamentoSchema = z.object({ id: z.string(), categoria: z.string(), limite_mensal: n, gasto_atual: n });
+export type Orcamento = z.infer<typeof orcamentoSchema>;
+
+export const dividaSchema = z.object({
+  id: z.string(), descricao: z.string(), valor_total: n, valor_pago: n, parcela_mensal: n.nullable().optional(), dia_vencimento: n.nullable().optional(),
+  credor: sNull, status: z.string(), observacao: sNull, restante: n, progresso: n,
+});
+export type Divida = z.infer<typeof dividaSchema>;
+
+export const contratoDespesaSchema = z.object({
+  id: z.string(), descricao: z.string(), credor: sNull, categoria: z.string(), tipo_negocio: z.string(), valor_parcela: n, parcelas_total: n.nullable(),
+  dia_vencimento: n, data_inicio: z.string(), entrada: n.nullable().optional(), saldo_devedor: n.nullable().optional(), estimada: z.boolean(), status: z.string(),
+  observacao: sNull, pagas: n, pendentes: n, restantes: n.nullable(), valor_restante: n.nullable(),
+  proxima: z.object({ vencimento: z.string(), valor: n, numero: n }).nullable(),
+});
+export type ContratoDespesa = z.infer<typeof contratoDespesaSchema>;
+
+export const itemHistoricoSchema = z.object({
+  id: z.string(), entidade: z.string(), entidade_id: z.string(), acao: z.enum(["criado", "atualizado", "excluido"]), criado_em: z.string(),
+  descricao: sNull, valor: n.nullable().optional(), restauravel: z.boolean(),
+});
+export type ItemHistorico = z.infer<typeof itemHistoricoSchema>;
+export const historicoSchema = z.object({ itens: z.array(itemHistoricoSchema), total: n, pagina: n, paginas: n, entidades: z.array(z.string()) });
+export type ListaHistorico = z.infer<typeof historicoSchema>;
+
 // ─── Entradas ────────────────────────────────────────────────────────────────
 export interface PeriodoFin { mes?: string; dia?: string; de?: string; ate?: string }
 export interface FiltroTransacoes extends PeriodoFin { tipo?: "receita" | "despesa"; categoria?: string; texto?: string; confirmado?: boolean; page?: number; pageSize?: number }
@@ -103,6 +135,16 @@ export type NovaReceita =
   | { modo: "recorrente"; descricao: string; data_prevista: string; valor_parcela: number; meses?: number | null; cliente?: string; observacao?: string };
 export type AcaoReceita = { acao: "confirmar" } | { acao: "perder"; motivo?: string } | { acao: "reverter_perda" } | { acao: "editar"; valor?: number; descricao?: string; cliente?: string | null; observacao?: string | null; data_prevista?: string; tipo_negocio?: "nexo" | "pessoal" };
 export type AcaoContrato = { acao: "encerrar"; motivo?: string } | { acao: "editar"; valor_parcela?: number; descricao?: string; cliente?: string | null; observacao?: string | null; a_partir_de?: string };
+
+export interface NovoContratoDespesa {
+  descricao: string; valor_parcela: number; primeiro_vencimento: string; parcelas_total?: number | null; dia_vencimento?: number; credor?: string | null;
+  categoria?: string; entrada?: number | null; entrada_data?: string | null; saldo_devedor?: number | null; estimada?: boolean; observacao?: string | null;
+}
+export type AcaoContratoDespesa =
+  | { acao: "encerrar" } | { acao: "reativar" }
+  | { acao: "editar"; descricao?: string; credor?: string | null; categoria?: string; valor_parcela?: number; saldo_devedor?: number | null; estimada?: boolean; observacao?: string | null; tipo_negocio?: "nexo" | "pessoal" };
+export type AcaoDivida = { acao: "pagar_parcela"; valor: number } | { acao: "quitar" };
+export interface FiltroHistorico { entidade?: string; acao?: "criado" | "atualizado" | "excluido"; de?: string; ate?: string; q?: string; page?: number; pageSize?: number }
 
 export interface FinanceiroProvider {
   resumo(e: EscopoFin, p: PeriodoFin): Promise<Resumo>;
@@ -125,6 +167,18 @@ export interface FinanceiroProvider {
   aporte(a: { meta_id: string; valor: number; data?: string; observacao?: string }): Promise<void>;
   excluirAporte(id: string): Promise<void>;
   categorias(e: EscopoFin): Promise<Categorias>;
+  projecao(e: EscopoFin, dias?: number): Promise<Projecao>;
+  /** Orçamentos, dívidas e metas só existem no Pessoal (a API recusa Empresa com 404). */
+  orcamentos(): Promise<Orcamento[]>;
+  salvarOrcamento(o: { categoria: string; limite_mensal: number }): Promise<void>;
+  excluirOrcamento(categoria: string): Promise<void>;
+  dividas(): Promise<Divida[]>;
+  acaoDivida(id: string, a: AcaoDivida): Promise<void>;
+  contratosDespesa(e: EscopoFin): Promise<ContratoDespesa[]>;
+  criarContratoDespesa(e: EscopoFin, c: NovoContratoDespesa): Promise<void>;
+  acaoContratoDespesa(e: EscopoFin, id: string, a: AcaoContratoDespesa): Promise<void>;
+  historico(e: EscopoFin, f: FiltroHistorico): Promise<ListaHistorico>;
+  restaurar(e: EscopoFin, historicoId: string): Promise<void>;
 }
 
 // ─── Erros ───────────────────────────────────────────────────────────────────
@@ -231,6 +285,17 @@ export function criarProvedorFinanceiro(o: OpcoesFinanceiro): FinanceiroProvider
     aporte: async (a) => { await chamar("POST", "metas/aportes", "pessoal", { corpo: a, schema: ok }); },
     excluirAporte: async (id) => { await chamar("DELETE", `metas/aportes/${encodeURIComponent(id)}`, "pessoal", { schema: ok }); },
     categorias: (e) => chamar("GET", "categorias", e, { schema: categoriasSchema }),
+    projecao: (e, dias) => chamar("GET", "projecao", e, { query: { dias }, schema: projecaoSchema }),
+    orcamentos: () => chamar("GET", "orcamentos", "pessoal", { schema: z.array(orcamentoSchema) }),
+    salvarOrcamento: async (o) => { await chamar("POST", "orcamentos", "pessoal", { corpo: o, schema: ok }); },
+    excluirOrcamento: async (categoria) => { await chamar("DELETE", "orcamentos", "pessoal", { query: { categoria }, schema: ok }); },
+    dividas: () => chamar("GET", "dividas", "pessoal", { schema: z.array(dividaSchema) }),
+    acaoDivida: async (id, a) => { await chamar("PATCH", `dividas/${encodeURIComponent(id)}`, "pessoal", { corpo: a, schema: ok }); },
+    contratosDespesa: async (e) => (await chamar("GET", "contratos-despesa", e, { schema: z.object({ contratos: z.array(contratoDespesaSchema) }) })).contratos,
+    criarContratoDespesa: async (e, c) => { await chamar("POST", "contratos-despesa", e, { corpo: c, schema: ok }); },
+    acaoContratoDespesa: async (e, id, a) => { await chamar("PATCH", `contratos-despesa/${encodeURIComponent(id)}`, e, { corpo: a, schema: ok }); },
+    historico: (e, f) => chamar("GET", "historico", e, { query: { entidade: f.entidade, acao: f.acao, de: f.de, ate: f.ate, q: f.q, page: f.page, pageSize: f.pageSize }, schema: historicoSchema }),
+    restaurar: async (e, hid) => { await chamar("POST", `historico/${encodeURIComponent(hid)}/restaurar`, e, { schema: ok }); },
   };
 }
 

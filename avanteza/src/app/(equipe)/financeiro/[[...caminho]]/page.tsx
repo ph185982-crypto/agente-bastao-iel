@@ -8,7 +8,7 @@ import { podeEscreverFinanceiro, podeVerFinanceiro, podeVerPessoal, type EscopoF
 import { carregarVisaoGeral, emFixture, tentar, todasTransacoes } from "@/lib/financeiro";
 import { hojeBrasilia, mesDaUrl, ultimoDia } from "@/lib/financeiro/periodo";
 import { Flash } from "@/components/Flash";
-import { Cabecalho, ABAS, baseDe, type AbaId } from "@/components/financeiro/Comum";
+import { Cabecalho, abasDoEscopo, baseDe, type AbaId } from "@/components/financeiro/Comum";
 import { VisaoGeral } from "@/components/financeiro/VisaoGeral";
 import { Lancamentos } from "@/components/financeiro/Lancamentos";
 import { ContasPagar } from "@/components/financeiro/Contas";
@@ -17,6 +17,11 @@ import { Contratos } from "@/components/financeiro/Contratos";
 import { Dre } from "@/components/financeiro/Dre";
 import { Metas } from "@/components/financeiro/Metas";
 import { Categorias } from "@/components/financeiro/Categorias";
+import { Projecao, HORIZONTES } from "@/components/financeiro/Projecao";
+import { Orcamentos } from "@/components/financeiro/Orcamentos";
+import { Dividas } from "@/components/financeiro/Dividas";
+import { ContratosDespesa } from "@/components/financeiro/ContratosDespesa";
+import { Historico } from "@/components/financeiro/Historico";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -37,7 +42,8 @@ export default async function Financeiro({ params, searchParams }: { params: Pro
   const resto = pessoal ? caminho.slice(1) : caminho;
   if (resto.length > 1) notFound();
   const abaId = (resto[0] ?? "") as AbaId;
-  if (!ABAS.some((a) => a.id === abaId)) notFound();
+  const aba = abasDoEscopo(escopo).find((a) => a.id === abaId);
+  if (!aba) notFound(); // inclui Orçamentos e Dívidas na área Empresa (só existem no Pessoal)
 
   const mes = mesDaUrl(sp.mes);
   const de = `${mes}-01`, ate = ultimoDia(mes);
@@ -45,7 +51,7 @@ export default async function Financeiro({ params, searchParams }: { params: Pro
   const podePessoal = podeVerPessoal(sess);
   const voltarQs = new URLSearchParams();
   if (mes !== hojeBrasilia().slice(0, 7)) voltarQs.set("mes", mes);
-  for (const k of ["texto", "tipo", "categoria", "confirmado", "page"]) if (um(sp[k])) voltarQs.set(k, um(sp[k]));
+  for (const k of ["texto", "tipo", "categoria", "confirmado", "page", "dias", "q", "entidade", "acao", "de", "ate"]) if (um(sp[k])) voltarQs.set(k, um(sp[k]));
   const voltar = `${baseDe(escopo)}${abaId ? `/${abaId}` : ""}${voltarQs.size ? `?${voltarQs}` : ""}`;
 
   let corpo: React.ReactNode;
@@ -64,6 +70,21 @@ export default async function Financeiro({ params, searchParams }: { params: Pro
     corpo = <Receber f={await tentar((p) => p.receitas(escopo, { mes }))} escopo={escopo} mes={mes} podeEscrever={podeEscrever} podeReclassificar={podeEscrever && podePessoal} voltar={voltar} />;
   } else if (abaId === "contratos") {
     corpo = <Contratos f={await tentar((p) => p.contratos(escopo))} escopo={escopo} podeEscrever={podeEscrever} voltar={voltar} />;
+  } else if (abaId === "projecao") {
+    const dias = (HORIZONTES as readonly number[]).includes(Number(um(sp.dias))) ? Number(um(sp.dias)) : 30;
+    corpo = <Projecao f={await tentar((p) => p.projecao(escopo, dias))} escopo={escopo} dias={dias} />;
+  } else if (abaId === "contratos-despesa") {
+    corpo = <ContratosDespesa f={await tentar((p) => p.contratosDespesa(escopo))} escopo={escopo} podeEscrever={podeEscrever} podeReclassificar={podeEscrever && podePessoal} voltar={voltar} mes={mes} />;
+  } else if (abaId === "orcamentos") {
+    const [lista, cats] = await Promise.all([tentar((p) => p.orcamentos()), tentar((p) => p.categorias("pessoal"))]);
+    corpo = <Orcamentos f={lista} cats={cats} podeEscrever={podeEscrever} voltar={voltar} />;
+  } else if (abaId === "dividas") {
+    corpo = <Dividas f={await tentar((p) => p.dividas())} podeEscrever={podeEscrever} voltar={voltar} />;
+  } else if (abaId === "historico") {
+    const data = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "");
+    const filtros = { q: um(sp.q).slice(0, 120), entidade: um(sp.entidade).slice(0, 40), acao: ["criado", "atualizado", "excluido"].includes(um(sp.acao)) ? um(sp.acao) : "", de: data(um(sp.de)), ate: data(um(sp.ate)), page: Math.max(1, Number(um(sp.page)) || 1) };
+    const lista = await tentar((p) => p.historico(escopo, { q: filtros.q || undefined, entidade: filtros.entidade || undefined, acao: (filtros.acao || undefined) as "criado" | "atualizado" | "excluido" | undefined, de: filtros.de || undefined, ate: filtros.ate || undefined, page: filtros.page, pageSize: 30 }));
+    corpo = <Historico f={lista} escopo={escopo} filtros={filtros} podeEscrever={podeEscrever} voltar={voltar} />;
   } else if (abaId === "dre") {
     corpo = <Dre f={await tentar((p) => p.dre(escopo, { mes }))} />;
   } else if (abaId === "metas") {
@@ -78,7 +99,7 @@ export default async function Financeiro({ params, searchParams }: { params: Pro
     <>
       <Flash sp={sp} />
       {emFixture() && <div className="notice" role="note" style={{ margin: "0 0 10px" }}><b>Dados simulados</b> (FINANCEIRO_FIXTURE, só desenvolvimento). Nada aqui é real e nada é gravado no Vendedor IA.</div>}
-      <Cabecalho escopo={escopo} aba={abaId} mes={mes} podePessoal={podePessoal} seletorMes={abaId !== "contratos"} />
+      <Cabecalho escopo={escopo} aba={abaId} mes={mes} podePessoal={podePessoal} seletorMes={!aba.semMes} />
       {corpo}
     </>
   );

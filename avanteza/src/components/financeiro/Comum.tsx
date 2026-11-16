@@ -5,17 +5,24 @@ import { somarMeses, rotuloMes, mesDe, hojeBrasilia } from "@/lib/financeiro/per
 import type { EscopoFin } from "@/lib/financeiro/acesso";
 import type { Fonte } from "@/lib/financeiro";
 
-export const ABAS = [
+export interface AbaDef { id: string; rotulo: string; /** só existe nesta área (orçamentos e dívidas não têm campo de negócio) */ so?: EscopoFin; semMes?: boolean }
+export const ABAS: readonly AbaDef[] = [
   { id: "", rotulo: "Visão geral" },
   { id: "lancamentos", rotulo: "Lançamentos" },
   { id: "contas", rotulo: "Contas a pagar" },
   { id: "receber", rotulo: "A receber" },
-  { id: "contratos", rotulo: "Contratos" },
+  { id: "projecao", rotulo: "Projeção", semMes: true },
+  { id: "contratos", rotulo: "Contratos de receita", semMes: true },
+  { id: "contratos-despesa", rotulo: "Contratos de despesa", semMes: true },
+  { id: "orcamentos", rotulo: "Orçamentos", so: "pessoal", semMes: true },
+  { id: "dividas", rotulo: "Dívidas", so: "pessoal", semMes: true },
   { id: "dre", rotulo: "DRE" },
   { id: "metas", rotulo: "Metas" },
   { id: "categorias", rotulo: "Categorias" },
-] as const;
-export type AbaId = (typeof ABAS)[number]["id"];
+  { id: "historico", rotulo: "Histórico", semMes: true },
+];
+export type AbaId = string;
+export const abasDoEscopo = (escopo: EscopoFin) => ABAS.filter((a) => !a.so || a.so === escopo);
 
 export const baseDe = (escopo: EscopoFin) => (escopo === "pessoal" ? "/financeiro/pessoal" : "/financeiro");
 export const hrefAba = (escopo: EscopoFin, aba: string, mes?: string) => `${baseDe(escopo)}${aba ? `/${aba}` : ""}${mes ? `?mes=${mes}` : ""}`;
@@ -28,6 +35,12 @@ export function Aviso({ titulo, texto, tipo = "danger" }: { titulo: string; text
     </div>
   );
 }
+
+/** Rótulos legíveis dos modelos do livro-razão (Histórico). */
+export const ROTULO_ENTIDADE: Record<string, string> = {
+  Transacao: "Lançamento", ReceitaPrevistaMax: "Receita prevista", ContaPagarMax: "Conta a pagar", DividaMax: "Dívida", OrcamentoMax: "Orçamento",
+  MetaFinanceiraMax: "Meta", AporteMetaMax: "Aporte de meta", ContratoReceita: "Contrato de receita", ContratoDespesa: "Contrato de despesa",
+};
 
 /** Aviso honesto quando a fonte não respondeu (nunca mostra zero no lugar do dado). */
 export function FonteAviso({ f }: { f: Fonte<unknown> }) {
@@ -50,8 +63,8 @@ export function Cabecalho({ escopo, aba, mes, podePessoal, seletorMes = true }: 
           <Link href="/financeiro/pessoal" aria-current={escopo === "pessoal" ? "page" : undefined}>Pessoal</Link>
         </nav>
       )}
-      <nav className="tabs" aria-label="Seções do Financeiro">
-        {ABAS.map((a) => (
+      <nav className="tabs wrap" aria-label="Seções do Financeiro">
+        {abasDoEscopo(escopo).map((a) => (
           <Link key={a.id} href={hrefAba(escopo, a.id, mes === mesDe(hojeBrasilia()) ? undefined : mes)} aria-current={a.id === aba ? "page" : undefined}>{a.rotulo}</Link>
         ))}
       </nav>
