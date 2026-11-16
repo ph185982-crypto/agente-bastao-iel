@@ -39,8 +39,8 @@ export async function obterCanal(clientId: string): Promise<CanalRow | null> {
 
 /** Canais ativos para a rotina diária (mais antigos primeiro). Cada fonte é decidida (e pode ser pulada) separadamente na coleta. */
 export async function listarCanaisParaColeta(incluirSemToken: boolean): Promise<CanalRow[]> {
-  const fontes = "((ads_source = 'meta' and ad_account_id is not null) or (ig_source = 'meta' and ig_user_id is not null) or ig_source = 'windsor')";
-  const cred = incluirSemToken ? "true" : "(token_enc is not null or use_platform_token or ig_source = 'windsor')";
+  const fontes = "((ads_source in ('meta','windsor') and ad_account_id is not null) or (ig_source = 'meta' and ig_user_id is not null) or ig_source = 'windsor')";
+  const cred = incluirSemToken ? "true" : "(token_enc is not null or use_platform_token or ig_source = 'windsor' or ads_source = 'windsor')";
   const rows = await rawQuery(`select ${COLUNAS} from avanteza.client_channels where status <> 'desconectado' and ${fontes} and ${cred} order by least(coalesce(last_sync_at, 'epoch'), coalesce(ig_last_sync_at, 'epoch')) asc`);
   return rows.map(mapa);
 }
@@ -76,6 +76,8 @@ export async function salvarAnuncios(clientId: string, e: EntradaAnuncios): Prom
      on conflict (client_id, provider) do update set
        ad_account_id = excluded.ad_account_id, campaign_ids = excluded.campaign_ids,
        result_action_type = excluded.result_action_type, use_platform_token = excluded.use_platform_token, ads_source = excluded.ads_source,
+       last_sync_at = case when avanteza.client_channels.ads_source is distinct from excluded.ads_source then null else avanteza.client_channels.last_sync_at end,
+       last_error = case when avanteza.client_channels.ads_source is distinct from excluded.ads_source then null else avanteza.client_channels.last_error end,
        token_enc = coalesce(excluded.token_enc, avanteza.client_channels.token_enc),
        token_hint = case when excluded.token_enc is not null then excluded.token_hint else avanteza.client_channels.token_hint end,
        status = case when avanteza.client_channels.status = 'desconectado' then 'pendente' else avanteza.client_channels.status end,

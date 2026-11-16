@@ -5,8 +5,9 @@
 import { spDate } from "@/lib/dates";
 import { criarApiGraph, criarGraph, esconderToken } from "./graph";
 import { canaisFixtureAtiva, criarApiFixture, criarWindsorFixture } from "./fixture";
-import { coletarCanal, coletarTodos, mensagemSegura, type FabricaApi, type FabricaWindsor, type ResultadoColeta, type ResultadoFonte } from "./collect";
+import { coletarCanal, coletarTodos, mensagemSegura, type FabricaApi, type FabricaWindsor, type FabricaWindsorAds, type ResultadoColeta, type ResultadoFonte } from "./collect";
 import { obterCanal, resolverChaveWindsor, resolverToken, salvarInfo, tokenDaPlataforma, type CanalRow } from "./store";
+import { criarWindsorAds, type ResultadoTesteWindsorAds } from "./windsor-ads";
 import { chaveWindsorDaPlataforma, criarWindsor, esconderChave, type FonteWindsor, type ResultadoTesteWindsor } from "./windsor";
 import { DIAS_BACKFILL, PERMISSOES_ANUNCIOS, PERMISSOES_INSTAGRAM_META, type CanaisApi, type CanalConfig, type FonteInstagram, type ResultadoTeste } from "./types";
 
@@ -26,12 +27,20 @@ export const windsorPadrao: FabricaWindsor = async (canal: CanalRow) => {
   return { fonte: criarWindsor({ chave: k.chave, accountName: canal.windsorAccountName }), chave: k.chave };
 };
 
+/** Fábrica padrão do Windsor (anúncios, conector facebook): fixture (só desenvolvimento) ou Windsor real com a mesma chave do Instagram. Sem chave: null. */
+export const windsorAdsPadrao: FabricaWindsorAds = async (canal: CanalRow) => {
+  if (canaisFixtureAtiva()) return { api: criarApiFixture(spDate()), chave: null };
+  const k = await resolverChaveWindsor(canal.clientId);
+  if (!k) return null;
+  return { api: criarWindsorAds({ chave: k.chave, contaId: canal.adAccountId, campaignIds: canal.campaignIds, resultActionType: canal.resultActionType }), chave: k.chave };
+};
+
 export async function rotinaCanais(maxMs = 240_000) {
-  return coletarTodos({ maxMs, apiPara: apiPadrao, windsorPara: windsorPadrao, incluirSemToken: canaisFixtureAtiva() });
+  return coletarTodos({ maxMs, apiPara: apiPadrao, windsorPara: windsorPadrao, windsorAdsPara: windsorAdsPadrao, incluirSemToken: canaisFixtureAtiva() });
 }
 
 export type FonteAtualizar = "ads" | "instagram" | "todas";
-export interface OpcoesAtualizar { fonte?: FonteAtualizar; meta?: FabricaApi; windsor?: FabricaWindsor; maxMs?: number }
+export interface OpcoesAtualizar { fonte?: FonteAtualizar; meta?: FabricaApi; windsor?: FabricaWindsor; windsorAds?: FabricaWindsorAds; maxMs?: number }
 
 /** “Atualizar agora”: coleta + backfill de 90 dias, por fonte (anúncios, Instagram ou as duas), cada uma com a própria credencial e o próprio resultado. */
 export async function atualizarAgora(clientId: string, o: OpcoesAtualizar = {}): Promise<{ ok: boolean; mensagem: string; resultado?: ResultadoColeta }> {
@@ -41,24 +50,27 @@ export async function atualizarAgora(clientId: string, o: OpcoesAtualizar = {}):
   if (canal.status === "desconectado") return { ok: false, mensagem: "O canal está desconectado." };
   const querAds = fonte !== "instagram", querIg = fonte !== "ads";
   const rotulo = fonte === "ads" ? "anúncios" : fonte === "instagram" ? "Instagram" : "canal";
-  if (fonte === "ads" && !(canal.adsSource === "meta" && canal.adAccountId)) return { ok: false, mensagem: "A fonte de anúncios (Meta Ads) não está configurada." };
+  if (fonte === "ads" && !((canal.adsSource === "meta" || canal.adsSource === "windsor") && canal.adAccountId)) return { ok: false, mensagem: "A fonte de anúncios (Meta Ads) não está configurada." };
+  const adsWindsor = canal.adsSource === "windsor" && Boolean(canal.adAccountId);
   if (fonte === "instagram" && canal.igSource === "none") return { ok: false, mensagem: "A fonte do Instagram não está configurada." };
 
   const precisaMeta = (querAds && canal.adsSource === "meta" && canal.adAccountId) || (querIg && canal.igSource === "meta" && canal.igUserId);
   const meta = precisaMeta ? await (o.meta ?? apiPadrao)(canal).catch(() => null) : null;
   const win = querIg && canal.igSource === "windsor" ? await (o.windsor ?? windsorPadrao)(canal).catch(() => null) : null;
+  const winAds = querAds && adsWindsor ? await (o.windsorAds ?? windsorAdsPadrao)(canal).catch(() => null) : null;
+  if (fonte === "ads" && adsWindsor && !winAds) return { ok: false, mensagem: "Sem chave do Windsor.ai: informe a chave do canal (seção Instagram) ou configure WINDSOR_API_KEY na plataforma." };
   if (precisaMeta && !meta && !(querIg && win)) return { ok: false, mensagem: "Sem token da Meta: informe o token do cliente ou autorize o token da plataforma." };
   if (fonte === "instagram" && canal.igSource === "windsor" && !win) return { ok: false, mensagem: "Sem chave do Windsor.ai: informe a chave do canal ou configure WINDSOR_API_KEY na plataforma." };
 
   try {
-    const r = await coletarCanal(canal, meta?.api ?? null, { dias: DIAS_BACKFILL, maxMs: o.maxMs ?? 100_000, fontes: fonte === "todas" ? undefined : [fonte] }, meta?.token ?? null, win);
+    const r = await coletarCanal(canal, meta?.api ?? null, { dias: DIAS_BACKFILL, maxMs: o.maxMs ?? 100_000, fontes: fonte === "todas" ? undefined : [fonte] }, meta?.token ?? null, win, winAds);
     const n = Object.values(r.linhas).reduce((a, b) => a + b, 0);
     const detalhe = (f: ResultadoFonte | null, nome: string) => (f?.executada ? `${nome}: ${f.ok ? "ok" : "falhou"}` : f ? `${nome}: pulado (${f.motivoPulo})` : null);
     const partes = [detalhe(r.ads, "Anúncios"), detalhe(r.instagram, "Instagram")].filter(Boolean).join(" · ");
     if (!r.ok) return { ok: false, mensagem: `${r.erro ?? "A coleta não trouxe dados."}${partes ? ` (${partes})` : ""}`, resultado: r };
     return { ok: true, mensagem: `Coleta de ${rotulo} concluída: ${n} registros gravados (${partes})${r.avisos.length ? `; ${r.avisos.length} aviso(s): ${r.avisos.join(" · ").slice(0, 200)}` : ""}.`, resultado: r };
   } catch (e) {
-    return { ok: false, mensagem: mensagemSegura(e, meta?.token ?? win?.chave) };
+    return { ok: false, mensagem: mensagemSegura(e, meta?.token ?? win?.chave ?? winAds?.chave) };
   }
 }
 
@@ -150,6 +162,44 @@ export async function testarConexaoWindsor(e: EntradaTesteWindsor): Promise<Resu
     verificacoes: r.verificacoes.map((v) => ({ ...v, detalhe: esconderChave(v.detalhe, chave) })),
   };
 }
+// ─── Teste de conexão: Windsor.ai (anúncios, conector facebook) ──────────────
+
+export interface EntradaTesteWindsorAds {
+  clientId: string;
+  contaId: string | null;
+  campaignIds: string[];
+  resultActionType?: string;
+  chaveDigitada?: string | null;
+  /** Provider injetado (testes): ignora chave e rede. */
+  fonte?: { testar(): Promise<ResultadoTesteWindsorAds> };
+}
+
+/** Chama o Windsor.ai (só GET, conector facebook) e mostra conta, campanhas, gasto e resultados lidos. Nunca devolve a chave. */
+export async function testarConexaoWindsorAds(e: EntradaTesteWindsorAds): Promise<ResultadoTesteWindsorAds> {
+  let chave: string | null = null;
+  let origem: ResultadoTesteWindsorAds["origemChave"] = "nenhuma";
+  let fonte: { testar(): Promise<ResultadoTesteWindsorAds> };
+  if (e.fonte) fonte = e.fonte;
+  else if (canaisFixtureAtiva()) {
+    fonte = { testar: async () => ({ ok: true, origemChave: "nenhuma", semConector: false, verificacoes: [{ id: "chave", rotulo: "Chave aceita pelo Windsor.ai", ok: true, detalhe: "Dados simulados (CHANNELS_FIXTURE): nenhuma chamada real ao Windsor.ai." }, { id: "contas", rotulo: "Contas de anúncios no Windsor.ai", ok: true, detalhe: "1 conta(s): Showman Barbearia · 605261696580859." }, { id: "campanhas", rotulo: "Campanhas", ok: true, detalhe: "1 campanha(s): SHOW MAN | Assinatura R$69,90 | WhatsApp | Floresta 3km (120252388371430661)." }], info: { contas: [{ id: "605261696580859", nome: "Showman Barbearia" }], campanhas: [{ id: "120252388371430661", nome: "SHOW MAN | Assinatura R$69,90 | WhatsApp | Floresta 3km" }], anuncios: 6, gasto: null, resultados: null, comMiniatura: 0 } }) };
+  } else {
+    const digitada = e.chaveDigitada?.trim() || null;
+    if (digitada) { chave = digitada; origem = "canal"; }
+    else {
+      const k = await resolverChaveWindsor(e.clientId);
+      if (k) { chave = k.chave; origem = k.origem; }
+      else if (chaveWindsorDaPlataforma()) { chave = chaveWindsorDaPlataforma(); origem = "plataforma"; }
+    }
+    if (!chave) return { ...semChaveAds(), origemChave: "nenhuma" };
+    fonte = criarWindsorAds({ chave, contaId: e.contaId, campaignIds: e.campaignIds, resultActionType: e.resultActionType, baseDelayMs: 300 });
+  }
+  const r = await fonte.testar();
+  return { ...r, origemChave: origem, verificacoes: r.verificacoes.map((v) => ({ ...v, detalhe: esconderChave(v.detalhe, chave) })) };
+}
+function semChaveAds(): ResultadoTesteWindsorAds {
+  return { ok: false, origemChave: "nenhuma", semConector: false, info: { contas: [], campanhas: [], anuncios: 0, gasto: null, resultados: null, comMiniatura: 0 }, verificacoes: [{ id: "chave", rotulo: "Chave do Windsor.ai", ok: false, detalhe: "Nenhuma chave disponível: configure WINDSOR_API_KEY na plataforma (Vercel) ou cole a chave do Windsor.ai na seção do Instagram deste cliente." }] };
+}
+
 function semChave(): ResultadoTesteWindsor {
   return { ok: false, origemChave: "nenhuma", info: { contas: [], campos: [], dias: 0, midias: 0, seguidores: null }, verificacoes: [{ id: "chave", rotulo: "Chave do Windsor.ai", ok: false, detalhe: "Nenhuma chave disponível: cole a chave do Windsor.ai deste canal ou configure WINDSOR_API_KEY na plataforma (Vercel)." }] };
 }

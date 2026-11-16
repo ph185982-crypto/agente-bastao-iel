@@ -487,7 +487,7 @@ create table if not exists avanteza.client_channels (
 create index if not exists client_channels_status_idx on avanteza.client_channels(status, last_sync_at);
 
 -- ── Duas fontes independentes por canal (migração idempotente, sem perda) ──
---   ads_source: 'meta' | 'none'                      → tráfego/anúncios (Meta Ads; colunas antigas: ad_account_id, token_enc, status, last_sync_at, last_error)
+--   ads_source: 'meta' | 'windsor' | 'none'                    → tráfego/anúncios (Meta Ads; colunas antigas: ad_account_id, token_enc, status, last_sync_at, last_error)
 --   ig_source:  'meta' | 'windsor' | 'none'          → mídias/Instagram (Windsor.ai ou Meta Graph)
 --   windsor_account_name: filtro opcional por account_name; windsor_key_enc/hint: chave própria opcional (cifrada), senão WINDSOR_API_KEY.
 --   ig_last_sync_at / ig_last_error: coleta do Instagram, separada da coleta de anúncios (last_sync_at / last_error).
@@ -511,6 +511,14 @@ begin
     alter table avanteza.client_channels
       add constraint client_channels_ads_source_check check (ads_source in ('meta','none')),
       add constraint client_channels_ig_source_check check (ig_source in ('meta','windsor','none'));
+  end if;
+end $$;
+-- Anúncios também podem vir do Windsor.ai (conector facebook): amplia o check de ads_source (idempotente).
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'client_channels_ads_source_check' and pg_get_constraintdef(oid) not like '%windsor%') then
+    alter table avanteza.client_channels drop constraint client_channels_ads_source_check;
+    alter table avanteza.client_channels add constraint client_channels_ads_source_check check (ads_source in ('meta','windsor','none'));
   end if;
 end $$;
 

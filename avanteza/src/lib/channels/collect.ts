@@ -7,6 +7,7 @@ import { listarDias } from "@/lib/dashboards/periodo";
 import { MetaErro } from "@/lib/dashboards/meta";
 import { esconderToken } from "./graph";
 import { WindsorErro, esconderChave, type FonteWindsor } from "./windsor";
+import type { FonteAnunciosApi } from "./windsor-ads";
 import { datasComIgDiario, gravarSnapshots, listarCanaisParaColeta, marcarColeta, configDe, type CanalRow, type FonteColeta, type SnapshotEntrada } from "./store";
 import {
   DIAS_BACKFILL, DIAS_ROTINA, IG_METRICAS_DIA,
@@ -63,6 +64,8 @@ export interface ResultadoColeta {
 export interface CredenciaisColeta {
   meta?: { api: CanaisApi; token: string | null } | null;
   windsor?: { fonte: FonteWindsor; chave: string | null } | null;
+  /** Anúncios pelo Windsor.ai (conector facebook). */
+  windsorAds?: { api: FonteAnunciosApi; chave: string | null } | null;
 }
 
 /** Mensagem curta e segura (nunca o token nem a chave) para guardar em last_error. */
@@ -100,7 +103,7 @@ const pulada = (fonte: FonteColeta, motivo: string): ResultadoFonte => ({ fonte,
 
 // ─── Fonte 1: anúncios (Meta Ads) ────────────────────────────────────────────
 
-async function coletarAnuncios(cfg: CanalConfig, api: CanaisApi, token: string | null | undefined, de: string, hoje: string, restante: () => number): Promise<{ r: Rastreio; info: Record<string, unknown> }> {
+async function coletarAnuncios(cfg: CanalConfig, api: FonteAnunciosApi, token: string | null | undefined, de: string, hoje: string, restante: () => number, origem: OrigemDado = "meta"): Promise<{ r: Rastreio; info: Record<string, unknown> }> {
   const r = novoRastreio();
   const parte = executor(r, restante, token);
   const conta = cfg.adAccountId!;
@@ -111,7 +114,7 @@ async function coletarAnuncios(cfg: CanalConfig, api: CanaisApi, token: string |
       if (!x.date_start || !x.campaign_id) continue;
       rows.push({ kind: "campaign_daily", date: x.date_start, key: x.campaign_id, metrics: { ...metricasDaLinha(x, cfg.resultActionType, x.campaign_name ?? x.campaign_id) } });
     }
-    r.linhas.campaign_daily = await gravarSnapshots(cfg.clientId, rows, "meta");
+    r.linhas.campaign_daily = await gravarSnapshots(cfg.clientId, rows, origem);
   });
   await parte("Anúncios", async () => {
     const bruto = await api.insightsDiarios({ contaId: conta, nivel: "ad", de, ate: hoje, campanhas: cfg.campaignIds });
@@ -130,7 +133,7 @@ async function coletarAnuncios(cfg: CanalConfig, api: CanaisApi, token: string |
       };
       rows.push({ kind: "ad_daily", date: x.date_start, key: x.ad_id, metrics: { ...m } });
     }
-    r.linhas.ad_daily = await gravarSnapshots(cfg.clientId, rows, "meta");
+    r.linhas.ad_daily = await gravarSnapshots(cfg.clientId, rows, origem);
   });
   return { r, info: {} };
 }
@@ -225,7 +228,7 @@ async function coletarInstagramMeta(cfg: CanalConfig, api: CanaisApi, token: str
  * Coleta as fontes do canal, uma de cada vez e de forma INDEPENDENTE: falha (ou falta de credencial) em uma não impede a outra, e cada
  * uma grava o próprio status/erro. Compatível com a assinatura antiga: (canal, api, opções, token) usa a Meta para anúncios e Instagram-Meta.
  */
-export async function coletarCanal(canal: CanalRow, api: CanaisApi | null, o: OpcoesColeta, token?: string | null, windsor?: CredenciaisColeta["windsor"]): Promise<ResultadoColeta> {
+export async function coletarCanal(canal: CanalRow, api: CanaisApi | null, o: OpcoesColeta, token?: string | null, windsor?: CredenciaisColeta["windsor"], windsorAds?: CredenciaisColeta["windsorAds"]): Promise<ResultadoColeta> {
   const agora = o.agora ?? Date.now;
   const inicio = agora();
   const limite = inicio + o.maxMs;
@@ -234,13 +237,15 @@ export async function coletarCanal(canal: CanalRow, api: CanaisApi | null, o: Op
   const quer = new Set<FonteColeta>(o.fontes ?? ["ads", "instagram"]);
   let ads: ResultadoFonte | null = null, instagram: ResultadoFonte | null = null;
 
-  if (quer.has("ads") && cfg.adsSource === "meta" && cfg.adAccountId) {
-    if (!api) ads = pulada("ads", "sem credencial da Meta");
+  if (quer.has("ads") && (cfg.adsSource === "meta" || cfg.adsSource === "windsor") && cfg.adAccountId) {
+    const doWindsor = cfg.adsSource === "windsor";
+    const fonteApi: FonteAnunciosApi | null = doWindsor ? windsorAds?.api ?? null : api;
+    if (!fonteApi) ads = pulada("ads", doWindsor ? "sem chave do Windsor.ai" : "sem credencial da Meta");
     else {
       // Anúncios podem usar até ~70% do tempo; o Instagram sempre sobra algum.
       const fimAds = inicio + Math.floor(o.maxMs * 0.7);
-      const { r } = await coletarAnuncios(cfg, api, token, addDays(hoje, -(o.dias - 1)), hoje, () => Math.min(fimAds, limite) - agora());
-      ads = fechar("ads", "meta", r);
+      const { r } = await coletarAnuncios(cfg, fonteApi, doWindsor ? windsorAds?.chave : token, addDays(hoje, -(o.dias - 1)), hoje, () => Math.min(fimAds, limite) - agora(), doWindsor ? "windsor" : "meta");
+      ads = fechar("ads", doWindsor ? "windsor" : "meta", r);
       await marcarColeta(cfg.clientId, { ok: ads.ok, erro: ads.erro }, "ads");
     }
   }
@@ -277,10 +282,11 @@ export async function coletarCanal(canal: CanalRow, api: CanaisApi | null, o: Op
 }
 
 export type FabricaApi = (canal: CanalRow) => Promise<{ api: CanaisApi; token: string | null } | null>;
+export type FabricaWindsorAds = (canal: CanalRow) => Promise<{ api: FonteAnunciosApi; chave: string | null } | null>;
 export type FabricaWindsor = (canal: CanalRow) => Promise<{ fonte: FonteWindsor; chave: string | null } | null>;
 
 /** Rotina diária: um canal por vez, do mais antigo ao mais novo, com tempo máximo total e por canal. Credencial ausente pula só aquela fonte. */
-export async function coletarTodos(o: { maxMs: number; porCanalMs?: number; apiPara: FabricaApi; windsorPara?: FabricaWindsor; incluirSemToken?: boolean; agora?: () => number }) {
+export async function coletarTodos(o: { maxMs: number; porCanalMs?: number; apiPara: FabricaApi; windsorPara?: FabricaWindsor; windsorAdsPara?: FabricaWindsorAds; incluirSemToken?: boolean; agora?: () => number }) {
   const agora = o.agora ?? Date.now;
   const limite = agora() + o.maxMs;
   const canais = await listarCanaisParaColeta(Boolean(o.incluirSemToken));
@@ -291,11 +297,12 @@ export async function coletarTodos(o: { maxMs: number; porCanalMs?: number; apiP
     const precisaMeta = (c.adsSource === "meta" && c.adAccountId) || (c.igSource === "meta" && c.igUserId);
     const meta = precisaMeta ? await o.apiPara(c).catch(() => null) : null;
     const win = c.igSource === "windsor" && o.windsorPara ? await o.windsorPara(c).catch(() => null) : null;
-    if (!meta && !win) { out.push({ clientId: c.clientId, pulado: "sem credencial" }); continue; }
+    const winAds = c.adsSource === "windsor" && o.windsorAdsPara ? await o.windsorAdsPara(c).catch(() => null) : null;
+    if (!meta && !win && !winAds) { out.push({ clientId: c.clientId, pulado: "sem credencial" }); continue; }
     try {
-      out.push(await coletarCanal(c, meta?.api ?? null, { dias: c.lastSyncAt ? DIAS_ROTINA : DIAS_BACKFILL, diasIg: c.igLastSyncAt ? DIAS_ROTINA : DIAS_BACKFILL, maxMs: Math.min(sobra, o.porCanalMs ?? 120_000), agora }, meta?.token ?? null, win));
+      out.push(await coletarCanal(c, meta?.api ?? null, { dias: c.lastSyncAt ? DIAS_ROTINA : DIAS_BACKFILL, diasIg: c.igLastSyncAt ? DIAS_ROTINA : DIAS_BACKFILL, maxMs: Math.min(sobra, o.porCanalMs ?? 120_000), agora }, meta?.token ?? null, win, winAds));
     } catch (e) {
-      const msg = mensagemSegura(e, meta?.token ?? win?.chave);
+      const msg = mensagemSegura(e, meta?.token ?? win?.chave ?? winAds?.chave);
       out.push({ clientId: c.clientId, pulado: `erro: ${msg}` });
     }
   }

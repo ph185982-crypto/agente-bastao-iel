@@ -27,10 +27,10 @@ export function lerCamposAnuncios(fd: FormData): { erro: string } | { campos: Ca
   const token = str(fd, "token").replace(/\s+/g, "");
   if (token && (token.length < 20 || token.length > 1000)) return { erro: "O token parece incompleto. Cole-o inteiro." };
   const pedida = str(fd, "ads_source");
-  if (pedida && pedida !== "meta" && pedida !== "none") return { erro: "Fonte de anúncios inválida." };
+  if (pedida && pedida !== "meta" && pedida !== "windsor" && pedida !== "none") return { erro: "Fonte de anúncios inválida." };
   const adsSource: FonteAnuncios = (pedida as FonteAnuncios) || (conta ? "meta" : "none");
-  if (adsSource === "meta" && !conta) return { erro: "Informe a conta de anúncios para ler os anúncios pela Meta (ou escolha “Sem anúncios”)." };
-  return { campos: { adAccountId: conta || null, campaignIds: [...new Set(campanhas)], resultActionType: resultado, usarTokenPlataforma: fd.get("use_platform_token") === "on", token: token || null, adsSource } };
+  if ((adsSource === "meta" || adsSource === "windsor") && !conta) return { erro: `Informe a conta de anúncios para ler os anúncios ${adsSource === "windsor" ? "pelo Windsor.ai" : "pela Meta"} (ou escolha “Sem anúncios”).` };
+  return { campos: { adAccountId: conta || null, campaignIds: [...new Set(campanhas)], resultActionType: resultado, usarTokenPlataforma: fd.get("use_platform_token") === "on", token: adsSource === "meta" ? token || null : null, adsSource } };
 }
 
 /** Seção de Instagram (Windsor.ai ou Meta). */

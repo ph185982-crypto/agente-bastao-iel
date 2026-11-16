@@ -104,7 +104,8 @@ test("sem cores fixas nos componentes: telas e componentes só usam tokens (nada
   const walk = (d: string) => {
     for (const e of readdirSync(join(root, d), { withFileTypes: true })) {
       const p = join(d, e.name);
-      if (e.isDirectory()) walk(p);
+      // Marcas de terceiros (Meta, Facebook, Instagram) têm cores oficiais fixas por definição: só src/components/brand fica de fora.
+      if (e.isDirectory()) { if (p !== join("src/components", "brand")) walk(p); }
       else if (/\.tsx$/.test(e.name)) files.push(p);
     }
   };

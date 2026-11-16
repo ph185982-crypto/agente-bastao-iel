@@ -578,3 +578,28 @@ details.novo > summary { font-size: 15px; }
 .grid.kpis.seis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 700px) { .grid.kpis.seis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 1500px) { .grid.kpis.seis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+/* ── Marcas (src/components/brand) e bloco “Mídia e tráfego” do Início ─────────────────────────── */
+.marca-logo { flex: none; display: inline-block; vertical-align: middle; }
+.marca-rotulo { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.marca-tipo { flex: none; vertical-align: -3px; margin-right: 4px; color: var(--muted); }
+.fonte-selo .marca-logo { margin-right: 2px; }
+.pill .marca-tipo { color: inherit; margin-right: 3px; vertical-align: -3px; }
+.tabs a .marca-rotulo { gap: 7px; }
+.midia-bloco { margin-top: 18px; }
+.midia-bloco > .row h2 { margin: 0; }
+.midia-fonte { margin-top: 12px; }
+.midia-fonte > .row { align-items: center; gap: 8px; flex-wrap: wrap; }
+.midia-fonte h3 { margin: 0; font-size: 16px; }
+.midia-destaques { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 12px; }
+.midia-destaques > .card { margin-top: 0; display: flex; gap: 12px; align-items: stretch; padding: 12px; min-width: 0; }
+.midia-destaques .art { width: 84px; flex: none; aspect-ratio: 1 / 1; border-radius: 10px; }
+.midia-destaques .dest-txt { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.midia-destaques .dest-tit { font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.midia-destaques .dest-lab { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+.midia-vazio { margin: 6px 0 0; }
+.grid.kpis.k5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 700px) { .grid.kpis.k5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .grid.kpis.k5 { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.grid.kpis.k4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 700px) { .grid.kpis.k4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

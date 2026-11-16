@@ -8,10 +8,11 @@ import { hasChannels } from "@/lib/mapa/nav";
 import { carregarCanaisDoCliente } from "@/lib/channels/cliente";
 import { PERIODOS, ROTULO_PERIODO, ddmm, parsePeriodo, type PeriodoId } from "@/lib/dashboards/periodo";
 import { ago } from "@/lib/format";
+import { MarcaRotulo, type Marca } from "@/components/brand";
 import { FontesAguardando, PainelAnuncios, PainelEvolucao, PainelInstagram } from "@/components/canais/Paineis";
 
 export const dynamic = "force-dynamic";
-const ABAS = [{ k: "anuncios", label: "Anúncios" }, { k: "instagram", label: "Instagram" }, { k: "evolucao", label: "Evolução" }] as const;
+const ABAS = [{ k: "anuncios", label: "Anúncios (Meta)", marca: "meta" }, { k: "instagram", label: "Instagram", marca: "instagram" }, { k: "evolucao", label: "Evolução", marca: null }] as const satisfies ReadonlyArray<{ k: string; label: string; marca: Marca | null }>;
 type Aba = (typeof ABAS)[number]["k"];
 
 export default async function Canais({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -48,7 +49,7 @@ export default async function Canais({ searchParams }: { searchParams: Promise<R
       ) : (
         <>
           <nav className="tabs abas" aria-label="Seções de canais">
-            {ABAS.map((a) => <Link key={a.k} href={href({ aba: a.k })} aria-current={aba === a.k ? "page" : undefined}>{a.label}</Link>)}
+            {ABAS.map((a) => <Link key={a.k} href={href({ aba: a.k })} aria-current={aba === a.k ? "page" : undefined}>{a.marca ? <MarcaRotulo marca={a.marca} tamanho={20}>{a.label}</MarcaRotulo> : a.label}</Link>)}
           </nav>
           {aba !== "evolucao" && (
             <>

@@ -125,6 +125,9 @@ Os IDs aparecem em Clientes → Anúncios → "N variações" e a IA também pod
 conexão, “Testar conexão”, “Atualizar agora” (90 dias), status e erro próprios, e selo “Fonte: …” na tela (nunca somadas):
 **Tráfego (anúncios) · Meta Ads** (token do cliente, criptografado, `ads_read` + `read_insights`) e **Mídias (Instagram) · Windsor.ai**
 (`WINDSOR_API_KEY` da plataforma ou chave própria do canal, criptografada; `account_name` opcional; Meta Graph continua como alternativa).
+Os **anúncios** também podem vir do Windsor.ai (`ads_source = 'windsor'`, conector `facebook`, `src/lib/channels/windsor-ads.ts`): serve quando o token da Meta não enxerga a conta;
+precisa do Facebook Ads conectado no Windsor (sem isso o teste explica e o cliente vê “Conectando anúncios”). O **Início do Mapa** (midia/ambos) traz o bloco “Mídia e tráfego”
+(`src/components/canais/InicioMidia.tsx`) e as marcas Meta/Facebook/Instagram vivem em `src/components/brand/` (SVG inline).
 Admin: Clientes → cliente → aba **Canais**. Somente leitura (só GET). Coleta diária em `/api/cron/channels` (03 10 UTC, com `CRON_SECRET`), gravando em
 `channel_snapshots` (coluna `source`). Código em `src/lib/channels/` (`windsor.ts` = Instagram; `graph.ts` = Meta). Migração: `node db/apply.mjs` (idempotente; canais
 existentes mantêm a fonte que já tinham; o Instagram do Showman passa a ser escolhido pelo admin ou pelo seed).

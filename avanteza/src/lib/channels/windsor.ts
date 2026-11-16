@@ -38,7 +38,7 @@ const AUDIENCIA_DIMENSOES = [
   { chave: "paises", nome: "audience_country_name", tamanho: "audience_country_size" },
 ] as const;
 
-type Linha = Record<string, unknown>;
+export type Linha = Record<string, unknown>;
 /** follower_count (saldo diário) só aceita os últimos 30 dias; os demais campos do perfil aceitam janelas maiores, em consulta separada. */
 const PERFIL_CAMPOS_SALDO = ["date", "account_name", "follower_count"] as const;
 const PERFIL_CAMPOS_PRINCIPAIS = PERFIL_CAMPOS.filter((c) => c !== "follower_count");
@@ -84,9 +84,11 @@ function textoDoCorpo(b: unknown): string {
   return "";
 }
 
-function classificar(status: number, texto: string, chave: string | null): WindsorErro {
+export const MSG_SEM_CONTAS_ADS = "O Windsor.ai ainda não tem o Facebook Ads (Meta Ads) conectado nesta conta (no_accounts_configured). Conecte o Facebook Ads nesta conta do Windsor em https://onboard.windsor.ai?datasource=facebook, escolhendo a conta de anúncios do cliente, e teste de novo. Enquanto isso o cliente vê “Conectando anúncios”.";
+
+export function classificar(status: number, texto: string, chave: string | null, conector: string = CONECTOR): WindsorErro {
   const t = esconderChave(texto, chave).slice(0, 200);
-  if (/no_accounts_configured|no accounts? (are )?configured|no connected accounts?/i.test(texto)) return new WindsorErro(MSG.sem_contas, "sem_contas");
+  if (/no_accounts_configured|no accounts? (are )?configured|no connected accounts?/i.test(texto)) return new WindsorErro(conector === "facebook" ? MSG_SEM_CONTAS_ADS : MSG.sem_contas, "sem_contas");
   if (status === 401 || status === 403 || /api[_ ]?key|unauthori[sz]ed|forbidden|invalid (token|credential)/i.test(texto)) return new WindsorErro(MSG.chave, "chave");
   if (status === 429) return new WindsorErro(MSG.limite, "limite");
   if (status >= 500) return new WindsorErro(`O Windsor.ai está fora do ar no momento (HTTP ${status}). A próxima atualização tenta de novo.`, "api");
@@ -94,9 +96,9 @@ function classificar(status: number, texto: string, chave: string | null): Winds
   return new WindsorErro(`O Windsor.ai recusou a consulta${status ? ` (HTTP ${status})` : ""}${t ? `: ${t}` : ""}.`, "api");
 }
 
-function traduzir(e: unknown, chave: string | null): WindsorErro {
+export function traduzir(e: unknown, chave: string | null, conector: string = CONECTOR): WindsorErro {
   if (e instanceof WindsorErro) return e;
-  if (e instanceof ApiError) return classificar(e.status, textoDoCorpo(e.body) || e.message, chave);
+  if (e instanceof ApiError) return classificar(e.status, textoDoCorpo(e.body) || e.message, chave, conector);
   return new WindsorErro(MSG.rede, "rede");
 }
 
@@ -137,30 +139,35 @@ export interface FonteWindsor {
   audiencia(): Promise<{ dados: MetricasIgAudiencia; erros: string[] }>;
 }
 
-export function criarWindsor(o: OpcoesWindsor): FonteWindsor {
+/** GET num conector do Windsor (instagram, facebook…). Só leitura; a chave só vai na querystring e nunca sai em erro. */
+export function criarConsulta(o: OpcoesWindsor, conector: string) {
   const retries = o.retries ?? 2;
-  const alvo = o.accountName?.trim() ? norm(o.accountName) : null;
-
-  async function consultar(campos: readonly string[], i: Intervalo): Promise<Linha[]> {
+  return async function consultar(campos: readonly string[], i: Intervalo): Promise<Linha[]> {
     const qs = new URLSearchParams();
     if ("preset" in i) qs.set("date_preset", i.preset); else { qs.set("date_from", i.de); qs.set("date_to", i.ate); }
     qs.set("fields", campos.join(","));
     qs.set("api_key", o.chave);
-    const url = `https://${WINDSOR_HOST}/${CONECTOR}?${qs.toString()}`;
+    const url = `https://${WINDSOR_HOST}/${conector}?${qs.toString()}`;
     let corpo: unknown;
     try {
       // Só GET. A chave só vai na querystring, exigência da API do Windsor.
       corpo = await fetchJson<unknown>(url, { method: "GET", headers: { Accept: "application/json" } }, { retries, baseDelayMs: o.baseDelayMs ?? 500, maxDelayMs: o.maxDelayMs ?? 8000, sleep: o.sleep, fetchImpl: o.fetchImpl });
-    } catch (e) { throw traduzir(e, o.chave); }
+    } catch (e) { throw traduzir(e, o.chave, conector); }
     const erro = corpo && typeof corpo === "object" && !Array.isArray(corpo) ? (corpo as Record<string, unknown>).error : null;
-    if (erro) throw classificar(200, textoDoCorpo(corpo) || String(erro), o.chave);
+    if (erro) throw classificar(200, textoDoCorpo(corpo) || String(erro), o.chave, conector);
     const r = Resposta.safeParse(corpo);
     if (!r.success) {
-      if (typeof corpo === "string" && corpo) throw classificar(200, corpo, o.chave);
+      if (typeof corpo === "string" && corpo) throw classificar(200, corpo, o.chave, conector);
       throw new WindsorErro("Resposta inesperada do Windsor.ai (formato diferente do esperado).", "formato");
     }
     return r.data.data;
-  }
+  };
+}
+
+export function criarWindsor(o: OpcoesWindsor): FonteWindsor {
+  const alvo = o.accountName?.trim() ? norm(o.accountName) : null;
+
+  const consultar = criarConsulta(o, CONECTOR);
 
   /** Aplica o filtro por conta. Sem filtro e com mais de uma conta, recusa em vez de misturar contas. */
   function porConta(linhas: Linha[]): { linhas: Linha[]; conta: string | null; contas: string[] } {

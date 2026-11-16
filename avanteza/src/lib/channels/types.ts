@@ -15,7 +15,7 @@ export const DIAS_ROTINA = 7;
 export type KindSnapshot = "campaign_daily" | "ad_daily" | "ig_daily" | "ig_media" | "ig_audience";
 export type StatusCanal = "pendente" | "ativo" | "erro" | "desconectado";
 /** Duas fontes independentes: tráfego/anúncios e mídias/Instagram. Cada uma tem credencial, coleta, status e erro próprios. */
-export type FonteAnuncios = "meta" | "none";
+export type FonteAnuncios = "meta" | "windsor" | "none";
 export type FonteInstagram = "meta" | "windsor" | "none";
 /** Origem gravada em cada snapshot (channel_snapshots.source). */
 export type OrigemDado = "meta" | "windsor";

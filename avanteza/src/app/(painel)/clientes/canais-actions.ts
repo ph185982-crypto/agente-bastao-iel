@@ -8,9 +8,10 @@ import { redirect } from "next/navigation";
 import { requireOwner } from "@/lib/auth";
 import { adminDb } from "@/lib/db";
 import { desconectarFonte, obterCanal, salvarAnuncios, salvarInstagram } from "@/lib/channels/store";
-import { atualizarAgora, testarConexaoCanal, testarConexaoWindsor } from "@/lib/channels/servico";
+import { atualizarAgora, testarConexaoCanal, testarConexaoWindsor, testarConexaoWindsorAds } from "@/lib/channels/servico";
 import type { ResultadoTeste } from "@/lib/channels/types";
 import type { ResultadoTesteWindsor } from "@/lib/channels/windsor";
+import type { ResultadoTesteWindsorAds } from "@/lib/channels/windsor-ads";
 import { lerCamposAnuncios, lerCamposInstagram } from "@/lib/channels/form";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -66,6 +67,22 @@ export async function testarConexaoMeta(_prev: EstadoTeste, fd: FormData): Promi
     const canal = await obterCanal(clientId);
     // O Instagram pela Meta usa o MESMO token da Meta (do cliente ou da plataforma) já configurado em “Tráfego (anúncios)”.
     return { resultado: await testarConexaoCanal({ clientId, escopo, tokenDigitado: null, usarTokenPlataforma: canal?.usarTokenPlataforma ?? false, cfg: { adAccountId: null, campaignIds: [], igUserId: r.campos.igUserId, pageId: r.campos.pageId } }) };
+  } catch {
+    return { erro: "Não foi possível testar agora. Tente novamente." };
+  }
+}
+
+export type EstadoTesteWindsorAds = { resultado?: ResultadoTesteWindsorAds; erro?: string } | null;
+
+/** Testa os anúncios pelo Windsor.ai (só GET, conector facebook): conta, campanhas, gasto e resultados lidos. Sem o conector ligado, explica como conectar. */
+export async function testarConexaoWindsorAdsAcao(_prev: EstadoTesteWindsorAds, fd: FormData): Promise<EstadoTesteWindsorAds> {
+  await requireOwner();
+  const clientId = str(fd, "client_id");
+  if (!UUID.test(clientId)) return { erro: "Cliente inválido." };
+  const r = lerCamposAnuncios(fd);
+  if ("erro" in r) return { erro: r.erro };
+  try {
+    return { resultado: await testarConexaoWindsorAds({ clientId, contaId: r.campos.adAccountId, campaignIds: r.campos.campaignIds, resultActionType: r.campos.resultActionType }) };
   } catch {
     return { erro: "Não foi possível testar agora. Tente novamente." };
   }

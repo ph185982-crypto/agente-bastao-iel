@@ -4,6 +4,7 @@ import { Kpi } from "@/components/dashboards/Kpi";
 import { LineChart, Legenda } from "@/components/dashboards/LineChart";
 import { ComboChart } from "./ComboChart";
 import { Imagem } from "./Imagem";
+import { IconeTipoMidia, LogoMarca, MarcaRotulo, type Marca } from "@/components/brand";
 import { brl, compacto, inteiro, percentual } from "@/lib/dashboards/format";
 import { ddmm, ddmmaa, variacaoPct } from "@/lib/dashboards/periodo";
 import { ago } from "@/lib/format";
@@ -25,10 +26,10 @@ export function Vazio({ titulo, texto, children }: { titulo: string; texto: stri
 }
 
 /** Selo discreto de origem: cada painel mostra de onde vieram os números e quando foram atualizados. Nada é misturado entre fontes. */
-export function SeloFonte({ fonte, quando, problema }: { fonte: string; quando: string | null; problema?: boolean }) {
+export function SeloFonte({ fonte, quando, problema, marca }: { fonte: string; quando: string | null; problema?: boolean; marca?: Marca }) {
   return (
     <p className="fonte-selo" aria-label={`Fonte dos dados: ${fonte}`}>
-      <span className="fonte-dot" aria-hidden="true" />Fonte: {fonte}{quando ? <> · atualizado {ago(quando)}</> : null}
+      {marca ? <LogoMarca marca={marca} tamanho={16} /> : <span className="fonte-dot" aria-hidden="true" />}Fonte: {fonte}{quando ? <> · atualizado {ago(quando)}</> : null}
       {problema && <span className="muted"> · última atualização com problema; mostrando os últimos dados guardados</span>}
     </p>
   );
@@ -38,8 +39,8 @@ export function FontesAguardando({ anuncios = true, instagram = true }: { anunci
   return (
     <Vazio titulo="Conectando fontes de dados" texto="Estamos ligando suas contas de anúncios e redes. Quando a conexão terminar, os números aparecem aqui automaticamente. Não é preciso fazer nada agora.">
       <ul className="list" style={{ marginTop: 12 }}>
-        {anuncios && <li><div className="row"><strong>Anúncios (Meta Ads)</strong><span className="pill pill-outline">Aguardando conexão</span></div></li>}
-        {instagram && <li><div className="row"><strong>Instagram</strong><span className="pill pill-outline">Aguardando conexão</span></div></li>}
+        {anuncios && <li><div className="row"><MarcaRotulo marca="meta"><strong>Anúncios (Meta Ads)</strong></MarcaRotulo><span className="pill pill-outline">Aguardando conexão</span></div></li>}
+        {instagram && <li><div className="row"><MarcaRotulo marca="instagram"><strong>Instagram</strong></MarcaRotulo><span className="pill pill-outline">Aguardando conexão</span></div></li>}
       </ul>
     </Vazio>
   );
@@ -60,7 +61,7 @@ function CartaoCriativo({ c, pos, r }: { c: Criativo; pos: number; r: Rotulo }) 
         </span>
       </div>
       <Imagem src={c.thumb} alt={`Criativo ${c.nome}`} rotulo={codigo} />
-      <div className="cr-name">{c.nome}{c.video && <span className="small muted"> · vídeo</span>}</div>
+      <div className="cr-name"><IconeTipoMidia tipo={c.video ? "video" : "imagem"} />{c.nome}{c.video && <span className="small muted"> · vídeo</span>}</div>
       <ul className="cr-stats">
         <li className="destaque"><span>{r.plural}</span><b>{inteiro(c.resultados)}</b></li>
         <li className="destaque"><span>Custo/{r.um}</span><b>{c.custoPorResultado != null ? brl(c.custoPorResultado, true) : "—"}</b></li>
@@ -79,7 +80,7 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
   const { atual: per, anterior: ant } = d.periodo;
   if (!d.estado.anuncios) return <Vazio titulo="Anúncios não conectados" texto="A conta de anúncios ainda não foi ligada. Assim que for, o investimento, as conversas e os criativos aparecem aqui." />;
   if (!d.estado.anunciosConectado || !a) return <Vazio titulo="Conectando anúncios (Meta Ads)" texto="Estamos ligando a conta de anúncios. Quando a conexão terminar, o investimento, as conversas e os criativos aparecem aqui automaticamente. Não é preciso fazer nada agora." />;
-  const selo = <SeloFonte fonte={ROTULO_FONTE.meta} quando={d.estado.anunciosAtualizadoEm} problema={d.estado.anunciosComProblema} />;
+  const selo = <SeloFonte fonte={ROTULO_FONTE[d.estado.fonteAnuncios ?? "meta"]} marca="meta" quando={d.estado.anunciosAtualizadoEm} problema={d.estado.anunciosComProblema} />;
   if (!a.temDadosNoPeriodo) {
     return <>{selo}<Vazio titulo="Sem entrega de anúncios neste período" texto={`Não houve investimento entre ${ddmmaa(per.de)} e ${ddmmaa(per.ate)}. ${a.temHistorico ? "Tente um período maior." : "Os primeiros dados aparecem após a próxima atualização."}`} /></>;
   }
@@ -88,6 +89,7 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
   const c = a.criativos;
   return (
     <>
+      <h2 style={{ marginTop: 14 }}><MarcaRotulo marca="meta" tamanho={24}>Anúncios (Meta)</MarcaRotulo></h2>
       {selo}
       <div className="grid kpis k3" style={{ marginTop: 12 }}>
         <Kpi label="Investimento" valor={brl(t.gasto, t.gasto < 1000)} delta={dl(t.gasto, p?.gasto)} spark={a.serie.map((s) => s.gasto)} />
@@ -140,7 +142,7 @@ function CartaoMidia({ m }: { m: MidiaIg }) {
   const Conteudo = (
     <>
       <Imagem src={m.thumb} alt={`Mídia de ${ddmm(m.data)}`} rotulo={m.rotulo} />
-      <div className="cr-top"><span className="pill pill-sand">{m.rotulo}</span><span className="small muted">{ddmm(m.data)}</span></div>
+      <div className="cr-top"><span className="pill pill-sand"><IconeTipoMidia tipo={m.rotulo} />{m.rotulo}</span><span className="small muted">{ddmm(m.data)}</span></div>
       {m.legenda && <div className="md-cap">{m.legenda}</div>}
       <ul className="cr-stats">
         <li><span>Alcance</span><b>{m.alcance != null ? compacto(m.alcance) : "—"}</b></li>
@@ -191,13 +193,14 @@ export function PainelInstagram({ d }: { d: CanaisCliente }) {
   const { anterior: ant } = d.periodo;
   if (!d.estado.instagram) return <Vazio titulo="Instagram não conectado" texto="O perfil ainda não foi ligado. Quando for, seguidores, alcance e as mídias mais fortes aparecem aqui." />;
   if (!d.estado.instagramConectado || !ig) return <Vazio titulo="Conectando o Instagram" texto="Estamos ligando o perfil. Quando a conexão terminar, seguidores, alcance e as mídias mais fortes aparecem aqui automaticamente. Não é preciso fazer nada agora." />;
-  const selo = <SeloFonte fonte={ROTULO_FONTE_IG[d.estado.fonteInstagram ?? "windsor"]} quando={d.estado.instagramAtualizadoEm} problema={d.estado.instagramComProblema} />;
+  const selo = <SeloFonte fonte={ROTULO_FONTE_IG[d.estado.fonteInstagram ?? "windsor"]} marca="instagram" quando={d.estado.instagramAtualizadoEm} problema={d.estado.instagramComProblema} />;
   if (!ig.temDados) return <>{selo}<Vazio titulo="Coletando dados do Instagram" texto="A conexão está feita, mas ainda não chegaram números do perfil. Eles aparecem após a próxima atualização." /></>;
   const rot = (id: string) => ig.kpis.find((k) => k.id === id)!;
   const anteriorTxt = `${ddmmaa(ant.de)} a ${ddmmaa(ant.ate)}`;
   const seg = ig.seguidores;
   return (
     <>
+      <h2 style={{ marginTop: 14 }}><MarcaRotulo marca="instagram" tamanho={24}>Instagram</MarcaRotulo></h2>
       {selo}
       <div className="grid kpis k3" style={{ marginTop: 12 }}>
         <Kpi label="Seguidores" valor={seg.atual != null ? inteiro(seg.atual) : "—"} indisponivel={seg.atual == null}

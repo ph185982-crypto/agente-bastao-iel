@@ -1,4 +1,5 @@
 import { Submit } from "@/components/Submit";
+import { MarcaRotulo } from "@/components/brand";
 import { ConectarMeta } from "@/components/canais/ConectarMeta";
 import { ConectarInstagram } from "@/components/canais/ConectarInstagram";
 import { ago } from "@/lib/format";
@@ -28,7 +29,8 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
   const id = client.id as string;
   const canal = await obterCanal(id);
   const fixture = canaisFixtureAtiva();
-  const adsCfg = Boolean(canal && canal.adsSource === "meta" && canal.adAccountId);
+  const adsCfg = Boolean(canal && (canal.adsSource === "meta" || canal.adsSource === "windsor") && canal.adAccountId);
+  const adsWin = canal?.adsSource === "windsor";
   const igCfg = Boolean(canal && canal.igSource !== "none");
   const stAds = estadoFonte(adsCfg, canal?.lastSyncAt ?? null, canal?.lastError ?? null);
   const stIg = estadoFonte(igCfg, canal?.igLastSyncAt ?? null, canal?.igLastError ?? null);
@@ -41,15 +43,16 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
 
       <section aria-labelledby="sec-ads">
         <div className="card" style={{ marginTop: 12 }}>
-          <div className="row"><h3 id="sec-ads">Tráfego (anúncios) · Meta Ads</h3><span className={`pill ${stAds.cls}`}>{stAds.rotulo}</span></div>
-          <p className="small muted" style={{ margin: "2px 0 0" }}>Fonte: Meta Ads. Aparece no Mapa como “Anúncios”, separado do Instagram.</p>
+          <div className="row"><h3 id="sec-ads"><MarcaRotulo marca="meta" tamanho={24}>Tráfego (anúncios) · {adsWin ? "Meta Ads via Windsor.ai" : "Meta Ads"}</MarcaRotulo></h3><span className={`pill ${stAds.cls}`}>{stAds.rotulo}</span></div>
+          <p className="small muted" style={{ margin: "2px 0 0" }}>Fonte: {adsWin ? "Windsor.ai (conector Facebook Ads)" : "Meta Ads (token)"}. Aparece no Mapa como “Anúncios”, separado do Instagram.</p>
           {!canal || !adsCfg ? (
-            <p className="muted" style={{ margin: "8px 0 0" }}>Anúncios não configurados. Informe a conta de anúncios e o token da Meta abaixo.</p>
+            <p className="muted" style={{ margin: "8px 0 0" }}>Anúncios não configurados. Escolha a fonte (Meta com token ou Windsor.ai) e informe a conta de anúncios abaixo.</p>
           ) : (
             <ul className="plist">
               <li><span>Conta de anúncios</span><b>{`${canal.info.conta_nome ? `${canal.info.conta_nome} · ` : ""}${canal.adAccountId}`}</b></li>
               <li><span>Campanhas</span><b>{canal.campaignIds.length ? canal.campaignIds.join(", ") : "todas da conta"}</b></li>
-              <li><span>Token</span><b>{canal.temToken ? `do cliente · termina em ${canal.tokenHint ?? "····"}` : canal.usarTokenPlataforma ? `da plataforma (META_ACCESS_TOKEN${tokenDaPlataforma() ? "" : ", ausente neste ambiente"})` : "nenhum — pendente"}</b></li>
+              <li><span>Fonte</span><b>{adsWin ? "Windsor.ai (conector Facebook Ads)" : "Meta Ads com token"}</b></li>
+              {adsWin ? <li><span>Chave</span><b>{origemChaveWindsor(canal) === "canal" ? `do canal · termina em ${canal.chaveWindsorHint ?? "····"}` : origemChaveWindsor(canal) === "plataforma" ? "da plataforma (WINDSOR_API_KEY)" : "nenhuma — WINDSOR_API_KEY ausente neste ambiente"}</b></li> : <li><span>Token</span><b>{canal.temToken ? `do cliente · termina em ${canal.tokenHint ?? "····"}` : canal.usarTokenPlataforma ? `da plataforma (META_ACCESS_TOKEN${tokenDaPlataforma() ? "" : ", ausente neste ambiente"})` : "nenhum — pendente"}</b></li>}
               <li><span>Última coleta</span><b>{canal.lastSyncAt ? ago(canal.lastSyncAt) : "ainda não coletou"}</b></li>
               {canal.lastError && <li className="late"><span>Último erro</span><b style={{ overflowWrap: "anywhere" }}>{canal.lastError}</b></li>}
             </ul>
@@ -67,7 +70,7 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
             clientId={id}
             plataformaDisponivel={Boolean(tokenDaPlataforma())}
             inicial={{
-              adsSource: canal?.adsSource === "meta" || !canal ? "meta" : "none", adAccountId: canal?.adAccountId?.replace(/^act_/, "") ?? "", campaignIds: canal?.campaignIds.join(", ") ?? "",
+              adsSource: canal?.adsSource === "windsor" ? "windsor" : canal?.adsSource === "meta" || !canal ? "meta" : "none", adAccountId: canal?.adAccountId?.replace(/^act_/, "") ?? "", campaignIds: canal?.campaignIds.join(", ") ?? "",
               resultActionType: canal?.resultActionType ?? RESULTADO_PADRAO, usarTokenPlataforma: canal?.usarTokenPlataforma ?? false, temToken: canal?.temToken ?? false, tokenHint: canal?.tokenHint ?? null,
             }}
           />
@@ -76,7 +79,7 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
 
       <section aria-labelledby="sec-ig" style={{ marginTop: 18 }}>
         <div className="card" style={{ marginTop: 12 }}>
-          <div className="row"><h3 id="sec-ig">Mídias (Instagram) · {igMeta ? "Meta Graph" : "Windsor.ai"}</h3><span className={`pill ${stIg.cls}`}>{stIg.rotulo}</span></div>
+          <div className="row"><h3 id="sec-ig"><MarcaRotulo marca="instagram" tamanho={24}>Mídias (Instagram) · {igMeta ? "Meta Graph" : "Windsor.ai"}</MarcaRotulo></h3><span className={`pill ${stIg.cls}`}>{stIg.rotulo}</span></div>
           <p className="small muted" style={{ margin: "2px 0 0" }}>Fonte: {igMeta ? "Meta (Instagram Graph)" : "Windsor.ai"}. Independente dos anúncios: se uma falha, a outra continua.</p>
           {!canal || !igCfg ? (
             <p className="muted" style={{ margin: "8px 0 0" }}>Instagram não configurado. Escolha a fonte e salve abaixo (recomendado: Windsor.ai).</p>

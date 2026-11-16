@@ -19,6 +19,8 @@ export interface EstadoCanalCliente {
   anunciosConectado: boolean;
   anunciosAtualizadoEm: string | null;
   anunciosComProblema: boolean;
+  /** De onde vêm os anúncios (Meta com token ou Windsor). */
+  fonteAnuncios: OrigemDado | null;
   /** Fonte do Instagram configurada / já com coleta / de onde vêm os dados. Independente dos anúncios. */
   instagram: boolean;
   instagramConectado: boolean;
@@ -48,13 +50,14 @@ export async function carregarCanaisDoCliente(scope: ClientScope, periodoId: Per
   assertScope(scope);
   const periodo = resolverPeriodo(periodoId, hoje);
   const canal = await obterCanal(scope.clientId);
-  const adsConfigurado = Boolean(canal && canal.adsSource === "meta" && canal.adAccountId);
+  const adsConfigurado = Boolean(canal && (canal.adsSource === "meta" || canal.adsSource === "windsor") && canal.adAccountId);
+  const fonteAds: OrigemDado | null = adsConfigurado ? (canal!.adsSource as OrigemDado) : null;
   const igConfigurado = Boolean(canal && (canal.igSource === "windsor" || (canal.igSource === "meta" && canal.igUserId)));
   const adsOk = adsConfigurado && Boolean(canal!.lastSyncAt), igOk = igConfigurado && Boolean(canal!.igLastSyncAt);
   const fonteIg: OrigemDado | null = igConfigurado ? (canal!.igSource as OrigemDado) : null;
   const estado: EstadoCanalCliente = {
     conectado: adsOk || igOk, cadastrado: Boolean(canal),
-    anuncios: adsConfigurado, anunciosConectado: adsOk, anunciosAtualizadoEm: adsOk ? canal!.lastSyncAt : null, anunciosComProblema: adsConfigurado && Boolean(canal!.lastError),
+    anuncios: adsConfigurado, anunciosConectado: adsOk, anunciosAtualizadoEm: adsOk ? canal!.lastSyncAt : null, anunciosComProblema: adsConfigurado && Boolean(canal!.lastError), fonteAnuncios: fonteAds,
     instagram: igConfigurado, instagramConectado: igOk, instagramAtualizadoEm: igOk ? canal!.igLastSyncAt : null, instagramComProblema: igConfigurado && Boolean(canal!.igLastError),
     fonteInstagram: fonteIg, ultimaAtualizacao: [adsOk ? canal!.lastSyncAt : null, igOk ? canal!.igLastSyncAt : null].filter((x): x is string => Boolean(x)).sort().pop() ?? null,
     comProblema: false, simulado: canaisFixtureAtiva(), resultado: canal?.resultActionType === RESULTADO_PADRAO || !canal ? "conversas" : "resultados",
@@ -65,9 +68,9 @@ export async function carregarCanaisDoCliente(scope: ClientScope, periodoId: Per
 
   const historico = addDays(hoje, -420);
   const [camp, ig, ads, midias, aud] = await Promise.all([
-    adsOk ? lerSnapshots(scope.clientId, ["campaign_daily"], historico, hoje, "meta") : [],
+    adsOk ? lerSnapshots(scope.clientId, ["campaign_daily"], historico, hoje, fonteAds!) : [],
     igOk ? lerSnapshots(scope.clientId, ["ig_daily"], historico, hoje, fonteIg!) : [],
-    adsOk ? lerSnapshots(scope.clientId, ["ad_daily"], periodo.anterior.de, hoje, "meta") : [],
+    adsOk ? lerSnapshots(scope.clientId, ["ad_daily"], periodo.anterior.de, hoje, fonteAds!) : [],
     igOk ? lerSnapshots(scope.clientId, ["ig_media"], addDays(hoje, -120), hoje, fonteIg!) : [],
     igOk ? lerSnapshots(scope.clientId, ["ig_audience"], addDays(hoje, -60), hoje, fonteIg!) : [],
   ]);

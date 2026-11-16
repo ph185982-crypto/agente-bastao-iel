@@ -13,11 +13,11 @@ const tem = (v: unknown): v is number => typeof v === "number" && Number.isFinit
 const arred = (x: number, d = 2) => { const f = 10 ** d; return Math.round(x * f) / f; };
 const div = (a: number, b: number, d = 2) => (b > 0 ? arred(a / b, d) : null);
 
-export interface Totais { gasto: number; impressoes: number; cliques: number; resultados: number; ctr: number | null; cpc: number | null; custoPorResultado: number | null }
+export interface Totais { gasto: number; impressoes: number; /** Soma do alcance diário (não é único no período). */ alcance: number; cliques: number; resultados: number; ctr: number | null; cpc: number | null; custoPorResultado: number | null }
 export function somar(rows: Linha[]): Totais {
-  let gasto = 0, impressoes = 0, cliques = 0, resultados = 0;
-  for (const r of rows) { gasto += n(r.metrics.spend); impressoes += n(r.metrics.impressions); cliques += n(r.metrics.clicks); resultados += n(r.metrics.results); }
-  return { gasto: arred(gasto), impressoes, cliques, resultados, ctr: div(cliques * 100, impressoes), cpc: div(gasto, cliques), custoPorResultado: div(gasto, resultados) };
+  let gasto = 0, impressoes = 0, cliques = 0, resultados = 0, alcance = 0;
+  for (const r of rows) { alcance += n(r.metrics.reach); gasto += n(r.metrics.spend); impressoes += n(r.metrics.impressions); cliques += n(r.metrics.clicks); resultados += n(r.metrics.results); }
+  return { gasto: arred(gasto), impressoes, alcance, cliques, resultados, ctr: div(cliques * 100, impressoes), cpc: div(gasto, cliques), custoPorResultado: div(gasto, resultados) };
 }
 const noIntervalo = (rows: Linha[], de: string, ate: string) => rows.filter((r) => r.date >= de && r.date <= ate);
 

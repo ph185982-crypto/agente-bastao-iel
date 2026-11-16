@@ -59,6 +59,20 @@ Responda com:
 6. Limpe a área de transferência. Não tire print dessa tela com o token.
 7. Me diga o resultado do teste (quais permissões foram reconhecidas e quais faltam) e a mensagem do **Atualizar agora**.
 
+## Alternativa A — a conta de anúncios não aparece para o usuário do sistema (erro "(#200) Ad account owner has NOT grant ads_management or ads_read permission")
+Isso acontece quando a conta de anúncios pertence a um **perfil pessoal** (como a act_605261696580859 do SHOWMAN) e não ao Business do usuário do sistema. Solução, no Business Manager:
+1. Configurações do negócio → **Contas → Contas de anúncios → Adicionar → Adicionar uma conta de anúncios existente**.
+2. Informe o ID da conta de anúncios (só números) e confirme. O dono do perfil pessoal que administra a conta precisa aprovar o pedido.
+3. Com a conta já no Business, volte ao Passo 2 e **atribua a conta ao usuário do sistema** com permissão de leitura (Ver desempenho). Gere o token de novo (Passo 3) e valide (Passo 4).
+Não mexa em nada além de adicionar e atribuir a conta; nenhuma permissão de escrita é necessária.
+
+## Alternativa B — ler os anúncios pelo Windsor.ai (sem token da Meta)
+Se a conta não puder ir para o Business, o Windsor.ai costuma enxergá-la pelo login do dono. Na Central: Clientes → cliente → aba **Canais** → "Configurar anúncios" → **Fonte dos anúncios = Windsor.ai (conector Facebook Ads)**, com a conta de anúncios (e, se quiser, as campanhas).
+1. Entre na conta do Windsor.ai que é dona da chave (`WINDSOR_API_KEY`, a mesma do Instagram, ou a chave própria do canal) e abra https://onboard.windsor.ai?datasource=facebook.
+2. Conecte o **Facebook Ads** com o perfil que administra a conta de anúncios e marque a conta do cliente.
+3. Na Central, clique em **Testar conexão (Windsor.ai)**: o teste mostra a conta, as campanhas e os anúncios encontrados. Depois **Salvar anúncios** e **Atualizar anúncios agora**.
+Enquanto o Facebook Ads não estiver conectado no Windsor, o teste mostra "Conecte o Facebook Ads nesta conta do Windsor" (`no_accounts_configured`) e o cliente vê apenas "Conectando anúncios", sem erro. Nunca cole a chave do Windsor em conversa ou arquivo.
+
 ## Se algo der errado
 - Não tente contornar com permissões de escrita nem com tokens pessoais.
 - Se o Instagram não for reconhecido, me diga o que a tela mostra e pare.

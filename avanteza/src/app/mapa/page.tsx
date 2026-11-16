@@ -5,11 +5,16 @@ import { addDays, spDate } from "@/lib/dates";
 import { brl, int, dec, pct } from "@/lib/format";
 import { sumPeriod, variation } from "@/lib/mapa/metrics";
 import { planSummary, phaseState, PHASE_STATE_LABEL, nextMilestones, isOverdue, fmtDate, OWNER_LABEL, STATUS_LABEL } from "@/lib/mapa/progress";
-import { getTrafficProvider, totalsOf } from "@/lib/mapa/traffic";
+import { InicioMidia } from "@/components/canais/InicioMidia";
+import { carregarCanaisDoCliente } from "@/lib/channels/cliente";
+import { PERIODO_PADRAO, parsePeriodo, type PeriodoId } from "@/lib/dashboards/periodo";
 import { hasChannels, hasMarketplaces } from "@/lib/mapa/nav";
 
-export default async function Inicio() {
+export const dynamic = "force-dynamic";
+
+export default async function Inicio({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { scope } = await requireMapa();
+  const periodoId = parsePeriodo((await searchParams).periodo);
   const today = spDate();
   const client = await getClient(scope);
   if (!client) return <div className="empty">Cliente não encontrado.</div>;
@@ -19,8 +24,8 @@ export default async function Inicio() {
     hasMarketplaces(client.kind) ? marketplaceData(scope, addDays(today, -60)) : null,
     scope.allowedClientIds.length > 1 ? groupOverview(scope, addDays(today, -30)) : null,
   ]);
-  const traffic = hasChannels(client.kind) ? getTrafficProvider() : null;
-  const tSummary = traffic && (await traffic.isConnected(scope.clientId)) ? await traffic.summary(scope.clientId, { from: addDays(today, -30), to: today }) : null;
+  const canais = hasChannels(client.kind) ? await carregarCanaisDoCliente(scope, periodoId) : null;
+  const hrefPeriodo = (p: PeriodoId) => (p === PERIODO_PADRAO ? "/mapa" : `/mapa?periodo=${p}`);
 
   const sum = planSummary(actions, today);
   const m = nextMilestones(phases, actions, today);
@@ -36,6 +41,8 @@ export default async function Inicio() {
       <h1>Olá, <span className="accent">{first}</span></h1>
       <p className="muted" style={{ marginTop: 4 }}>Seu mapa de 12 meses com a Avanteza: onde estamos, o que vem agora e o que depende de cada um.</p>
 
+      {canais && <InicioMidia d={canais} hrefPeriodo={hrefPeriodo} />}
+
       {cur && (
         <>
           <h2>Marketplaces · últimos 30 dias</h2>
@@ -48,27 +55,6 @@ export default async function Inicio() {
               <div className="kpi"><div className="label">Investimento em ADS</div><div className="value">{brl(cur.adsCost)}</div><div className="small muted">Receita de ADS {brl(cur.adsRevenue)}</div></div>
               <div className="kpi"><div className="label">ROAS</div><div className="value">{cur.roas ? dec(cur.roas) : "—"}</div><div className="small muted">retorno por R$ investido</div></div>
             </div>
-          )}
-        </>
-      )}
-
-      {traffic && (
-        <>
-          <h2>Tráfego e mídias · últimos 30 dias</h2>
-          {tSummary ? (
-            (() => {
-              const t = totalsOf(tSummary);
-              return (
-                <div className="grid kpis">
-                  <div className="kpi"><div className="label">Investimento</div><div className="value">{brl(t.spend)}</div></div>
-                  <div className="kpi"><div className="label">Faturamento atribuído</div><div className="value">{brl(t.revenue)}</div></div>
-                  <div className="kpi"><div className="label">ROAS</div><div className="value">{t.roas ? dec(t.roas) : "—"}</div></div>
-                  <div className="kpi"><div className="label">Conversões</div><div className="value">{int(t.conversions)}</div><div className="small muted">CPA {t.cpa ? brl(t.cpa) : "—"}</div></div>
-                </div>
-              );
-            })()
-          ) : (
-            <div className="card"><strong>Conectando fontes de dados</strong><p className="small muted" style={{ margin: "4px 0 0" }}>Estamos ligando suas contas de anúncios. Os números de investimento, faturamento e ROAS aparecem aqui assim que a conexão terminar. <Link href="/mapa/canais">Ver canais ›</Link></p></div>
           )}
         </>
       )}
