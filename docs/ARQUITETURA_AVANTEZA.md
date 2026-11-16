@@ -72,6 +72,15 @@ Mesmo domínio e mesmo `/login`; o usuário de cliente (papel `client`) cai em `
 - **Variáveis**: `MAPA_CONTATO_NOME`, `MAPA_CONTATO_EMAIL`, `MAPA_CONTATO_WHATSAPP` (contato da Avanteza na tela Conta).
 
 ## Canais (painel de mídia e tráfego do cliente)
+- **DUAS FONTES INDEPENDENTES** (cada uma com credencial, teste, coleta, status e erro próprios; nunca somadas nem misturadas):
+  1. **Tráfego/anúncios = Meta Ads** (`ads_source` = `meta`|`none`; token do cliente via Graph; Windsor `facebook` fica para o futuro). Status em `last_sync_at`/`last_error`.
+  2. **Mídias/Instagram = Windsor.ai** (`ig_source` = `windsor`|`meta`|`none`; padrão Windsor). `src/lib/channels/windsor.ts`: GET `connectors.windsor.ai/instagram`
+     (perfil e mídias em consultas separadas; null tratado; zod; `safeImageUrl`; retry via `src/lib/http.ts`). Chave: própria do canal (`windsor_key_enc`, cifrada,
+     hint de 4 caracteres) ou `WINDSOR_API_KEY` da plataforma; `windsor_account_name` filtra por `account_name` (várias contas sem filtro = erro, não mistura). Status em
+     `ig_last_sync_at`/`ig_last_error`. Produz os MESMOS snapshots do Instagram da Meta (`ig_daily`, `ig_media`) e `ig_audience` (idade/gênero/cidades).
+  `channel_snapshots.source` (`meta`|`windsor`) faz parte da chave; o Mapa lê o Instagram só da fonte configurada e os anúncios só da Meta, com selo “Fonte: …”.
+  Falha ou falta de credencial em uma fonte não derruba a outra (cron, “Atualizar agora” e backfill de 90 dias são por fonte). Seguidores: o Windsor só traz
+  `followers_count` no dia atual; o histórico é reconstruído para trás com o saldo diário (`follower_count`) e marcado como estimado.
 - **Fonte**: Meta Graph API v21.0, SOMENTE GET (`src/lib/channels/graph.ts`; retry/backoff de `src/lib/http.ts`, pausa entre chamadas, paginação, janelas de 30 dias).
   Anúncios: insights por dia de campanha e de anúncio + criativo (miniatura, vídeo, status); resultado = `actions` do tipo configurado
   (padrão `onsite_conversion.messaging_conversation_started_7d`). Instagram: perfil (seguidores), `follower_count` diário (~30 dias), métricas do dia em

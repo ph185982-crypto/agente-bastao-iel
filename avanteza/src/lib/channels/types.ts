@@ -2,6 +2,9 @@
 // Tudo aqui é somente leitura em relação à Meta. Nada neste arquivo guarda segredo.
 
 export const PERMISSOES_NECESSARIAS = ["ads_read", "read_insights", "instagram_basic", "instagram_manage_insights", "pages_read_engagement"] as const;
+/** Só os anúncios (Meta Ads) exigem ads_read e read_insights. O Instagram vem do Windsor.ai; as demais são só para o Instagram pela Meta (opcional). */
+export const PERMISSOES_ANUNCIOS = ["ads_read", "read_insights"] as const;
+export const PERMISSOES_INSTAGRAM_META = ["instagram_basic", "instagram_manage_insights", "pages_read_engagement"] as const;
 export const RESULTADO_PADRAO = "onsite_conversion.messaging_conversation_started_7d";
 /** Gasto mínimo (R$) no período para um anúncio entrar no ranking de criativos (evita ruído de poucos centavos). */
 export const MIN_GASTO_RANKING = 30;
@@ -9,8 +12,15 @@ export const MIN_GASTO_RANKING = 30;
 export const DIAS_BACKFILL = 90;
 export const DIAS_ROTINA = 7;
 
-export type KindSnapshot = "campaign_daily" | "ad_daily" | "ig_daily" | "ig_media";
+export type KindSnapshot = "campaign_daily" | "ad_daily" | "ig_daily" | "ig_media" | "ig_audience";
 export type StatusCanal = "pendente" | "ativo" | "erro" | "desconectado";
+/** Duas fontes independentes: tráfego/anúncios e mídias/Instagram. Cada uma tem credencial, coleta, status e erro próprios. */
+export type FonteAnuncios = "meta" | "none";
+export type FonteInstagram = "meta" | "windsor" | "none";
+/** Origem gravada em cada snapshot (channel_snapshots.source). */
+export type OrigemDado = "meta" | "windsor";
+export const ROTULO_FONTE: Record<OrigemDado, string> = { meta: "Meta Ads", windsor: "Windsor.ai" };
+export const ROTULO_FONTE_IG: Record<OrigemDado, string> = { meta: "Meta (Instagram)", windsor: "Windsor.ai" };
 
 export interface CanalConfig {
   clientId: string;
@@ -19,6 +29,10 @@ export interface CanalConfig {
   igUserId: string | null;
   pageId: string | null;
   resultActionType: string;
+  adsSource: FonteAnuncios;
+  igSource: FonteInstagram;
+  /** Filtro opcional por account_name no Windsor (ex.: showmanbarbearia). */
+  windsorAccountName: string | null;
 }
 
 /** Linha de insights da Meta (nível campanha ou anúncio, por dia). Valores vêm como texto. */
@@ -77,6 +91,8 @@ export interface MetricasIgDia {
   reach?: number; views?: number; profile_views?: number; accounts_engaged?: number; total_interactions?: number;
   follower_net?: number; followers?: number; indisponiveis?: string[];
 }
+/** Audiência do Instagram (Windsor): rótulo → quantidade, por dimensão. */
+export interface MetricasIgAudiencia { idade?: Record<string, number>; genero?: Record<string, number>; cidades?: Record<string, number>; paises?: Record<string, number> }
 export interface MetricasIgMidia {
   type: string; product?: string | null; caption?: string | null; permalink?: string | null; thumb?: string | null; timestamp: string;
   likes?: number | null; comments?: number | null; reach?: number | null; saved?: number | null; shares?: number | null; views?: number | null; interactions?: number | null;

@@ -6,8 +6,10 @@ import { ComboChart } from "./ComboChart";
 import { Imagem } from "./Imagem";
 import { brl, compacto, inteiro, percentual } from "@/lib/dashboards/format";
 import { ddmm, ddmmaa, variacaoPct } from "@/lib/dashboards/periodo";
+import { ago } from "@/lib/format";
+import { ROTULO_FONTE, ROTULO_FONTE_IG } from "@/lib/channels/types";
 import type { CanaisCliente } from "@/lib/channels/cliente";
-import type { Criativo, Marco, MidiaIg } from "@/lib/channels/report";
+import type { Criativo, FatiaAudiencia, Marco, MidiaIg, RelAudiencia } from "@/lib/channels/report";
 
 type Rotulo = { um: string; plural: string };
 const rotuloDe = (c: CanaisCliente): Rotulo => (c.estado.resultado === "conversas" ? { um: "conversa", plural: "Conversas" } : { um: "resultado", plural: "Resultados" });
@@ -22,12 +24,22 @@ export function Vazio({ titulo, texto, children }: { titulo: string; texto: stri
   );
 }
 
-export function FontesAguardando() {
+/** Selo discreto de origem: cada painel mostra de onde vieram os números e quando foram atualizados. Nada é misturado entre fontes. */
+export function SeloFonte({ fonte, quando, problema }: { fonte: string; quando: string | null; problema?: boolean }) {
+  return (
+    <p className="fonte-selo" aria-label={`Fonte dos dados: ${fonte}`}>
+      <span className="fonte-dot" aria-hidden="true" />Fonte: {fonte}{quando ? <> · atualizado {ago(quando)}</> : null}
+      {problema && <span className="muted"> · última atualização com problema; mostrando os últimos dados guardados</span>}
+    </p>
+  );
+}
+
+export function FontesAguardando({ anuncios = true, instagram = true }: { anuncios?: boolean; instagram?: boolean }) {
   return (
     <Vazio titulo="Conectando fontes de dados" texto="Estamos ligando suas contas de anúncios e redes. Quando a conexão terminar, os números aparecem aqui automaticamente. Não é preciso fazer nada agora.">
       <ul className="list" style={{ marginTop: 12 }}>
-        <li><div className="row"><strong>Anúncios (Meta)</strong><span className="pill pill-outline">Aguardando conexão</span></div></li>
-        <li><div className="row"><strong>Instagram</strong><span className="pill pill-outline">Aguardando conexão</span></div></li>
+        {anuncios && <li><div className="row"><strong>Anúncios (Meta Ads)</strong><span className="pill pill-outline">Aguardando conexão</span></div></li>}
+        {instagram && <li><div className="row"><strong>Instagram</strong><span className="pill pill-outline">Aguardando conexão</span></div></li>}
       </ul>
     </Vazio>
   );
@@ -65,15 +77,18 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
   const a = d.anuncios;
   const r = rotuloDe(d);
   const { atual: per, anterior: ant } = d.periodo;
-  if (!d.estado.anuncios || !a) return <Vazio titulo="Anúncios não conectados" texto="A conta de anúncios ainda não foi ligada. Assim que for, o investimento, as conversas e os criativos aparecem aqui." />;
+  if (!d.estado.anuncios) return <Vazio titulo="Anúncios não conectados" texto="A conta de anúncios ainda não foi ligada. Assim que for, o investimento, as conversas e os criativos aparecem aqui." />;
+  if (!d.estado.anunciosConectado || !a) return <Vazio titulo="Conectando anúncios (Meta Ads)" texto="Estamos ligando a conta de anúncios. Quando a conexão terminar, o investimento, as conversas e os criativos aparecem aqui automaticamente. Não é preciso fazer nada agora." />;
+  const selo = <SeloFonte fonte={ROTULO_FONTE.meta} quando={d.estado.anunciosAtualizadoEm} problema={d.estado.anunciosComProblema} />;
   if (!a.temDadosNoPeriodo) {
-    return <Vazio titulo="Sem entrega de anúncios neste período" texto={`Não houve investimento entre ${ddmmaa(per.de)} e ${ddmmaa(per.ate)}. ${a.temHistorico ? "Tente um período maior." : "Os primeiros dados aparecem após a próxima atualização."}`} />;
+    return <>{selo}<Vazio titulo="Sem entrega de anúncios neste período" texto={`Não houve investimento entre ${ddmmaa(per.de)} e ${ddmmaa(per.ate)}. ${a.temHistorico ? "Tente um período maior." : "Os primeiros dados aparecem após a próxima atualização."}`} /></>;
   }
   const t = a.atual, p = a.anterior;
   const dl = (x: number | null, y: number | null | undefined, inverso = false) => ({ pct: variacaoPct(x, y ?? null), inverso, anterior: `${ddmmaa(ant.de)} a ${ddmmaa(ant.ate)}` });
   const c = a.criativos;
   return (
     <>
+      {selo}
       <div className="grid kpis k3" style={{ marginTop: 12 }}>
         <Kpi label="Investimento" valor={brl(t.gasto, t.gasto < 1000)} delta={dl(t.gasto, p?.gasto)} spark={a.serie.map((s) => s.gasto)} />
         <Kpi label={r.plural} valor={inteiro(t.resultados)} delta={dl(t.resultados, p?.resultados)} spark={a.serie.map((s) => s.resultados)} cor="ok" />
@@ -140,16 +155,50 @@ function CartaoMidia({ m }: { m: MidiaIg }) {
   return <article className="card">{m.permalink ? <a href={m.permalink} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "none", display: "contents" }} aria-label="Abrir no Instagram">{Conteudo}</a> : Conteudo}</article>;
 }
 
+function Barras({ titulo, itens }: { titulo: string; itens: FatiaAudiencia[] }) {
+  if (!itens.length) return null;
+  const max = Math.max(...itens.map((i) => i.pct), 1);
+  return (
+    <div className="card">
+      <h3>{titulo}</h3>
+      <ul className="aud-list">
+        {itens.map((i) => (
+          <li key={i.rotulo}>
+            <span className="aud-r">{i.rotulo}</span>
+            <span className="aud-bar" aria-hidden="true"><i style={{ width: `${Math.max(2, (i.pct / max) * 100)}%` }} /></span>
+            <b>{i.pct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</b>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+function Audiencia({ a }: { a: RelAudiencia }) {
+  return (
+    <>
+      <h2>Quem acompanha</h2>
+      <div className="grid dsplit three">
+        <Barras titulo="Idade" itens={a.idade} />
+        <Barras titulo="Gênero" itens={a.genero} />
+        <Barras titulo="Principais cidades" itens={a.cidades} />
+      </div>
+    </>
+  );
+}
+
 export function PainelInstagram({ d }: { d: CanaisCliente }) {
   const ig = d.instagram;
   const { anterior: ant } = d.periodo;
-  if (!d.estado.instagram || !ig) return <Vazio titulo="Instagram não conectado" texto="O perfil ainda não foi ligado. Quando for, seguidores, alcance e as mídias mais fortes aparecem aqui." />;
-  if (!ig.temDados) return <Vazio titulo="Coletando dados do Instagram" texto="A conexão está feita, mas ainda não chegaram números do perfil. Eles aparecem após a próxima atualização." />;
+  if (!d.estado.instagram) return <Vazio titulo="Instagram não conectado" texto="O perfil ainda não foi ligado. Quando for, seguidores, alcance e as mídias mais fortes aparecem aqui." />;
+  if (!d.estado.instagramConectado || !ig) return <Vazio titulo="Conectando o Instagram" texto="Estamos ligando o perfil. Quando a conexão terminar, seguidores, alcance e as mídias mais fortes aparecem aqui automaticamente. Não é preciso fazer nada agora." />;
+  const selo = <SeloFonte fonte={ROTULO_FONTE_IG[d.estado.fonteInstagram ?? "windsor"]} quando={d.estado.instagramAtualizadoEm} problema={d.estado.instagramComProblema} />;
+  if (!ig.temDados) return <>{selo}<Vazio titulo="Coletando dados do Instagram" texto="A conexão está feita, mas ainda não chegaram números do perfil. Eles aparecem após a próxima atualização." /></>;
   const rot = (id: string) => ig.kpis.find((k) => k.id === id)!;
   const anteriorTxt = `${ddmmaa(ant.de)} a ${ddmmaa(ant.ate)}`;
   const seg = ig.seguidores;
   return (
     <>
+      {selo}
       <div className="grid kpis k3" style={{ marginTop: 12 }}>
         <Kpi label="Seguidores" valor={seg.atual != null ? inteiro(seg.atual) : "—"} indisponivel={seg.atual == null}
           sub={seg.ganho != null ? `${seg.ganho >= 0 ? "+" : ""}${inteiro(seg.ganho)} no período` : "variação indisponível"} spark={seg.serie.map((s) => s.valor)} cor="ok" />
@@ -166,12 +215,14 @@ export function PainelInstagram({ d }: { d: CanaisCliente }) {
         <div className="card">
           <h3>Seguidores</h3>
           {seg.serie.length > 1 ? <LineChart titulo="Seguidores por dia" datas={seg.serie.map((s) => s.data)} series={[{ nome: "Seguidores", valores: seg.serie.map((s) => s.valor), cor: "ok" }]} formato="inteiro" /> : <div className="empty chart-empty">Histórico de seguidores em construção.</div>}
+          {seg.estimado && seg.serie.length > 1 && <p className="small muted" style={{ margin: "6px 0 0" }}>Histórico estimado: reconstruído para trás a partir dos seguidores atuais e do saldo diário de novos seguidores.</p>}
         </div>
         <div className="card">
           <h3>Alcance por dia</h3>
           {rot("reach").disponivel ? <LineChart titulo="Alcance por dia" datas={ig.serie.map((s) => s.data)} series={[{ nome: "Alcance", valores: ig.serie.map((s) => s.alcance), cor: "orange" }]} formato="inteiro" /> : <div className="empty chart-empty">Alcance indisponível para este perfil.</div>}
         </div>
       </div>
+      {ig.audiencia && <Audiencia a={ig.audiencia} />}
       <h2>Mídias mais fortes</h2>
       <p className="muted small" style={{ margin: "-4px 0 0" }}>Posts e Reels dos últimos 90 dias, ordenados por interações (curtidas, comentários, salvamentos e compartilhamentos).</p>
       {ig.midias.length === 0 ? <Vazio titulo="Sem mídias recentes" texto="Nenhuma mídia dos últimos 90 dias chegou até aqui ainda." /> : <div className="md-grid">{ig.midias.map((m) => <CartaoMidia key={m.id} m={m} />)}</div>}

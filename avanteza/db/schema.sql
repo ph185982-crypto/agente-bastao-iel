@@ -486,16 +486,59 @@ create table if not exists avanteza.client_channels (
 );
 create index if not exists client_channels_status_idx on avanteza.client_channels(status, last_sync_at);
 
+-- ── Duas fontes independentes por canal (migração idempotente, sem perda) ──
+--   ads_source: 'meta' | 'none'                      → tráfego/anúncios (Meta Ads; colunas antigas: ad_account_id, token_enc, status, last_sync_at, last_error)
+--   ig_source:  'meta' | 'windsor' | 'none'          → mídias/Instagram (Windsor.ai ou Meta Graph)
+--   windsor_account_name: filtro opcional por account_name; windsor_key_enc/hint: chave própria opcional (cifrada), senão WINDSOR_API_KEY.
+--   ig_last_sync_at / ig_last_error: coleta do Instagram, separada da coleta de anúncios (last_sync_at / last_error).
+alter table avanteza.client_channels add column if not exists windsor_account_name text;
+alter table avanteza.client_channels add column if not exists windsor_key_enc text;
+alter table avanteza.client_channels add column if not exists windsor_key_hint text;
+alter table avanteza.client_channels add column if not exists ig_last_sync_at timestamptz;
+alter table avanteza.client_channels add column if not exists ig_last_error text;
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_schema = 'avanteza' and table_name = 'client_channels' and column_name = 'ads_source') then
+    -- canais existentes: a fonte segue o que já estava configurado (conta de anúncios → Meta; Instagram do Graph → Meta)
+    alter table avanteza.client_channels add column ads_source text, add column ig_source text;
+    update avanteza.client_channels set
+      ads_source = case when ad_account_id is not null then 'meta' else 'none' end,
+      ig_source = case when ig_user_id is not null then 'meta' else 'none' end,
+      ig_last_sync_at = case when ig_user_id is not null then last_sync_at end;
+    alter table avanteza.client_channels
+      alter column ads_source set default 'none', alter column ads_source set not null,
+      alter column ig_source set default 'none', alter column ig_source set not null;
+    alter table avanteza.client_channels
+      add constraint client_channels_ads_source_check check (ads_source in ('meta','none')),
+      add constraint client_channels_ig_source_check check (ig_source in ('meta','windsor','none'));
+  end if;
+end $$;
+
+
 -- Histórico das séries coletadas (backup para a Evolução). Upsert idempotente por (cliente, tipo, dia, chave).
 --   kind: campaign_daily (key = campanha) | ad_daily (key = anúncio) | ig_daily (key = 'account') | ig_media (key = mídia; date = dia da postagem)
+--         | ig_audience (key = 'account'; idade/gênero/cidades)
+--   source: de onde veio a linha ('meta' | 'windsor'). Faz parte da chave: trocar a fonte do Instagram nunca mistura nem sobrescreve dados de outra fonte.
 create table if not exists avanteza.channel_snapshots (
   client_id uuid not null references avanteza.clients(id) on delete cascade,
   provider text not null default 'meta',
-  kind text not null check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media')),
+  kind text not null check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience')),
   date date not null,
   key text not null,
   metrics jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
-  primary key (client_id, kind, date, key)
+  source text not null default 'meta',
+  primary key (client_id, kind, date, key, source)
 );
+alter table avanteza.channel_snapshots add column if not exists source text not null default 'meta';
+alter table avanteza.channel_snapshots drop constraint if exists channel_snapshots_kind_check;
+alter table avanteza.channel_snapshots add constraint channel_snapshots_kind_check check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience'));
+do $$
+begin
+  -- chave primária antiga (cliente, tipo, dia, chave) → inclui a fonte
+  if not exists (select 1 from pg_constraint c where c.conrelid = 'avanteza.channel_snapshots'::regclass and c.contype = 'p' and array_length(c.conkey, 1) = 5) then
+    alter table avanteza.channel_snapshots drop constraint channel_snapshots_pkey;
+    alter table avanteza.channel_snapshots add primary key (client_id, kind, date, key, source);
+  end if;
+end $$;
 create index if not exists channel_snapshots_lookup_idx on avanteza.channel_snapshots(client_id, kind, date);

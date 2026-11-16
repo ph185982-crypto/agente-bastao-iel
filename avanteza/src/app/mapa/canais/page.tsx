@@ -11,7 +11,7 @@ import { ago } from "@/lib/format";
 import { FontesAguardando, PainelAnuncios, PainelEvolucao, PainelInstagram } from "@/components/canais/Paineis";
 
 export const dynamic = "force-dynamic";
-const ABAS = [{ k: "anuncios", label: "Anúncios (Meta)" }, { k: "instagram", label: "Instagram" }, { k: "evolucao", label: "Evolução" }] as const;
+const ABAS = [{ k: "anuncios", label: "Anúncios" }, { k: "instagram", label: "Instagram" }, { k: "evolucao", label: "Evolução" }] as const;
 type Aba = (typeof ABAS)[number]["k"];
 
 export default async function Canais({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -39,12 +39,12 @@ export default async function Canais({ searchParams }: { searchParams: Promise<R
       <div className="eyebrow">{client.name}</div>
       <h1>Canais</h1>
       <p className="muted small" style={{ marginTop: 4 }}>
-        Anúncios da Meta e Instagram: investimento, resultados, criativos e evolução.
+        Anúncios (Meta Ads) e Instagram: investimento, resultados, criativos e evolução. Cada fonte é independente e mostra de onde vieram os dados.
         {d.estado.conectado && d.estado.ultimaAtualizacao && <> Última atualização {ago(d.estado.ultimaAtualizacao)}.</>}
       </p>
       {d.estado.simulado && <div className="notice" role="note" style={{ margin: "10px 0" }}><b>Dados simulados</b> (CHANNELS_FIXTURE, só desenvolvimento). Nada aqui é real.</div>}
       {!d.estado.conectado ? (
-        <FontesAguardando />
+        <FontesAguardando anuncios={d.estado.anuncios || !d.estado.instagram} instagram={d.estado.instagram || !d.estado.anuncios} />
       ) : (
         <>
           <nav className="tabs abas" aria-label="Seções de canais">
@@ -58,7 +58,6 @@ export default async function Canais({ searchParams }: { searchParams: Promise<R
               <p className="muted small" style={{ margin: "4px 0 0" }}>{ddmm(atual.de)} a {ddmm(atual.ate)} ({atual.dias} {atual.dias === 1 ? "dia" : "dias"}) · variações comparam com o período anterior de mesmo tamanho.</p>
             </>
           )}
-          {d.estado.comProblema && <div className="notice" role="note" style={{ marginTop: 10 }}>A última atualização não foi concluída. Mostramos os últimos dados guardados.</div>}
           {aba === "anuncios" && <PainelAnuncios d={d} />}
           {aba === "instagram" && <PainelInstagram d={d} />}
           {aba === "evolucao" && <PainelEvolucao d={d} agrup={agrup} hrefAgrup={(g) => href({ agrup: g })} />}

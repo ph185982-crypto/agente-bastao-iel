@@ -94,9 +94,13 @@ export interface MidiaIg {
   id: string; tipo: string; rotulo: string; data: string; legenda: string | null; permalink: string | null; thumb: string | null;
   alcance: number | null; likes: number | null; comentarios: number | null; salvos: number | null; compartilhamentos: number | null; views: number | null; interacoes: number;
 }
+export interface FatiaAudiencia { rotulo: string; valor: number; pct: number }
+export interface RelAudiencia { idade: FatiaAudiencia[]; genero: FatiaAudiencia[]; cidades: FatiaAudiencia[] }
 export interface RelInstagram {
   temDados: boolean;
-  seguidores: { atual: number | null; ganho: number | null; serie: Array<{ data: string; valor: number }> };
+  /** `estimado`: há dias da série reconstruídos para trás a partir do valor atual e do saldo diário (não foram lidos um a um). */
+  seguidores: { atual: number | null; ganho: number | null; serie: Array<{ data: string; valor: number }>; estimado: boolean };
+  audiencia: RelAudiencia | null;
   kpis: KpiIg[];
   serie: Array<{ data: string; alcance: number }>;
   midias: MidiaIg[];
@@ -126,6 +130,23 @@ export function serieSeguidores(igRows: Linha[], de: string, ate: string): Array
   return dias.filter((d) => valor.has(d)).map((d) => ({ data: d, valor: valor.get(d)! }));
 }
 
+const GENERO: Record<string, string> = { M: "Homens", F: "Mulheres", U: "Não informado" };
+function fatias(m: unknown, rotular: (k: string) => string, ordenar: "chave" | "valor", max = 99): FatiaAudiencia[] {
+  if (!m || typeof m !== "object") return [];
+  const itens = Object.entries(m as Record<string, unknown>).filter(([, v]) => tem(v) && v > 0) as Array<[string, number]>;
+  const total = itens.reduce((t, [, v]) => t + v, 0);
+  if (!total) return [];
+  itens.sort(ordenar === "chave" ? ([a], [b]) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0) || a.localeCompare(b) : ([, a], [, b]) => b - a);
+  return itens.slice(0, max).map(([k, v]) => ({ rotulo: rotular(k), valor: v, pct: arred((v / total) * 100, 1) }));
+}
+/** Audiência mais recente guardada (idade, gênero, cidades). Sem linha = sem bloco (nada inventado). */
+export function relAudiencia(rows: Linha[]): RelAudiencia | null {
+  const ult = rows.filter((r) => r.kind === "ig_audience").sort((a, b) => a.date.localeCompare(b.date)).pop();
+  if (!ult) return null;
+  const idade = fatias(ult.metrics.idade, (k) => k, "chave"), genero = fatias(ult.metrics.genero, (k) => GENERO[k.toUpperCase()] ?? k, "valor"), cidades = fatias(ult.metrics.cidades, (k) => k.split(",")[0].trim(), "valor", 5);
+  return idade.length || genero.length || cidades.length ? { idade, genero, cidades } : null;
+}
+
 const TIPO_MIDIA: Record<string, string> = { VIDEO: "Reel", REELS: "Reel", IMAGE: "Foto", CAROUSEL_ALBUM: "Carrossel" };
 
 export function relInstagram(rows: Linha[], periodo: PeriodoResolvido): RelInstagram {
@@ -150,11 +171,15 @@ export function relInstagram(rows: Linha[], periodo: PeriodoResolvido): RelInsta
       salvos: tem(m.saved) ? m.saved : null, compartilhamentos: tem(m.shares) ? m.shares : null, views: tem(m.views) ? m.views : null, interacoes,
     };
   }).sort((x, y) => y.interacoes - x.interacoes || (y.alcance ?? 0) - (x.alcance ?? 0)).slice(0, 12);
-  const indis = new Set<string>();
-  for (const r of ig) for (const m of (Array.isArray(r.metrics.indisponiveis) ? r.metrics.indisponiveis : [])) indis.add(String(m));
+  // Métricas indisponíveis: vale o aviso mais recente (se a métrica voltou a vir, o aviso antigo não fica para sempre).
+  const ultimoAviso = ig.filter((r) => Array.isArray(r.metrics.indisponiveis)).sort((x, y) => x.date.localeCompare(y.date)).pop();
+  const indis = new Set<string>((ultimoAviso?.metrics.indisponiveis ?? []).map(String));
+  const lidos = new Set(ig.filter((r) => tem(r.metrics.followers)).map((r) => r.date));
+  const naSerie = serieSeg.filter((x) => x.data >= a.de);
   return {
     temDados: ig.length > 0 || midias.length > 0,
-    seguidores: { atual: fim?.valor ?? null, ganho: fim && inicio ? fim.valor - inicio.valor : null, serie: serieSeg.filter((x) => x.data >= a.de) },
+    seguidores: { atual: fim?.valor ?? null, ganho: fim && inicio ? fim.valor - inicio.valor : null, serie: naSerie, estimado: naSerie.some((x) => !lidos.has(x.data)) },
+    audiencia: relAudiencia(rows),
     kpis,
     // Só dias com alcance coletado (hoje ainda não fechou: não vira um "zero" falso no gráfico).
     serie: listarDias(a.de, a.ate).flatMap((d) => { const r = ig.find((x) => x.date === d && tem(x.metrics.reach)); return r ? [{ data: d, alcance: n(r.metrics.reach) }] : []; }),

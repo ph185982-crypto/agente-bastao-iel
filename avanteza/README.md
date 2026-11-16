@@ -121,13 +121,16 @@ Os IDs aparecem em Clientes → Anúncios → "N variações" e a IA também pod
 - **Fotos:** `listings.thumbnail` (miniatura https) e `listings.image_urls` (jsonb, até 6) são preenchidas pelo coletor a partir das mesmas chamadas de antes (ML multiget, Shopee `get_item_base_info`, TikTok `get_product`). Anúncios já coletados sem foto são preenchidos no próximo ciclo do coletor (ou ao chegar um webhook `items`); até lá aparece a inicial do título. Em bancos existentes rode `node db/apply.mjs` (adiciona `image_urls`).
 
 ## Canais (painel de mídia e tráfego do cliente)
-`/mapa/canais` (clientes `midia`/`ambos`): Anúncios (Meta), Instagram e Evolução, com período 7/30/90 dias ou mês atual. A Central conecta o canal em
-Clientes → cliente → aba **Canais** (conta de anúncios, campanhas, IDs do Instagram/Página e token, que fica criptografado e nunca volta à tela;
-“Testar conexão”, “Atualizar agora” com 90 dias de histórico, “Desconectar”). Somente leitura na Meta (só GET). Coleta diária em `/api/cron/channels`
-(03 10 UTC, com `CRON_SECRET`), gravando em `channel_snapshots` (histórico para a Evolução). Código em `src/lib/channels/`.
+`/mapa/canais` (clientes `midia`/`ambos`): Anúncios, Instagram e Evolução, com período 7/30/90 dias ou mês atual. **Duas fontes independentes**, cada uma com
+conexão, “Testar conexão”, “Atualizar agora” (90 dias), status e erro próprios, e selo “Fonte: …” na tela (nunca somadas):
+**Tráfego (anúncios) · Meta Ads** (token do cliente, criptografado, `ads_read` + `read_insights`) e **Mídias (Instagram) · Windsor.ai**
+(`WINDSOR_API_KEY` da plataforma ou chave própria do canal, criptografada; `account_name` opcional; Meta Graph continua como alternativa).
+Admin: Clientes → cliente → aba **Canais**. Somente leitura (só GET). Coleta diária em `/api/cron/channels` (03 10 UTC, com `CRON_SECRET`), gravando em
+`channel_snapshots` (coluna `source`). Código em `src/lib/channels/` (`windsor.ts` = Instagram; `graph.ts` = Meta). Migração: `node db/apply.mjs` (idempotente; canais
+existentes mantêm a fonte que já tinham; o Instagram do Showman passa a ser escolhido pelo admin ou pelo seed).
 ```sh
 DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/apply.mjs
 DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-canais-showman.mjs   # canal do Showman, sem token; recusa banco remoto
-CHANNELS_FIXTURE=1 npm run dev   # dados simulados (6 anúncios do Showman); depois "Atualizar agora" na aba Canais ou GET /api/cron/channels com o CRON_SECRET
+CHANNELS_FIXTURE=1 npm run dev   # dados simulados (6 anúncios do Showman e Instagram showmanbarbearia); depois "Atualizar agora" na aba Canais ou GET /api/cron/channels com o CRON_SECRET
 ```
 Passo a passo para o Cowork gerar e colar o token: `docs/PROMPT_COWORK_META_CLIENTE.md`.

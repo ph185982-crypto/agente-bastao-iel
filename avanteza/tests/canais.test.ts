@@ -360,12 +360,12 @@ test("cron: rota /api/cron/channels no vercel.json (1×/dia, no horário já agr
 test("ações do admin: todas exigem requireOwner e nenhuma chamada de escrita à Meta existe em src/lib/channels", () => {
   const acoes = readFileSync(new URL("../src/app/(painel)/clientes/canais-actions.ts", import.meta.url), "utf8");
   const exportadas = [...acoes.matchAll(/export async function (\w+)/g)].map((m) => m[1]);
-  assert.deepEqual(exportadas.sort(), ["atualizarCanalAgora", "desconectarCanalMeta", "salvarCanalMeta", "testarConexaoMeta"]);
+  assert.deepEqual(exportadas.sort(), ["atualizarAnunciosAgora", "atualizarInstagramAgora", "desconectarAnuncios", "desconectarInstagram", "salvarAnunciosMeta", "salvarInstagramCanal", "testarConexaoMeta", "testarConexaoWindsorAcao"]);
   for (const nome of exportadas) {
     const corpo = acoes.slice(acoes.indexOf(`export async function ${nome}`)).split(/\nexport async function /)[0];
     assert.match(corpo, /await requireOwner\(\)/, nome);
   }
-  for (const f of ["graph.ts", "collect.ts", "servico.ts", "store.ts"]) {
+  for (const f of ["graph.ts", "windsor.ts", "collect.ts", "servico.ts", "store.ts"]) {
     const src = readFileSync(new URL(`../src/lib/channels/${f}`, import.meta.url), "utf8");
     assert.ok(!/method:\s*["'](POST|PUT|PATCH|DELETE)["']/i.test(src), `${f}: só GET`);
   }
@@ -554,10 +554,10 @@ test("coletarTodos: um canal por vez, pula sem credencial e respeita o tempo tot
 
 test("atualizarAgora: backfill de 90 dias com a API injetada; sem credencial devolve instrução", { skip }, async () => {
   const api = apiMemoria();
-  const r = await atualizarAgora(showman, async () => ({ api, token: null }));
+  const r = await atualizarAgora(showman, { meta: async () => ({ api, token: null }) });
   assert.equal(r.ok, true); assert.match(r.mensagem, /registros gravados/);
-  assert.equal((await atualizarAgora(showman, async () => null)).ok, false);
-  assert.equal((await atualizarAgora("00000000-0000-0000-0000-000000000000", async () => null)).ok, false);
+  assert.equal((await atualizarAgora(showman, { meta: async () => null })).ok, false);
+  assert.equal((await atualizarAgora("00000000-0000-0000-0000-000000000000", { meta: async () => null })).ok, false);
 });
 
 test("isolamento (IDOR): cada cliente só vê os próprios canais; saída nunca traz token, hint, conta, Página ou Instagram", { skip }, async () => {

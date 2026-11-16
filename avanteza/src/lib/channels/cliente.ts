@@ -7,17 +7,26 @@ import { assertScope, type ClientScope } from "@/lib/mapa/scope";
 import { canaisFixtureAtiva } from "./fixture";
 import { evolucao, relAnuncios, relInstagram, type Agrupamento, type Marco, type RelAnuncios, type RelInstagram } from "./report";
 import { lerSnapshots, obterCanal } from "./store";
-import { RESULTADO_PADRAO } from "./types";
+import { RESULTADO_PADRAO, type OrigemDado } from "./types";
 
 export interface EstadoCanalCliente {
-  /** Existe canal e já houve ao menos uma coleta. */
+  /** Alguma fonte já coletou ao menos uma vez. */
   conectado: boolean;
   /** Há canal cadastrado (mesmo que ainda sem coleta). */
   cadastrado: boolean;
+  /** Fonte de anúncios configurada / já com coleta. Independente do Instagram. */
   anuncios: boolean;
+  anunciosConectado: boolean;
+  anunciosAtualizadoEm: string | null;
+  anunciosComProblema: boolean;
+  /** Fonte do Instagram configurada / já com coleta / de onde vêm os dados. Independente dos anúncios. */
   instagram: boolean;
+  instagramConectado: boolean;
+  instagramAtualizadoEm: string | null;
+  instagramComProblema: boolean;
+  fonteInstagram: OrigemDado | null;
   ultimaAtualizacao: string | null;
-  /** A última atualização teve problema (o detalhe técnico é só do administrador). */
+  /** Alguma atualização teve problema (o detalhe técnico é só do administrador). */
   comProblema: boolean;
   simulado: boolean;
   /** Como chamar o resultado da campanha na tela (conversas no WhatsApp ou, para outro objetivo, “resultados”). */
@@ -31,27 +40,41 @@ export interface CanaisCliente {
   evolucao: { mes: Marco[]; semana: Marco[] } | null;
 }
 
+/**
+ * Lê os snapshots de cada fonte SEPARADAMENTE: anúncios só da Meta Ads; Instagram só da fonte configurada no canal (Windsor ou Meta).
+ * Nada é misturado nem somado entre fontes e uma fonte sem coleta nunca esconde a outra.
+ */
 export async function carregarCanaisDoCliente(scope: ClientScope, periodoId: PeriodoId, hoje: string = spDate()): Promise<CanaisCliente> {
   assertScope(scope);
   const periodo = resolverPeriodo(periodoId, hoje);
   const canal = await obterCanal(scope.clientId);
-  const vazio: CanaisCliente = {
-    estado: { conectado: false, cadastrado: Boolean(canal), anuncios: Boolean(canal?.adAccountId), instagram: Boolean(canal?.igUserId), ultimaAtualizacao: null, comProblema: false, simulado: canaisFixtureAtiva(), resultado: canal?.resultActionType === RESULTADO_PADRAO || !canal ? "conversas" : "resultados" },
-    periodo, anuncios: null, instagram: null, evolucao: null,
+  const adsConfigurado = Boolean(canal && canal.adsSource === "meta" && canal.adAccountId);
+  const igConfigurado = Boolean(canal && (canal.igSource === "windsor" || (canal.igSource === "meta" && canal.igUserId)));
+  const adsOk = adsConfigurado && Boolean(canal!.lastSyncAt), igOk = igConfigurado && Boolean(canal!.igLastSyncAt);
+  const fonteIg: OrigemDado | null = igConfigurado ? (canal!.igSource as OrigemDado) : null;
+  const estado: EstadoCanalCliente = {
+    conectado: adsOk || igOk, cadastrado: Boolean(canal),
+    anuncios: adsConfigurado, anunciosConectado: adsOk, anunciosAtualizadoEm: adsOk ? canal!.lastSyncAt : null, anunciosComProblema: adsConfigurado && Boolean(canal!.lastError),
+    instagram: igConfigurado, instagramConectado: igOk, instagramAtualizadoEm: igOk ? canal!.igLastSyncAt : null, instagramComProblema: igConfigurado && Boolean(canal!.igLastError),
+    fonteInstagram: fonteIg, ultimaAtualizacao: [adsOk ? canal!.lastSyncAt : null, igOk ? canal!.igLastSyncAt : null].filter((x): x is string => Boolean(x)).sort().pop() ?? null,
+    comProblema: false, simulado: canaisFixtureAtiva(), resultado: canal?.resultActionType === RESULTADO_PADRAO || !canal ? "conversas" : "resultados",
   };
-  if (!canal || !canal.lastSyncAt) return { ...vazio, estado: { ...vazio.estado, comProblema: canal?.status === "erro" } };
+  estado.comProblema = estado.anunciosComProblema || estado.instagramComProblema;
+  const vazio: CanaisCliente = { estado, periodo, anuncios: null, instagram: null, evolucao: null };
+  if (!canal || (!adsOk && !igOk)) return vazio;
 
   const historico = addDays(hoje, -420);
-  const [camp, ig, ads, midias] = await Promise.all([
-    lerSnapshots(scope.clientId, ["campaign_daily"], historico, hoje),
-    lerSnapshots(scope.clientId, ["ig_daily"], historico, hoje),
-    lerSnapshots(scope.clientId, ["ad_daily"], periodo.anterior.de, hoje),
-    lerSnapshots(scope.clientId, ["ig_media"], addDays(hoje, -120), hoje),
+  const [camp, ig, ads, midias, aud] = await Promise.all([
+    adsOk ? lerSnapshots(scope.clientId, ["campaign_daily"], historico, hoje, "meta") : [],
+    igOk ? lerSnapshots(scope.clientId, ["ig_daily"], historico, hoje, fonteIg!) : [],
+    adsOk ? lerSnapshots(scope.clientId, ["ad_daily"], periodo.anterior.de, hoje, "meta") : [],
+    igOk ? lerSnapshots(scope.clientId, ["ig_media"], addDays(hoje, -120), hoje, fonteIg!) : [],
+    igOk ? lerSnapshots(scope.clientId, ["ig_audience"], addDays(hoje, -60), hoje, fonteIg!) : [],
   ]);
-  const todas = [...camp, ...ig, ...ads, ...midias];
+  const todas = [...camp, ...ig, ...ads, ...midias, ...aud];
   const filtro = canal.campaignIds;
-  const anuncios = canal.adAccountId ? relAnuncios(todas, periodo, filtro) : null;
-  const instagram = canal.igUserId ? relInstagram(todas, periodo) : null;
+  const anuncios = adsOk ? relAnuncios(todas, periodo, filtro) : null;
+  const instagram = igOk ? relInstagram(todas, periodo) : null;
   // IDs externos (campanha, anúncio, mídia) não saem daqui: a tela só precisa de uma chave estável para listar.
   if (anuncios) {
     anuncios.campanhas.forEach((c, i) => { c.id = `c${i}`; });
@@ -59,10 +82,7 @@ export async function carregarCanaisDoCliente(scope: ClientScope, periodoId: Per
   }
   instagram?.midias.forEach((m, i) => { m.id = `m${i}`; });
   return {
-    estado: { ...vazio.estado, conectado: true, ultimaAtualizacao: canal.lastSyncAt, comProblema: canal.status === "erro" || Boolean(canal.lastError) },
-    periodo,
-    anuncios,
-    instagram,
+    estado, periodo, anuncios, instagram,
     evolucao: { mes: evolucao(todas, "mes" as Agrupamento, hoje, filtro), semana: evolucao(todas, "semana" as Agrupamento, hoje, filtro) },
   };
 }

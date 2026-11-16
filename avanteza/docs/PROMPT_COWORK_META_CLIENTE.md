@@ -3,6 +3,8 @@
 > Use este prompt no Cowork (navegador do Pedro, já logado no Meta Business e na Central Avanteza).
 > Cliente deste prompt: **SHOWMAN** · conta de anúncios `act_605261696580859` · campanha **SHOW MAN | Assinatura R$69,90 | WhatsApp** (ID `120252388371430661`).
 > Para outro cliente, troque o nome, a conta de anúncios e a campanha.
+>
+> **Mudança:** o **Instagram agora vem do Windsor.ai** (fonte independente, configurada na seção “Mídias (Instagram)” da aba Canais). O Cowork só precisa do token de **ANÚNCIOS** (Meta Ads): permissões **`ads_read`** e **`read_insights`**. Página e Instagram (`pages_read_engagement`, `instagram_basic`, `instagram_manage_insights`, IDs) passam a ser **opcionais**, só se o Instagram for lido pela Meta em vez do Windsor. Nos passos abaixo, ignore Página/Instagram se o Instagram do cliente já estiver no Windsor.ai.
 
 ---
 
@@ -26,7 +28,7 @@ Se o Instagram não aparecer: ele precisa ser uma conta **profissional** (comerc
 1. Ainda no usuário do sistema, clique em **Gerar novo token**.
 2. Escolha o app já existente da Avanteza.
 3. Validade: **Nunca expira**.
-4. Marque **somente** estas permissões: `ads_read`, `read_insights`, `pages_read_engagement`, `pages_show_list`, `instagram_basic`, `instagram_manage_insights`. (Inclua `business_management` só se a lista de contas não aparecer sem ela.)
+4. Marque **somente** estas permissões: `ads_read` e `read_insights` (para anúncios). Opcionais, só se o Instagram for pela Meta: `pages_read_engagement`, `pages_show_list`, `instagram_basic`, `instagram_manage_insights`. (Inclua `business_management` só se a lista de contas não aparecer sem ela.)
 5. **Não marque** nenhuma permissão de escrita: nada de `ads_management`, `pages_manage_*`, `instagram_content_publish`, `whatsapp_*`, `pages_messaging`.
 6. Gere e mantenha o token **só na tela**, sem copiar para lugar nenhum ainda.
 
@@ -50,10 +52,10 @@ Responda com:
 
 ## Passo 6 — Colar o token na Central (único lugar permitido)
 1. Abra https://app.avanteza.com.br/clientes (login do Pedro), entre em **Showman** e clique na aba **Canais**. O formulário chama-se **Conectar Meta**.
-2. Preencha os campos, com estes nomes exatos: **Conta de anúncios** `605261696580859` (com ou sem o `act_`); **Campanhas** `120252388371430661` (ou deixe em branco para todas); **ID do Instagram**; **ID da Página**; **Token** (campo de senha: cole aqui, uma única vez). Não mexa em “Opções avançadas”.
-3. Clique em **Testar conexão**. O teste só lê (GET) e mostra, sem expor o token: token válido, permissões de leitura (e as que faltam), nome/status/moeda da conta de anúncios, acesso à campanha, Página e Instagram reconhecidos. Se o ID do Instagram estiver em branco e a Página tiver um Instagram vinculado, a tela sugere o ID. Resolva qualquer item “Falhou” antes de seguir.
+2. Na seção **“Tráfego (anúncios) · Meta Ads”**, preencha os campos (o Instagram tem seção própria, “Mídias (Instagram) · Windsor.ai”, e não é preenchido aqui), com estes nomes exatos: **Conta de anúncios** `605261696580859` (com ou sem o `act_`); **Campanhas** `120252388371430661` (ou deixe em branco para todas); **Token** (campo de senha: cole aqui, uma única vez). Não mexa em “Opções avançadas”.
+3. Clique em **Testar conexão (Meta Ads)**. O teste só lê (GET) e mostra, sem expor o token: token válido, permissões de leitura (e as que faltam), nome/status/moeda da conta de anúncios, acesso à campanha, Página e Instagram reconhecidos. Se o ID do Instagram estiver em branco e a Página tiver um Instagram vinculado, a tela sugere o ID. Resolva qualquer item “Falhou” antes de seguir.
 4. Clique em **Salvar**. O token é guardado criptografado e nunca mais aparece na tela; só os 4 últimos caracteres ficam visíveis (“termina em ····”).
-5. Na parte de cima da aba, clique em **Atualizar agora**: ele coleta anúncios, criativos, Instagram e completa até 90 dias de histórico (leva alguns segundos). A mensagem verde “Coleta concluída: N registros gravados” indica que a primeira coleta trouxe dados.
+5. Na parte de cima da seção de anúncios, clique em **Atualizar anúncios agora**: ele coleta anúncios, criativos, Instagram e completa até 90 dias de histórico (leva alguns segundos). A mensagem verde “Coleta concluída: N registros gravados” indica que a primeira coleta trouxe dados.
 6. Limpe a área de transferência. Não tire print dessa tela com o token.
 7. Me diga o resultado do teste (quais permissões foram reconhecidas e quais faltam) e a mensagem do **Atualizar agora**.
 

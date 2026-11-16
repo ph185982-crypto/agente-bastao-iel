@@ -26,10 +26,10 @@ export async function carregarCanaisClientes(periodo: Intervalo, meta: Fonte<Met
        left join (
          select distinct on (c2.ad_account_id, x.key, x.date) c2.client_id, x.date, x.metrics
            from avanteza.channel_snapshots x join avanteza.client_channels c2 on c2.client_id = x.client_id and c2.provider = 'meta'
-          where x.kind = 'campaign_daily' and x.date between $1::date and $2::date
+          where x.kind = 'campaign_daily' and x.source = 'meta' and x.date between $1::date and $2::date
           order by c2.ad_account_id, x.key, x.date, x.updated_at desc
        ) s on s.client_id = ch.client_id
-      where ch.provider = 'meta' and ch.ad_account_id is not null and ch.status <> 'desconectado' and cl.active
+      where ch.provider = 'meta' and ch.ads_source = 'meta' and ch.ad_account_id is not null and ch.status <> 'desconectado' and cl.active
       group by cl.name, ch.ad_account_id
       order by gasto desc, cliente`,
     [periodo.de, periodo.ate],

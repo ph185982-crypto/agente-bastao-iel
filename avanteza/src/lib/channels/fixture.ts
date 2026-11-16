@@ -4,6 +4,7 @@
 import { addDays } from "@/lib/dates";
 import { listarDias } from "@/lib/dashboards/periodo";
 import type { AnuncioInfo, CanaisApi, IgMetricaDia, IgMidiaBruta, InsightBruto, ResultadoTeste } from "./types";
+import type { FonteWindsor, Intervalo, PerfilWindsor } from "./windsor";
 import { RESULTADO_PADRAO } from "./types";
 
 export function canaisFixtureAtiva(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -127,6 +128,67 @@ export function criarApiFixture(hoje: string): CanaisApi {
         });
       });
       return out;
+    },
+  };
+}
+
+// ─── Windsor simulado (só desenvolvimento/capturas/testes): conta e ordem de grandeza reais do Showman, números determinísticos ───────────
+const WINDSOR_CONTA = "showmanbarbearia";
+const WINDSOR_SEGUIDORES = 1985;
+
+export function criarWindsorFixture(hoje: string): FonteWindsor {
+  const faixa = (i: Intervalo): [string, string] => ("preset" in i ? [addDays(hoje, -29), hoje] : [i.de, i.ate]);
+  const perfil = async (i: Intervalo): Promise<PerfilWindsor> => {
+    const [de, ate] = faixa(i);
+    const dias: PerfilWindsor["dias"] = [];
+    for (const d of listarDias(de, ate)) {
+      if (d > hoje) continue;
+      const m: Record<string, number> = { follower_net: Math.round(1 + rnd(`wn${d}`) * 7 - (rnd(`wm${d}`) < 0.18 ? 4 : 0)) };
+      if (d < hoje) {
+        m.reach = Math.round(260 + rnd(`wr${d}`) * 700 + (dow(d) === 5 ? 220 : 0));
+        m.views = Math.round(m.reach * (1.5 + rnd(`wv${d}`) * 1.1));
+        m.profile_views = Math.round(14 + rnd(`wp${d}`) * 52);
+        m.accounts_engaged = Math.round(10 + rnd(`we${d}`) * 48);
+        m.total_interactions = Math.round(28 + rnd(`wt${d}`) * 120);
+      } else m.followers = WINDSOR_SEGUIDORES;
+      dias.push({ date: d, metrics: m });
+    }
+    return { conta: WINDSOR_CONTA, contas: [WINDSOR_CONTA], seguidores: WINDSOR_SEGUIDORES, seguidoresDia: hoje, dias, camposComDado: ["accounts_engaged", "follower_count", "followers_count", "profile_views", "reach", "total_interactions", "views"], linhasIgnoradas: 0 };
+  };
+  return {
+    perfil,
+    async midias(i, limite): Promise<IgMidiaBruta[]> {
+      const [de] = faixa(i);
+      const out: IgMidiaBruta[] = [];
+      MIDIAS.forEach(([tipo, legenda], k) => {
+        const data = addDays(hoje, -(2 + k * 6));
+        if (data < de || out.length >= limite) return;
+        const reel = tipo === "REEL";
+        const alcance = k === 0 ? 1775 : Math.round((reel ? 1700 : 640) * (0.35 + rnd(`wma${k}`) * 1.3));
+        const likes = Math.round(alcance * (0.035 + rnd(`wml${k}`) * 0.05));
+        out.push({
+          id: `1790000000001${k}`, tipo: reel ? "VIDEO" : tipo, produto: reel ? "REELS" : "FEED", legenda, permalink: `https://www.instagram.com/p/SIMULADO${k}/`, thumb: null,
+          data, timestamp: `${data}T15:00:00+0000`, likes, comentarios: Math.round(likes * 0.07), alcance, salvos: Math.round(likes * 0.1), compartilhamentos: Math.round(likes * 0.09),
+          views: k === 0 ? 2899 : reel ? Math.round(alcance * 1.6) : null, interacoes: Math.round(likes * 1.26),
+        });
+      });
+      return out;
+    },
+    async audiencia() {
+      return { dados: { idade: { "13-17": 12, "18-24": 410, "25-34": 780, "35-44": 520, "45-54": 160, "55-64": 48, "65+": 14 }, genero: { M: 1330, F: 560, U: 54 }, cidades: { "Belo Horizonte, Minas Gerais": 940, "Contagem, Minas Gerais": 130, "Betim, Minas Gerais": 84, "Sabará, Minas Gerais": 52, "Santa Luzia, Minas Gerais": 41 } }, erros: [] };
+    },
+    async testar() {
+      const p = await perfil({ preset: "last_30d" });
+      return {
+        ok: true, origemChave: "nenhuma" as const,
+        verificacoes: [
+          { id: "chave", rotulo: "Chave aceita pelo Windsor.ai", ok: true, detalhe: "Dados simulados (CHANNELS_FIXTURE): nenhuma chamada real ao Windsor.ai." },
+          { id: "contas", rotulo: "Contas de Instagram no Windsor.ai", ok: true, detalhe: `1 conta(s): @${WINDSOR_CONTA}.` },
+          { id: "perfil", rotulo: "Perfil diário (últimos 30 dias)", ok: true, detalhe: `${p.dias.length} dia(s) lidos · ${WINDSOR_SEGUIDORES} seguidores hoje.` },
+          { id: "midias", rotulo: "Mídias (últimos 30 dias)", ok: true, detalhe: "5 mídia(s) lidas, 0 com miniatura." },
+        ],
+        info: { contas: [WINDSOR_CONTA], campos: p.camposComDado, dias: p.dias.length, midias: 5, seguidores: WINDSOR_SEGUIDORES, ig_username: WINDSOR_CONTA },
+      };
     },
   };
 }
