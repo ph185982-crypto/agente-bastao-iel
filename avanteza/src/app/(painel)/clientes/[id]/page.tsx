@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { userDb } from "@/lib/db";
 import { addDays, spDate } from "@/lib/dates";
+import { ListingThumb } from "@/components/ListingThumb";
 import { brl, int, pct, dec, dt, ago, REPUTATION_LABEL, STATUS_LABEL } from "@/lib/format";
 import { Flash } from "@/components/Flash";
 import { Submit } from "@/components/Submit";
@@ -72,7 +73,7 @@ export default async function Cliente({
 
   const [snaps, listings, questions, campaigns, rules, policies, actions, alerts, report] = await Promise.all([
     db.from("daily_snapshots").select("*").in("account_id", ids).gte("snapshot_date", addDays(today, -14)).order("snapshot_date"),
-    db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d, permalink, variations").in("account_id", ids).order("sold_quantity", { ascending: false }).limit(300),
+    db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d, permalink, thumbnail, variations").in("account_id", ids).order("sold_quantity", { ascending: false }).limit(300),
     db.from("questions").select("*").in("account_id", ids).eq("status", "UNANSWERED").order("date_created").limit(50),
     db.from("ads_campaigns").select("*").in("account_id", ids).order("name"),
     db.from("alert_rules").select("*").eq("client_id", id),
@@ -250,7 +251,7 @@ export default async function Cliente({
             <tbody>
               {[...problemListings, ...L.filter((l) => !problemListings.includes(l))].slice(0, 60).map((l) => (
                 <tr key={l.account_id + l.external_id}>
-                  <td>{l.permalink ? <a href={l.permalink} target="_blank" rel="noreferrer">{l.title}</a> : l.title}<div className="small muted mono">{l.external_id}</div>
+                  <td><div className="item-main"><ListingThumb url={l.thumbnail} title={l.title} /><div className="grow"><span className="ttl">{l.permalink ? <a href={l.permalink} target="_blank" rel="noreferrer">{l.title}</a> : l.title}</span><div className="small muted mono">{l.external_id}</div></div></div>
                     {Array.isArray(l.variations) && l.variations.length > 0 && (
                       <details>
                         <summary className="small">{l.variations.length} variações</summary>

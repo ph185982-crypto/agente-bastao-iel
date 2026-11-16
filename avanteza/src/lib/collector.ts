@@ -59,8 +59,10 @@ export async function collectAccount(acc: AccountRow): Promise<CollectResult> {
     // Visitas dos últimos 30 dias: rotaciona para cobrir aos poucos os anúncios sem dado recente.
     const { data: prevListings } = await db
       .from("listings")
-      .select("external_id, visits_30d, updated_at")
+      .select("external_id, visits_30d, updated_at, thumbnail, image_urls")
       .eq("account_id", acc.id);
+    // Não apaga a foto que já temos se a API deixar de devolvê-la numa rodada (sem chamada extra: vem do mesmo select).
+    const prevImg = new Map((prevListings ?? []).map((l) => [l.external_id, { thumbnail: (l.thumbnail as string | null) ?? null, images: (l.image_urls as string[] | null) ?? null }]));
     const prevVisits = new Map((prevListings ?? []).map((l) => [l.external_id, l.visits_30d as number | null]));
     const visitTargets = listings
       .filter((l) => l.status === "active")
@@ -80,7 +82,9 @@ export async function collectAccount(acc: AccountRow): Promise<CollectResult> {
       sold_quantity: l.soldQuantity,
       visits_30d: visits[l.externalId] ?? prevVisits.get(l.externalId) ?? null,
       permalink: l.permalink,
-      thumbnail: l.thumbnail,
+      thumbnail: l.thumbnail ?? prevImg.get(l.externalId)?.thumbnail ?? null,
+      // jsonb: serializa aqui (o cliente do banco trataria uma lista de textos como text[])
+      image_urls: l.imageUrls?.length ? JSON.stringify(l.imageUrls) : prevImg.get(l.externalId)?.images ? JSON.stringify(prevImg.get(l.externalId)!.images) : null,
       listing_type_id: l.listingTypeId,
       has_variations: l.hasVariations,
       variations: l.variations?.length ? l.variations : null,

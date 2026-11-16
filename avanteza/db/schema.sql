@@ -97,7 +97,8 @@ create table if not exists avanteza.listings (
   sold_quantity integer,
   visits_30d integer,
   permalink text,
-  thumbnail text,
+  thumbnail text,                 -- URL https da miniatura (ML secure_thumbnail / Shopee e TikTok: 1ª foto); preenchida pelo coletor
+  image_urls jsonb,               -- fotos do anúncio: ["https://…", …] (até 6)
   listing_type_id text,
   has_variations boolean default false,
   variations jsonb,               -- [{id, name, price, stock, sku}] (variações/modelos/SKUs)
@@ -327,6 +328,10 @@ create table if not exists avanteza.ai_reports (
   created_at timestamptz not null default now(),
   unique (client_id, report_date)
 );
+
+-- Fotos dos anúncios (bancos criados antes da miniatura; o próximo ciclo do coletor preenche)
+alter table avanteza.listings add column if not exists thumbnail text;
+alter table avanteza.listings add column if not exists image_urls jsonb;
 
 -- Autonomia: teto diário de ações automáticas por cliente e IA liga/desliga
 alter table avanteza.settings add column if not exists max_auto_actions_per_day integer not null default 20;

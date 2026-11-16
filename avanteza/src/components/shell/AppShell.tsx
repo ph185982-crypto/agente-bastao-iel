@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "../Logo";
 import { Icon } from "./Icons";
+import { ThemeToggle } from "../ThemeToggle";
 
 export type NavItem = { href: string; label: string; icon: string; badge?: number; exact?: boolean };
 export type NavGroup = { label?: string; items: NavItem[] };
@@ -62,6 +63,7 @@ export function AppShell({
             </Link>
             {tag && <span className="pill pill-orange">{tag}</span>}
           </div>
+          <ThemeToggle className="sb-theme" />
           <button type="button" className="icon-btn sb-close" aria-label="Fechar menu" onClick={() => setOpen(false)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
@@ -91,7 +93,10 @@ export function AppShell({
             </button>
             <Link href={homeHref} style={{ textDecoration: "none" }} aria-label="Início"><Logo size={20} /></Link>
           </div>
-          {tag && <span className="pill pill-orange">{tag}</span>}
+          <div className="mb-left">
+            {tag && <span className="pill pill-orange">{tag}</span>}
+            <ThemeToggle />
+          </div>
         </header>
         {banner}
         <main className="main">{children}</main>

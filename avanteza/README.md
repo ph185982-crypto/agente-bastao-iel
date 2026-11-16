@@ -108,3 +108,8 @@ Sem `TEST_DATABASE_URL`, os testes que precisam de banco são ignorados (os dema
 - Shopee: preço e estoque por modelo; sem modelo, o preço vale para todos.
 - TikTok Shop: preço e estoque por SKU; sem SKU, o preço vale para todos.
 Os IDs aparecem em Clientes → Anúncios → "N variações" e a IA também pode propor por variação.
+
+## Tema e fotos dos anúncios
+
+- **Tema claro/escuro:** botão sol/lua no topo (sidebar no desktop, barra superior no celular, canto da tela no login). A escolha fica em `localStorage` + cookie `avanteza-tema`; na primeira visita vale o `prefers-color-scheme`. Tokens em `src/app/globals.css` por `[data-theme]`; `tests/visual.test.ts` confere contraste AA nos dois temas.
+- **Fotos:** `listings.thumbnail` (miniatura https) e `listings.image_urls` (jsonb, até 6) são preenchidas pelo coletor a partir das mesmas chamadas de antes (ML multiget, Shopee `get_item_base_info`, TikTok `get_product`). Anúncios já coletados sem foto são preenchidos no próximo ciclo do coletor (ou ao chegar um webhook `items`); até lá aparece a inicial do título. Em bancos existentes rode `node db/apply.mjs` (adiciona `image_urls`).

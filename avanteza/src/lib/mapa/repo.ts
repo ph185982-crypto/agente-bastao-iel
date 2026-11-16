@@ -116,7 +116,7 @@ export async function marketplaceData(scope: ClientScope, sinceDate: string) {
       .gte("snapshot_date", sinceDate)
       .order("snapshot_date"),
     db.from("listings")
-      .select("account_id, external_id, title, status, price, available_quantity, sold_quantity, visits_30d, permalink")
+      .select("account_id, external_id, title, status, price, available_quantity, sold_quantity, visits_30d, permalink, thumbnail")
       .in("account_id", accIds)
       .order("sold_quantity", { ascending: false })
       .limit(200),

@@ -75,6 +75,7 @@ async function processOne(ev: { id: number; marketplace: string; topic: string; 
           sold_quantity: l.soldQuantity,
           permalink: l.permalink,
           thumbnail: l.thumbnail,
+          image_urls: l.imageUrls?.length ? JSON.stringify(l.imageUrls) : null,
           listing_type_id: l.listingTypeId,
           has_variations: l.hasVariations,
           variations: l.variations?.length ? l.variations : null,

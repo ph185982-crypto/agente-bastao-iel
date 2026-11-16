@@ -55,6 +55,7 @@ test("isolamento: cliente A não lê NADA do cliente B (plano, ações, reuniõe
   const m = await repo.marketplaceData(s, "2020-01-01");
   assert.deepEqual(m.accounts.map((a) => a.nickname), ["Loja NICO"]);
   assert.deepEqual(m.listings.map((l) => l.title), ["Anúncio NICO"]);
+  assert.equal(m.listings[0].thumbnail, "https://http2.mlstatic.com/NICO-I.jpg", "miniatura chega à tela Marketplaces do Mapa");
   assert.deepEqual(m.alerts.map((a) => a.title), ["Alerta NICO"]);
   assert.equal(m.snapshots.length, 1);
   // nada de outro cliente vaza em nenhuma resposta

@@ -12,8 +12,8 @@ const state = {
   refreshUsed: new Set<string>(),
   refreshCalls: 0,
   items: {
-    MLB100: { id: "MLB100", title: "Fone Bluetooth X", status: "active", sub_status: [], price: 199.9, currency_id: "BRL", available_quantity: 12, sold_quantity: 340, permalink: "https://x/100", thumbnail: null, listing_type_id: "gold_pro", variations: [] as any[] },
-    MLB200: { id: "MLB200", title: "Camiseta Dry", status: "active", sub_status: [], price: 59.9, currency_id: "BRL", available_quantity: 5, sold_quantity: 80, permalink: "https://x/200", thumbnail: null, listing_type_id: "gold_special",
+    MLB100: { id: "MLB100", title: "Fone Bluetooth X", status: "active", sub_status: [], price: 199.9, currency_id: "BRL", available_quantity: 12, sold_quantity: 340, permalink: "https://x/100", thumbnail: "http://http2.mlstatic.com/D_100-I.jpg", secure_thumbnail: "https://http2.mlstatic.com/D_100-I.jpg", pictures: [{ secure_url: "https://http2.mlstatic.com/D_100-O.jpg" }, { secure_url: "javascript:alert(1)" }, { url: "http://http2.mlstatic.com/D_100b-O.jpg" }], listing_type_id: "gold_pro", variations: [] as any[] },
+    MLB200: { id: "MLB200", title: "Camiseta Dry", status: "active", sub_status: [], price: 59.9, currency_id: "BRL", available_quantity: 5, sold_quantity: 80, permalink: "https://x/200", thumbnail: "http://http2.mlstatic.com/D_200-I.jpg", pictures: [], listing_type_id: "gold_special",
       variations: [
         { id: 9001, price: 59.9, available_quantity: 5, attribute_combinations: [{ name: "Cor", value_name: "Azul" }, { name: "Tamanho", value_name: "M" }], seller_custom_field: "AZ-M" },
         { id: 9002, price: 59.9, available_quantity: 0, attribute_combinations: [{ name: "Cor", value_name: "Azul" }, { name: "Tamanho", value_name: "G" }], seller_custom_field: "AZ-G" },
@@ -121,6 +121,14 @@ const server = http.createServer(async (req, res) => {
     const l200 = ok(await db.from("listings").select("variations").eq("account_id", acc.id).eq("external_id", "MLB200").single(), "l200");
     assert.equal(l200.variations.length, 2); assert.equal(l200.variations[1].name, "Azul / G");
     step("snapshot diário (R$ 319,70 em 2 pedidos, cancelado fora) e variações salvas");
+    // fotos: vêm no mesmo multiget; http vira https, URL inválida é descartada, sem foto fica nulo
+    const imgs = ok(await db.from("listings").select("external_id, thumbnail, image_urls").eq("account_id", acc.id), "fotos");
+    const img = (id: string) => imgs.find((x: any) => x.external_id === id);
+    assert.equal(img("MLB100").thumbnail, "https://http2.mlstatic.com/D_100-I.jpg");
+    assert.deepEqual(img("MLB100").image_urls, ["https://http2.mlstatic.com/D_100-O.jpg", "https://http2.mlstatic.com/D_100b-O.jpg"]);
+    assert.equal(img("MLB200").thumbnail, "https://http2.mlstatic.com/D_200-I.jpg"); assert.equal(img("MLB200").image_urls, null);
+    assert.equal(img("MLB300").thumbnail, null);
+    step("fotos dos anúncios salvas (https, URL inválida descartada, sem foto = nulo)");
 
     // 2) Alertas
     const al = await runAlerts();

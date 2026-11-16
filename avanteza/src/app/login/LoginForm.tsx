@@ -2,11 +2,13 @@
 import { useActionState } from "react";
 import { login } from "@/app/actions";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function LoginForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState(login, null);
   return (
     <div className="login-wrap">
+      <ThemeToggle className="theme-float" />
       <div className="login-box">
         <Logo sub size={36} />
         <p className="muted" style={{ marginTop: 16 }}>

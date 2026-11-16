@@ -44,7 +44,7 @@ export async function mkData(clientId: string, tag: string) {
   const [hidden] = await rawQuery<{ id: string }>("insert into avanteza.client_files (client_id, title, url, visible) values ($1,$2,'https://x.test/b',false) returning id", [clientId, `Oculto ${tag}`]);
   const [acc] = await rawQuery<{ id: string }>("insert into avanteza.marketplace_accounts (client_id, marketplace, external_user_id, nickname, access_token_enc, refresh_token_enc) values ($1,'mercadolivre',$2,$3,'TOKEN-SECRETO','REFRESH-SECRETO') returning id", [clientId, `u-${tag}`, `Loja ${tag}`]);
   await rawQuery("insert into avanteza.daily_snapshots (account_id, snapshot_date, revenue, orders_count, ads_cost, ads_revenue) values ($1,$2,1000,10,100,500)", [acc.id, new Date().toISOString().slice(0, 10)]);
-  await rawQuery("insert into avanteza.listings (account_id, external_id, title, status) values ($1,$2,$3,'active')", [acc.id, `MLB-${tag}`, `Anúncio ${tag}`]);
+  await rawQuery("insert into avanteza.listings (account_id, external_id, title, status, thumbnail) values ($1,$2,$3,'active',$4)", [acc.id, `MLB-${tag}`, `Anúncio ${tag}`, `https://http2.mlstatic.com/${tag}-I.jpg`]);
   await rawQuery("insert into avanteza.alerts (client_id, rule_type, title, dedup_key) values ($1,'x',$2,$3)", [clientId, `Alerta ${tag}`, `d-${tag}`]);
   return { phase: phase.id, action: action.id, action2: action2.id, meeting: meeting.id, file: file.id, hidden: hidden.id, account: acc.id };
 }

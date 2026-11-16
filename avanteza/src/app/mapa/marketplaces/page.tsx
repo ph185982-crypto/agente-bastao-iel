@@ -7,6 +7,7 @@ import { brl, int, dec, pct, ago, REPUTATION_LABEL } from "@/lib/format";
 import { sumPeriod, variation } from "@/lib/mapa/metrics";
 import { MARKETPLACE_LABEL } from "@/lib/marketplaces";
 import { Bars } from "@/components/Bars";
+import { ListingThumb } from "@/components/ListingThumb";
 
 export default async function Marketplaces() {
   const { scope } = await requireMapa();
@@ -78,7 +79,7 @@ export default async function Marketplaces() {
               <tbody>
                 {d.listings.slice(0, 40).map((l) => (
                   <tr key={l.account_id + l.external_id}>
-                    <td>{l.permalink ? <a href={l.permalink} target="_blank" rel="noreferrer">{l.title}</a> : l.title}</td>
+                    <td><div className="item-main"><ListingThumb url={l.thumbnail} title={l.title} /><span className="ttl grow">{l.permalink ? <a href={l.permalink} target="_blank" rel="noreferrer">{l.title}</a> : l.title}</span></div></td>
                     <td>{name(l.account_id)}</td>
                     <td><span className={`pill ${l.status === "active" ? "pill-ok" : "pill-sand"}`}>{l.status === "active" ? "Ativo" : l.status === "paused" ? "Pausado" : l.status}</span></td>
                     <td className="num">{brl(l.price)}</td>

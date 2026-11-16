@@ -18,13 +18,14 @@ import type {
   TokenSet,
   WebhookNotification,
 } from "../types";
+import { firstImage, imageList } from "../images";
 
 // ML_API_BASE só existe para o teste de ponta a ponta com o Mercado Livre simulado.
 export const ML_API = process.env.ML_API_BASE && process.env.NODE_ENV !== "production" ? process.env.ML_API_BASE : "https://api.mercadolibre.com";
 export const ML_AUTH = "https://auth.mercadolivre.com.br/authorization";
 
 const ITEM_ATTRIBUTES =
-  "id,title,status,sub_status,price,currency_id,available_quantity,sold_quantity,permalink,thumbnail,listing_type_id,variations";
+  "id,title,status,sub_status,price,currency_id,available_quantity,sold_quantity,permalink,thumbnail,secure_thumbnail,pictures,listing_type_id,variations";
 
 type Json = Record<string, any>;
 
@@ -61,6 +62,10 @@ function mapVariations(b: Json): Variation[] {
   }));
 }
 
+function pics(b: Json): unknown[] {
+  return ((b.pictures ?? []) as Json[]).map((p) => p?.secure_url ?? p?.url);
+}
+
 function mapListing(b: Json): Listing {
   return {
     externalId: b.id,
@@ -72,7 +77,10 @@ function mapListing(b: Json): Listing {
     availableQuantity: num(b.available_quantity),
     soldQuantity: num(b.sold_quantity),
     permalink: b.permalink ?? null,
-    thumbnail: b.thumbnail ?? null,
+    // multiget já traz thumbnail/secure_thumbnail/pictures: nenhuma chamada extra. A miniatura pequena (-I.jpg) é a
+    // mais leve para a lista; sem ela, cai para a primeira foto.
+    thumbnail: firstImage(b.secure_thumbnail, b.thumbnail, ...pics(b).slice(0, 1)),
+    imageUrls: imageList(pics(b)),
     listingTypeId: b.listing_type_id ?? null,
     hasVariations: Array.isArray(b.variations) && b.variations.length > 0,
     variations: mapVariations(b),
