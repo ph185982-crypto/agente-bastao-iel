@@ -42,6 +42,7 @@ export function Shell({
                 {n.key && counts[n.key as "approvals" | "alerts"] > 0 ? ` (${counts[n.key as "approvals" | "alerts"]})` : ""}
               </Link>
             ))}
+            <Link href="/entregas">Entregas</Link>
             <Link href="/relatorios">Relatórios</Link>
             <Link href="/auditoria">Auditoria</Link>
           </nav>

@@ -336,3 +336,114 @@ alter table avanteza.clients add column if not exists ai_instructions text; -- c
 
 -- Regra pode propor ação automaticamente (ex.: ROAS baixo → reduzir verba)
 alter table avanteza.alert_rules add column if not exists propose_action boolean not null default false;
+
+
+-- ═════════════════════════ Mapa — área do cliente (V1) ═════════════════════════
+-- Estende clients/admins (não duplica). Tudo idempotente: pode rodar `node db/apply.mjs` quantas vezes quiser.
+
+-- Clientes: identificação, tipo de serviço, pasta no Drive e início do plano de 12 meses.
+alter table avanteza.clients add column if not exists slug text;
+alter table avanteza.clients add column if not exists kind text not null default 'marketplace';
+alter table avanteza.clients add column if not exists drive_folder_id text;
+alter table avanteza.clients add column if not exists start_date date;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'clients_kind_check' and conrelid = 'avanteza.clients'::regclass) then
+    alter table avanteza.clients add constraint clients_kind_check check (kind in ('marketplace','midia','ambos'));
+  end if;
+end $$;
+create unique index if not exists clients_slug_uniq on avanteza.clients(slug) where slug is not null;
+
+-- Usuários do cliente: reaproveitam avanteza.admins (mesmo /login, mesma sessão) com o papel "client".
+-- Regra de integridade: papel "client" SEMPRE tem client_id; os demais papéis NUNCA têm.
+alter table avanteza.admins add column if not exists client_id uuid references avanteza.clients(id) on delete cascade;
+alter table avanteza.admins drop constraint if exists admins_role_check;
+alter table avanteza.admins add constraint admins_role_check check (role in ('admin','member','reviewer','client'));
+alter table avanteza.admins drop constraint if exists admins_client_id_check;
+alter table avanteza.admins add constraint admins_client_id_check check ((role = 'client') = (client_id is not null));
+create index if not exists admins_client_idx on avanteza.admins(client_id) where client_id is not null;
+
+-- Reuniões (resumo, decisões e gravação). transcript_text é interno: nunca é mostrado ao cliente.
+create table if not exists avanteza.meetings (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  title text not null,
+  held_at timestamptz not null,
+  recording_url text,
+  transcript_url text,
+  transcript_text text,
+  summary text,
+  decisions jsonb not null default '[]'::jsonb,   -- ["decisão", …]
+  status text not null default 'aguardando_analise' check (status in ('aguardando_analise','analisada','manual','erro')),
+  analysis_error text,
+  ai_provider text,
+  ai_model text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists meetings_client_idx on avanteza.meetings(client_id, held_at desc);
+create unique index if not exists meetings_seed_uniq on avanteza.meetings(client_id, title, held_at);
+
+-- Fases do plano de 12 meses.
+create table if not exists avanteza.plan_phases (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  position integer not null,
+  name text not null,
+  description text,
+  start_month integer not null,   -- 1..12 (mês do plano em que a fase começa)
+  end_month integer not null,
+  starts_on date,
+  ends_on date,
+  created_at timestamptz not null default now(),
+  unique (client_id, position)
+);
+
+-- Ações do plano (do plano padrão, saídas de reuniões ou manuais).
+create table if not exists avanteza.plan_actions (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  phase_id uuid references avanteza.plan_phases(id) on delete set null,
+  title text not null,
+  description text,
+  status text not null default 'planejada' check (status in ('planejada','em_execucao','concluida','bloqueada')),
+  owner text not null default 'avanteza' check (owner in ('avanteza','cliente')),
+  due_date date,
+  origin text not null default 'plano' check (origin in ('plano','reuniao','manual')),
+  meeting_id uuid references avanteza.meetings(id) on delete set null,
+  position integer not null default 0,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists plan_actions_client_idx on avanteza.plan_actions(client_id, status, due_date);
+create index if not exists plan_actions_meeting_idx on avanteza.plan_actions(meeting_id) where meeting_id is not null;
+
+-- Arquivos entregues ao cliente (links; o conteúdo fica no Drive).
+create table if not exists avanteza.client_files (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  title text not null,
+  url text not null,
+  drive_file_id text,
+  kind text,
+  file_date date,
+  visible boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists client_files_client_idx on avanteza.client_files(client_id, file_date desc);
+create unique index if not exists client_files_drive_uniq on avanteza.client_files(client_id, drive_file_id) where drive_file_id is not null;
+
+-- Grupo de empresas do mesmo titular (ex.: Vulk Jeans, Lumiere e Plenitude → grupo "rodrigo").
+alter table avanteza.clients add column if not exists group_slug text;
+alter table avanteza.clients add column if not exists owner_name text;          -- titular
+alter table avanteza.clients add column if not exists drive_folder_ids text[] not null default '{}'; -- pastas extras do Drive
+create index if not exists clients_group_idx on avanteza.clients(group_slug) where group_slug is not null;
+
+-- Vínculo usuário do cliente ↔ empresas que ele pode ver (inclui a empresa principal, admins.client_id).
+create table if not exists avanteza.client_user_clients (
+  user_email text not null references avanteza.admins(email) on delete cascade on update cascade,
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_email, client_id)
+);
+create index if not exists client_user_clients_client_idx on avanteza.client_user_clients(client_id);

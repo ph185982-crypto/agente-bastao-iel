@@ -1,6 +1,7 @@
 // Provedor de IA configurável (AI_PROVIDER). Hoje: Anthropic (SDK oficial, saída estruturada).
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+import type { ZodType } from "zod";
 import { AgentOutputSchema, type AgentOutput } from "./schema";
 import { envOptional } from "../env";
 
@@ -11,10 +12,19 @@ export interface AgentResult {
   usage: Record<string, unknown>;
 }
 
+export interface ExtractResult<T> {
+  output: T;
+  provider: string;
+  model: string;
+  usage: Record<string, unknown>;
+}
+
 export interface AiProvider {
   readonly name: string;
   enabled(): boolean;
   analyze(system: string, context: string): Promise<AgentResult>;
+  /** Extração estruturada genérica (ex.: reuniões): a resposta é validada pelo schema zod informado. */
+  extract<T>(system: string, context: string, schema: ZodType<T>): Promise<ExtractResult<T>>;
 }
 
 export class AnthropicProvider implements AiProvider {
@@ -27,6 +37,11 @@ export class AnthropicProvider implements AiProvider {
   }
 
   async analyze(system: string, context: string): Promise<AgentResult> {
+    const r = await this.extract(system, context, AgentOutputSchema);
+    return r;
+  }
+
+  async extract<T>(system: string, context: string, schema: ZodType<T>): Promise<ExtractResult<T>> {
     // O SDK lê ANTHROPIC_API_KEY do ambiente e já faz retry com backoff em 429/5xx.
     const client = new Anthropic({ maxRetries: 3, timeout: 120_000 });
     const response = await client.beta.messages.parse({
@@ -35,12 +50,12 @@ export class AnthropicProvider implements AiProvider {
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default", // se o modelo recusar, a API reprocessa em um modelo de fallback
       system,
-      output_config: { effort: this.effort, format: betaZodOutputFormat(AgentOutputSchema) },
+      output_config: { effort: this.effort, format: betaZodOutputFormat(schema as any) },
       messages: [{ role: "user", content: context }],
     });
-    if (response.stop_reason === "refusal") throw new Error("A IA recusou a análise deste cliente.");
+    if (response.stop_reason === "refusal") throw new Error("A IA recusou a análise.");
     if (response.stop_reason === "max_tokens") throw new Error("Resposta da IA truncada (max_tokens).");
-    const parsed = AgentOutputSchema.safeParse(response.parsed_output);
+    const parsed = schema.safeParse(response.parsed_output);
     if (!parsed.success) throw new Error("Resposta da IA fora do formato esperado.");
     return {
       output: parsed.data,

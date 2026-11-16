@@ -1,0 +1,157 @@
+[
+ {
+  "name": "Nicoletti Professional",
+  "slug": "nicoletti",
+  "kind": "marketplace",
+  "drive_folder_id": "10hnxKDeje-g36_2yiSMikGwih_UJ0tqh",
+  "files": [
+   {
+    "title": "Contrato — Plano Marketplace (3 canais)",
+    "url": "https://docs.google.com/document/d/1c88oZ2RFXc4E45AjsO9C1ntmI-pZOPobHhmTnVxFhXE/edit",
+    "drive_file_id": "1c88oZ2RFXc4E45AjsO9C1ntmI-pZOPobHhmTnVxFhXE",
+    "kind": "contrato",
+    "date": "2026-10-29"
+   }
+  ],
+  "meetings": []
+ },
+ {
+  "name": "Showman",
+  "slug": "showman",
+  "kind": "midia",
+  "drive_folder_id": "1wB0KbGr28le_aKNPIIEgjTg1Cqo-qvCE",
+  "files": [
+   {
+    "title": "Planejamento estratégico Showman",
+    "url": "https://drive.google.com/file/d/1nnR5bKB8NzosZ20qU4k9UK2HHm04a-is/view",
+    "drive_file_id": "1nnR5bKB8NzosZ20qU4k9UK2HHm04a-is",
+    "kind": "planejamento",
+    "date": "2026-10-14"
+   },
+   {
+    "title": "Status — Showman",
+    "url": "https://docs.google.com/document/d/1n-By6oF6TGZZf6qPAzvL7GrsEtbLxzxqJKtxb0GGaas/edit",
+    "drive_file_id": "1n-By6oF6TGZZf6qPAzvL7GrsEtbLxzxqJKtxb0GGaas",
+    "kind": "status",
+    "date": "2026-10-13"
+   }
+  ],
+  "meetings": []
+ },
+ {
+  "name": "UFFIR",
+  "slug": "uffir",
+  "kind": "midia",
+  "drive_folder_id": "1z1hhYq9CQPaYRKyB2PjaiS_oSJ2G0VFd",
+  "files": [
+   {
+    "title": "Calendário e legendas — 09 a 15/11/2026",
+    "url": "https://docs.google.com/document/d/1W0AzJgdZ_Q-858ShX5RM58xuMUgfHcbBpyzmhRn1JWU/edit",
+    "drive_file_id": "1W0AzJgdZ_Q-858ShX5RM58xuMUgfHcbBpyzmhRn1JWU",
+    "kind": "conteudo",
+    "date": "2026-11-09"
+   }
+  ],
+  "meetings": []
+ },
+ {
+  "name": "Ladies",
+  "slug": "ladies",
+  "kind": "marketplace",
+  "drive_folder_id": "1tqzMPnu82OVhZIcxbIvKsZe0XkSef_ye",
+  "files": [
+   {
+    "title": "Relatório TikTok Shop — Ladies",
+    "url": "https://drive.google.com/file/d/1uibn92LhBcHiCwD6yJ1BlWAdfKUePgT1/view",
+    "drive_file_id": "1uibn92LhBcHiCwD6yJ1BlWAdfKUePgT1",
+    "kind": "relatorio",
+    "date": "2026-10-28"
+   },
+   {
+    "title": "Aprovação de fotos — Ladies",
+    "url": "https://drive.google.com/file/d/19uuvpGDonpSGaaxi2gkt_FnP-BvS8AXF/view",
+    "drive_file_id": "19uuvpGDonpSGaaxi2gkt_FnP-BvS8AXF",
+    "kind": "aprovacao",
+    "date": "2026-11-04"
+   },
+   {
+    "title": "Produtos TikTok Shop — Ladies (atualizado 28/10)",
+    "url": "https://docs.google.com/spreadsheets/d/1-Ih5Qz99EqCCCcZFnLdxOizRRWh3mJU-MbwY88iiCDg/edit",
+    "drive_file_id": "1-Ih5Qz99EqCCCcZFnLdxOizRRWh3mJU-MbwY88iiCDg",
+    "kind": "planilha",
+    "date": "2026-10-28"
+   },
+   {
+    "title": "Resumo TikTok Shop — Ladies",
+    "url": "https://docs.google.com/document/d/1ZptJJ6Fd-31q9iBpcL4gFFlYbYrrdw1iHbHDhpYDhXs/edit",
+    "drive_file_id": "1ZptJJ6Fd-31q9iBpcL4gFFlYbYrrdw1iHbHDhpYDhXs",
+    "kind": "resumo",
+    "date": "2026-10-28"
+   },
+   {
+    "title": "Status — Ladies",
+    "url": "https://docs.google.com/document/d/1Sfpha5y9RruP-yZGCClAiHdfk7KI6bHkfGENbsXPVpc/edit",
+    "drive_file_id": "1Sfpha5y9RruP-yZGCClAiHdfk7KI6bHkfGENbsXPVpc",
+    "kind": "status",
+    "date": "2026-10-28"
+   }
+  ],
+  "meetings": [
+   {
+    "title": "Reunião com Maria e Antonio + plano de ação",
+    "date": "2026-11-10",
+    "recording_url": null,
+    "transcript_url": "https://docs.google.com/document/d/1hSjTQUhXUxztMGJQXhdFoI6VD2GPLZm7j-yAIz0ptJA/edit"
+   }
+  ]
+ },
+ {
+  "name": "Slook Kids",
+  "slug": "slook-kids",
+  "kind": "marketplace",
+  "drive_folder_id": null,
+  "files": [],
+  "meetings": []
+ },
+ {
+  "name": "Vulk Jeans",
+  "slug": "vulk-jeans",
+  "kind": "marketplace",
+  "drive_folder_id": "1ufRekD56eipBi_XFjzj5Gc-XR_VT1ASt",
+  "files": [],
+  "meetings": [],
+  "titular": "Rodrigo",
+  "grupo": "rodrigo",
+  "drive_folder_ids": [
+   "1ufRekD56eipBi_XFjzj5Gc-XR_VT1ASt",
+   "1dOgPxiu12LJZa8NK2s702AwybgUkzVnh"
+  ]
+ },
+ {
+  "name": "Lumiere",
+  "slug": "lumiere",
+  "kind": "marketplace",
+  "drive_folder_id": "1mYUBheRUnRbxDsmedsiYa_jPA8jfBCkV",
+  "files": [],
+  "meetings": [],
+  "titular": "Rodrigo",
+  "grupo": "rodrigo",
+  "drive_folder_ids": [
+   "1mYUBheRUnRbxDsmedsiYa_jPA8jfBCkV",
+   "1AgkyIuQjPU-Bydi4CyCIVgtk0Z669Jq3"
+  ]
+ },
+ {
+  "name": "Plenitude",
+  "slug": "plenitude",
+  "kind": "marketplace",
+  "drive_folder_id": "1RY1-736SZIO_j4cU9-ujf4YJemu5_DCl",
+  "files": [],
+  "meetings": [],
+  "titular": "Rodrigo",
+  "grupo": "rodrigo",
+  "drive_folder_ids": [
+   "1RY1-736SZIO_j4cU9-ujf4YJemu5_DCl"
+  ]
+ }
+]

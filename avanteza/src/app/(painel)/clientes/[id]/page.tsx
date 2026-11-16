@@ -13,6 +13,14 @@ import { CopyButton } from "@/components/CopyButton";
 import { enabledMarketplaces, MARKETPLACE_LABEL } from "@/lib/marketplaces";
 import { RULE_LABEL, DEFAULT_RULES, type RuleType } from "@/lib/alerts/rules";
 import { ACTION_LABEL, ACTION_TYPES } from "@/lib/executor/policy";
+import { currentSession } from "@/lib/auth";
+import { AbaMapa } from "./AbaMapa";
+import { verComoCliente } from "../mapa-actions";
+
+const ABAS = [
+  { k: "", label: "Contas e vendas" }, { k: "plano", label: "Plano" }, { k: "arquivos", label: "Arquivos" },
+  { k: "reunioes", label: "Reuniões" }, { k: "acesso", label: "Acesso do cliente" }, { k: "contato", label: "Dados e contato" },
+];
 
 const PARAM_FIELDS: Record<RuleType, { key: string; label: string }[]> = {
   reputation_drop: [{ key: "claims_rate_increase", label: "Aumento de reclamações (ex.: 0.005 = 0,5 p.p.)" }],
@@ -35,6 +43,25 @@ export default async function Cliente({
   const db = await userDb();
   const { data: client } = await db.from("clients").select("*").eq("id", id).maybeSingle();
   if (!client) notFound();
+  const aba = typeof sp.aba === "string" && ABAS.some((a) => a.k === sp.aba) ? sp.aba : "";
+  const isOwner = (await currentSession())?.role === "admin";
+  const tabs = (
+    <nav className="tabs" aria-label="Seções do cliente">
+      {ABAS.map((a) => <Link key={a.k} href={a.k ? `/clientes/${id}?aba=${a.k}` : `/clientes/${id}`} aria-current={aba === a.k ? "page" : undefined}>{a.label}</Link>)}
+    </nav>
+  );
+  const head = (
+    <div className="page-head">
+      <div>
+        <div className="eyebrow"><Link href="/clientes" style={{ textDecoration: "none" }}>Clientes</Link> / {client.active ? "ativo" : "inativo"} / {client.kind === "marketplace" ? "marketplaces" : client.kind === "midia" ? "mídia" : "marketplaces e mídia"}</div>
+        <h1>{client.name}</h1>
+      </div>
+      <form action={verComoCliente}><input type="hidden" name="client_id" value={id} /><button className="btn btn-sm btn-orange">Ver como cliente</button></form>
+    </div>
+  );
+  if (aba) {
+    return (<><Flash sp={sp} />{head}{tabs}<AbaMapa client={client} aba={aba} owner={isOwner} /></>);
+  }
 
   const today = spDate();
   const { data: accounts } = await db.from("marketplace_accounts").select("*").eq("client_id", id).order("created_at");
@@ -91,15 +118,11 @@ export default async function Cliente({
   return (
     <>
       <Flash sp={sp} />
-      <div className="page-head">
-        <div>
-          <div className="eyebrow"><Link href="/clientes" style={{ textDecoration: "none" }}>Clientes</Link> / {client.active ? "ativo" : "inativo"}</div>
-          <h1>{client.name}</h1>
-        </div>
-        <div className="btn-row">
-          <a href="#acoes" className="btn btn-sm btn-ghost">Propor ação</a>
-          <a href="#regras" className="btn btn-sm btn-ghost">Regras</a>
-        </div>
+      {head}
+      {tabs}
+      <div className="btn-row" style={{ marginTop: 10 }}>
+        <a href="#acoes" className="btn btn-sm btn-ghost">Propor ação</a>
+        <a href="#regras" className="btn btn-sm btn-ghost">Regras</a>
       </div>
 
       {/* KPIs */}

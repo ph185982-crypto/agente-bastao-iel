@@ -56,8 +56,36 @@ function sql() {
   return sqlFn;
 }
 
+// Postgres local (desenvolvimento e testes): URL com host localhost usa o driver `pg`. Produção (Neon) nunca passa por aqui.
+let localPool: { query: (t: string, p: unknown[]) => Promise<{ rows: any[] }> } | null = null;
+function localUrl(): string | null {
+  const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
+  if (!url) return null;
+  try {
+    const h = new URL(url).hostname;
+    return h === "localhost" || h === "127.0.0.1" || h === "[::1]" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function rawQuery<T = Row>(text: string, params: unknown[] = []): Promise<T[]> {
+  const local = localUrl();
+  if (local) {
+    if (!localPool) {
+      const pg: any = (await import(/* webpackIgnore: true */ "pg")).default;
+      localPool = new pg.Pool({ connectionString: local, types });
+    }
+    return (await localPool!.query(text, params)).rows as T[];
+  }
   return (await sql().query(text, params as any[], { types } as any)) as T[];
+}
+
+/** Encerra o pool local (testes). */
+export async function closeLocalPool() {
+  const p = localPool as any;
+  localPool = null;
+  if (p?.end) await p.end();
 }
 
 /** Serializa valores: objetos e listas de objetos → JSON (jsonb); listas de textos → array do Postgres (text[]). */

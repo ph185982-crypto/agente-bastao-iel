@@ -92,6 +92,17 @@ DATABASE_URL=... node db/apply.mjs   # cria/atualiza o schema no Postgres
 npm run build
 ```
 
+## Mapa (área do cliente)
+Descrição completa em `docs/ARQUITETURA_AVANTEZA.md` (seção “Mapa — área do cliente”).
+```sh
+# Postgres local descartável (nunca produção)
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/apply.mjs
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-clientes.mjs   # lê db/seed-clientes.json; recusa banco remoto
+TEST_DATABASE_URL=postgres://postgres@localhost:54329/mapa_test npm test              # testes de isolamento usam o banco de teste (nome com "test")
+```
+Sem `TEST_DATABASE_URL`, os testes que precisam de banco são ignorados (os demais rodam). URL `localhost` em `DATABASE_URL` usa o driver `pg`
+(só desenvolvimento); produção segue na Neon. Acesso do cliente: Clientes → cliente → “Acesso do cliente” (a senha aparece uma vez).
+
 ## Variações (cor/tamanho)
 - Mercado Livre: estoque por variação; preço vale para todas as variações (o ML exige enviar todas).
 - Shopee: preço e estoque por modelo; sem modelo, o preço vale para todos.

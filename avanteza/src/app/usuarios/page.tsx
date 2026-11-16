@@ -34,7 +34,7 @@ function UserForm({ u }: { u?: { email: string; name: string | null; role: strin
 export default async function Usuarios({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const sp = await searchParams;
   await requireOwner();
-  const { data: users } = await adminDb().from("admins").select("email, name, role, apps, active").order("email");
+  const { data: users } = await adminDb().from("admins").select("email, name, role, apps, active").neq("role", "client").order("email");
   return (
     <>
       <header className="topbar"><div className="topbar-inner"><Link href="/central" style={{ textDecoration: "none" }}><Logo /></Link><Link href="/central" className="btn btn-sm btn-ghost" style={{ color: "var(--sand)", borderColor: "var(--navy-2)" }}>Central</Link></div></header>
