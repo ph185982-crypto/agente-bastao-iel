@@ -20,7 +20,8 @@ const { lerZip } = require('../../backend/lib/radar/pacote');
   // 1) a aba Radar existe e abre vazia
   await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
   await p.waitForFunction(() => window.Mesa?.state.pronto, null, { timeout: 20000 });
-  ok(await p.isVisible('.es-nav [data-tab="radar"]'), 'a aba “Radar” aparece no menu do celular');
+  await p.tap('[data-action="menu-abrir"]'); // no celular o Radar fica na gaveta do menu (desenho da Central)
+  ok(await p.isVisible('.es-nav [data-tab="radar"]'), 'a aba “Radar” aparece na gaveta do menu do celular');
   await p.tap('.es-nav [data-tab="radar"]');
   await p.waitForSelector('text=Pesquisar oportunidades agora', { timeout: 10000 });
   let txt = await p.innerText('main');

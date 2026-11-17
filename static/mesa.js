@@ -180,8 +180,52 @@
     radar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 12l6-6"/></svg>',
     videos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="13" height="14" rx="3"/><path d="M16 10l5-3v10l-5-3z"/></svg>',
     reciclagem: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14.9 4M4 12a8 8 0 0 1 14.9-4"/><path d="M4 20v-4h4M20 4v4h-4"/></svg>',
-    ajustes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="#fff"/><circle cx="15" cy="12" r="2" fill="#fff"/><circle cx="7" cy="18" r="2" fill="#fff"/></svg>',
+    ajustes: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="7" cy="18" r="2" fill="currentColor"/></svg>',
+    historias: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h6M8 11h6"/></svg>',
+    // Casca (menu lateral, barra e tema): mesmo traço dos ícones da Central.
+    grade: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>',
+    menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
+    fechar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+    recolher: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/></svg>',
+    expandir: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 17l5-5-5-5M6 17l5-5-5-5"/></svg>',
+    lua: '<svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>',
+    sol: '<svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>',
   };
+
+  // ── Casca Avanteza: tema claro/escuro e menu lateral (mesmas chaves da Central) ──
+  // O tema e o menu recolhido já vêm aplicados no <html> pelo script do <head> (antes da pintura).
+  const TEMA_KEY = 'avanteza-tema', MENU_KEY = 'avanteza-menu';
+  const CORES_TEMA = { dark: '#0B1B33', light: '#F5F0E6' };
+  function lembrar(k, v) {
+    try { localStorage.setItem(k, v); } catch { /* navegação privada: vale só nesta aba */ }
+    try { document.cookie = `${k}=${v}; path=/; max-age=31536000; samesite=lax`; } catch { /* sem cookie */ }
+  }
+  const temaAtual = () => (document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+  function alternarTema() {
+    const t = temaAtual() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', CORES_TEMA[t]);
+    lembrar(TEMA_KEY, t);
+  }
+  const menuRecolhido = () => document.documentElement.getAttribute('data-sidebar') === 'collapsed';
+  function alternarMenu() {
+    const v = menuRecolhido() ? 'expanded' : 'collapsed';
+    if (v === 'collapsed') document.documentElement.setAttribute('data-sidebar', 'collapsed'); else document.documentElement.removeAttribute('data-sidebar');
+    lembrar(MENU_KEY, v);
+  }
+  // Gaveta do celular: classe no <html> (sobrevive aos redesenhos da tela).
+  function gaveta(abrir) {
+    document.documentElement.classList.toggle('sb-aberto', abrir);
+    root.querySelector('[data-action="menu-abrir"]')?.setAttribute('aria-expanded', String(abrir));
+    if (abrir) root.querySelector('.es-nav .sb-close')?.focus({ preventScroll: true });
+  }
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && document.documentElement.classList.contains('sb-aberto')) { gaveta(false); root.querySelector('[data-action="menu-abrir"]')?.focus({ preventScroll: true }); }
+  });
+  function botaoTema(extra) {
+    const prox = temaAtual() === 'dark' ? 'claro' : 'escuro';
+    return `<button type="button" class="cz-icon-btn theme-toggle ${extra}" data-action="tema" aria-label="Mudar para o tema ${prox}" title="Mudar para o tema ${prox}">${ICON.lua}${ICON.sol}</button>`;
+  }
 
   function chipConta() {
     const c = state.conta;
@@ -544,17 +588,43 @@
     const nVideos = window.Videos?.badge ? window.Videos.badge() : 0;
     const nRec = window.Reciclagem?.badge ? window.Reciclagem.badge() : 0;
     const tabs = window.StudioMobile ? [['central', 'Aprovar'], ['mesa', 'Criar'], ['videos', 'Vídeos'], ['reciclagem', 'Reciclar'], ['ajustes', 'Perfil']] : [['mesa', 'Mesa'], ['central', 'Central'], ['videos', 'Vídeos'], ['reciclagem', 'Reciclar'], ['radar', 'Radar'], ['criar', 'Criar'], ['resultados', 'Resultados'], ['ajustes', 'Ajustes']];
-    const ROTULO_ABA = { radar: 'Radar', resultados: 'Resultados', criar: 'Ferramentas', semana: 'Semana' };;
+    const ROTULO_ABA = { radar: 'Radar', resultados: 'Resultados', criar: 'Ferramentas', semana: 'Semana', historias: 'Histórias' };
+    // Menu lateral em grupos (desenho da Central). As abas de `tabs` são as principais: no celular formam a barra inferior.
+    const principais = new Set(tabs.map(([id]) => id));
+    const GRUPOS = window.StudioMobile
+      ? [['Produção', [['central', 'Aprovar'], ['mesa', 'Criar'], ['videos', 'Vídeos'], ['reciclagem', 'Reciclar']]],
+        ['Pautas e resultados', [['radar', 'Radar'], ['historias', 'Histórias'], ['resultados', 'Resultados']]],
+        ['Conta', [['ajustes', 'Perfil'], ['criar', 'Ferramentas']]]]
+      : [['Estúdio', tabs]];
+    const badges = { central: [nCentral, `${nCentral} para aprovar`], videos: [nVideos, `${nVideos} vídeo(s) para aprovar`], reciclagem: [nRec, `${nRec} tese(s) em alta`], radar: [nRadar, `${nRadar} ideia pronta`] };
+    const recolhido = menuRecolhido();
+    const itemMenu = ([id, l]) => `<button type="button" class="sb-link${principais.has(id) ? ' sb-prim' : ''}" data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}"${recolhido ? ` title="${l}"` : ''}>${ICON[id]}<span class="sb-text">${l}</span>${badges[id] && badges[id][0] ? `<i class="es-badge" aria-label="${badges[id][1]}">${badges[id][0]}</i>` : ''}</button>`;
     const [saveClass, saveText] = estadoSalvamento();
     root.innerHTML = `
       <a class="studio-skip" href="#${state.tab === 'criar' ? 'pico-legacy-app' : 'studio-main'}">Ir para o conteúdo</a>
-      <div class="studio-brand"><img class="st-brand-logo" src="/logo-app.svg" alt="" width="36" height="36"><div><b>PEDRO DESTRAVA</b><span>Estúdio de conteúdo</span></div></div>
-      <header class="studio-header"><div class="studio-breadcrumb">Meu estúdio <span>/</span> <b>${tabs.find(t => t[0] === state.tab)?.[1] || ROTULO_ABA[state.tab] || 'Mesa'}</b></div><button class="studio-save ${saveClass}" data-action="tab" data-tab="ajustes" aria-label="${saveText}. Ver ajustes de armazenamento"><i aria-hidden="true"></i><span>${saveText}</span></button><a class="studio-central" href="/api/sso/central" aria-label="Central Avanteza: todas as ferramentas" title="Central Avanteza"><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="6" height="6"/><rect x="9" y="1" width="6" height="6"/><rect x="1" y="9" width="6" height="6"/><rect x="9" y="9" width="6" height="6"/></svg><span>Central</span></a><span class="studio-avatar" title="${esc(M.ACCOUNT_PIN.handle)}">PD</span></header>
+      <button type="button" class="sb-scrim" data-action="menu-fechar" aria-label="Fechar menu" tabindex="-1"></button>
+      <header class="cz-barra">
+        <button type="button" class="cz-icon-btn sb-abrir" data-action="menu-abrir" aria-label="Abrir menu" aria-expanded="${document.documentElement.classList.contains('sb-aberto')}" aria-controls="menu-lateral">${ICON.menu}</button>
+        <div class="cz-marca cz-marca-barra"><img class="st-brand-logo" src="/logo-app.svg" alt="" width="32" height="32"><div><b>PEDRO DESTRAVA</b><span>Estúdio de conteúdo</span></div></div>
+        <div class="studio-breadcrumb">Meu estúdio <span>/</span> <b>${tabs.find(t => t[0] === state.tab)?.[1] || ROTULO_ABA[state.tab] || 'Mesa'}</b></div>
+        <button class="studio-save ${saveClass}" data-action="tab" data-tab="ajustes" aria-label="${saveText}. Ver ajustes de armazenamento"><i aria-hidden="true"></i><span>${saveText}</span></button>
+        <a class="studio-central" href="/api/sso/central" aria-label="Central Avanteza: todas as ferramentas" title="Central Avanteza">${ICON.grade}<span>Central</span></a>
+        ${botaoTema('cz-tema-barra')}
+        <span class="studio-avatar" title="${esc(M.ACCOUNT_PIN.handle)}">PD</span>
+      </header>
       <div class="es-top" ${state.tab === 'criar' ? '' : 'hidden'}>${CRIAR.filter((m) => !escondido(m.id)).map((m) => `<button data-action="criar" data-m="${m.id}" aria-pressed="${state.criarModulo === m.id}">${m.label}</button>`).join('')}</div>
       <main id="studio-main" class="es-main" tabindex="-1" ${state.tab === 'criar' ? 'hidden' : ''}><div class="studio-page ${state.tab === 'mesa' && !state.sub ? 'studio-home' : ''}">${corpo}</div></main>
       <div class="es-toast-slot">${state.toast ? `<div class="es-toast" role="status">${esc(state.toast)}</div>` : ''}</div>
-      <nav class="es-nav" aria-label="Navegação principal">${tabs.map(([id, l]) => `<button data-action="tab" data-tab="${id}" aria-current="${state.tab === id ? 'page' : 'false'}">${ICON[id]}<span>${l}</span>${id === 'central' && nCentral ? `<i class="es-badge" aria-label="${nCentral} para aprovar">${nCentral}</i>` : ''}${id === 'videos' && nVideos ? `<i class="es-badge" aria-label="${nVideos} vídeo(s) para aprovar">${nVideos}</i>` : ''}${id === 'reciclagem' && nRec ? `<i class="es-badge" aria-label="${nRec} tese(s) em alta">${nRec}</i>` : ''}${id === 'radar' && nRadar ? `<i class="es-badge" aria-label="${nRadar} ideia pronta">${nRadar}</i>` : ''}</button>`).join('')}</nav>`;
-    root.insertAdjacentHTML('beforeend', `<div class="studio-rail-footer"><span class="studio-avatar">PD</span><div><b>Pedro Destrava</b><span>${esc(M.ACCOUNT_PIN.handle)}</span></div></div>`);
+      <nav class="es-nav sb" id="menu-lateral" aria-label="Navegação principal">
+        <div class="sb-brand">
+          <div class="cz-marca"><img class="st-brand-logo" src="/logo-app.svg" alt="" width="36" height="36"><div><b>PEDRO DESTRAVA</b><span>Estúdio de conteúdo</span></div></div>
+          ${botaoTema('sb-theme')}
+          <button type="button" class="cz-icon-btn sb-close" data-action="menu-fechar" aria-label="Fechar menu">${ICON.fechar}</button>
+        </div>
+        <div class="sb-nav">${GRUPOS.map(([g, itens]) => `<div class="sb-grupo" role="group" aria-label="${g}"><div class="sb-label">${g}</div>${itens.map(itemMenu).join('')}</div>`).join('')}<div class="sb-grupo" role="group" aria-label="Avanteza"><div class="sb-label">Avanteza</div><a class="sb-link sb-central" href="/api/sso/central"${recolhido ? ' title="Central"' : ''}>${ICON.grade}<span class="sb-text">Central</span></a></div></div>
+        <button type="button" class="sb-collapse" data-action="menu-recolher" aria-pressed="${recolhido}" aria-controls="menu-lateral" title="${recolhido ? 'Expandir menu' : 'Recolher menu'}">${recolhido ? ICON.expandir : ICON.recolher}<span class="sb-text">${recolhido ? 'Expandir menu' : 'Recolher menu'}</span></button>
+        <div class="studio-rail-footer sb-foot"><span class="studio-avatar">PD</span><div class="sb-text"><b>Pedro Destrava</b><span>${esc(M.ACCOUNT_PIN.handle)}</span></div></div>
+      </nav>`;
     const m = root.querySelector('.es-main');
     if (m) { m.scrollTop = mudouTela ? (scrollDasTelas.get(tela) || 0) : scroll; if (mudouTela && !m.hidden) m.focus({ preventScroll: true }); }
     ultimaTela = tela;
@@ -588,6 +658,10 @@
   root.addEventListener('click', async (ev) => {
     const el = ev.target.closest('[data-action]'); if (!el) return;
     const a = el.dataset.action; const id = el.dataset.id;
+    if (a === 'tema') { alternarTema(); return render(); }
+    if (a === 'menu-recolher') { alternarMenu(); return render(); }
+    if (a === 'menu-abrir' || a === 'menu-fechar') return gaveta(a === 'menu-abrir');
+    if (document.documentElement.classList.contains('sb-aberto') && el.closest('.es-nav')) gaveta(false);
     try {
       if (window.MesaEditor?.acao && await window.MesaEditor.acao(a, el, ctxEditor())) return;
       if (window.MesaCentral?.acao && await window.MesaCentral.acao(a, el, ctxEditor())) return;

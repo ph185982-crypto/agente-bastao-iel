@@ -1,0 +1,247 @@
+/* Visual "vidro" da plataforma Avanteza no Conteúdo (ÚLTIMA folha). Tokens: avanteza-tokens.css (cópia do kit).
+   Aqui: papéis do app (--cz-*) nos dois temas, fundo com orbes, superfícies de vidro (com fallback sem backdrop-filter),
+   e a casca no desenho da Central: menu lateral flutuante em grupos, recolhível a ícones (data-sidebar="collapsed",
+   chave avanteza-menu) e gaveta no celular; barra superior de vidro com o botão sol/lua (chave avanteza-tema).
+   Contraste AA no pior caso do fundo: backend/lib/vidro.test.js. Teleprompter (.tp), artes e amostras de legenda
+   têm identidade própria e ficam fora. */
+
+/* ───── Papéis do app (os valores mudam com o tema) ───── */
+:root, :root[data-theme="dark"] {
+  --cz-surface: rgb(var(--avz-glass-rgb) / 0.08);  /* cartões (vidro); 0,08 no escuro: cartão dentro de cartão segue AA */
+  --cz-sunken: rgb(var(--avz-tint) / 0.04);                              /* blocos dentro de cartões */
+  --cz-chip: rgb(var(--avz-tint) / 0.06);                                /* pílulas, ícones, filtros (era areia) */
+  --cz-ink: #163057;                                                     /* preenchimento escuro (selecionado, destaque) */
+  --cz-ink-2: #152E52;
+  --cz-on-ink: var(--avz-cream);
+  --cz-accent-bg: rgba(255, 106, 31, 0.16);
+  --cz-warn-bg: rgba(252, 211, 77, 0.14);
+  --cz-gap: 16px;                                                        /* distância do menu e da barra até a borda */
+  --cz-barra-h: 60px;
+}
+:root[data-theme="light"] {
+  --cz-surface: rgb(var(--avz-glass-rgb) / var(--avz-glass-strong-a));
+  --cz-ink: #0B1B33;
+  --cz-ink-2: #132A4C;
+  --cz-accent-bg: rgba(255, 106, 31, 0.12);
+  --cz-warn-bg: rgba(252, 211, 77, 0.22);
+}
+/* Sem backdrop-filter: vidro vira sólido translúcido (legível do mesmo jeito). */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root, :root[data-theme="dark"], :root[data-theme="light"] { --cz-surface: var(--avz-solid); }
+}
+
+/* ───── Base: fundo, fonte, orbes ───── */
+html { background: var(--avz-bg) !important; color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+html body { background: transparent !important; color: var(--avz-text); -webkit-font-smoothing: antialiased; }
+body, body * { font-family: var(--avz-font) !important; }
+body .br { font-family: var(--avz-font-serif) !important; }
+body::before, body::after { content: ""; position: fixed; z-index: -1; pointer-events: none; border-radius: 50%; will-change: transform; }
+body::before {
+  width: 62vmax; height: 62vmax; left: -18vmax; top: -22vmax;
+  background: radial-gradient(closest-side, rgba(255, 106, 31, var(--avz-orb-orange-a)), rgba(255, 106, 31, 0) 100%);
+  animation: cz-orb-a 46s ease-in-out infinite alternate;
+}
+body::after {
+  width: 70vmax; height: 70vmax; right: -24vmax; bottom: -30vmax;
+  background: radial-gradient(closest-side, rgba(59, 130, 246, var(--avz-orb-blue-a)), rgba(59, 130, 246, 0) 100%);
+  animation: cz-orb-b 58s ease-in-out infinite alternate;
+}
+@keyframes cz-orb-a { to { transform: translate3d(8vmax, 6vmax, 0) scale(1.08); } }
+@keyframes cz-orb-b { to { transform: translate3d(-7vmax, -5vmax, 0) scale(1.06); } }
+::selection { background: rgba(255, 106, 31, 0.45); color: var(--avz-text); }
+#esteira { color: var(--avz-text); }
+#esteira :focus-visible { outline: 2px solid var(--avz-accent-text) !important; outline-offset: 2px; }
+#esteira .es-main { background: transparent !important; scrollbar-color: rgb(var(--avz-tint) / 0.25) transparent; }
+#esteira input, #esteira select, #esteira textarea { color: var(--avz-text); }
+#esteira input::placeholder, #esteira textarea::placeholder { color: var(--avz-placeholder) !important; }
+#esteira select option { background: var(--avz-option-bg); color: var(--avz-text); }
+
+/* ───── Superfícies de vidro ───── */
+#esteira :is(.es-card, .mz-item, .mz-entry, .studio-source-form, .studio-stats button, .vd-card, .vd-entrada, .rd-card, .rc2-card,
+  .st-review-card, .st-growth, .hs-card, .ig-card, .es-input, .studio-search, .studio-sort select, .es-score, .st-feed-tabs) {
+  -webkit-backdrop-filter: blur(var(--avz-blur)) saturate(1.25);
+  backdrop-filter: blur(var(--avz-blur)) saturate(1.25);
+}
+#esteira :is(.es-card, .mz-item, .mz-entry, .studio-source-form, .vd-card, .vd-entrada, .rd-card, .rc2-card, .st-review-card, .st-growth, .hs-card) {
+  border-radius: var(--avz-radius) !important; box-shadow: var(--avz-shadow-sm) !important; border-color: var(--avz-glass-border);
+}
+#esteira :is(.es-input, .studio-search, .studio-sort select, .rd-form input, .rd-form textarea, .rd-form select, .rdn-form input, .rdn-form textarea, .rdn-form select, .rc2-form input, .rc2-form select) {
+  border-radius: var(--avz-radius-md) !important; background-color: rgb(var(--avz-shade) / var(--avz-field-a)) !important; border-color: var(--avz-glass-border) !important;
+}
+#esteira :is(.es-btn, .st-approve, .st-reject, .st-new, .rd-btn, .rc2-btn, .vd-btn, .cn-btn, .st-agendar, .es-top button) { border-radius: var(--avz-radius-pill) !important; }
+#esteira :is(.es-btn, .st-approve, .st-new, .rd-btn.laranja, .rc2-btn.laranja, .rd-nova, .cn-btn.cn-ok) { box-shadow: var(--avz-glow); }
+#esteira .es-btn.dark, #esteira .es-btn.ghost, #esteira .es-btn.danger { box-shadow: none; }
+#esteira :is(.es-btn, .st-approve, .st-new, .rd-btn.laranja, .rc2-btn.laranja, .rd-nova, .cn-btn.cn-ok):not(.ghost):not(.dark):not(.danger):hover { background: var(--avz-orange-hover); }
+#esteira .es-toast { background: var(--avz-solid-2); color: var(--avz-text); border: 1px solid var(--avz-glass-border); border-radius: var(--avz-radius-md); box-shadow: var(--avz-shadow); }
+/* Diálogos e folhas sobre o conteúdo: quase opacos. */
+#esteira :is(.st-feedback-sheet, .es-sheet, .rd-modal, .vd-modal) { background: var(--avz-solid-2) !important; }
+
+/* Destaques que eram marinho chapado: vidro escuro com raio do kit. */
+#esteira .studio-welcome { border-radius: var(--avz-radius); background: radial-gradient(ellipse at 110% 20%, rgba(255, 106, 31, 0.28) 0, transparent 55%), var(--cz-ink); box-shadow: var(--avz-shadow); }
+
+/* App antigo (aba Ferramentas): estilos fixos claros; fica numa folha creme própria nos dois temas. */
+#pico-legacy-app { background: var(--avz-cream) !important; color-scheme: light; border-radius: var(--avz-radius-lg); border: 1px solid var(--avz-glass-border); box-shadow: var(--avz-shadow); }
+
+/* ───── Marca ───── */
+#esteira .cz-marca { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--avz-text); }
+#esteira .cz-marca .st-brand-logo { width: 36px; height: 36px; border-radius: 10px; flex: none; box-shadow: 0 0 0 1px var(--avz-glass-border); }
+#esteira .cz-marca b { display: block; font-size: 12.5px; font-weight: 800; letter-spacing: 0.08em; color: var(--avz-text); white-space: nowrap; }
+#esteira .cz-marca span { display: block; font-size: 11px; color: var(--avz-muted); margin-top: 3px; white-space: nowrap; }
+
+/* ───── Botões de ícone (tema, menu, fechar) ───── */
+#esteira .cz-icon-btn { display: inline-grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; border: 1px solid var(--avz-glass-border); background: var(--avz-glass-strong); color: var(--avz-text); cursor: pointer; pointer-events: auto; }
+#esteira .cz-icon-btn:hover { background: rgb(var(--avz-tint) / 0.2); }
+#esteira .cz-icon-btn svg { width: 21px; height: 21px; }
+#esteira .theme-toggle .i-sun { display: none; }
+:root[data-theme="light"] #esteira .theme-toggle .i-moon { display: none; }
+:root[data-theme="light"] #esteira .theme-toggle .i-sun { display: block; }
+
+/* ───── Barra superior (vidro, pílula) ───── */
+#esteira .cz-barra {
+  position: absolute; z-index: 30; top: var(--cz-gap); right: var(--cz-gap); left: var(--studio-rail); height: var(--cz-barra-h);
+  display: flex; align-items: center; gap: 14px; padding: 0 8px 0 24px; pointer-events: auto;
+  border-radius: var(--avz-radius-pill); border: 1px solid var(--avz-glass-border); box-shadow: var(--avz-shadow);
+  background: linear-gradient(150deg, rgb(var(--avz-glass-rgb) / var(--avz-glass-strong-a)), rgb(var(--avz-glass-rgb) / var(--avz-glass-a)));
+  -webkit-backdrop-filter: blur(18px) saturate(1.25); backdrop-filter: blur(18px) saturate(1.25);
+}
+#esteira .cz-barra .studio-breadcrumb { flex: 1; min-width: 0; font-size: 13px; color: var(--avz-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#esteira .cz-barra .studio-breadcrumb span { margin: 0 10px; color: var(--avz-muted); }
+#esteira .cz-barra .studio-breadcrumb b { color: var(--avz-text); font-weight: 700; }
+#esteira .cz-barra .studio-save { display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: var(--avz-muted); font-size: 12.5px !important; font-weight: 600; cursor: pointer; min-height: 44px; padding: 0 6px; }
+#esteira .cz-barra .studio-save i { width: 8px; height: 8px; border-radius: 50%; background: var(--avz-ok); flex: none; }
+#esteira .cz-barra .studio-save.warn i { background: var(--avz-orange); }
+#esteira .cz-barra .studio-save.err i { background: var(--avz-danger); }
+#esteira .cz-barra .studio-save.loading i { background: var(--avz-muted); }
+#esteira .cz-barra .studio-central { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px 0 12px; border-radius: var(--avz-radius-pill); border: 1px solid var(--avz-glass-border); background: var(--avz-glass-strong); color: var(--avz-text); text-decoration: none; font-size: 13px; font-weight: 700; }
+#esteira .cz-barra .studio-central:hover { background: rgb(var(--avz-tint) / 0.2); }
+#esteira .cz-barra .studio-central svg { width: 18px; height: 18px; }
+#esteira .studio-avatar { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--avz-orange); color: var(--avz-navy); font-size: 12px; font-weight: 800; }
+#esteira .cz-marca-barra, #esteira .sb-abrir, #esteira .cz-tema-barra { display: none; }
+
+/* ───── Menu lateral (vidro flutuante, desenho da Central) ───── */
+:root { --cz-sidebar-w: var(--avz-sidebar-w); --studio-rail: calc(var(--cz-sidebar-w) + var(--cz-gap) * 2); --studio-header: calc(var(--cz-barra-h) + var(--cz-gap) * 2); }
+#esteira .es-nav.sb {
+  position: absolute; z-index: 40; top: var(--cz-gap); bottom: var(--cz-gap); left: var(--cz-gap); right: auto; width: var(--cz-sidebar-w); height: auto;
+  display: flex; flex-direction: column; justify-content: flex-start; gap: 10px; padding: 18px 12px 14px; overflow: hidden; pointer-events: auto;
+  border-radius: var(--avz-radius-lg); border: 1px solid var(--avz-glass-border); box-shadow: var(--avz-shadow);
+  background: linear-gradient(150deg, rgb(var(--avz-glass-rgb) / var(--avz-glass-strong-a)), rgb(var(--avz-glass-rgb) / var(--avz-glass-a)));
+  -webkit-backdrop-filter: blur(20px) saturate(1.25); backdrop-filter: blur(20px) saturate(1.25);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #esteira .es-nav.sb, #esteira .cz-barra { background: var(--avz-solid); }
+}
+#esteira .sb-brand { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 8px; }
+#esteira .es-nav .cz-icon-btn { flex: none; min-height: 0; }
+#esteira .sb-brand .sb-theme { width: 38px; height: 38px; }
+#esteira .sb-brand .sb-theme svg { width: 18px; height: 18px; }
+#esteira .sb-close { display: none; }
+#esteira .sb-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin; margin: 0 -4px; padding: 0 4px; }
+#esteira .sb-label { font-size: 10.5px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--avz-muted); padding: 14px 12px 6px; }
+#esteira .es-nav .sb-link {
+  display: flex; flex: none; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; width: 100%;
+  min-height: 44px; padding: 9px 12px; border: 0; border-radius: var(--avz-radius-item); background: transparent; position: relative;
+  color: var(--avz-text); text-decoration: none; font-size: 14.5px !important; font-weight: 600 !important; text-align: left; cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+#esteira .es-nav .sb-link::before { content: none !important; }
+#esteira .es-nav .sb-link svg { width: 20px !important; height: 20px !important; flex: none; stroke-width: 1.8; opacity: 0.9; background: none !important; padding: 0 !important; margin: 0 !important; color: currentColor !important; }
+#esteira .es-nav .sb-link:hover { background: rgb(var(--avz-tint) / 0.10); color: var(--avz-text); transform: translateX(2px); }
+#esteira .es-nav .sb-link[aria-current="page"] { background: var(--avz-orange); color: var(--avz-navy); font-weight: 800 !important; box-shadow: var(--avz-glow); }
+#esteira .es-nav .sb-link[aria-current="page"]:hover { background: var(--avz-orange-hover); transform: none; }
+#esteira .es-nav .es-badge { position: static; margin: 0 0 0 auto; min-width: 22px; height: 20px; padding: 0 7px; line-height: 20px; border-radius: var(--avz-radius-pill); background: var(--avz-orange); color: var(--avz-navy); font-size: 11px; font-weight: 800; font-style: normal; text-align: center; }
+#esteira .es-nav .sb-link[aria-current="page"] .es-badge { background: var(--avz-navy); color: var(--avz-cream); }
+#esteira .sb-collapse { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 9px 12px; border: 0; border-radius: var(--avz-radius-item); background: transparent; color: var(--avz-muted); font-size: 13.5px !important; font-weight: 600; cursor: pointer; text-align: left; }
+#esteira .sb-collapse:hover { background: rgb(var(--avz-tint) / 0.10); color: var(--avz-text); }
+#esteira .sb-collapse svg { width: 20px; height: 20px; flex: none; }
+#esteira .es-nav .sb-foot { position: static; width: auto; display: flex; align-items: center; gap: 10px; padding: 12px 6px 0; border-top: 1px solid var(--avz-hairline); color: var(--avz-text); }
+#esteira .sb-foot .studio-avatar { width: 36px; height: 36px; }
+#esteira .sb-foot b { display: block; font-size: 12.5px; font-weight: 700; color: var(--avz-text); }
+#esteira .sb-foot div > span { display: block; font-size: 11.5px; color: var(--avz-muted); margin-top: 3px; }
+
+/* Telas baixas: menu mais compacto (como na Central). */
+@media (min-width: 761px) and (max-height: 900px) {
+  #esteira .es-nav .sb-link, #esteira .sb-collapse { min-height: 38px; padding-top: 6px; padding-bottom: 6px; }
+  #esteira .sb-label { padding-top: 10px; padding-bottom: 4px; }
+  #esteira .es-nav .sb-foot { padding-top: 8px; }
+  #esteira .sb-brand { padding-bottom: 4px; }
+}
+
+/* Conteúdo ao lado do menu e abaixo da barra. */
+#esteira .es-main { inset: var(--studio-header) 0 0 var(--studio-rail); padding: 12px 32px 48px; }
+#esteira .es-top { top: var(--studio-header); left: var(--studio-rail); right: var(--cz-gap); height: 60px; padding: 0 8px; background: transparent; border: 0; }
+#pico-legacy-app { top: calc(var(--studio-header) + 64px) !important; left: var(--studio-rail) !important; right: var(--cz-gap) !important; bottom: var(--cz-gap) !important; }
+
+/* Menu recolhido a ícones (só telas largas). */
+@media (min-width: 761px) {
+  #esteira .es-nav.sb { transition: width 0.26s cubic-bezier(0.2, 0.8, 0.2, 1), padding 0.26s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  :root[data-sidebar="collapsed"] { --cz-sidebar-w: var(--avz-sidebar-w-collapsed); }
+  :root[data-sidebar="collapsed"] #esteira .es-nav.sb { padding: 14px 10px 12px; }
+  :root[data-sidebar="collapsed"] #esteira .sb-brand { flex-direction: column; justify-content: center; gap: 10px; padding: 2px 0 8px; }
+  :root[data-sidebar="collapsed"] #esteira .sb-brand .cz-marca > div { display: none; }
+  :root[data-sidebar="collapsed"] #esteira .sb-label { display: none; }
+  :root[data-sidebar="collapsed"] #esteira .sb-grupo + .sb-grupo { border-top: 1px solid var(--avz-hairline); margin-top: 6px; padding-top: 6px; }
+  :root[data-sidebar="collapsed"] #esteira .es-nav .sb-link, :root[data-sidebar="collapsed"] #esteira .sb-collapse { justify-content: center; padding: 0; min-height: 46px; }
+  :root[data-sidebar="collapsed"] #esteira .es-nav .sb-link:hover { transform: none; }
+  :root[data-sidebar="collapsed"] #esteira .sb-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  :root[data-sidebar="collapsed"] #esteira .es-nav .es-badge { position: absolute; top: 3px; right: 3px; margin: 0; min-width: 18px; height: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+  :root[data-sidebar="collapsed"] #esteira .sb-foot { justify-content: center; padding: 10px 0 0; }
+}
+@media (max-width: 1000px) and (min-width: 761px) {
+  #esteira .cz-barra .studio-save span, #esteira .cz-barra .studio-central span { display: none; }
+  #esteira .cz-barra .studio-central { padding: 0 12px; }
+  #esteira .es-main { padding: 8px 20px 40px; }
+}
+
+/* ───── Celular: barra de vidro no topo, barra inferior de vidro e o menu inteiro como gaveta ───── */
+#esteira .sb-scrim { display: none; }
+@media (max-width: 760px) {
+  :root { --cz-gap: 10px; --cz-barra-h: 56px; --es-nav-h: 64px; --studio-rail: 0px; --studio-header: calc(var(--cz-barra-h) + var(--cz-gap) * 2 + env(safe-area-inset-top, 0px)); }
+  #esteira .cz-barra { top: calc(var(--cz-gap) + env(safe-area-inset-top, 0px)); left: var(--cz-gap); right: var(--cz-gap); height: var(--cz-barra-h); padding: 0 6px; gap: 6px; }
+  #esteira .cz-barra .studio-breadcrumb, #esteira .cz-barra > .studio-avatar, #esteira .cz-barra .studio-central span, #esteira .cz-barra .studio-save span { display: none; }
+  #esteira .sb-abrir, #esteira .cz-tema-barra { display: inline-grid; }
+  #esteira .cz-marca-barra { display: flex; flex: 1; min-width: 0; gap: 8px; }
+  #esteira .cz-marca-barra .st-brand-logo { width: 30px; height: 30px; border-radius: 9px; }
+  #esteira .cz-marca-barra b { font-size: 11.5px; }
+  #esteira .cz-marca-barra span { font-size: 10.5px; }
+  #esteira .cz-barra .studio-save { padding: 0 8px; min-width: 32px; justify-content: center; }
+  #esteira .cz-barra .studio-central { width: 44px; padding: 0; justify-content: center; border-radius: 50%; }
+
+  /* Barra inferior: só as abas principais. */
+  #esteira .es-nav.sb {
+    top: auto; left: var(--cz-gap); right: var(--cz-gap); bottom: calc(var(--cz-gap) + var(--es-safe)); width: auto; height: var(--es-nav-h);
+    flex-direction: row; align-items: stretch; gap: 0; padding: 6px; border-radius: var(--avz-radius);
+  }
+  #esteira .es-nav.sb .sb-nav { flex-direction: row; overflow: visible; margin: 0; padding: 0; gap: 2px; }
+  #esteira .es-nav.sb .sb-grupo { display: contents; }
+  #esteira .es-nav.sb :is(.sb-brand, .sb-label, .sb-collapse, .sb-foot, .sb-central, .sb-link:not(.sb-prim)) { display: none; }
+  #esteira .es-nav.sb .sb-link { flex: 1; flex-direction: column; justify-content: center; gap: 4px; min-height: 0; padding: 4px 0; font-size: 11px !important; font-weight: 700 !important; border-radius: 16px; text-align: center; }
+  #esteira .es-nav.sb .sb-link:hover { transform: none; }
+  #esteira .es-nav.sb .sb-link svg { width: 22px !important; height: 22px !important; }
+  #esteira .es-nav.sb .es-badge { position: absolute; top: 2px; left: 54%; margin: 0; min-width: 18px; height: 16px; padding: 0 5px; line-height: 16px; font-size: 10px; }
+  #esteira .es-main { inset: var(--studio-header) 0 0 0; padding: 4px 14px calc(var(--es-nav-h) + var(--cz-gap) * 2 + var(--es-safe) + 12px); }
+  #esteira .es-top { left: 0; right: 0; padding: 0 12px; }
+  #esteira .es-toast { bottom: calc(var(--es-nav-h) + var(--cz-gap) * 2 + var(--es-safe) + 8px); }
+  #pico-legacy-app { left: var(--cz-gap) !important; right: var(--cz-gap) !important; bottom: calc(var(--es-nav-h) + var(--cz-gap) * 2 + var(--es-safe)) !important; }
+
+  /* Gaveta aberta: o mesmo menu vira o painel lateral completo, com fundo escurecido (Esc ou toque fora fecha). */
+  .sb-aberto #esteira .sb-scrim { display: block; position: absolute; inset: 0; z-index: 35; border: 0; padding: 0; background: var(--avz-scrim); pointer-events: auto; cursor: pointer; }
+  .sb-aberto #esteira .es-nav.sb {
+    top: 0; bottom: 0; left: 0; right: auto; width: min(300px, 86vw); height: auto; flex-direction: column; align-items: stretch; gap: 10px;
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 12px calc(14px + var(--es-safe)); border-radius: 0 28px 28px 0; background: var(--avz-drawer-bg);
+    animation: cz-gaveta 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .sb-aberto #esteira .es-nav.sb .sb-nav { flex-direction: column; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+  .sb-aberto #esteira .es-nav.sb .sb-grupo { display: block; }
+  .sb-aberto #esteira .es-nav.sb :is(.sb-brand, .sb-foot) { display: flex; }
+  .sb-aberto #esteira .es-nav.sb :is(.sb-label, .sb-central, .sb-link:not(.sb-prim):not([data-tab="criar"])) { display: flex; }
+  .sb-aberto #esteira .es-nav.sb .sb-label { display: block; }
+  .sb-aberto #esteira .es-nav.sb .sb-link { flex: none; flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 44px; padding: 9px 12px; font-size: 14.5px !important; font-weight: 600 !important; border-radius: var(--avz-radius-item); text-align: left; }
+  .sb-aberto #esteira .es-nav.sb .sb-link svg { width: 20px !important; height: 20px !important; }
+  .sb-aberto #esteira .es-nav.sb .es-badge { position: static; margin: 0 0 0 auto; height: 20px; line-height: 20px; }
+  .sb-aberto #esteira .es-nav.sb .sb-theme { display: none; }
+  .sb-aberto #esteira .es-nav.sb .sb-close { display: inline-grid; width: 40px; height: 40px; }
+  html.sb-aberto, html.sb-aberto body { overflow: hidden; }
+}
+@keyframes cz-gaveta { from { transform: translateX(-104%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { body::before, body::after { animation: none !important; } }

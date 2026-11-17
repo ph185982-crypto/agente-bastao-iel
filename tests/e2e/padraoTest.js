@@ -35,6 +35,7 @@ const { lerZip } = require('../../backend/lib/radar/pacote');
   console.log('2. Radar no celular: nova pauta por link, sem seletores de modelo antigo');
   await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
   await p.waitForFunction(() => window.Mesa?.state.pronto, null, { timeout: 20000 });
+  await p.tap('[data-action="menu-abrir"]'); // no celular o Radar fica na gaveta do menu
   await p.tap('.es-nav [data-tab="radar"]'); await p.waitForSelector('.rd-novapauta', { timeout: 15000 });
   ok(!(await p.isVisible('text=Série antiga')) && !(await p.isVisible('text=Modelo minimalista')), 'sem botões “Série antiga” nem “Modelo minimalista”');
   await semRolagem('Radar');

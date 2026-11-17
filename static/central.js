@@ -304,6 +304,7 @@
   // ── Ajustes → Conexões ──────────────────────────────────────────────────────
   // LinkedIn: o que você aprova para o Instagram sai também no seu perfil do LinkedIn (carrossel vira documento em PDF).
   function secaoLinkedIn() {
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const L = st.linkedin; if (!L) return '';
     let corpo;
     if (!L.configurado) corpo = `<div class="es-text">Falta um passo seu: criar o app do LinkedIn (developer.linkedin.com → Create app, com os produtos "Sign In with LinkedIn using OpenID Connect" e "Share on LinkedIn") e mandar o Client ID e o Client Secret. Endereço de retorno para cadastrar no app: <b>${esc(L.redirect_uri)}</b></div>`;
