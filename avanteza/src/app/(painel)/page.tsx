@@ -49,7 +49,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
       <div className="page-head">
         <div>
           <div className="eyebrow">Painel Nexo</div>
-          <h1>Visão <span className="serif">geral</span></h1>
+          <h1>Visão <span className="accent">geral</span></h1>
         </div>
         <form action={togglePause}>
           <input type="hidden" name="pause" value={settings.data?.global_pause ? "0" : "1"} />

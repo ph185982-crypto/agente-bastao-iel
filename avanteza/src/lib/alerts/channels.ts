@@ -45,6 +45,17 @@ export class EmailChannel implements NotificationChannel {
   }
 }
 
+/** E-mail livre (resumo matinal, alerta de risco) pelo mesmo Resend. Sem configuração: devolve false e não envia. */
+export async function enviarEmail(to: string, subject: string, html: string): Promise<boolean> {
+  if (!new EmailChannel().enabled() || !to) return false;
+  await fetchJson("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${envOptional("RESEND_API_KEY")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: envOptional("ALERT_EMAIL_FROM"), to: [to], subject, html }),
+  }, { retries: 2 });
+  return true;
+}
+
 /** Placeholder do WhatsApp: ligar quando houver provedor (ex.: API oficial do WhatsApp Business). */
 export class WhatsAppChannel implements NotificationChannel {
   readonly name = "whatsapp";

@@ -1,53 +1,68 @@
+// Mapa → Canais: tráfego pago (Meta) e Instagram do cliente + evolução. Só clientes "midia" ou "ambos" (marketplace é redirecionado).
+// O client_id vem do escopo da sessão; a tela nunca recebe token nem IDs internos das contas.
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireMapa } from "@/lib/mapa/auth";
 import { getClient } from "@/lib/mapa/repo";
 import { hasChannels } from "@/lib/mapa/nav";
-import { addDays, spDate } from "@/lib/dates";
-import { brl, int, dec } from "@/lib/format";
-import { CHANNELS, CHANNEL_LABEL, getTrafficProvider, totalsOf } from "@/lib/mapa/traffic";
+import { carregarCanaisDoCliente } from "@/lib/channels/cliente";
+import { PERIODOS, ROTULO_PERIODO, ddmm, parsePeriodo, type PeriodoId } from "@/lib/dashboards/periodo";
+import { ago } from "@/lib/format";
+import { MarcaRotulo, type Marca } from "@/components/brand";
+import { FontesAguardando, PainelAnuncios, PainelEvolucao, PainelInstagram } from "@/components/canais/Paineis";
 
-export default async function Canais() {
+export const dynamic = "force-dynamic";
+const ABAS = [{ k: "anuncios", label: "Anúncios (Meta)", marca: "meta" }, { k: "instagram", label: "Instagram", marca: "instagram" }, { k: "evolucao", label: "Evolução", marca: null }] as const satisfies ReadonlyArray<{ k: string; label: string; marca: Marca | null }>;
+type Aba = (typeof ABAS)[number]["k"];
+
+export default async function Canais({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { scope } = await requireMapa();
   const client = await getClient(scope);
   if (!client || !hasChannels(client.kind)) redirect("/mapa");
-  const today = spDate();
-  const provider = getTrafficProvider();
-  const connected = await provider.isConnected(scope.clientId);
-  const summary = connected ? await provider.summary(scope.clientId, { from: addDays(today, -30), to: today }) : null;
-
+  const sp = await searchParams;
+  const pick = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const aba: Aba = ABAS.some((a) => a.k === pick(sp.aba)) ? (pick(sp.aba) as Aba) : "anuncios";
+  const periodoId = parsePeriodo(pick(sp.periodo));
+  const agrup = pick(sp.agrup) === "semana" ? "semana" : "mes";
+  const d = await carregarCanaisDoCliente(scope, periodoId);
+  const href = (o: { aba?: Aba; periodo?: PeriodoId; agrup?: "mes" | "semana" }) => {
+    const q = new URLSearchParams();
+    const a = o.aba ?? aba, p = o.periodo ?? periodoId, g = o.agrup ?? agrup;
+    if (a !== "anuncios") q.set("aba", a);
+    if (p !== "30") q.set("periodo", p);
+    if (a === "evolucao" && g !== "mes") q.set("agrup", g);
+    const s = q.toString();
+    return `/mapa/canais${s ? `?${s}` : ""}`;
+  };
+  const { atual } = d.periodo;
   return (
     <>
       <div className="eyebrow">{client.name}</div>
       <h1>Canais</h1>
-      <p className="muted small" style={{ marginTop: 4 }}>Instagram, Meta Ads, Google Ads e Facebook: investimento, faturamento e retorno por canal.</p>
-      {!summary ? (
-        <div className="card" style={{ marginTop: 12 }}>
-          <h3>Conectando fontes de dados</h3>
-          <p className="muted" style={{ margin: "6px 0 0" }}>Estamos ligando suas contas de anúncios e redes. Quando a conexão terminar, os números de cada canal aparecem aqui automaticamente. Não é preciso fazer nada agora.</p>
-          <ul className="list" style={{ marginTop: 12 }}>
-            {CHANNELS.map((c) => <li key={c}><div className="row"><strong>{CHANNEL_LABEL[c]}</strong><span className="pill pill-outline">Aguardando conexão</span></div></li>)}
-          </ul>
-        </div>
+      <p className="muted small" style={{ marginTop: 4 }}>
+        Anúncios (Meta Ads) e Instagram: investimento, resultados, criativos e evolução. Cada fonte é independente e mostra de onde vieram os dados.
+        {d.estado.conectado && d.estado.ultimaAtualizacao && <> Última atualização {ago(d.estado.ultimaAtualizacao)}.</>}
+      </p>
+      {d.estado.simulado && <div className="notice" role="note" style={{ margin: "10px 0" }}><b>Dados simulados</b> (CHANNELS_FIXTURE, só desenvolvimento). Nada aqui é real.</div>}
+      {!d.estado.conectado ? (
+        <FontesAguardando anuncios={d.estado.anuncios || !d.estado.instagram} instagram={d.estado.instagram || !d.estado.anuncios} />
       ) : (
-        (() => {
-          const t = totalsOf(summary);
-          return (
+        <>
+          <nav className="tabs abas" aria-label="Seções de canais">
+            {ABAS.map((a) => <Link key={a.k} href={href({ aba: a.k })} aria-current={aba === a.k ? "page" : undefined}>{a.marca ? <MarcaRotulo marca={a.marca} tamanho={20}>{a.label}</MarcaRotulo> : a.label}</Link>)}
+          </nav>
+          {aba !== "evolucao" && (
             <>
-              <h2>Total · 30 dias</h2>
-              <div className="grid kpis">
-                <div className="kpi"><div className="label">Investimento</div><div className="value">{brl(t.spend)}</div></div>
-                <div className="kpi"><div className="label">Faturamento atribuído</div><div className="value">{brl(t.revenue)}</div></div>
-                <div className="kpi"><div className="label">ROAS</div><div className="value">{t.roas ? dec(t.roas) : "—"}</div></div>
-                <div className="kpi"><div className="label">Conversões</div><div className="value">{int(t.conversions)}</div><div className="small muted">CPA {t.cpa ? brl(t.cpa) : "—"}</div></div>
-              </div>
-              <h2>Por canal</h2>
-              <div className="card table-wrap"><table className="t">
-                <thead><tr><th>Canal</th><th>Investimento</th><th>Faturamento</th><th>ROAS</th><th>Conversões</th><th>Cliques</th></tr></thead>
-                <tbody>{summary.channels.map((c) => <tr key={c.channel}><td>{CHANNEL_LABEL[c.channel]}</td><td className="num">{brl(c.spend)}</td><td className="num">{brl(c.revenue)}</td><td className="num">{c.spend > 0 ? dec(c.revenue / c.spend) : "—"}</td><td className="num">{int(c.conversions)}</td><td className="num">{int(c.clicks)}</td></tr>)}</tbody>
-              </table></div>
+              <nav className="tabs periodo" aria-label="Período">
+                {PERIODOS.map((p) => <Link key={p} href={href({ periodo: p })} aria-current={p === periodoId ? "page" : undefined}>{ROTULO_PERIODO[p]}</Link>)}
+              </nav>
+              <p className="muted small" style={{ margin: "4px 0 0" }}>{ddmm(atual.de)} a {ddmm(atual.ate)} ({atual.dias} {atual.dias === 1 ? "dia" : "dias"}) · variações comparam com o período anterior de mesmo tamanho.</p>
             </>
-          );
-        })()
+          )}
+          {aba === "anuncios" && <PainelAnuncios d={d} />}
+          {aba === "instagram" && <PainelInstagram d={d} />}
+          {aba === "evolucao" && <PainelEvolucao d={d} agrup={agrup} hrefAgrup={(g) => href({ agrup: g })} />}
+        </>
       )}
     </>
   );

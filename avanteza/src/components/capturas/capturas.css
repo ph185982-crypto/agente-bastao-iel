@@ -1,0 +1,23 @@
+/* Operações → Capturas e Onboarding. Só tokens do tema. */
+.cp-box { border: 1px solid var(--glass-border); background: var(--glass); border-radius: 20px; padding: 16px; box-shadow: var(--shadow-sm); }
+.cp-box h3 { font-size: 16px; }
+.cp-num { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.cp-previa { border-top: 1px solid var(--hairline); padding-top: 12px; }
+.cp-amostra { list-style: none; margin: 0; padding: 10px 12px; border-radius: 14px; background: rgb(var(--tint) / 0.06); display: grid; gap: 6px; max-height: 260px; overflow-y: auto; font-size: 13px; line-height: 1.45; }
+.cp-amostra li { word-break: break-word; }
+.cp-filtros { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cp-filtros select { min-width: 0; max-width: 100%; width: auto; }
+.cp-item { border: 1px solid var(--glass-border); background: var(--glass); border-radius: 18px; padding: 12px 14px; box-shadow: var(--shadow-sm); min-width: 0; }
+.cp-item .cli { font-size: 12.5px; color: var(--orange-2); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; text-decoration: none; }
+.cp-trecho { margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.45; color: var(--muted); max-height: 140px; overflow: hidden; }
+.cp-acoes { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--hairline); display: grid; gap: 6px; }
+.cp-acoes li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cp-acoes .cp-acao-t { font-weight: 700; flex: 1 1 220px; min-width: 0; }
+.cp-acoes form { margin: 0; }
+.ob-tabela td, .ob-tabela th { white-space: normal; }
+.ob-aviso { border-left-color: var(--danger); }
+.ob-form .fgrid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.ob-form .fgrid .field { margin: 0; }
+.ob-servicos { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.ob-pend { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

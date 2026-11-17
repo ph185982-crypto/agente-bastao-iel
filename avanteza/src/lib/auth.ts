@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, canAccess, canUseApp, verifySessionFull, type Session } from "./session";
+import { podeVerDashboards } from "./dashboards/nav";
 
 export async function currentSession(): Promise<Session | null> {
   const jar = await cookies();
@@ -35,4 +36,11 @@ export async function requireOwner(): Promise<string> {
   const sess = await requireUser();
   if (sess.role !== "admin") redirect(`/central?erro=${encodeURIComponent("Restrito aos administradores.")}`);
   return sess.email;
+}
+
+/** Painel Dashboards: administrador e revisor (somente leitura). Os demais voltam para a Central. */
+export async function requireDashboards(): Promise<Session> {
+  const sess = await requireUser();
+  if (!podeVerDashboards(sess)) redirect("/central");
+  return sess;
 }

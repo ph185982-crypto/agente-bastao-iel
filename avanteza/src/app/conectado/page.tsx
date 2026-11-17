@@ -9,7 +9,7 @@ export default async function Conectado({ searchParams }: { searchParams: Promis
       <div className="login-box" style={{ textAlign: "center" }}>
         <Logo sub size={36} />
         <div className="card" style={{ marginTop: 24, textAlign: "left" }}>
-          <h1 style={{ fontSize: 22 }}>{ok ? <>Conta <span className="serif">conectada</span></> : "Não foi possível conectar"}</h1>
+          <h1 style={{ fontSize: 22 }}>{ok ? <>Conta <span className="accent">conectada</span></> : "Não foi possível conectar"}</h1>
           <p style={{ marginTop: 8 }}>
             {ok
               ? `A conta ${sp.detalhe ?? ""} do Mercado Livre foi autorizada com sucesso. A equipe Avanteza já pode acompanhar seus indicadores. Você pode fechar esta página.`

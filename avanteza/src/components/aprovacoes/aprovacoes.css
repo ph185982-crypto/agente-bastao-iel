@@ -1,0 +1,58 @@
+/* Aprovações e relatórios semanais (Mapa e Operações). Só tokens do tema: vale para o claro e o escuro. */
+.ap-lista { display: grid; gap: 10px; margin-top: 10px; }
+.ap-item {
+  display: flex; gap: 14px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; text-decoration: none; color: var(--text);
+  border: 1px solid var(--glass-border); background: var(--glass); border-radius: 18px; padding: 14px 16px; box-shadow: var(--shadow-sm);
+  border-left: 4px solid rgb(var(--tint) / 0.25); min-width: 0;
+}
+a.ap-item:hover { border-color: rgba(255, 138, 77, 0.55); }
+.ap-item.pendente { border-left-color: var(--orange); }
+.ap-item.atrasada { border-left-color: var(--danger); }
+.ap-item.ajuste { border-left-color: var(--warn); }
+.ap-item.aprovada { border-left-color: var(--ok); }
+.ap-item .tit { font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.ap-item .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.ap-item .cli { font-size: 12px; color: var(--orange-2); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; }
+.ap-item .ap-main { min-width: 0; flex: 1 1 240px; }
+.ap-item .lado { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+@media (max-width: 560px) { .ap-item .lado { align-items: flex-start; } }
+
+.ap-peca { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+.ap-decidir { display: grid; gap: 12px; margin-top: 14px; }
+@media (min-width: 760px) { .ap-decidir { grid-template-columns: 1fr 1fr; } }
+.ap-decidir form { border: 1px solid var(--glass-border); border-radius: 18px; padding: 14px; background: var(--glass); display: flex; flex-direction: column; gap: 10px; }
+.ap-decidir form.aprovar { border-color: var(--ok-border); }
+.ap-decidir textarea { min-height: 84px; }
+
+.ap-hist { list-style: none; margin: 8px 0 0; padding: 0 0 0 16px; border-left: 2px solid rgb(var(--tint) / 0.18); }
+.ap-hist li { position: relative; padding: 0 0 14px 8px; }
+.ap-hist li::before { content: ""; position: absolute; left: -22px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: rgb(var(--tint) / 0.35); }
+.ap-hist li.cliente::before { background: var(--orange); }
+.ap-hist li.aprovada::before { background: var(--ok); }
+.ap-hist .quem { font-weight: 700; }
+.ap-hist .txt { margin-top: 4px; padding: 8px 12px; border-radius: 12px; background: rgb(var(--tint) / 0.07); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.ap-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; align-items: end; }
+.ap-form .full { grid-column: 1 / -1; }
+.ap-form .field { margin: 0; }
+
+.ap-banner { border: 1px solid var(--orange); background: var(--glass); border-radius: var(--radius); padding: 14px 18px; margin-top: 16px; }
+.ap-banner h2 { margin: 0 0 6px; font-size: 17px; }
+.ap-banner ul { margin: 6px 0 0; padding-left: 18px; }
+
+/* Relatório semanal */
+.rs-abertura { font-size: 16px; line-height: 1.6; margin: 0; }
+.rs-destaques { margin: 8px 0 0; padding-left: 20px; }
+.rs-destaques li { margin: 4px 0; }
+.rs-grupo { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 800; margin: 16px 0 8px; }
+.rs-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 760px) { .rs-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.rs-kpis .kpi { padding: 12px 14px; min-width: 0; }
+.rs-kpis .kpi .value { font-size: 22px; overflow-wrap: anywhere; }
+.rs-listas { display: grid; gap: 14px; margin-top: 14px; align-items: start; }
+@media (min-width: 900px) { .rs-listas { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.rs-listas .card { margin: 0; min-width: 0; }
+.rs-listas h3 { margin: 0 0 8px; }
+.rs-listas li { padding: 8px 0; border-bottom: 1px solid var(--hairline); overflow-wrap: anywhere; }
+.rs-listas li:last-child { border-bottom: 0; }
+.rs-acoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

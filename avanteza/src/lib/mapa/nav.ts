@@ -1,9 +1,9 @@
-// Menu do Mapa por tipo de cliente: marketplace, midia ou ambos (união).
+// Menu do Mapa por tipo de cliente: marketplace, midia ou ambos (união). Para aprovar e Relatórios valem para todos.
 export function navFor(kind: string) {
-  const items = [{ href: "/mapa", label: "Início" }, { href: "/mapa/plano", label: "Plano" }];
+  const items = [{ href: "/mapa", label: "Início" }, { href: "/mapa/aprovacoes", label: "Para aprovar" }, { href: "/mapa/plano", label: "Plano" }];
   if (kind === "marketplace" || kind === "ambos") items.push({ href: "/mapa/marketplaces", label: "Marketplaces" });
   if (kind === "midia" || kind === "ambos") items.push({ href: "/mapa/canais", label: "Canais" });
-  items.push({ href: "/mapa/reunioes", label: "Reuniões" }, { href: "/mapa/arquivos", label: "Arquivos" }, { href: "/mapa/conta", label: "Conta" });
+  items.push({ href: "/mapa/relatorios", label: "Relatórios" }, { href: "/mapa/reunioes", label: "Reuniões" }, { href: "/mapa/arquivos", label: "Arquivos" }, { href: "/mapa/conta", label: "Conta" });
   return items;
 }
 

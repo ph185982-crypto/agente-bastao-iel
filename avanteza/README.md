@@ -25,7 +25,7 @@ src/lib/alerts/                          regras (puras), motor, canais (e-mail; 
 src/lib/executor/                        políticas, limites, dry-run, pausa geral, auditoria
 src/app/api/auth/mercadolivre/callback   callback OAuth (state anti-CSRF, uso único)
 src/app/api/webhooks/mercadolivre        notificações (grava na fila e responde 200)
-src/app/api/cron/[job]                   tick | collect | alerts | webhooks | execute | refresh-tokens | daily
+src/app/api/cron/[job]                   tick | collect | alerts | webhooks | execute | refresh-tokens | daily | entregas | eventos | relatorios | lembretes
 supabase/migrations/                     0001 schema + RLS, 0002 pg_cron
 ```
 
@@ -103,8 +103,83 @@ TEST_DATABASE_URL=postgres://postgres@localhost:54329/mapa_test npm test        
 Sem `TEST_DATABASE_URL`, os testes que precisam de banco são ignorados (os demais rodam). URL `localhost` em `DATABASE_URL` usa o driver `pg`
 (só desenvolvimento); produção segue na Neon. Acesso do cliente: Clientes → cliente → “Acesso do cliente” (a senha aparece uma vez).
 
+## Motor de Entregas (Operações → Hoje, Carteira, Calendário, Playbooks)
+Descrição completa em `docs/ARQUITETURA_AVANTEZA.md` (seção “Motor de Entregas”). Código em `src/lib/motor/` (gerador, saúde e fila são funções puras).
+```sh
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/apply.mjs
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-playbooks.mjs                      # só o catálogo e os playbooks padrão
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-playbooks.mjs --aplicar-clientes   # + serviços pelo tipo e ações (idempotente)
+#   --previa (só mostra), --inicio=AAAA-MM-DD (início de quem ainda não tem plano; padrão: hoje), --permitir-remoto (produção, de propósito)
+```
+- Rotina diária `entregas` (Vercel Cron, 09:12 UTC): recorrências dos próximos 30 dias, saúde da carteira, resumo matinal e alerta de risco por e-mail
+  (`RESEND_API_KEY` + `ALERT_EMAIL_FROM`; destino do dono em Ajustes ou `ALERT_EMAIL_TO`).
+- `POST /api/capturas` (Inbox de combinados; o Max usa na F2): `Authorization: Bearer $AVANTEZA_CAPTURE_KEY`, JSON
+  `{ "clienteSlug"|"clienteId"|"clienteNome", "origem": "whatsapp_max"|"whatsapp_export"|"extensao"|"reuniao"|"manual", "autor", "texto", "midiaUrl", "transcricao", "data" }`.
+- Em Playbooks → “Quem cobre cada papel”, marque quem é gestor da conta, analista de marketplace, tráfego, social media e design: as ações novas vão para essas pessoas.
+
+## Barramento de eventos, onboarding automático, notificações e capturas (F2)
+Contrato completo em `docs/eventos.md`. Código em `src/lib/eventos/`, `src/lib/capturas/`, `src/lib/notificacoes.ts`.
+- `POST /api/eventos` (`AVANTEZA_EVENTS_KEY`): idempotente pelo `id`; consumidor no cron `eventos` (e no `tick`) com backoff.
+  `contrato.assinado` → cliente (CNPJ/nome), serviços, plano, Kickoff D+2, playbooks, acesso ao Mapa (senha uma vez no sino),
+  receita recorrente no Financeiro do Vendedor IA (`AVANTEZA_FINANCE_KEY`) e auditoria.
+- Operações → **Onboarding**: andamento de cada contrato, pendências, reprocessar e **Simular contrato assinado** (admin;
+  em produção, confirmação dupla).
+- Operações → **Capturas**: importar conversa exportada do WhatsApp (.txt/.zip até 4 MB; Android e iOS; só mensagens novas;
+  cliente lembrado por conversa/grupo) e a lista das capturas por cliente, com desfazer das ações da IA.
+- APIs do Max (`AVANTEZA_CAPTURE_KEY`): `GET /api/capturas/pendencias`, `POST /api/capturas/concluir`, `POST /api/capturas/importar`.
+- Sino de notificações no menu da equipe (`/api/notificacoes`).
+- Variáveis novas: `AVANTEZA_EVENTS_KEY` (obrigatória para receber eventos), `OPENAI_API_KEY` (opcional: transcrever áudios do
+  .zip; `TRANSCRIPTION_MODEL`, padrão `whisper-1`). Usa as já existentes `ENCRYPTION_KEY` (cifra da senha inicial),
+  `AVANTEZA_CAPTURE_KEY`, `AVANTEZA_FINANCE_KEY`/`VENDEDORIA_URL` e `ANTHROPIC_API_KEY` (extração dos combinados).
+- Schema: `node db/apply.mjs` (aditivo: `clients.cnpj`, `eventos`, `onboardings`, `notificacoes`, `captura_mensagens`, `captura_conversas`, `capturas.conversa`).
+
+## Mapa F7: aprovações, relatório semanal e lembretes ao cliente
+Detalhes em `docs/mapa-f7.md`. Código: `src/lib/aprovacoes/`, `src/lib/relatorios/`, `src/lib/mapa/{aprovacoes,relatorios}.ts` (lado do cliente, escopo da sessão).
+- **Aprovações**: a equipe envia a peça (link ou arquivo do cliente, prazo, tarefa ligada) em Operações → **Aprovações**
+  (`/operacoes/aprovacoes`) ou na ficha do cliente (aba **Aprovações e relatórios**). O cliente vê em **Para aprovar** (menu e Início),
+  aprova (conclui a tarefa ligada) ou pede ajuste com comentário (cria ação no Motor, origem `aprovacao`, com o responsável da tarefa
+  original ou o responsável pela conta, prazo D+2). Nova versão conclui a ação de ajuste. Histórico de versões e comentários; sino da equipe.
+- **Relatório semanal**: cron `relatorios` (segunda 11:17 UTC) gera 1 por cliente e semana (idempotente), com marketplaces, Meta/Instagram,
+  entregas, o que vem e o que depende do cliente; abertura pela IA (`ANTHROPIC_API_KEY`) ou modelo fixo. Revisão em Operações → **Relatórios**
+  (`/operacoes/relatorios`); modo por cliente: `auto` (publica sozinho após N horas, padrão 12, pelo `tick`), `revisao` ou `desligado`.
+  Publicado aparece no Mapa → **Relatórios** e em PDF (`/mapa/relatorios/<id>/pdf`, pdf-lib + Manrope embutida); e-mail ao contato do cliente.
+- **Lembretes**: cron `lembretes` (diário 12:33 UTC): pendências do cliente atrasadas ou vencendo em 2 dias (ações e peças), no máximo
+  1 por cliente por dia, no Início do Mapa e por e-mail; desligável por cliente; log na ficha.
+- E-mail: `RESEND_API_KEY` + `ALERT_EMAIL_FROM` (sem eles, nada é enviado e o status fica `sem_configuracao`). Link: `APP_URL`.
+- Schema: `node db/apply.mjs` (aditivo: `clients.relatorio_modo/relatorio_horas/lembretes_ativos`, `aprovacoes`, `aprovacao_versoes`,
+  `aprovacao_eventos`, `relatorios_semanais`, `lembretes_cliente`, origem `aprovacao` em `plan_actions`).
+
+## Dashboards e menu recolhível
+
+Aba inicial `/dashboards` (admin/revisor): comercial e financeiro do Vendedor IA, marketing da Meta Marketing API (somente leitura),
+cache de ~15 min. Variáveis: `META_ACCESS_TOKEN`, `AVANTEZA_METRICS_KEY`, `VENDEDORIA_URL` (opcional). Dados simulados só em
+desenvolvimento com `DASHBOARDS_FIXTURE=1`. Detalhes em `docs/dashboards.md`.
+
 ## Variações (cor/tamanho)
 - Mercado Livre: estoque por variação; preço vale para todas as variações (o ML exige enviar todas).
 - Shopee: preço e estoque por modelo; sem modelo, o preço vale para todos.
 - TikTok Shop: preço e estoque por SKU; sem SKU, o preço vale para todos.
 Os IDs aparecem em Clientes → Anúncios → "N variações" e a IA também pode propor por variação.
+
+## Tema e fotos dos anúncios
+
+- **Tema claro/escuro:** botão sol/lua no topo (sidebar no desktop, barra superior no celular, canto da tela no login). A escolha fica em `localStorage` + cookie `avanteza-tema`; na primeira visita vale o `prefers-color-scheme`. Tokens em `src/app/globals.css` por `[data-theme]`; `tests/visual.test.ts` confere contraste AA nos dois temas.
+- **Fotos:** `listings.thumbnail` (miniatura https) e `listings.image_urls` (jsonb, até 6) são preenchidas pelo coletor a partir das mesmas chamadas de antes (ML multiget, Shopee `get_item_base_info`, TikTok `get_product`). Anúncios já coletados sem foto são preenchidos no próximo ciclo do coletor (ou ao chegar um webhook `items`); até lá aparece a inicial do título. Em bancos existentes rode `node db/apply.mjs` (adiciona `image_urls`).
+
+## Canais (painel de mídia e tráfego do cliente)
+`/mapa/canais` (clientes `midia`/`ambos`): Anúncios, Instagram e Evolução, com período 7/30/90 dias ou mês atual. **Duas fontes independentes**, cada uma com
+conexão, “Testar conexão”, “Atualizar agora” (90 dias), status e erro próprios, e selo “Fonte: …” na tela (nunca somadas):
+**Tráfego (anúncios) · Meta Ads** (token do cliente, criptografado, `ads_read` + `read_insights`) e **Mídias (Instagram) · Windsor.ai**
+(`WINDSOR_API_KEY` da plataforma ou chave própria do canal, criptografada; `account_name` opcional; Meta Graph continua como alternativa).
+Os **anúncios** também podem vir do Windsor.ai (`ads_source = 'windsor'`, conector `facebook`, `src/lib/channels/windsor-ads.ts`): serve quando o token da Meta não enxerga a conta;
+precisa do Facebook Ads conectado no Windsor (sem isso o teste explica e o cliente vê “Conectando anúncios”). O **Início do Mapa** (midia/ambos) traz o bloco “Mídia e tráfego”
+(`src/components/canais/InicioMidia.tsx`) e as marcas Meta/Facebook/Instagram vivem em `src/components/brand/` (SVG inline).
+Admin: Clientes → cliente → aba **Canais**. Somente leitura (só GET). Coleta diária em `/api/cron/channels` (03 10 UTC, com `CRON_SECRET`), gravando em
+`channel_snapshots` (coluna `source`). Código em `src/lib/channels/` (`windsor.ts` = Instagram; `graph.ts` = Meta). Migração: `node db/apply.mjs` (idempotente; canais
+existentes mantêm a fonte que já tinham; o Instagram do Showman passa a ser escolhido pelo admin ou pelo seed).
+```sh
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/apply.mjs
+DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-canais-showman.mjs   # canal do Showman, sem token; recusa banco remoto
+CHANNELS_FIXTURE=1 npm run dev   # dados simulados (6 anúncios do Showman e Instagram showmanbarbearia); depois "Atualizar agora" na aba Canais ou GET /api/cron/channels com o CRON_SECRET
+```
+Passo a passo para o Cowork gerar e colar o token: `docs/PROMPT_COWORK_META_CLIENTE.md`.

@@ -2,15 +2,17 @@
 import { useActionState } from "react";
 import { login } from "@/app/actions";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function LoginForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState(login, null);
   return (
     <div className="login-wrap">
+      <ThemeToggle className="theme-float" />
       <div className="login-box">
         <Logo sub size={36} />
-        <p style={{ color: "var(--sand)", marginTop: 16 }}>
-          Um acesso para todas as ferramentas, com <span className="serif" style={{ color: "var(--orange)", fontSize: 18 }}>precisão</span>.
+        <p className="muted" style={{ marginTop: 16 }}>
+          Um acesso para todas as ferramentas, com <span className="accent">precisão</span>.
         </p>
         <form action={action} className="card stack">
           <input type="hidden" name="next" value={next} />

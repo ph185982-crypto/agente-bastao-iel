@@ -16,7 +16,7 @@ export default async function Relatorios({ searchParams }: { searchParams: Promi
   return (
     <>
       <div className="page-head">
-        <div><div className="eyebrow">Fase 2 · Agente</div><h1>Relatórios <span className="serif">diários</span></h1></div>
+        <div><div className="eyebrow">Fase 2 · Agente</div><h1>Relatórios <span className="accent">diários</span></h1></div>
         <form className="btn-row">
           <input type="date" name="data" defaultValue={date} style={{ width: 170 }} />
           <button className="btn btn-sm btn-ghost">Ver</button>
@@ -36,7 +36,7 @@ export default async function Relatorios({ searchParams }: { searchParams: Promi
               </div>
             </div>
             {r.error && <div className="small muted" style={{ marginTop: 4 }}>{r.error}</div>}
-            <pre className="small" style={{ whiteSpace: "pre-wrap", fontFamily: "var(--font)", background: "var(--cream)", border: "1px solid var(--sand)", borderRadius: 6, padding: 12, marginTop: 10 }}>{r.report_text}</pre>
+            <pre className="small" style={{ whiteSpace: "pre-wrap", fontFamily: "var(--font)", background: "rgb(var(--tint) / 0.06)", border: "1px solid var(--hairline)", borderRadius: 6, padding: 12, marginTop: 10 }}>{r.report_text}</pre>
             <div className="btn-row" style={{ marginTop: 10 }}>
               <CopyButton text={r.report_text ?? ""} label="Copiar relatório" />
               <a className="btn btn-sm btn-ghost" href={wa} target="_blank" rel="noreferrer">Enviar no WhatsApp</a>

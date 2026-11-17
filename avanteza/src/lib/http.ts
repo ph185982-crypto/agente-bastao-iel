@@ -40,7 +40,7 @@ function isRetryable(status: number): boolean {
 export function redactUrl(url: string): string {
   try {
     const u = new URL(url);
-    for (const k of ["access_token", "client_secret", "code", "refresh_token"]) {
+    for (const k of ["access_token", "client_secret", "code", "refresh_token", "api_key", "apikey", "key"]) {
       if (u.searchParams.has(k)) u.searchParams.set(k, "***");
     }
     return u.toString();

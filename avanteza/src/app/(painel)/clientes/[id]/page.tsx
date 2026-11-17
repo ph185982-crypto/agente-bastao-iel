@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { userDb } from "@/lib/db";
 import { addDays, spDate } from "@/lib/dates";
+import { ListingThumb } from "@/components/ListingThumb";
 import { brl, int, pct, dec, dt, ago, REPUTATION_LABEL, STATUS_LABEL } from "@/lib/format";
 import { Flash } from "@/components/Flash";
 import { Submit } from "@/components/Submit";
@@ -15,11 +16,17 @@ import { RULE_LABEL, DEFAULT_RULES, type RuleType } from "@/lib/alerts/rules";
 import { ACTION_LABEL, ACTION_TYPES } from "@/lib/executor/policy";
 import { currentSession } from "@/lib/auth";
 import { AbaMapa } from "./AbaMapa";
+import { AbaCanais } from "./AbaCanais";
+import { AbaEntregas } from "./AbaEntregas";
+import { AbaComunicacao } from "./AbaComunicacao";
 import { verComoCliente } from "../mapa-actions";
 
+// “Atualizar agora” (aba Canais) coleta 90 dias na Meta dentro da própria ação do servidor.
+export const maxDuration = 120;
+
 const ABAS = [
-  { k: "", label: "Contas e vendas" }, { k: "plano", label: "Plano" }, { k: "arquivos", label: "Arquivos" },
-  { k: "reunioes", label: "Reuniões" }, { k: "acesso", label: "Acesso do cliente" }, { k: "contato", label: "Dados e contato" },
+  { k: "", label: "Contas e vendas" }, { k: "entregas", label: "Entregas" }, { k: "comunicacao", label: "Aprovações e relatórios" }, { k: "plano", label: "Plano" }, { k: "arquivos", label: "Arquivos" },
+  { k: "reunioes", label: "Reuniões" }, { k: "canais", label: "Canais" }, { k: "acesso", label: "Acesso do cliente" }, { k: "contato", label: "Dados e contato" },
 ];
 
 const PARAM_FIELDS: Record<RuleType, { key: string; label: string }[]> = {
@@ -60,7 +67,7 @@ export default async function Cliente({
     </div>
   );
   if (aba) {
-    return (<><Flash sp={sp} />{head}{tabs}<AbaMapa client={client} aba={aba} owner={isOwner} /></>);
+    return (<><Flash sp={sp} />{head}{tabs}{aba === "canais" ? <AbaCanais client={client} owner={isOwner} /> : aba === "entregas" ? <AbaEntregas client={client} previa={sp.previa === "1"} /> : aba === "comunicacao" ? <AbaComunicacao client={client} /> : <AbaMapa client={client} aba={aba} owner={isOwner} />}</>);
   }
 
   const today = spDate();
@@ -72,7 +79,7 @@ export default async function Cliente({
 
   const [snaps, listings, questions, campaigns, rules, policies, actions, alerts, report] = await Promise.all([
     db.from("daily_snapshots").select("*").in("account_id", ids).gte("snapshot_date", addDays(today, -14)).order("snapshot_date"),
-    db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d, permalink, variations").in("account_id", ids).order("sold_quantity", { ascending: false }).limit(300),
+    db.from("listings").select("account_id, external_id, title, status, sub_status, price, available_quantity, sold_quantity, visits_30d, permalink, thumbnail, variations").in("account_id", ids).order("sold_quantity", { ascending: false }).limit(300),
     db.from("questions").select("*").in("account_id", ids).eq("status", "UNANSWERED").order("date_created").limit(50),
     db.from("ads_campaigns").select("*").in("account_id", ids).order("name"),
     db.from("alert_rules").select("*").eq("client_id", id),
@@ -250,7 +257,7 @@ export default async function Cliente({
             <tbody>
               {[...problemListings, ...L.filter((l) => !problemListings.includes(l))].slice(0, 60).map((l) => (
                 <tr key={l.account_id + l.external_id}>
-                  <td>{l.permalink ? <a href={l.permalink} target="_blank" rel="noreferrer">{l.title}</a> : l.title}<div className="small muted mono">{l.external_id}</div>
+                  <td><div className="item-main"><ListingThumb url={l.thumbnail} title={l.title} /><div className="grow"><span className="ttl">{l.permalink ? <a href={l.permalink} target="_blank" rel="noreferrer">{l.title}</a> : l.title}</span><div className="small muted mono">{l.external_id}</div></div></div>
                     {Array.isArray(l.variations) && l.variations.length > 0 && (
                       <details>
                         <summary className="small">{l.variations.length} variações</summary>

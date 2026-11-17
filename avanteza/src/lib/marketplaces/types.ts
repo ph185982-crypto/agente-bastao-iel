@@ -41,7 +41,10 @@ export interface Listing {
   availableQuantity: number | null;
   soldQuantity: number | null;
   permalink: string | null;
+  /** Miniatura (https, já validada). */
   thumbnail: string | null;
+  /** Fotos do anúncio (https, até 6), para uso futuro (galeria); a lista usa só `thumbnail`. */
+  imageUrls: string[];
   listingTypeId: string | null;
   hasVariations: boolean;
   variations?: Variation[];

@@ -7,6 +7,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { fetchJson } from "../../http";
 import { env, envOptional } from "../../env";
 import { stateWithVariation, stockTarget } from "../variations";
+import { firstImage, imageList } from "../images";
 import type {
   ActionType,
   Variation,
@@ -80,6 +81,7 @@ function mapProduct(p: Json): Listing {
     0,
   );
   const raw = String(p.status ?? "");
+  const main: Json | undefined = (p.main_images ?? [])[0];
   return {
     externalId: String(p.id),
     title: p.title ?? "",
@@ -90,7 +92,8 @@ function mapProduct(p: Json): Listing {
     availableQuantity: skus.length ? stock : null,
     soldQuantity: null,
     permalink: null,
-    thumbnail: p.main_images?.[0]?.urls?.[0] ?? null,
+    thumbnail: firstImage(main?.thumb_urls?.[0], main?.urls?.[0]),
+    imageUrls: imageList(((p.main_images ?? []) as Json[]).map((i) => i?.urls?.[0] ?? i?.thumb_urls?.[0])),
     listingTypeId: null,
     hasVariations: skus.length > 1,
     variations: skus.length > 1 ? mapSkus(p) : [],

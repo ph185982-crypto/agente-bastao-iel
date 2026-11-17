@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { VIEW_COOKIE } from "@/lib/session";
 import { requireMapa, COMPANY_COOKIE } from "@/lib/mapa/auth";
-import { changeOwnPassword, updateOwnActionStatus } from "@/lib/mapa/repo";
+import { changeOwnPassword, resolverPendencia, updateOwnActionStatus } from "@/lib/mapa/repo";
 import type { ActionStatus } from "@/lib/mapa/progress";
+import { decidirAprovacao } from "@/lib/mapa/aprovacoes";
 
 export async function selectCompany(fd: FormData) {
   const { scope } = await requireMapa();
@@ -23,6 +24,27 @@ export async function updateMyAction(fd: FormData) {
   const ok = await updateOwnActionStatus(scope, String(fd.get("action_id") ?? ""), String(fd.get("status") ?? "") as ActionStatus).catch(() => false);
   revalidatePath("/mapa", "layout");
   redirect(`/mapa/plano?${ok ? "ok=Andamento atualizado." : "erro=Não foi possível atualizar esta ação."}`);
+}
+
+/** "Feito"/"Já enviei" numa pendência do cliente, com link opcional. O client_id vem do escopo; o id da ação é só um filtro. */
+export async function resolverMinhaPendencia(fd: FormData) {
+  const { scope } = await requireMapa();
+  const link = String(fd.get("link") ?? "").trim();
+  const ok = await resolverPendencia(scope, String(fd.get("action_id") ?? ""), link || null).catch(() => false);
+  revalidatePath("/mapa", "layout");
+  const destino = String(fd.get("voltar") ?? "") === "/mapa" ? "/mapa" : "/mapa/plano";
+  redirect(`${destino}?${ok ? "ok=Obrigado! A Avanteza já foi avisada." : link ? "erro=Não foi possível registrar. Confira se o link começa com https://" : "erro=Não foi possível registrar esta pendência."}`);
+}
+
+/** Aprovar ou pedir ajuste numa peça. O client_id vem do escopo; o id da peça é só um filtro (outra empresa = nada acontece). */
+export async function decidirMinhaAprovacao(fd: FormData) {
+  const { scope } = await requireMapa();
+  const id = String(fd.get("aprovacao_id") ?? "");
+  const decisao = String(fd.get("decisao") ?? "") === "aprovar" ? "aprovar" : "ajuste";
+  const r = await decidirAprovacao(scope, id, decisao, String(fd.get("comentario") ?? "")).catch((e) => ({ ok: false, erro: e instanceof Error && /somente leitura/.test(e.message) ? "Visualização somente leitura." : "Não foi possível registrar." }));
+  revalidatePath("/mapa", "layout");
+  const destino = /^[0-9a-f-]{36}$/i.test(id) ? `/mapa/aprovacoes/${id}` : "/mapa/aprovacoes";
+  redirect(`${destino}?${r.ok ? (decisao === "aprovar" ? "ok=Aprovado! A Avanteza já foi avisada." : "ok=Pedido de ajuste enviado. A equipe já foi avisada.") : `erro=${encodeURIComponent(r.erro ?? "Não foi possível registrar.")}`}`);
 }
 
 export async function changeMyPassword(_prev: { ok?: string; erro?: string } | null, fd: FormData): Promise<{ ok?: string; erro?: string }> {

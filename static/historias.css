@@ -1,16 +1,16 @@
 /* "Minhas histórias e casos" (Perfil). Usa as cores e o raio da marca (marca.css). */
 .hs-tela { display: grid; gap: 14px; }
-.hs-voltar { justify-self: start; background: none; border: 0; padding: 8px 0; min-height: 44px; font: 600 15px var(--pd-texto); color: var(--pd-azul); cursor: pointer; }
+.hs-voltar { justify-self: start; background: none; border: 0; padding: 8px 0; min-height: 44px; font: 600 15px var(--pd-texto); color: var(--avz-text); cursor: pointer; }
 .hs-intro { max-width: 60ch; }
 .hs-form { display: grid; gap: 12px; }
 .hs-tipos { display: flex; flex-wrap: wrap; gap: 8px; }
-.hs-tipo { min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--pd-linha); background: var(--pd-cartao); font: 600 14px var(--pd-texto); color: var(--pd-tinta); cursor: pointer; }
-.hs-tipo[aria-pressed="true"] { background: var(--pd-tinta); border-color: var(--pd-tinta); color: var(--pd-papel); }
+.hs-tipo { min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--pd-linha); background: var(--cz-surface); font: 600 14px var(--pd-texto); color: var(--pd-tinta); cursor: pointer; }
+.hs-tipo[aria-pressed="true"] { background: var(--cz-ink); border-color: var(--cz-ink); color: var(--cz-on-ink); }
 .hs-ajuda { margin: 0; color: var(--pd-cinza); }
 .hs-campo { display: grid; gap: 6px; font: 600 13px var(--pd-texto); color: var(--pd-cinza); }
-.hs-campo input, .hs-campo textarea { width: 100%; box-sizing: border-box; padding: 12px; border-radius: 6px; border: 1px solid var(--pd-linha); background: #fff; font: 400 16px/1.45 var(--pd-texto); color: var(--pd-tinta); }
+.hs-campo input, .hs-campo textarea { width: 100%; box-sizing: border-box; padding: 12px; border-radius: var(--avz-radius-sm); border: 1px solid var(--pd-linha); background: var(--cz-surface); font: 400 16px/1.45 var(--pd-texto); color: var(--pd-tinta); }
 .hs-campo textarea { resize: vertical; min-height: 180px; }
-.hs-campo input:focus-visible, .hs-campo textarea:focus-visible, .hs-tipo:focus-visible, .hs-voltar:focus-visible { outline: 3px solid var(--pd-azul); outline-offset: 2px; }
+.hs-campo input:focus-visible, .hs-campo textarea:focus-visible, .hs-tipo:focus-visible, .hs-voltar:focus-visible { outline: 3px solid var(--avz-text); outline-offset: 2px; }
 .hs-rodape { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .hs-contador { font: 500 13px var(--pd-texto); color: var(--pd-cinza); font-variant-numeric: tabular-nums; }
 .hs-botoes { display: flex; gap: 8px; }
@@ -18,7 +18,7 @@
 .hs-lista-titulo { margin-top: 6px; }
 .hs-item { display: grid; gap: 8px; }
 .hs-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.hs-etiqueta { font: 700 12px var(--pd-texto); letter-spacing: .06em; text-transform: uppercase; color: var(--pd-azul); }
+.hs-etiqueta { font: 700 12px var(--pd-texto); letter-spacing: .06em; text-transform: uppercase; color: var(--avz-text); }
 .hs-titulo { margin: 0; font: 700 18px/1.25 var(--pd-titulo); color: var(--pd-tinta); overflow-wrap: anywhere; }
 .hs-trecho { margin: 0; overflow-wrap: anywhere; }
 .hs-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -27,10 +27,10 @@
 .hs-fotos { display: grid; gap: 12px; }
 .hs-grade { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .hs-foto { margin: 0; display: grid; gap: 4px; }
-.hs-foto img, .hs-foto-vazia { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 6px; background: var(--pd-papel-2); display: block; }
+.hs-foto img, .hs-foto-vazia { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--avz-radius-sm); background: var(--cz-chip); display: block; }
 .hs-foto figcaption { font: 500 12px var(--pd-texto); color: var(--pd-cinza); }
-.hs-foto-apagar { min-height: 44px; border-radius: 6px; border: 1px solid var(--pd-linha); background: var(--pd-cartao); font: 600 13px var(--pd-texto); color: var(--pd-tinta); cursor: pointer; }
-.hs-foto-apagar:focus-visible, .hs-enviar:focus-within { outline: 3px solid var(--pd-azul); outline-offset: 2px; }
+.hs-foto-apagar { min-height: 44px; border-radius: var(--avz-radius-sm); border: 1px solid var(--pd-linha); background: var(--cz-surface); font: 600 13px var(--pd-texto); color: var(--pd-tinta); cursor: pointer; }
+.hs-foto-apagar:focus-visible, .hs-enviar:focus-within { outline: 3px solid var(--avz-text); outline-offset: 2px; }
 .hs-enviar { position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer; width: 100%; max-width: 100%; box-sizing: border-box; }
 .hs-enviar.desligado { opacity: .55; cursor: default; }
 .hs-enviar input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }

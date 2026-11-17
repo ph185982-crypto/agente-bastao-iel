@@ -5,22 +5,40 @@ import { addDays, spDate } from "@/lib/dates";
 import { brl, int, dec, pct } from "@/lib/format";
 import { sumPeriod, variation } from "@/lib/mapa/metrics";
 import { planSummary, phaseState, PHASE_STATE_LABEL, nextMilestones, isOverdue, fmtDate, OWNER_LABEL, STATUS_LABEL } from "@/lib/mapa/progress";
-import { getTrafficProvider, totalsOf } from "@/lib/mapa/traffic";
+import { InicioMidia } from "@/components/canais/InicioMidia";
+import { carregarCanaisDoCliente } from "@/lib/channels/cliente";
+import { PERIODO_PADRAO, parsePeriodo, type PeriodoId } from "@/lib/dashboards/periodo";
 import { hasChannels, hasMarketplaces } from "@/lib/mapa/nav";
+import { DependeDeVoce } from "@/components/mapa/DependeDeVoce";
+import { Flash } from "@/components/Flash";
+import { listarAprovacoes } from "@/lib/mapa/aprovacoes";
+import { lembreteDeHoje, listarRelatorios } from "@/lib/mapa/relatorios";
+import { aprovacaoAtrasada, ROTULO_TIPO_PECA, type TipoPeca } from "@/lib/aprovacoes/tipos";
+import { fmtPeriodo } from "@/lib/relatorios/semana";
+import "@/components/aprovacoes/aprovacoes.css";
 
-export default async function Inicio() {
+export const dynamic = "force-dynamic";
+
+export default async function Inicio({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { scope } = await requireMapa();
+  const sp = await searchParams;
+  const periodoId = parsePeriodo(sp.periodo);
   const today = spDate();
   const client = await getClient(scope);
   if (!client) return <div className="empty">Cliente não encontrado.</div>;
-  const [phases, actions, mkt, group] = await Promise.all([
+  const [phases, actions, mkt, group, aprovacoes, lembrete, relatorios] = await Promise.all([
     listPhases(scope),
     listActions(scope),
     hasMarketplaces(client.kind) ? marketplaceData(scope, addDays(today, -60)) : null,
     scope.allowedClientIds.length > 1 ? groupOverview(scope, addDays(today, -30)) : null,
+    listarAprovacoes(scope),
+    lembreteDeHoje(scope, today),
+    listarRelatorios(scope),
   ]);
-  const traffic = hasChannels(client.kind) ? getTrafficProvider() : null;
-  const tSummary = traffic && (await traffic.isConnected(scope.clientId)) ? await traffic.summary(scope.clientId, { from: addDays(today, -30), to: today }) : null;
+  const paraAprovar = aprovacoes.filter((a) => a.status === "pendente");
+  const ultimoRelatorio = relatorios[0] ?? null;
+  const canais = hasChannels(client.kind) ? await carregarCanaisDoCliente(scope, periodoId) : null;
+  const hrefPeriodo = (p: PeriodoId) => (p === PERIODO_PADRAO ? "/mapa" : `/mapa?periodo=${p}`);
 
   const sum = planSummary(actions, today);
   const m = nextMilestones(phases, actions, today);
@@ -32,9 +50,41 @@ export default async function Inicio() {
 
   return (
     <>
+      <Flash sp={sp} />
       <div className="eyebrow">{client.name}</div>
-      <h1>Olá, <span className="serif">{first}</span></h1>
+      <h1>Olá, <span className="accent">{first}</span></h1>
       <p className="muted" style={{ marginTop: 4 }}>Seu mapa de 12 meses com a Avanteza: onde estamos, o que vem agora e o que depende de cada um.</p>
+      {lembrete && (
+        <div className="ap-banner" role="status" aria-label="Lembrete de hoje">
+          <h2>Lembrete de hoje: {lembrete.length === 1 ? "1 item precisa" : `${lembrete.length} itens precisam`} de você</h2>
+          <ul className="small">{lembrete.slice(0, 5).map((i) => <li key={i.id}>{i.titulo} <span className={i.atrasada ? "late" : "muted"}>({i.atrasada ? "atrasado desde" : "prazo"} {fmtDate(i.prazo)})</span></li>)}</ul>
+        </div>
+      )}
+      {paraAprovar.length > 0 && (
+        <section className="mt-voce" aria-label="Para aprovar" style={{ marginTop: 18 }}>
+          <div className="row"><h2 style={{ margin: 0 }}>Para aprovar <span className="pill pill-orange">{paraAprovar.length}</span></h2><Link className="small" href="/mapa/aprovacoes">Ver todas ›</Link></div>
+          <div className="ap-lista">
+            {paraAprovar.slice(0, 3).map((a) => {
+              const atrasada = aprovacaoAtrasada(a, today);
+              return (
+                <Link key={a.id} href={`/mapa/aprovacoes/${a.id}`} className={`ap-item ${atrasada ? "atrasada" : "pendente"}`}>
+                  <div className="ap-main"><div className="tit">{a.titulo}</div><div className="meta"><span>{ROTULO_TIPO_PECA[a.tipo as TipoPeca] ?? a.tipo}</span>{a.prazo && <span className={atrasada ? "late" : ""}>{atrasada ? "Atrasada, prazo " : "Prazo "}{fmtDate(a.prazo)}</span>}</div></div>
+                  <div className="lado"><span className="btn btn-sm btn-orange">Revisar</span></div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      <DependeDeVoce acoes={actions} hoje={today} readOnly={scope.readOnly} voltar="/mapa" limite={3} />
+      {ultimoRelatorio && (
+        <div className="card row" style={{ marginTop: 14 }}>
+          <div><div className="small muted">Relatório semanal</div><strong>Semana de {fmtPeriodo(ultimoRelatorio.semana, ultimoRelatorio.periodo_fim)}</strong></div>
+          <div className="btn-row"><Link className="btn btn-sm btn-ghost" href={`/mapa/relatorios/${ultimoRelatorio.id}`}>Ler</Link><a className="btn btn-sm btn-ghost" href={`/mapa/relatorios/${ultimoRelatorio.id}/pdf`} target="_blank" rel="noopener">PDF</a></div>
+        </div>
+      )}
+
+      {canais && <InicioMidia d={canais} hrefPeriodo={hrefPeriodo} />}
 
       {cur && (
         <>
@@ -48,27 +98,6 @@ export default async function Inicio() {
               <div className="kpi"><div className="label">Investimento em ADS</div><div className="value">{brl(cur.adsCost)}</div><div className="small muted">Receita de ADS {brl(cur.adsRevenue)}</div></div>
               <div className="kpi"><div className="label">ROAS</div><div className="value">{cur.roas ? dec(cur.roas) : "—"}</div><div className="small muted">retorno por R$ investido</div></div>
             </div>
-          )}
-        </>
-      )}
-
-      {traffic && (
-        <>
-          <h2>Tráfego e mídias · últimos 30 dias</h2>
-          {tSummary ? (
-            (() => {
-              const t = totalsOf(tSummary);
-              return (
-                <div className="grid kpis">
-                  <div className="kpi"><div className="label">Investimento</div><div className="value">{brl(t.spend)}</div></div>
-                  <div className="kpi"><div className="label">Faturamento atribuído</div><div className="value">{brl(t.revenue)}</div></div>
-                  <div className="kpi"><div className="label">ROAS</div><div className="value">{t.roas ? dec(t.roas) : "—"}</div></div>
-                  <div className="kpi"><div className="label">Conversões</div><div className="value">{int(t.conversions)}</div><div className="small muted">CPA {t.cpa ? brl(t.cpa) : "—"}</div></div>
-                </div>
-              );
-            })()
-          ) : (
-            <div className="card"><strong>Conectando fontes de dados</strong><p className="small muted" style={{ margin: "4px 0 0" }}>Estamos ligando suas contas de anúncios. Os números de investimento, faturamento e ROAS aparecem aqui assim que a conexão terminar. <Link href="/mapa/canais">Ver canais ›</Link></p></div>
           )}
         </>
       )}

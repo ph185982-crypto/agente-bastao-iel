@@ -7,6 +7,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { fetchJson } from "../../http";
 import { env, envOptional } from "../../env";
 import { stateWithVariation, stockTarget } from "../variations";
+import { firstImage, imageList } from "../images";
 import type {
   ActionType,
   Variation,
@@ -167,7 +168,8 @@ export class ShopeeAdapter implements MarketplaceAdapter {
           availableQuantity: it.stock_info_v2?.summary_info?.total_available_stock ?? null,
           soldQuantity: null,
           permalink: null,
-          thumbnail: it.image?.image_url_list?.[0] ?? null,
+          thumbnail: firstImage(...((it.image?.image_url_list ?? []) as unknown[]).slice(0, 1)),
+          imageUrls: imageList((it.image?.image_url_list ?? []) as unknown[]),
           listingTypeId: null,
           hasVariations: Boolean(it.has_model),
           raw: null,

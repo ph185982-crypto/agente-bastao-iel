@@ -1,0 +1,32 @@
+/* Sino de notificações (AppShell). Só tokens do tema. */
+.sino { position: relative; display: inline-flex; }
+.sino-btn { position: relative; width: 38px; height: 38px; }
+.sino-btn svg { width: 19px; height: 19px; }
+.sino-n {
+  position: absolute; top: -4px; right: -4px; min-width: 18px; padding: 0 5px; border-radius: var(--radius-pill);
+  background: var(--orange); color: var(--navy); font-size: 10.5px; font-weight: 800; line-height: 18px; text-align: center;
+}
+.sb-sino { margin-left: auto; }
+.sb-sino + .sb-theme { margin-left: 0; }
+@media (max-width: 899px) { .sb-sino { display: none; } }
+@media (min-width: 900px) { :root[data-sidebar="collapsed"] .sb-sino { margin: 0 auto; } }
+
+.sino-painel {
+  position: fixed; z-index: 60; top: 16px; left: calc(var(--sidebar-w) + 32px); width: min(420px, calc(100vw - 32px)); max-height: min(78vh, 640px);
+  overflow-y: auto; border-radius: 20px; padding: 14px; border: 1px solid var(--glass-border); background: var(--solid); box-shadow: var(--shadow-sm);
+}
+@media (max-width: 899px) { .sino-painel { top: 70px; left: 12px; right: 12px; width: auto; } }
+.sino-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 10px; border-bottom: 1px solid var(--hairline); }
+.sino-vazio { padding: 14px 4px; }
+.sino-lista { list-style: none; margin: 0; padding: 0; }
+.sino-lista > li { padding: 12px 4px; border-bottom: 1px solid var(--hairline); }
+.sino-lista > li:last-child { border-bottom: 0; }
+.sino-lista > li.lida { opacity: 0.8; }
+.sino-tit { display: flex; align-items: baseline; gap: 8px; font-weight: 700; line-height: 1.35; }
+.sino-tit a { color: var(--text); text-decoration: none; }
+.sino-tit a:hover { text-decoration: underline; }
+.sino-ponto { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--orange); transform: translateY(-1px); }
+.sino-corpo { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.sino-pe { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.sino-segredo { margin-top: 8px; display: grid; gap: 4px; }
+.sino-segredo code { font-size: 15px; font-weight: 800; letter-spacing: 0.04em; padding: 8px 10px; border-radius: 12px; background: rgb(var(--tint) / 0.1); user-select: all; word-break: break-all; }

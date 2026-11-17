@@ -8,6 +8,7 @@ import { APP_IDS } from "@/lib/apps";
 import bcrypt from "bcryptjs";
 import { SESSION_COOKIE, SESSION_TTL_S, VIEW_COOKIE, signSession } from "@/lib/session";
 import { checkLogin, setPassword } from "@/lib/login";
+import { destinoPadrao } from "@/lib/dashboards/nav";
 import { userDb, adminDb } from "@/lib/db";
 import { createAuthorizationLink } from "@/lib/oauth";
 import { collectBatch } from "@/lib/collector";
@@ -51,7 +52,7 @@ export async function login(_prev: { error?: string; email?: string } | null, fd
   });
   const next = str(fd, "next");
   if (r.role === "client") redirect(next.startsWith("/mapa") && !next.startsWith("//") ? next : "/mapa");
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/central");
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : destinoPadrao(r.role));
 }
 
 export async function changePassword(fd: FormData) {

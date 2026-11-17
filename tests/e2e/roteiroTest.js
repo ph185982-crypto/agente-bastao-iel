@@ -48,8 +48,8 @@ const falhas = []; const ok = (c, m) => { console.log(c ? '  ✓' : '  ✗', m);
   ok(/Para aprovar\s*1/.test(n), 'a aba Para aprovar conta o roteiro');
   const trilho = await p.innerText('.st-trilho');
   ok(/1\s*Roteiros para aprovar/.test(trilho) && await p.locator('.st-trilho button.vez').count() === 1, 'o trilho do fluxo mostra o roteiro e marca a etapa da vez');
-  ok(await p.evaluate(async () => { await document.fonts.ready; return document.fonts.check('800 20px "Manrope"') && document.fonts.check('400 16px "Manrope"'); }), 'a fonte da identidade (Manrope) carregou');
-  ok(await p.evaluate(() => getComputedStyle(document.body).backgroundColor) === 'rgb(245, 240, 230)', 'o fundo do app é o creme da identidade Avanteza');
+  ok(await p.evaluate(async () => { await document.fonts.ready; return document.fonts.check('800 20px "Plus Jakarta Sans"') && document.fonts.check('400 16px "Plus Jakarta Sans"'); }), 'a fonte da plataforma (Plus Jakarta Sans) carregou');
+  ok(await p.evaluate(() => document.documentElement.dataset.theme === 'light' && getComputedStyle(document.documentElement).backgroundColor === 'rgb(245, 240, 230)'), 'tema claro (sistema claro): o fundo do app é o creme da identidade Avanteza');
   await p.screenshot({ path: `${SP}/rt_1_roteiro.png` });
 
   await p.click('[data-action="st-roteiro-aprovar"]');

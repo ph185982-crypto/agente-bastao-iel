@@ -23,6 +23,7 @@ const { lerZip } = require('../../backend/lib/radar/pacote');
 
   await p.goto(`${BASE}/`, { waitUntil: 'networkidle' });
   await p.waitForFunction(() => window.Mesa?.state.pronto, null, { timeout: 20000 });
+  await p.tap('[data-action="menu-abrir"]'); // no celular o Radar fica na gaveta do menu
   await p.tap('.es-nav [data-tab="radar"]'); await p.waitForSelector('text=Pesquisar oportunidades agora', { timeout: 10000 });
   await p.tap('[data-action="rd-pesquisar"]'); await p.waitForSelector('.rd-slides', { timeout: 90000 });
   const txt = await p.innerText('main');

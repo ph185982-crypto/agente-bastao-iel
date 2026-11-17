@@ -61,11 +61,16 @@ protegido: o token de acesso é assinado com o código (`APP_ACCESS_CODE` ou o c
 
 ### Identidade visual
 
-A interface segue a identidade Avanteza (marinho, creme, areia, laranja; Manrope + Instrument Serif itálico; sem
-sombras nem degradês, bordas de 1px, raio 6px). Os tokens ficam em `static/avanteza.css` (cópia de
-`packages/avanteza-kit/tokens.css`; ao mudar o kit, copie de novo) e os nomes antigos `--pd-*`/`--es-*` em
-`static/marca.css` apontam para eles. As artes geradas para o Instagram têm identidade própria (@pedro_destrava)
-e não usam esses tokens.
+A interface segue o visual "vidro" da plataforma Avanteza (o mesmo da Central): fundo com orbes, superfícies de vidro
+(com fallback sólido sem `backdrop-filter`), raios e sombras do kit, Plus Jakarta Sans (servida pelo app,
+`static/PlusJakartaSans-Variavel.woff2`, licença OFL), tema claro/escuro com o botão sol/lua e menu lateral em grupos,
+recolhível a ícones, que vira gaveta no celular (atalho **Central** volta para app.avanteza.com.br). Tema e menu usam
+as mesmas chaves da Central (`avanteza-tema`, `avanteza-menu`; localStorage + cookie, aplicados antes da pintura).
+Os tokens ficam em `static/avanteza-tokens.css` (cópia fiel de `packages/avanteza-kit/tokens.css`: ao mudar o kit,
+copie de novo); os papéis do app (`--cz-*`) e a casca ficam em `static/vidro.css` (última folha) e os nomes antigos
+`--pd-*`/`--es-*` apontam para eles. `backend/lib/vidro.test.js` confere a cópia, a presença dos tokens e o contraste
+AA no pior caso do fundo nos dois temas. As artes geradas para o Instagram, o teleprompter e a aba Ferramentas (app
+antigo, numa folha creme) têm estilo próprio e não usam esses tokens.
 
 **Radar de Negócios** (pesquisa diária às 7h, carrossel “Ideias que dão dinheiro”, fila de aprovação): [docs/RADAR.md](docs/RADAR.md).
 
