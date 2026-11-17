@@ -1,53 +1,109 @@
-/* Avanteza — tokens de design (fonte única para TODAS as ferramentas).
-   Identidade v2.0: Marinho #0B1B33 · Creme #F5F0E6 · Areia #EAD9C2 · Laranja #FF6A1F
-   Regras: sem sombras, sem degradês, bordas de 1px, laranja só para ação e destaque (≈10%).
-   Fontes: Manrope (texto e números) + Instrument Serif itálico (palavra-chave em títulos). */
-:root {
-  /* cor */
+/* Avanteza — tokens de design do "vidro" (fonte única para TODOS os apps da plataforma).
+   Origem: a Central (avanteza/src/app/globals.css). Identidade v2.0 com a regra nova do dono (nov/2026): vidro moderno,
+   bordas arredondadas, sombras suaves, transparência, Plus Jakarta Sans, menu lateral recolhível, tema claro e escuro.
+   Marca: Marinho #0B1B33 · Creme #F5F0E6 · Areia #EAD9C2 · Laranja #FF6A1F (acento; sobre ele, texto marinho).
+   Guia de uso: GUIA.md. Os nomes abaixo são estáveis: apps copiam este arquivo (não editem a cópia; mudem aqui).
+
+   Tema: [data-theme="dark"] (padrão quando não há atributo) ou [data-theme="light"] no <html>.
+   O app aplica o tema antes da pintura (chave "avanteza-tema" em localStorage/cookie; sem escolha, segue o sistema). */
+:root, :root[data-theme="dark"] {
+  /* ── marca (fixa nos dois temas) ── */
   --avz-navy: #0B1B33;
   --avz-navy-2: #132A4C;
+  --avz-navy-3: #1B3A66;
   --avz-cream: #F5F0E6;
   --avz-sand: #EAD9C2;
   --avz-orange: #FF6A1F;
-  --avz-orange-hover: #E85A12;
-  --avz-white: #FFFFFF;
-  --avz-muted: #64748B;
-  --avz-ok: #047857;
-  --avz-ok-bg: #D1FAE5;
-  --avz-danger: #DC2626;
-  --avz-danger-bg: #FEE2E2;
-  --avz-warn: #B45309;
+  --avz-orange-hover: #FF7A36;   /* hover do preenchimento laranja (texto marinho passa em AA) */
+  --avz-blue: #3B82F6;           /* só a orbe azul do fundo */
 
-  /* papéis semânticos (use estes nos componentes) */
-  --avz-bg: var(--avz-cream);          /* fundo da página */
-  --avz-surface: var(--avz-white);     /* cartões */
-  --avz-text: var(--avz-navy);
-  --avz-text-soft: var(--avz-muted);
-  --avz-border: var(--avz-sand);
-  --avz-primary: var(--avz-navy);      /* botão padrão, barra superior */
-  --avz-on-primary: var(--avz-cream);
-  --avz-accent: var(--avz-orange);     /* ação principal, foco, destaque */
-  --avz-on-accent: var(--avz-white);
+  /* ── fundo e texto do tema ── */
+  --avz-bg: #0B1B33;
+  --avz-text: #F5F0E6;
+  --avz-muted: #CBD4E2;          /* texto secundário */
+  --avz-heading: #EAD9C2;        /* títulos de seção, rótulos, cabeçalho de tabela */
+  --avz-accent-text: #FFB48C;    /* laranja como TEXTO/ícone/foco: claro no escuro, queimado no claro */
+  --avz-ok: #8FF0C8;
+  --avz-danger: #FECACA;
+  --avz-warn: #FCD34D;
+  --avz-placeholder: #9AA6B9;
 
-  /* forma */
-  --avz-radius: 6px;
-  --avz-radius-pill: 50px;
-  --avz-border-w: 1px;
-  --avz-shadow: none;
+  /* ── ambiente: duas orbes de gradiente (opacidade no centro; o contraste é conferido no pior caso) ── */
+  --avz-orb-orange-a: 0.20;
+  --avz-orb-blue-a: 0.22;
 
-  /* tipografia */
-  --avz-font: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --avz-font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
-  --avz-text-size: 15px;
-  --avz-line: 1.5;
-  --avz-h1: 800 26px/1.15 var(--avz-font);
-  --avz-h2: 800 15px/1.3 var(--avz-font);   /* MAIÚSCULAS + barra laranja à esquerda */
-  --avz-tracking-tight: -0.025em;
+  /* ── vidro ── */
+  --avz-glass-rgb: 255 255 255;  /* cor do vidro (triplet RGB para rgb(... / alfa)) */
+  --avz-glass-a: 0.06;           /* preenchimento padrão */
+  --avz-glass-strong-a: 0.09;    /* sidebar, barra superior, cartões */
+  --avz-glass: rgb(var(--avz-glass-rgb) / var(--avz-glass-a));
+  --avz-glass-strong: rgb(var(--avz-glass-rgb) / var(--avz-glass-strong-a));
+  --avz-glass-border: rgba(255, 255, 255, 0.14);
+  --avz-tint: 255 255 255;       /* realces: hover, trilhas, divisórias (triplet RGB) */
+  --avz-shade: 7 15 30;          /* campos e superfícies afundadas (triplet RGB) */
+  --avz-field-a: 0.5;
+  --avz-hairline: rgba(255, 255, 255, 0.10);
+  --avz-shadow: 0 10px 34px rgba(2, 8, 20, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  --avz-shadow-sm: 0 4px 16px rgba(2, 8, 20, 0.28);
+  --avz-glow: 0 6px 22px rgba(255, 106, 31, 0.35);   /* só no laranja (botão principal, item ativo) */
+  --avz-blur: 14px;
+  --avz-solid: rgba(19, 42, 76, 0.94);    /* vidro sem backdrop-filter (fallback) */
+  --avz-solid-2: rgba(14, 32, 60, 0.96);  /* diálogos, popovers, menus */
+  --avz-drawer-bg: rgba(14, 31, 58, 0.94);
+  --avz-scrim: rgba(3, 9, 20, 0.62);
+  --avz-option-bg: #0F2342;
+  --avz-ok-bg: rgba(16, 185, 129, 0.2);
+  --avz-ok-border: rgba(110, 231, 183, 0.3);
+  --avz-danger-bg: rgba(239, 68, 68, 0.2);
+  --avz-danger-bg-hover: rgba(239, 68, 68, 0.3);
+  --avz-danger-border: rgba(252, 165, 165, 0.4);
 
-  /* espaço e toque */
-  --avz-gap: 12px;
-  --avz-pad: 16px;
-  --avz-tap: 44px;                     /* altura mínima de botões e campos */
-  --avz-maxw: 1100px;
+  /* ── forma ── */
+  --avz-radius: 22px;            /* cartões */
+  --avz-radius-lg: 26px;         /* sidebar, diálogos */
+  --avz-radius-md: 14px;         /* campos */
+  --avz-radius-sm: 10px;         /* miniaturas, etiquetas */
+  --avz-radius-item: 16px;       /* itens do menu lateral */
+  --avz-radius-pill: 999px;      /* botões e pílulas */
+  --avz-sidebar-w: 264px;
+  --avz-sidebar-w-collapsed: 72px;
+
+  /* ── tipografia ── */
+  --avz-font: var(--font-jakarta), "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --avz-tap: 44px;               /* alvo mínimo de toque */
 }
-/* Fontes: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700;800&display=swap"> */
+
+/* Tema claro: creme com orbes suaves, painéis brancos translúcidos, texto marinho, laranja só como acento. */
+:root[data-theme="light"] {
+  --avz-bg: #F5F0E6;
+  --avz-text: #0B1B33;
+  --avz-muted: #475670;
+  --avz-heading: #33435F;
+  --avz-accent-text: #9A3B00;
+  --avz-ok: #08603F;
+  --avz-danger: #A51D14;
+  --avz-warn: #7A4A00;
+  --avz-placeholder: #5F6C82;
+  --avz-orb-orange-a: 0.26;
+  --avz-orb-blue-a: 0.22;
+  --avz-glass-a: 0.50;
+  --avz-glass-strong-a: 0.74;
+  --avz-glass-border: rgba(11, 27, 51, 0.11);
+  --avz-tint: 11 27 51;
+  --avz-shade: 255 255 255;
+  --avz-field-a: 0.8;
+  --avz-hairline: rgba(11, 27, 51, 0.10);
+  --avz-shadow: 0 10px 34px rgba(11, 27, 51, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --avz-shadow-sm: 0 4px 14px rgba(11, 27, 51, 0.08);
+  --avz-glow: 0 6px 20px rgba(255, 106, 31, 0.28);
+  --avz-solid: rgba(255, 253, 249, 0.97);
+  --avz-solid-2: rgba(255, 253, 249, 0.98);
+  --avz-drawer-bg: rgba(255, 252, 246, 0.97);
+  --avz-scrim: rgba(11, 27, 51, 0.45);
+  --avz-option-bg: #FFFFFF;
+  --avz-ok-bg: rgba(16, 185, 129, 0.15);
+  --avz-ok-border: rgba(10, 107, 71, 0.35);
+  --avz-danger-bg: rgba(220, 38, 38, 0.10);
+  --avz-danger-bg-hover: rgba(220, 38, 38, 0.18);
+  --avz-danger-border: rgba(180, 35, 24, 0.4);
+}
