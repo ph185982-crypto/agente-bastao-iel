@@ -282,7 +282,7 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None, gancho=''):
     if not juntas:
         return [{'t0': 0.0, 't1': duracao, 'layout': 'split', 'tipo': 'titulo', 'titulo': titulo or '', 'texto': '', 'palavras': [], 'acento': LARANJA, 'marcas': []}]
     blocos = []
-    ultimo_rosto, ultimo_broll, alterna, lista_pendente = 0.0, -99.0, 0, None
+    ultimo_rosto, ultimo_broll, alterna, lista_pendente, n_rostos = 0.0, -99.0, 0, None, 0
     cabecas = set()
     n = len(juntas)
     for i, x in enumerate(juntas):
@@ -309,10 +309,10 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None, gancho=''):
         itens_plano = [_txt(s, 40) for s in (p.get('itens') or []) if _txt(s, 40)][:4] if pt == 'lista' else []
         prev_split = bool(blocos) and blocos[-1]['layout'] == 'split'
         if pt:   # o plano escolheu pelo sentido: as janelas de tempo ficam um pouco mais folgadas
-            pode_rosto = t0 - ultimo_rosto >= 6.0 and 1.0 <= dur <= 5.0 and i > 1
+            pode_rosto = t0 - ultimo_rosto >= INTERVALO_ROSTO and CLOSE_MIN <= dur <= CLOSE_MAX and t0 >= CLOSE_DESDE and i > 1 and n_rostos < MAX_ROSTOS
             pode_broll = broll and bool(b.get('busca')) and t0 - ultimo_broll >= 12.0 and 1.5 <= dur <= 4.5 and i > 1 and prev_split
         else:
-            pode_rosto = t0 - ultimo_rosto >= 8.0 and 1.3 <= dur <= 4.2 and i > 1
+            pode_rosto = t0 - ultimo_rosto >= 8.0 and 1.3 <= dur <= CLOSE_MAX and t0 >= CLOSE_DESDE and i > 1 and n_rostos < MAX_ROSTOS
             pode_broll = broll and t0 - ultimo_broll >= 16.0 and 1.5 <= dur <= 3.6 and i > 2 and prev_split
         if i == 0:
             b.update(tipo='titulo', titulo=titulo or texto)
@@ -345,7 +345,7 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None, gancho=''):
             lista = {'n': len(itens_plano), 'titulo': b.get('cabeca') or 'Em resumo', 'itens': list(itens_plano)}
             b.update(tipo='lista', lista=lista, itens_novos=list(itens_plano), ja=[], itens_do_plano=True)
         elif pt == 'rosto' and pode_rosto:
-            b.update(layout='rosto', tipo='rosto'); ultimo_rosto = t1
+            b.update(layout='rosto', tipo='rosto'); ultimo_rosto = t1; n_rostos += 1
         elif pt == 'broll' and pode_broll:
             b.update(layout='broll', tipo='broll'); ultimo_broll = t1
         elif pt == 'numero' and re.search(r'\d', p.get('destaque') or ''):
@@ -366,7 +366,7 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None, gancho=''):
         elif pt == 'icone':
             b.update(tipo='icone')
         elif not pt and pode_rosto:     # sem plano: as regras de antes
-            b.update(layout='rosto', tipo='rosto'); ultimo_rosto = t1
+            b.update(layout='rosto', tipo='rosto'); ultimo_rosto = t1; n_rostos += 1
         elif not pt and pode_broll:
             b.update(layout='broll', tipo='broll'); ultimo_broll = t1
         elif re.search(r'\d', texto):
@@ -380,19 +380,24 @@ def planejar(frases, duracao, titulo='', broll=True, plano=None, gancho=''):
         if b.get('cabeca'):
             cabecas.add(_norm(b['cabeca']))
         blocos.append(b)
+    # regra 3: nunca duas cenas do mesmo tipo seguidas (listas que crescem item a item e a abertura ficam de fora)
+    for k in range(1, len(blocos)):
+        b, ant = blocos[k], blocos[k - 1]
+        if b['tipo'] == ant['tipo'] and b['tipo'] not in REPETE_OK and b['layout'] == 'split':
+            outra = 'icone' if b['tipo'] == 'imagem' else 'imagem'
+            if outra == 'imagem' and not (broll and b.get('busca')):
+                outra = 'icone'
+            if outra == b['tipo']:
+                outra = 'frase' if len(b['texto'].split()) <= 24 else 'icone'
+            b['tipo'] = outra
+            for c in ('destaque', 'esquerda', 'direita', 'direcao', 'pessoa', 'busca_tela'):
+                b.pop(c, None)
     # cartão de roteiro: a frase de antes e a de depois (texto real, apagado), como o "SCRIPT" da referência
     for k, b in enumerate(blocos):
         if b['tipo'] == 'frase':
             b['antes'] = blocos[k - 1]['texto'] if k > 0 else ''
             b['depois'] = blocos[k + 1]['texto'] if k + 1 < len(blocos) and blocos[k + 1]['tipo'] != 'fim' else ''
-    # sem chamada no fim: os últimos 1,6 s viram a tela final e o bloco anterior TERMINA antes (nada fica por baixo dela)
-    if blocos and blocos[-1]['layout'] != 'fim' and duracao > 8:
-        u = blocos[-1]
-        ini = round(max(u['t0'] + 0.8, duracao - 1.6), 3)
-        if ini < duracao - 0.5:
-            u['t1'] = ini
-            blocos.append({'t0': ini, 't1': duracao, 'texto': '', 'palavras': [], 'layout': 'fim', 'tipo': 'fim', 'sem_chamada': True,
-                           'acento': ROSA, 'chave': '', 'icone': 'estrela'})
+    # Regra 11 (fim em loop): sem chamada falada NÃO há tela final escura; a última cena vai até a última palavra e o vídeo emenda no começo.
     for b in blocos:
         _sem_nome_em_foto_de_banco(b)
         b['marcas'] = _marcas(b)
@@ -434,6 +439,11 @@ def _marcas(b):
         out.append((b['gancho_fim'], 'whoosh'))
     return out
 
+
+# Regras de edição do Motor Magnético (docs/PROJETO_MOTOR_MAGNETICO.md, regras 3, 4, 7 e 11)
+MAX_ROSTOS = 3; CLOSE_MIN = 1.2; CLOSE_MAX = 3.5; CLOSE_DESDE = 2.5; INTERVALO_ROSTO = 6.0   # close no rosto
+MAX_IMPACTOS = 3; INTERVALO_SONS = 1.0                                                          # orçamento de sons
+REPETE_OK = ('lista', 'titulo', 'fim')                                                          # tipos que podem seguir iguais
 
 PASSO_GANCHO = 0.3   # uma linha do gancho a cada 0,3 s
 
@@ -503,20 +513,29 @@ def layout_em(blocos, t):
 
 
 def efeitos(blocos):
-    """Sons curtos (gerados no editor, sem arquivo de terceiros): whoosh na troca de cena, 'pop' quando um elemento entra,
-    'impacto' no número gigante e na abertura. Dois sons a menos de 0,25 s: fica o mais forte."""
+    """Sons curtos (gerados no editor, sem arquivo de terceiros). Regra 7 do Motor Magnético: impacto no máximo 3 por vídeo
+    (abertura e os mais fortes depois), whoosh só na troca de layout, 1 s ou mais entre sons (o 'pop' de cada linha do
+    gancho, nos primeiros segundos, fica de fora dessa distância) e o mais forte fica quando dois se encontram."""
     forca = {'impacto': 3, 'whoosh': 2, 'pop': 1}
     ev = [(0.05, 'impacto')] if blocos else []
-    ev += [(b['t0'], 'whoosh') for i, b in enumerate(blocos) if i and (b['layout'] != blocos[i - 1]['layout'] or b['tipo'] != blocos[i - 1]['tipo'])]
+    ev += [(b['t0'], 'whoosh') for i, b in enumerate(blocos) if i and b['layout'] != blocos[i - 1]['layout']]
     for b in blocos:
         ev += list(b.get('marcas') or [])
+    fim_gancho = max([b.get('gancho_fim', 0) for b in blocos if b.get('gancho')] or [0])
     out = []
     for t, k in sorted(ev):
-        if out and t - out[-1][0] < 0.25:
+        passo = 0.25 if t <= fim_gancho else INTERVALO_SONS
+        if out and t - out[-1][0] < passo:
             if forca[k] > forca[out[-1][1]]:
                 out[-1] = (out[-1][0], k)
             continue
         out.append((round(t, 3), k))
+    n = 0
+    for i, (t, k) in enumerate(out):   # impactos além do orçamento viram 'pop'
+        if k == 'impacto':
+            n += 1
+            if n > MAX_IMPACTOS:
+                out[i] = (t, 'pop')
     return out
 
 
@@ -943,12 +962,13 @@ def ass_graficos(blocos):
 
 
 def _tela_final(a, z, texto=''):
-    """Tela final LIMPA: em cima, fundo opaco (nada do bloco anterior aparece por baixo); a janela do Pedro escurece;
+    """Tela final LIMPA: em cima, fundo opaco (nada do bloco anterior aparece por baixo); a janela do Pedro NÃO escurece (fim em loop);
     chamada (se ele falou uma)."""
     corte = JANELA['y'] - RECORTE - 40
-    out = [_dlg(5, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c&H000000&\\alpha&HFF&\\t(0,300,\\alpha&H00&)\\bord0\\p1}}m 0 0 l {W} 0 l {W} {corte} l 0 {corte}{{\\p0}}"),
-           _dlg(5, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c&H000000&\\alpha&HFF&\\t(0,300,\\alpha&H40&)\\bord0\\p1}}m 0 {corte} l {W} {corte} l {W} {H} l 0 {H}{{\\p0}}")]
+    out = [_dlg(5, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c&H000000&\\alpha&HFF&\\t(0,300,\\alpha&H00&)\\bord0\\p1}}m 0 0 l {W} 0 l {W} {corte} l 0 {corte}{{\\p0}}")]   # a janela do Pedro não escurece (regra 11)
     partes = (texto or '').strip().rstrip('.!').split()
+    if not partes:
+        return []
     if partes:
         corte_l = min(len(partes), 3)
         l1, l2 = ' '.join(partes[:corte_l]), ' '.join(partes[corte_l:corte_l + 6])
@@ -963,9 +983,7 @@ def ass_final(blocos, palavras, duracao):
     linhas = []   # sem marca d'água lateral, logo nem @ (pedido do Pedro)
     fim = next((b for b in blocos if b['layout'] == 'fim'), None)
     if fim:
-        linhas += _tela_final(fim['t0'], fim['t1'], '' if fim.get('sem_chamada') else fim['texto'])
-    elif blocos and duracao > 8:   # blocos de fora do planejar: tela final nos últimos 1,6 s
-        linhas += _tela_final(max(blocos[-1]['t0'], duracao - 1.6), duracao)
+        linhas += _tela_final(fim['t0'], fim['t1'], fim['texto'])
     # legenda: uma palavra por vez
     for i, p in enumerate(palavras):
         ini = p['n0']; fim_p = palavras[i + 1]['n0'] if i + 1 < len(palavras) else min(duracao, p['n1'] + 0.4)

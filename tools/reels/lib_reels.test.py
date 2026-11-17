@@ -568,15 +568,14 @@ class Pedido15Nov(unittest.TestCase):
         self.assertEqual(por('Em vez')['tipo'], 'grafico')
         tipos = [x['tipo'] for x in b]
         self.assertIn('grafico', tipos)
-        # sem chamada no fim e vídeo > 8 s: tela final própria, e o bloco anterior termina antes dela
-        self.assertEqual(b[-1]['tipo'], 'fim'); self.assertTrue(b[-1]['sem_chamada'])
-        self.assertAlmostEqual(b[-2]['t1'], b[-1]['t0'])
+        # sem chamada no fim: fim em loop (regra 11), sem tela final escura; a última cena vai até o fim do vídeo
+        self.assertNotEqual(b[-1]['tipo'], 'fim'); self.assertAlmostEqual(b[-1]['t1'], dur)
         g = D.ass_graficos(b)
         self.assertIn('Lele Sadoughi', g)                                 # rótulo com informação nova
         self.assertNotIn('Fake', g)
         f = D.ass_final(b, pal, dur)
         self.assertNotIn('PEDRO_DESTRAVA', f)
-        self.assertIn('\\alpha&H00&', f)                                # fundo da tela final opaco: nada aparece por baixo
+        self.assertEqual([ln for ln in f.splitlines() if ln.startswith('Dialogue') and ',Legenda,' not in ln], [])   # nada além da legenda
 
     def test_sem_plano_nao_repete_palavra_na_etiqueta(self):
         import lib_destrava as D
@@ -734,6 +733,65 @@ class Pedido15NovParte2(unittest.TestCase):
             E.trilha_musical(arq, 3, clima=clima)
             with wave.open(arq) as w:
                 self.assertGreater(w.getnframes(), 3 * w.getframerate())
+
+class RegrasDeEdicao(unittest.TestCase):
+    """Motor Magnético, fase 4: regras de edição fixas (docs/PROJETO_MOTOR_MAGNETICO.md, regras 3, 4, 7 e 11)."""
+
+    def _blocos(self, textos, passo=0.36):
+        import lib_destrava as D
+        pal, t = [], 0.3
+        for tx in textos:
+            for w in tx.split():
+                pal.append({'n0': round(t, 3), 'n1': round(t + 0.3, 3), 'w': w}); t += passo
+            t += 0.3
+        return D.planejar(D.frases_por_pontuacao(pal), t, 'Teste', broll=True), t
+
+    def test_regra4_close_no_rosto_no_maximo_3_a_partir_de_2s5_e_ate_3s5(self):
+        import lib_destrava as D
+        frases = ['Frase número %d fala de um assunto bem curto aqui.' % k for k in range(1, 20)]
+        b, _ = self._blocos(frases)
+        rostos = [x for x in b if x['layout'] == 'rosto']
+        self.assertLessEqual(len(rostos), D.MAX_ROSTOS)
+        for r in rostos:
+            self.assertGreaterEqual(r['t0'], D.CLOSE_DESDE)
+            self.assertLessEqual(r['t1'] - r['t0'], D.CLOSE_MAX + 0.001)
+        for a, c in zip(rostos, rostos[1:]):
+            self.assertGreaterEqual(c['t0'] - a['t1'], D.INTERVALO_ROSTO - 0.01)
+
+    def test_regra3_nunca_duas_cenas_do_mesmo_tipo_seguidas(self):
+        import lib_destrava as D
+        frases = ['Tenho uma loja pequena de roupas na cidade.', 'Vendo camisa e calça todo dia na loja.', 'O cliente chega e olha as peças com calma.',
+                  'Ele prova duas peças e escolhe uma delas.', 'Depois paga no balcão e vai embora feliz.', 'No fim do mês eu faço a conta do caixa.']
+        b, _ = self._blocos(frases)
+        for ant, x in zip(b, b[1:]):
+            if x['tipo'] not in D.REPETE_OK:
+                self.assertNotEqual(x['tipo'], ant['tipo'], (ant['tipo'], x['tipo']))
+
+    def test_regra7_sons_no_maximo_3_impactos_whoosh_so_na_troca_de_layout_e_1s_entre_sons(self):
+        import lib_destrava as D
+        blocos = [{'t0': 0.0, 't1': 4.0, 'layout': 'split', 'tipo': 'titulo', 'marcas': [(0.3, 'pop'), (0.6, 'pop'), (0.9, 'pop')], 'gancho': 'X', 'gancho_fim': 2.0},
+                  {'t0': 4.0, 't1': 8.0, 'layout': 'split', 'tipo': 'numero', 'marcas': [(4.05, 'impacto')]},
+                  {'t0': 8.0, 't1': 12.0, 'layout': 'split', 'tipo': 'imagem', 'marcas': [(8.3, 'pop'), (8.8, 'pop')]},
+                  {'t0': 12.0, 't1': 16.0, 'layout': 'rosto', 'tipo': 'rosto', 'marcas': []},
+                  {'t0': 16.0, 't1': 20.0, 'layout': 'split', 'tipo': 'numero', 'marcas': [(16.05, 'impacto')]},
+                  {'t0': 20.0, 't1': 24.0, 'layout': 'split', 'tipo': 'numero', 'marcas': [(20.05, 'impacto')]}]
+        ev = D.efeitos(blocos)
+        self.assertLessEqual(sum(1 for _, k in ev if k == 'impacto'), D.MAX_IMPACTOS)
+        self.assertEqual([t for t, k in ev if k == 'whoosh'], [12.0])     # só onde o layout muda; a de 16 s cede ao impacto (mais forte, a menos de 1 s)
+        self.assertIn('impacto', [k for t, k in ev if 15.9 < t < 16.2])
+        depois = [t for t, _ in ev if t > 2.0]
+        for a, c in zip(depois, depois[1:]):
+            self.assertGreaterEqual(c - a, D.INTERVALO_SONS - 0.001)
+        self.assertEqual(len([t for t, _ in ev if t <= 2.0]), 4)                  # as linhas do gancho mantêm o ritmo curto
+
+    def test_regra11_fim_em_loop_sem_chamada_nao_escurece_e_a_chamada_nao_apaga_a_janela(self):
+        import lib_destrava as D
+        b, dur = self._blocos(['Eu vendo roupa na minha loja.', 'O cliente prova a peça e paga no balcão.', 'No fim do mês eu faço a conta.', 'Assim o lucro aparece no caixa.'])
+        self.assertNotEqual(b[-1]['layout'], 'fim'); self.assertAlmostEqual(b[-1]['t1'], dur)
+        self.assertEqual([ln for ln in D.ass_final(b, [], dur).splitlines() if ln.startswith('Dialogue')], [])
+        tela = '\n'.join(D._tela_final(1.0, 3.0, 'Manda pra quem dá desconto'))
+        self.assertIn('Manda pra quem', tela); self.assertNotIn('\\alpha&H40&', tela)   # sem camada escura sobre a janela do Pedro
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=1)
