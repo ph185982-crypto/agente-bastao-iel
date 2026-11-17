@@ -831,7 +831,7 @@ def renderizar_destrava(entrada, saida, segmentos, sonda, blocos, palavras_rm, d
     if musica:
         ent += ['-i', musica]
         partes.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,highpass=f=45,lowpass=f=2600,"
-                      f"afade=t=in:st=0:d=1.2,afade=t=out:st={max(0.0, dur - 1.8):.3f}:d=1.8,loudnorm=I=-31:TP=-9:LRA=7,aresample=48000[mu0]")
+                      f"afade=t=in:st=0:d=1.2,afade=t=out:st={max(0.0, dur - 0.15):.3f}:d=0.15,loudnorm=I=-31:TP=-9:LRA=7,aresample=48000[mu0]")
         partes.append("[mu0][lado]sidechaincompress=threshold=0.03:ratio=6:attack=25:release=450:makeup=1[mu]"); mistura.append('[mu]')
     if len(mistura) > 1:
         partes.append(''.join(mistura) + f"amix=inputs={len(mistura)}:duration=first:dropout_transition=0:normalize=0,alimiter=limit=0.89:level=disabled[aout]")
