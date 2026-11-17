@@ -30,7 +30,7 @@ export function apps(): AppDef[] {
   return [
     { id: "marketplaces", name: "Marketplaces", tagline: "Contas de Mercado Livre, Shopee e TikTok Shop: alertas, aprovações e relatórios.", url: "", callback: "", internalPath: "/", group: "Operações" },
     { id: "entregas", name: "Funil de Entrega", tagline: "Quadro por etapa e pilar, renovações e modelos das entregas aos clientes (dados do CRM).", url: "", callback: "", internalPath: "/operacoes/entregas", group: "Operações" },
-    { id: "crm", name: "CRM", tagline: "Funil, contatos, tarefas, agenda e propostas.", url: env("APP_CRM_URL", "https://nexo-crm-tawny.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
+    { id: "crm", name: "CRM (desligado)", tagline: "Desligado em 17/11/2026: o CRM agora é o Comercial (/comercial).", url: env("APP_CRM_URL", "https://nexo-crm-tawny.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
     { id: "vendas", name: "Vendedor IA", tagline: "Atendimento e prospecção no WhatsApp com IA.", url: urlVendas(), callback: "/api/sso/callback", group: "Comercial" },
     { id: "contratos", name: "Contratos", tagline: "Geração de contratos e assinatura digital.", url: env("APP_CONTRATOS_URL", "https://nexo-presenter.vercel.app"), callback: "/api/sso/callback", group: "Comercial" },
     { id: "conteudo", name: "Conteúdo", tagline: "Produção e publicação para Instagram e LinkedIn.", url: env("APP_CONTEUDO_URL", "https://agente-bastao-iel.vercel.app"), callback: "/api/sso/callback", group: "Marketing" },

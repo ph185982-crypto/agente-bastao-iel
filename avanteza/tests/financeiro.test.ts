@@ -94,7 +94,8 @@ test("menu por departamentos: cada papel vê só o que pode; Pessoal só o dono;
   const g = menuEquipe(dono);
   const itens = (l: string) => g.find((x) => x.label === l)!.items.map((i) => i.label);
   assert.deepEqual(itens("Operações"), ["Hoje", "Carteira", "Calendário", "Capturas", "Onboarding", "Aprovações", "Relatórios de clientes", "Playbooks", "Funil de Entrega", "Clientes e Mapa", "Marketplaces"]);
-  assert.deepEqual(itens("Comercial"), ["Oportunidades", "Contatos", "Tarefas e agenda", "Contratos", "Conversas", "Leads (SDR)", "CRM antigo"]);
+  assert.deepEqual(itens("Comercial"), ["Oportunidades", "Contatos", "Tarefas e agenda", "Contratos", "Conversas", "Leads (SDR)"]);
+  // CRM antigo desligado em 17/11/2026 (corte C13): some do menu
   assert.deepEqual(itens("Marketing"), ["Conteúdo", "Anúncios", "Canais"]);
   assert.deepEqual(itens("Financeiro"), ["Financeiro da empresa", "Pessoal"]);
   assert.ok(g[0].items[0].label === "Visão geral" && g[0].items[0].href === "/dashboards", "Visão geral é o primeiro item");
@@ -102,12 +103,12 @@ test("menu por departamentos: cada papel vê só o que pode; Pessoal só o dono;
   const op = g.find((x) => x.label === "Comercial")!.items.find((i) => i.label === "Oportunidades")!;
   assert.equal(op.href, "/comercial/oportunidades");
   assert.equal(op.ext, true);
-  assert.equal(g.find((x) => x.label === "Comercial")!.items.find((i) => i.label === "CRM antigo")!.href, "/sso/authorize?app=crm");
+  assert.equal(g.find((x) => x.label === "Comercial")!.items.find((i) => i.label === "CRM antigo"), undefined);
   // Interruptor: COMERCIAL_ZONA=0 volta aos atalhos antigos (Vendedor IA por SSO no domínio dele; Contratos sem SSO)
   process.env.COMERCIAL_ZONA = "0";
   try {
     const g0 = menuEquipe(dono);
-    assert.deepEqual(g0.find((x) => x.label === "Comercial")!.items.map((i) => i.label), ["Vendedor IA", "CRM", "Contratos"]);
+    assert.deepEqual(g0.find((x) => x.label === "Comercial")!.items.map((i) => i.label), ["Vendedor IA", "Contratos"]);
     const vend = g0.find((x) => x.label === "Comercial")!.items.find((i) => i.label === "Vendedor IA")!;
     assert.equal(vend.href, "/sso/authorize?app=vendas");
     assert.equal(vend.ext, true);

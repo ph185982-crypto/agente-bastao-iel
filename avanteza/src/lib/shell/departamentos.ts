@@ -59,18 +59,15 @@ export function departamentos(): Departamento[] {
       id: "comercial", nome: "Comercial", icon: "briefcase", href: "/comercial",
       descricao: zonaComercialLigada()
         ? "Oportunidades, contatos, contratos e o Vendedor IA, aqui mesmo em /comercial (login único)."
-        : "Vendedor IA, CRM e contratos — hoje como atalhos com login único.",
+        : "Vendedor IA e contratos — hoje como atalhos com login único.",
       modulos: zonaComercialLigada()
         ? [
           // Telas do Vendedor IA sob /comercial (reescrita): navegação "dura" (outro aplicativo). Sem sessão lá, o
           // próprio Vendedor IA manda para /sso/authorize?app=vendas&return=<tela>.
           ...MODULOS_ZONA.map((m): Modulo => ({ id: m.id, nome: m.nome, icon: m.icon, descricao: m.descricao, href: m.caminho, externo: true, requer: { app: "vendas" } })),
-          // CRM antigo até o corte (C13): depois some daqui.
-          appModulo("crm", "CRM antigo", "funnel", "Somente até o corte: o Comercial acima já é o novo CRM."),
         ]
         : [
           appModulo("vendas", "Vendedor IA", "chat", "Atendimento e prospecção no WhatsApp com IA."),
-          appModulo("crm", "CRM", "funnel", "Funil, contatos, tarefas, agenda e propostas."),
           appModulo("contratos", "Contratos", "doc", "Geração de contratos e assinatura digital."),
         ],
     },
