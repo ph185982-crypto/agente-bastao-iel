@@ -28,11 +28,18 @@ const NOTAS_RET = { notas: { 1: 9, 2: 8, 3: 8, 4: 8, 5: 8, 6: 8, 7: 8, 11: 8, 12
 const NOTAS_VER = { notas: { 8: 9, 9: 9, 10: 9, 14: 8, 15: 8 }, problemas: [] };
 const TESE = { id: 'rc1', tese: 'Imposto funciona como um sócio que não trabalha.', tema: 'Imposto como sócio', ponte_pedro: 'O dono de loja sente no caixa.', mecanismo: 'reenquadramento', vl: 5 };
 
+const ANGULO = {
+  crenca: 'imposto é só um custo', virada: 'o imposto é um sócio que fica com a parte antes de você ver o extrato', inimigo: 'chamar tudo de imposto', em_jogo: 'o lucro que sobra no extrato',
+  emocao: 'curiosidade', consciencia: 'sabe_do_problema', objecao: 'se eu não pago, a loja fecha',
+  ganchos: [{ tipo: 'reenquadramento', texto: 'Seu extrato esconde um sócio que nunca aparece.' }, { tipo: 'erro', texto: 'Hoje eu vou falar de imposto e você vai gostar.' }, { tipo: 'contraste', texto: 'Imposto é um sócio escondido no seu extrato.' }],
+};
+
 // IA simulada: responde conforme o prompt (roteirista ou fiscal) e registra a ordem das chamadas.
-function iaFalsa({ roteiro = BOM, ret = NOTAS_RET, ver = NOTAS_VER } = {}) {
+function iaFalsa({ roteiro = BOM, ret = NOTAS_RET, ver = NOTAS_VER, angulo = ANGULO } = {}) {
   const chamadas = [];
   const pedirJson = async ({ sistema, pago, etapa }) => {
     chamadas.push({ etapa, pago });
+    if (/ESTRATEGISTA DE ÂNGULO/.test(sistema)) { if (angulo instanceof Error) throw angulo; return { dados: typeof angulo === 'function' ? angulo(chamadas, sistema) : angulo, llm: { provider: 'teste' } }; }
     if (/FISCAL DE QUALIDADE/.test(sistema)) { const r1 = typeof ret === 'function' ? ret(chamadas) : ret; const v1 = typeof ver === 'function' ? ver(chamadas) : ver; return { dados: { notas: { ...r1.notas, ...v1.notas }, problemas: [...(r1.problemas || []), ...(v1.problemas || [])] }, llm: { provider: 'teste' } }; }
     if (/FISCAL DE RETENÇÃO/.test(sistema)) return { dados: typeof ret === 'function' ? ret(chamadas) : ret, llm: { provider: 'teste' } };
     if (/FISCAL DE VERDADE/.test(sistema)) return { dados: typeof ver === 'function' ? ver(chamadas) : ver, llm: { provider: 'teste' } };
@@ -87,11 +94,13 @@ test('avancar: escreve, passa no fiscal e salva o roteiro na aba Vídeos (IA gra
   const est = {};
   const r = await R.avancar(est, { agora: AGORA, dia: DIA, meta: 1, orcamentoMs: 600000, deps: { pedirJson: ia.pedirJson, teses: async () => ({ itens: [TESE], total: 1 }), historias: async () => [], noticias: [], salvar: async (c) => { salvos.push(c); return c; } } });
   assert.strictEqual(r.salvos.length, 1);
-  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'fiscal_roteiro'], 'um fiscal só: 2 chamadas por roteiro');
+  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['angulo_roteiro', 'roteiro_video', 'fiscal_roteiro'], 'ângulo + roteiro + banca: 3 chamadas por roteiro');
   assert.ok(ia.chamadas.every((c) => c.pago === 'nunca'), 'nenhuma chamada paga');
   const c = salvos[0];
   assert.ok(c.id.startsWith('vd_')); assert.strictEqual(c.video.estado, 'roteiro');
-  assert.match(c.video.roteiro_texto, /^Para de chamar isso de imposto\./);
+  assert.match(c.video.roteiro_texto, /^Seu extrato esconde um sócio que nunca aparece\./, 'o gancho escolhido do laboratório vale palavra por palavra');
+  assert.strictEqual(c.video.roteiro.angulo.tipo_gancho, 'reenquadramento'); assert.strictEqual(c.video.roteiro.angulo.emocao, 'curiosidade');
+  assert.strictEqual(c.video.roteiro.angulo.reservas.length, 1, 'a saudação foi eliminada; sobra 1 reserva');
   assert.ok(c.video.roteiro_texto.includes('\n'), 'uma frase por linha para o teleprompter');
   assert.strictEqual(c.video.roteiro.formato && S.FORMATOS[c.video.roteiro.formato].tipos.includes('tese'), true);
   assert.strictEqual(est.roteiros.feitos, 1); assert.strictEqual(est.roteiros.rascunho, null);
@@ -109,7 +118,7 @@ test('avancar: reprovado reescreve uma vez com o parecer; reprovado de novo é d
   assert.strictEqual(r.salvos.length, 0);
   assert.strictEqual(est.roteiros.descartados, 1);
   // reprovado: reescreve uma vez e o fiscal confere de novo; reprovado de novo, descarta.
-  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'fiscal_roteiro', 'roteiro_video', 'fiscal_roteiro']);
+  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['angulo_roteiro', 'roteiro_video', 'fiscal_roteiro', 'roteiro_video', 'fiscal_roteiro'], 'a reescrita reaproveita o ângulo');
 });
 
 test('avancar: número inventado reprova no código sem gastar os fiscais de IA', async () => {
@@ -118,7 +127,7 @@ test('avancar: número inventado reprova no código sem gastar os fiscais de IA'
   let n = 0; const ia = iaFalsa({ roteiro: () => (n++ === 0 ? inventado : BOM) });
   const salvos = []; const est = {};
   await R.avancar(est, { agora: AGORA, dia: DIA, meta: 1, orcamentoMs: 600000, deps: { pedirJson: ia.pedirJson, teses: async () => [TESE], historias: async () => [], noticias: [], salvar: async (c) => { salvos.push(c); return c; } } });
-  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['roteiro_video', 'roteiro_video', 'fiscal_roteiro']);
+  assert.deepStrictEqual(ia.chamadas.map((c) => c.etapa), ['angulo_roteiro', 'roteiro_video', 'roteiro_video', 'fiscal_roteiro']);
   assert.strictEqual(salvos.length, 1); assert.strictEqual(salvos[0].video.roteiro.tentativas, 2);
 });
 
