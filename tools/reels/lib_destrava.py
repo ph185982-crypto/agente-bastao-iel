@@ -8,8 +8,8 @@ Tela 1080x1920:
     acima dela: dá profundidade, como na referência). Legenda: UMA palavra por vez, logo acima da cabeça.
   - ROSTO: close do Pedro em tela cheia (a cada ~10 s, frases curtas), rosto no alto e legenda embaixo do queixo.
   - BROLL: cena de banco de imagens em tela cheia (no máximo 1 a cada ~16 s).
-  - FIM: na frase de chamada final ("salva…", "comenta…"), tudo escurece, entra a chamada + logo do Instagram + @.
-Sem marca d'água lateral: o @ aparece só na tela final (pedido do Pedro em 14/11).
+  - FIM: na frase de chamada final ("salva…", "comenta…"), tudo escurece e entra a chamada.
+Sem marca d'água lateral, sem logo do Instagram e sem @ em nenhuma tela (pedidos do Pedro em 14 e 16/11).
 Os textos dos gráficos "acendem" palavra a palavra no tempo da fala (cinza → branco), como na referência.
 
 PLANO VISUAL (15/11): quando o app manda um plano por frase (feito pela IA gratuita, ver backend/lib/videos/plano.js),
@@ -29,7 +29,6 @@ ZOOM_CLOSE = 1.22
 INSET_IMAGEM = {'x': 120, 'y': 330, 'w': 840, 'h': 740, 'raio': 36}
 INSET_TITULO = {'x': 150, 'y': 400, 'w': 780, 'h': 660, 'raio': 36}
 Y_LEGENDA = {'split': 1125, 'rosto': 1250, 'broll': 1160, 'fim': 1125}
-HANDLE = '@PEDRO_DESTRAVA'
 
 
 def escala_janela(largura, altura, altura_rosto=None):
@@ -943,18 +942,9 @@ def ass_graficos(blocos):
     return cabecalho() + '\n'.join(linhas) + '\n'
 
 
-def _logo_instagram(a, z, cx, cy, tam, cor=BRANCO, camada=6, glow=False):
-    s = tam; x0, y0 = cx - s // 2, cy - s // 2
-    out = []
-    out += _forma(a, z, caixa_arredondada(x0, y0, s, s, int(s * 0.28)), cor, camada=camada, contorno=max(3, s // 16), glow=glow)
-    out += _forma(a, z, circulo(cx, cy, int(s * 0.23)), cor, camada=camada, contorno=max(3, s // 16), glow=False)
-    out.append(_dlg(camada, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c{cor}\\bord0\\p1}}{circulo(int(cx + s * 0.27), int(cy - s * 0.27), max(3, s // 14))}{{\\p0}}"))
-    return out
-
-
 def _tela_final(a, z, texto=''):
     """Tela final LIMPA: em cima, fundo opaco (nada do bloco anterior aparece por baixo); a janela do Pedro escurece;
-    chamada (se ele falou uma), logo do Instagram e o @."""
+    chamada (se ele falou uma)."""
     corte = JANELA['y'] - RECORTE - 40
     out = [_dlg(5, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c&H000000&\\alpha&HFF&\\t(0,300,\\alpha&H00&)\\bord0\\p1}}m 0 0 l {W} 0 l {W} {corte} l 0 {corte}{{\\p0}}"),
            _dlg(5, a, z, 'Forma', f"{{\\pos(0,0)\\an7\\c&H000000&\\alpha&HFF&\\t(0,300,\\alpha&H40&)\\bord0\\p1}}m 0 {corte} l {W} {corte} l {W} {H} l 0 {H}{{\\p0}}")]
@@ -965,14 +955,12 @@ def _tela_final(a, z, texto=''):
         out.append(_dlg(7, a, z, 'Sans', f"{{\\an5\\pos({W // 2},{330})\\fs70{ENTRA}}}{esc(l1)}"))
         if l2:
             out.append(_dlg(7, a, z, 'Serif', f"{{\\an5\\pos({W // 2},{420})\\fs84\\blur16\\alpha&HFF&\\t(200,500,\\blur0\\alpha&H00&)}}{esc(l2)}"))
-    out += _logo_instagram(a + 0.2, z, W // 2, 760 if partes else 640, 220, cor=ROSA, camada=8, glow=True)
-    out.append(_dlg(8, a + 0.3, z, 'Sans', f"{{\\an5\\pos({W // 2},{950 if partes else 830})\\fs50\\fsp2{ENTRA}}}{HANDLE}"))
-    return out
+    return out   # sem logo do Instagram nem @ (pedido do Pedro em 16/11): só a chamada que ele falou
 
 
 def ass_final(blocos, palavras, duracao):
-    """Camada de cima: legenda de UMA palavra por vez e a tela final (chamada + logo do Instagram + @)."""
-    linhas = []   # sem marca d'água lateral (pedido do Pedro): o @ fica só na tela final
+    """Camada de cima: legenda de UMA palavra por vez e a tela final (só a chamada)."""
+    linhas = []   # sem marca d'água lateral, logo nem @ (pedido do Pedro)
     fim = next((b for b in blocos if b['layout'] == 'fim'), None)
     if fim:
         linhas += _tela_final(fim['t0'], fim['t1'], '' if fim.get('sem_chamada') else fim['texto'])

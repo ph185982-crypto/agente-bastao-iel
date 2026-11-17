@@ -16,6 +16,7 @@ const Mentes = require('../mentes');
 const { armazem } = require('../armazem');
 const { ACCOUNT } = require('../account');
 const S = require('./skill');
+const Angulo = require('./angulo');
 
 const conta = () => ACCOUNT.ig_id;
 const META_DIA = 5;
@@ -76,7 +77,7 @@ function escolherFormato(pauta, usadosHoje = {}, sortear = Math.random) {
 }
 
 // ── Roteirista ────────────────────────────────────────────────────────────────
-function promptRoteirista({ formato, feedback = '' }) {
+function promptRoteirista({ formato, feedback = '', angulo = null }) {
   const f = S.FORMATOS[formato];
   return `Você é o roteirista de Reels do @pedro_destrava. Escreva UM roteiro falado, gravado por ele olhando para a câmera, lido no teleprompter.
 ${S.SKILL}
@@ -86,7 +87,7 @@ ${f.estrutura}
 CTA preferido deste formato: ${f.cta === 'envio' ? 'envio com destinatário específico' : f.cta === 'salvar' ? 'salvar (lista, conta ou passo a passo)' : 'pergunta binária para comentar'}.
 
 ${Mentes.AI.REGRAS}
-${feedback ? `\nREESCREVA DO ZERO. Os fiscais reprovaram a versão anterior por:\n${feedback}\n` : ''}
+${Angulo.blocoParaRoteirista(angulo) ? `\n${Angulo.blocoParaRoteirista(angulo)}\n` : ''}${feedback ? `\nREESCREVA DO ZERO. Os fiscais reprovaram a versão anterior por:\n${feedback}\n` : ''}
 Responda APENAS JSON:
 {"titulo":"até 8 palavras","publico":"quem o gancho nomeia","gancho":"1ª frase falada, até 15 palavras","tela_gancho":"3 a 5 palavras na tela","visual":"o que aparece nos 3 primeiros segundos (gesto, objeto, cenário)","foreshadow":"1 ou 2 frases que abrem o loop","blocos":[{"fala":"2 a 4 frases curtas","tela":"3 a 5 palavras"}],"payoff":"a frase que entrega a promessa","cta":"1 frase","cta_tipo":"envio|salvar|comentar"}
 Use de 3 a 6 blocos. Total falado entre ${S.PALAVRAS.min} e ${S.PALAVRAS.max} palavras.`;
@@ -120,7 +121,7 @@ function numerosSemFonte(r, pauta) {
   return [...new Set((falado.match(/\d+(?:[.,]\d+)*/g) || []))].filter((n) => { const k = n.replace(/[.,]/g, ''); return !permitidos.has(k) && !(Number(k) >= 1 && Number(k) <= 10 && k.length <= 2); });
 }
 
-function fiscalCodigo(r, pauta) {
+function fiscalCodigo(r, pauta, { laco = false } = {}) {
   const p = [];
   const falado = textoFalado(r); const total = palavras(falado);
   if (!r.gancho) p.push({ criterio: 1, motivo: 'sem gancho' });
@@ -136,6 +137,9 @@ function fiscalCodigo(r, pauta) {
   if (total > S.PALAVRAS.max * 1.1) p.push({ criterio: 11, motivo: `longo demais (${total} palavras; máximo ${S.PALAVRAS.max})` });
   if (!r.cta) p.push({ criterio: 13, motivo: 'sem chamada final' });
   else if (CTA_RUIM.test(r.cta)) p.push({ criterio: 13, motivo: 'CTA genérico ("curte", "segue", "deixa sua opinião")', trecho: r.cta });
+  if (r.cta && palavras(r.cta) > 12) p.push({ criterio: 13, motivo: `CTA com ${palavras(r.cta)} palavras (máximo 12; o ideal é até 6)`, trecho: r.cta });
+  // Com ângulo: o payoff volta ao gancho (o vídeo emenda no começo e roda de novo).
+  if (laco && r.gancho && r.payoff && ![...Angulo.radicais(r.payoff)].some((x) => Angulo.radicais(r.gancho).has(x))) p.push({ criterio: 12, motivo: 'o payoff não repete nenhuma palavra do gancho (o vídeo não emenda no começo)', trecho: r.payoff });
   const longas = falado.split(/(?<=[.!?])\s+|\n+/).filter((f) => palavras(f) > 24);
   if (longas.length) p.push({ criterio: 10, motivo: `${longas.length} frase(s) com mais de 24 palavras`, trecho: longas[0].slice(0, 160) });
   const vic = Mentes.AI.vicios([falado]); const m = falado.match(VICIOS_ROTEIRO);
@@ -151,11 +155,16 @@ function fiscalCodigo(r, pauta) {
   return { problemas: p, palavras: total, duracao_s: Math.round(total / S.PALAVRAS_POR_S) };
 }
 
+const REGRAS_GANCHO = { abertura: ABERTURAS_PROIBIDAS, politico: POLITICO, numerosDe, vicio: (t) => Mentes.AI.vicios([t]).length > 0 || VICIOS_ROTEIRO.test(t) };
+
 // ── Fiscais de IA ─────────────────────────────────────────────────────────────
 function promptFiscal(qual) {
   const crit = qual === 'ambos' ? S.CRITERIOS : S.CRITERIOS.filter((c) => c.fiscal === qual);
   const papel = qual === 'ambos'
-    ? 'FISCAL DE QUALIDADE (dois olhares numa leitura só). RETENÇÃO: você pensa como Paddy Galloway, Jenny Hoyos e Kallaway, a pessoa decide em 3 segundos se fica. VERDADE E VOZ: número inventado, fato que a pauta não sustenta, tom de palanque e texto com cara de IA queimam a reputação do Pedro.'
+    ? `FISCAL DE QUALIDADE (banca de três papéis numa leitura só):
+COPYWRITER DE RESPOSTA DIRETA (critérios 1, 2, 4, 5, 12, 13): a pessoa decide em 3 segundos se fica; o gancho deixa uma dúvida que só o vídeo responde? A promessa do gancho é a entrega do payoff? A objeção do dono é dita e respondida? Há uma frase de print? O CTA é único e curto?
+DIRETOR DE RETENÇÃO (critérios 3, 6, 7, 11): algo novo a cada 5 a 7 s, zero frase morta, cada frase pede uma cena que combina com o sentido (fala, [TELA] e visual dizem a mesma coisa).
+TOM E MARCA (critérios 8, 9, 10, 14, 15): número inventado, fato que a pauta não sustenta, tom de palanque, ataque pessoal e texto com cara de IA queimam a reputação do Pedro; a solução proposta não pode sofrer do defeito que o roteiro critica.`
     : qual === 'retencao'
     ? 'FISCAL DE RETENÇÃO E VIRALIDADE. Você pensa como Paddy Galloway, Jenny Hoyos e Kallaway: a pessoa decide em 3 segundos se fica, e sai no primeiro trecho sem novidade.'
     : 'FISCAL DE VERDADE, VOZ E REPUTAÇÃO. Você protege o Pedro: número inventado, fato não sustentado pela pauta, tom de palanque, ataque pessoal e texto com cara de IA queimam a reputação dele.';
@@ -167,7 +176,7 @@ ${qual !== 'retencao' ? 'Critério 8: compare cada número, data, valor e fato c
 - "correcoes": erro de português no roteiro — palavra errada, expressão trocada (ex.: "torcer dinheiro" no lugar de "torrar dinheiro"), concordância. {"trecho":"texto EXATO do roteiro, até 6 palavras","correcao":"como fica"}. Só erro, não estilo. No máximo 5.
 - "pessoas_marcas": cada pessoa, empresa ou marca REAL citada no roteiro (fora o Pedro): {"nome":"","fatos":["cada fato afirmado sobre ela, curto"],"na_pauta":true}. na_pauta = true só se TODOS esses fatos estão escritos na PAUTA.
 ` : ''}Responda APENAS JSON: {"notas":{${crit.map((c) => `"${c.n}":0`).join(',')}},"problemas":[{"criterio":0,"trecho":"frase exata do roteiro","sugestao":"como reescrever"}]${qual !== 'retencao' ? ',"correcoes":[],"pessoas_marcas":[]' : ''}}
-No máximo 4 problemas, os mais graves.`;
+No máximo 4 problemas, os mais graves: em cada um, "trecho" é a frase MAIS FRACA citada literalmente e "sugestao" é a reescrita pronta dela.`;
 }
 
 // Correções de português do fiscal: só as que existem LITERALMENTE no roteiro e são curtas (troca de palavra, não reescrita).
@@ -242,7 +251,7 @@ async function salvarRoteiro(rasc, { deps = {}, agora = Date.now() } = {}) {
       formato: rasc.formato, formato_nome: S.FORMATOS[rasc.formato]?.nome, nota: v.media, notas: v.notas, tentativas: rasc.tentativa,
       tela_gancho: r.tela_gancho, visual: r.visual, telas: r.blocos.map((b) => b.tela).filter(Boolean), cta_tipo: r.cta_tipo,
       pauta: { tipo: rasc.pauta.tipo, tema: rasc.pauta.tema, url: rasc.pauta.url || null, chave: rasc.pauta.chave },
-      correcoes: rasc.correcoes || [], fatos_reais: rasc.fatos || [],
+      correcoes: rasc.correcoes || [], fatos_reais: rasc.fatos || [], angulo: Angulo.etiquetas(rasc.angulo),
       ia: rasc.ia || [], gerado_em: new Date(agora).toISOString(),
     },
     worker: { tentativas: 0 }, log: [{ em: new Date(agora).toISOString(), msg: `Roteiro ${rasc.formato} aprovado pelos fiscais (média ${v.media}).` }],
@@ -278,8 +287,8 @@ async function arquivarVelhos({ agora = Date.now() } = {}) {
 function estadoDoDia(est, dia, agora) {
   const r = est.roteiros && typeof est.roteiros === 'object' ? est.roteiros : {};
   const usadas = (r.usadas || []).filter((u) => Date.parse(u.em) > agora - DIAS_PAUTA_USADA * 86400000);
-  if (r.dia !== dia) return { dia, feitos: 0, descartados: 0, comecados: 0, formatos: {}, usadas, rascunho: r.rascunho || null, pausa_ate: r.pausa_ate || null, ultimos: [] };
-  return { feitos: 0, descartados: 0, comecados: 0, formatos: {}, ultimos: [], ...r, usadas };
+  if (r.dia !== dia) return { dia, feitos: 0, descartados: 0, comecados: 0, formatos: {}, usadas, rascunho: r.rascunho || null, pausa_ate: r.pausa_ate || null, ultimos: [], angulos: r.angulos || [] };
+  return { feitos: 0, descartados: 0, comecados: 0, formatos: {}, ultimos: [], angulos: [], ...r, usadas };
 }
 
 const pendente = (r, meta = META_DIA) => !!r && (r.rascunho || (r.feitos < meta && r.comecados < TENTATIVAS_DIA));
@@ -315,13 +324,29 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
         const formato = escolherFormato(pauta, R.formatos, deps.sortear || Math.random);
         R.usadas.push({ chave: pauta.chave, em: new Date(agora).toISOString() });
         R.comecados += 1; R.formatos[formato] = (R.formatos[formato] || 0) + 1;
-        R.rascunho = { id: `rt_${crypto.randomBytes(4).toString('hex')}`, pauta, formato, fase: 'escrever', tentativa: 1, feedback: '', ia: [] };
+        R.rascunho = { id: `rt_${crypto.randomBytes(4).toString('hex')}`, pauta, formato, fase: 'angulo', tentativa: 1, feedback: '', ia: [] };
       }
       const x = R.rascunho;
+      if (x.fase === 'angulo') {
+        // Motor Magnético: ângulo + laboratório de ganchos numa chamada. Falha avulsa não trava: o roteirista segue sem ângulo.
+        try {
+          const f = S.FORMATOS[x.formato];
+          const { dados, llm } = await chamarIA({ sistema: Angulo.promptAngulo({ pauta: x.pauta, formato: x.formato, formatoNome: f.nome, estrutura: f.estrutura, evitar: x.evitar || [] }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 2500)}`, maxTokens: 1100, temperatura: 0.85, etapa: 'angulo_roteiro', deps, restanteMs: restante() });
+          x.ia.push(llm?.provider || '?');
+          const ang = Angulo.normalizarAngulo(dados);
+          if (Angulo.repetido(ang, R.angulos) && !x.evitar) { x.evitar = (R.angulos || []).slice(-Angulo.JANELA_ANGULOS).map((a) => `${a.inimigo} (${a.emocao})`); out.fases.push(`${x.id}:angulo-repetido`); continue; }
+          x.angulo = Angulo.montar(ang, { pauta: x.pauta, regras: REGRAS_GANCHO });
+          if (x.angulo.gancho) R.angulos = [...(R.angulos || []), { inimigo: x.angulo.inimigo, emocao: x.angulo.emocao, em: new Date(agora).toISOString() }].slice(-Angulo.JANELA_ANGULOS);
+        } catch (e) { if (ehCota(e)) throw e; x.angulo = null; out.erro = String(e.message).slice(0, 140); }
+        out.fases.push(`${x.id}:angulo`); x.fase = 'escrever';
+        continue;
+      }
       if (x.fase === 'escrever') {
-        const { dados, llm } = await chamarIA({ sistema: promptRoteirista({ formato: x.formato, feedback: x.feedback }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 3000)}`, maxTokens: 1400, temperatura: x.tentativa === 1 ? 0.75 : 0.85, etapa: 'roteiro_video', deps, restanteMs: restante() });
+        const { dados, llm } = await chamarIA({ sistema: promptRoteirista({ formato: x.formato, feedback: x.feedback, angulo: x.angulo }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 3000)}`, maxTokens: 1400, temperatura: x.tentativa === 1 ? 0.75 : 0.85, etapa: 'roteiro_video', deps, restanteMs: restante() });
         x.ia.push(llm?.provider || '?');
-        x.roteiro = normalizar(dados); x.codigo = fiscalCodigo(x.roteiro, x.pauta);
+        x.roteiro = normalizar(dados);
+        if (x.angulo?.gancho) { const g = x.angulo.gancho.texto; if (x.roteiro.gancho !== g) x.roteiro.gancho = g; }   // o gancho escolhido vale palavra por palavra
+        x.codigo = fiscalCodigo(x.roteiro, x.pauta, { laco: !!x.angulo?.gancho });
         out.fases.push(`${x.id}:escreveu`);
         // O código já reprovou: nem gasta os fiscais de IA.
         const grave = x.codigo.problemas.some((p) => p.eliminar) || x.codigo.problemas.length >= 3 || !x.roteiro.blocos.length;
