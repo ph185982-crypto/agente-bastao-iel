@@ -45,11 +45,28 @@ export function calcularCac(
   return { valor: null, anterior, motivo: "Nenhum cliente novo no período: o CAC fica indefinido (houve investimento, sem conversão em cliente)." };
 }
 
+/** Só a Meta da agência (Marketing → Anúncios usa sem depender do Vendedor IA). Mesmo cache e fixture dos Dashboards. */
+export async function carregarMeta(periodo: PeriodoResolvido, deps: Dependencias = {}): Promise<Fonte<MetaResultado>> {
+  const env = deps.env ?? process.env;
+  const modo = fixtureAtiva(env);
+  const store = deps.cache ?? cacheCompartilhado;
+  const agora = deps.agora ?? Date.now;
+  try {
+    const prov = deps.meta ? deps.meta() : modo ? metaFixture(modo) : provedorMetaDoAmbiente(env);
+    // Fixture não usa o cache compartilhado (evita gravar dados simulados no banco).
+    const r = await carregarMetaComCache(prov, periodo.atual, periodo.anterior, modo ? { get: async () => null, set: async () => undefined } : store, agora);
+    return { estado: "ok", dados: r.dados, desatualizado: r.desatualizado, geradoEm: r.geradoEm };
+  } catch (e) {
+    const err = traduzirErroMeta(e);
+    if (err.codigo === "nao-configurado") return { estado: "nao-configurado", motivo: err.message };
+    return { estado: "indisponivel", codigo: err.codigo, motivo: err.message };
+  }
+}
+
 export async function carregarDashboards(id: PeriodoId, deps: Dependencias = {}, hoje?: string): Promise<Dashboards> {
   const env = deps.env ?? process.env;
   const periodo = resolverPeriodo(id, hoje);
   const modo = fixtureAtiva(env);
-  const store = deps.cache ?? cacheCompartilhado;
   const agora = deps.agora ?? Date.now;
 
   const buscarVendas = async (): Promise<Fonte<MetricasVendedoria>> => {
@@ -61,18 +78,6 @@ export async function carregarDashboards(id: PeriodoId, deps: Dependencias = {},
       return { estado: "indisponivel", codigo: e instanceof VendedoriaErro ? e.codigo : "rede", motivo: e instanceof VendedoriaErro ? e.message : "Não foi possível falar com o Vendedor IA." };
     }
   };
-  const buscarMeta = async (): Promise<Fonte<MetaResultado>> => {
-    try {
-      const prov = deps.meta ? deps.meta() : modo ? metaFixture(modo) : provedorMetaDoAmbiente(env);
-      // Fixture não usa o cache compartilhado (evita gravar dados simulados no banco).
-      const r = await carregarMetaComCache(prov, periodo.atual, periodo.anterior, modo ? { get: async () => null, set: async () => undefined } : store, agora);
-      return { estado: "ok", dados: r.dados, desatualizado: r.desatualizado, geradoEm: r.geradoEm };
-    } catch (e) {
-      const err = traduzirErroMeta(e);
-      if (err.codigo === "nao-configurado") return { estado: "nao-configurado", motivo: err.message };
-      return { estado: "indisponivel", codigo: err.codigo, motivo: err.message };
-    }
-  };
-  const [vendas, meta] = await Promise.all([buscarVendas(), buscarMeta()]);
+  const [vendas, meta] = await Promise.all([buscarVendas(), carregarMeta(periodo, deps)]);
   return { periodo, fixture: Boolean(modo), vendas, meta, cac: calcularCac(meta, vendas) };
 }

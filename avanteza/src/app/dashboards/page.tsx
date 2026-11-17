@@ -1,4 +1,5 @@
-// Dashboards: visão executiva da Avanteza. Comercial e financeiro vêm do Vendedor IA; marketing, da Meta Marketing API.
+// Dashboards: visão executiva da Avanteza. Comercial e financeiro vêm do Vendedor IA; marketing, da Meta Marketing API
+// (aqui só o resumo; o detalhe de Anúncios e Canais fica em /marketing).
 // Cada fonte é independente: se uma estiver fora do ar, a página mostra o aviso daquele bloco e segue com o resto.
 import Link from "next/link";
 import { requireDashboards } from "@/lib/auth";
@@ -10,7 +11,7 @@ import { EntregasEmRisco } from "@/components/motor/EntregasEmRisco";
 import { carteira } from "@/lib/motor/repo";
 import { ordenarPorRisco } from "@/lib/motor/saude";
 import { spDate } from "@/lib/dates";
-import { SecaoComercial, SecaoFinanceiro, SecaoPrevistos, SecaoMarketing, SecaoCanaisClientes, StatusFontes } from "@/components/dashboards/Secoes";
+import { SecaoComercial, SecaoFinanceiro, SecaoPrevistos, ResumoMarketing, StatusFontes } from "@/components/dashboards/Secoes";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -43,8 +44,8 @@ export default async function Dashboards({ searchParams }: { searchParams: Promi
       <SecaoComercial d={d} />
       <SecaoFinanceiro d={d} />
       <SecaoPrevistos d={d} />
-      <SecaoMarketing d={d} />
-      <SecaoCanaisClientes c={canais} />
+      {/* Marketing completo (campanhas, contas, canais dos clientes) mora em /marketing; aqui fica o resumo com o link. */}
+      <ResumoMarketing d={d} canais={canais} />
     </>
   );
 }

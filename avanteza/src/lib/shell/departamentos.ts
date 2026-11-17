@@ -76,8 +76,8 @@ export function departamentos(): Departamento[] {
       descricao: "Conteúdo, anúncios e canais dos clientes.",
       modulos: [
         appModulo("conteudo", "Conteúdo", "pen", "Produção e publicação para Instagram e LinkedIn."),
-        { id: "anuncios", nome: "Anúncios", icon: "chart", href: "/dashboards#marketing", descricao: "Investimento, resultados e CAC da Meta, nos Dashboards.", requer: "dashboards" },
-        { id: "canais", nome: "Canais", icon: "signal", href: "/dashboards#canais", descricao: "Mídia e tráfego dos canais dos clientes.", requer: "dashboards" },
+        { id: "anuncios", nome: "Anúncios", icon: "chart", href: "/marketing#anuncios", descricao: "Investimento, resultados, campanhas e contas da Meta (agência e clientes).", requer: "dashboards" },
+        { id: "canais", nome: "Canais", icon: "signal", href: "/marketing#canais", descricao: "Canais de cada cliente: fonte (Meta ou Windsor.ai) e estado da conexão.", requer: "dashboards" },
       ],
     },
     {

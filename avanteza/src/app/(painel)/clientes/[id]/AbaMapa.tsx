@@ -78,7 +78,7 @@ export async function AbaMapa({ client, aba, owner }: { client: Client; aba: str
         {A.some((a: any) => !a.phase_id) && (
           <section className="phase" style={{ marginTop: 12 }}><h3>Sem fase</h3>{A.filter((a: any) => !a.phase_id).map((a: any) => <Row key={a.id} a={a} id={id} P={P} owner={owner} today={today} />)}</section>
         )}
-        {owner && <><h2>Nova ação</h2><div className="card"><ActionForm clientId={id} phases={P} /></div></>}
+        {owner && <><h2 id="nova-acao">Nova ação</h2><div className="card"><ActionForm clientId={id} phases={P} /></div></>}
       </>
     );
   }

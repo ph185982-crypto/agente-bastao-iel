@@ -8,7 +8,8 @@ import { brl, brlCompacto, compacto, hora, inteiro, percentual, vezes } from "@/
 import { Kpi, type DeltaProps } from "./Kpi";
 import { LineChart, Legenda } from "./LineChart";
 import { HBars, type ItemBarra } from "./HBars";
-import type { CanaisClientesDash } from "@/lib/channels/dashboards";
+import type { CanaisClientesDash, CanalPorCliente, FonteResumo } from "@/lib/channels/dashboards";
+import { ROTULO_FONTE, ROTULO_FONTE_IG } from "@/lib/channels/types";
 
 const dlt = (atual: number | null | undefined, ant: number | null | undefined, rotuloAnt: string, inverso = false): DeltaProps => ({
   pct: variacaoPct(atual, ant), inverso, anterior: rotuloAnt,
@@ -296,10 +297,11 @@ function MarketingOk({ m }: { m: MetaResultado }) {
   );
 }
 
-export function SecaoMarketing({ d }: { d: Dashboards }) {
+/** Meta da agência completa (investimento, resultados, campanhas e por conta). Em Marketing → Anúncios. */
+export function SecaoMarketing({ d, titulo = "Marketing", id }: { d: Pick<Dashboards, "meta" | "periodo">; titulo?: string; id?: string }) {
   const m = d.meta;
   return (
-    <SEC titulo="Marketing" sub="Meta Ads (Marketing API, somente leitura) — dados em cache por cerca de 15 minutos.">
+    <SEC id={id} titulo={titulo} sub="Meta Ads (Marketing API, somente leitura) — dados em cache por cerca de 15 minutos.">
       {m.estado === "nao-configurado" ? (
         <Aviso titulo="Meta sem dados" texto={`${m.motivo} Configure META_ACCESS_TOKEN no ambiente para ver investimento, alcance, cliques, leads e campanhas.`} />
       ) : m.estado === "indisponivel" ? (
@@ -321,19 +323,20 @@ export function SecaoMarketing({ d }: { d: Dashboards }) {
 
 
 /** Canais dos clientes (Meta somente leitura). Subtotal separado: contas já lidas pela Meta da agência não são somadas de novo. */
-export function SecaoCanaisClientes({ c }: { c: CanaisClientesDash | null }) {
+export function SecaoCanaisClientes({ c, id = "canais", titulo = "Canais dos clientes" }: { c: CanaisClientesDash | null; id?: string; titulo?: string }) {
   if (!c || c.linhas.length === 0) return null;
   const rot = { somada: "Somada ao subtotal", "ja-na-agencia": "Já está na Meta da agência (não somada)", incerto: "Meta da agência indisponível (não somada)" } as const;
   return (
-    <SEC id="canais" titulo="Canais dos clientes" sub="Contas de anúncios conectadas na aba Canais de cada cliente. Conta que já aparece na Meta da agência acima não é somada de novo.">
+    <SEC id={id} titulo={titulo} sub="Contas de anúncios conectadas na aba Canais de cada cliente (Meta ou Windsor.ai). Conta que já aparece na Meta da agência acima não é somada de novo.">
       <div className="card">
         <div className="table-wrap">
           <table className="t">
-            <thead><tr><th>Cliente</th><th className="num">Investimento</th><th className="num">Resultados</th><th>Situação</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Fonte</th><th className="num">Investimento</th><th className="num">Resultados</th><th>Situação</th></tr></thead>
             <tbody>
               {c.linhas.map((l) => (
                 <tr key={`${l.cliente}${l.conta}`}>
                   <td className="ctitle">{l.cliente}</td>
+                  <td className="small">{ROTULO_FONTE[l.fonte]}</td>
                   <td className="num">{l.semDados ? "—" : brl(l.gasto, true)}</td>
                   <td className="num">{l.semDados ? "—" : inteiro(l.resultados)}</td>
                   <td><span className={`pill ${l.situacao === "somada" ? "pill-ok" : "pill-outline"}`}>{rot[l.situacao]}</span></td>
@@ -345,5 +348,75 @@ export function SecaoCanaisClientes({ c }: { c: CanaisClientesDash | null }) {
         <p className="small muted" style={{ margin: "10px 0 0" }}>Subtotal fora da agência: <b>{brl(c.gastoSomado, true)}</b> de investimento e <b>{inteiro(c.resultadosSomados)}</b> resultados.</p>
       </div>
     </SEC>
+  );
+}
+
+
+/** Resumo de marketing nos Dashboards: os números principais da Meta e o link para o departamento Marketing (detalhe lá). */
+export function ResumoMarketing({ d, canais }: { d: Pick<Dashboards, "meta">; canais: CanaisClientesDash | null }) {
+  const m = d.meta;
+  const a = m.estado === "ok" && !m.dados.semDados ? m.dados.atual : null;
+  const p = m.estado === "ok" ? m.dados.anterior : null;
+  const ra = "Período anterior";
+  const cpl = a ? custoPorLead(a) : null;
+  return (
+    <SEC id="marketing" titulo="Marketing" sub="Resumo da Meta da agência. Campanhas, contas e canais dos clientes ficam no departamento Marketing.">
+      {m.estado !== "ok" ? (
+        <Aviso titulo={m.estado === "nao-configurado" ? "Meta sem dados" : "Meta indisponível"} texto={m.motivo} />
+      ) : !a ? (
+        <Aviso titulo="Meta sem dados no período" tipo="" texto="Nenhuma conta de anúncios teve entrega no período." />
+      ) : (
+        <div className="grid kpis auto">
+          <Kpi label="Investimento" valor={brl(a.gasto, a.gasto < 1000)} delta={dlt(a.gasto, p?.gasto, ra)} spark={m.dados.serie.map((s) => s.gasto)} />
+          <Kpi label="Leads e conversas" valor={inteiro(resultados(a))} delta={dlt(resultados(a), p ? resultados(p) : null, ra)} spark={m.dados.serie.map((s) => s.resultados)} />
+          <Kpi label="Custo por lead" valor={cpl != null ? brl(cpl, true) : "—"} indisponivel={cpl == null} />
+          <Kpi label="CTR" valor={percentual(a.ctr, 2)} delta={dlt(a.ctr, p?.ctr, ra)} sub="cliques ÷ impressões" />
+        </div>
+      )}
+      <p className="small muted" id="canais" style={{ margin: "10px 0 0" }}>
+        {canais && canais.linhas.length > 0 ? <>Canais dos clientes: {inteiro(canais.linhas.length)} conta(s) de anúncios, <b>{brl(canais.gastoSomado, true)}</b> fora da agência. </> : null}
+        <Link href="/marketing#anuncios">Ver em Marketing ›</Link>
+      </p>
+    </SEC>
+  );
+}
+
+// ─── Canais por cliente (Marketing → Canais) ─────────────────────────────────
+const ROTULO_ESTADO: Record<FonteResumo["estado"], { t: string; c: string }> = {
+  conectado: { t: "Conectado", c: "pill-ok" }, conectando: { t: "Conectando", c: "pill-outline" }, erro: { t: "Erro na coleta", c: "pill-danger" },
+  desconectado: { t: "Desconectado", c: "pill-outline" }, "sem-fonte": { t: "Não configurado", c: "pill-outline" },
+};
+const dataCurta = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" }) : null);
+
+function CelulaFonte({ f, rotulos }: { f: FonteResumo; rotulos: Record<"meta" | "windsor", string> }) {
+  const e = ROTULO_ESTADO[f.estado];
+  return (
+    <td>
+      <span className={`pill ${e.c}`}>{e.t}</span>
+      {f.fonte && <div className="small muted">{rotulos[f.fonte]}{f.atualizadoEm ? ` · ${dataCurta(f.atualizadoEm)}` : ""}</div>}
+    </td>
+  );
+}
+
+export function TabelaCanaisPorCliente({ itens, linkCliente }: { itens: CanalPorCliente[]; linkCliente: boolean }) {
+  if (!itens.length) return <div className="empty" role="status">Nenhum cliente de mídia ativo com canais.</div>;
+  return (
+    <div className="card">
+      <div className="table-wrap">
+        <table className="t">
+          <thead><tr><th>Cliente</th><th>Anúncios</th><th>Instagram</th><th className="num">Ficha</th></tr></thead>
+          <tbody>
+            {itens.map((c) => (
+              <tr key={c.clientId}>
+                <td className="ctitle">{c.cliente}</td>
+                <CelulaFonte f={c.anuncios} rotulos={ROTULO_FONTE} />
+                <CelulaFonte f={c.instagram} rotulos={ROTULO_FONTE_IG} />
+                <td className="num">{linkCliente ? <Link className="btn btn-sm btn-ghost" href={`/clientes/${c.clientId}?aba=canais`}>Canais ›</Link> : null}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

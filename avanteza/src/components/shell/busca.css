@@ -1,0 +1,52 @@
+/* Busca global (paleta Ctrl/Cmd+K) da equipe. Só tokens do tema. */
+.busca { position: relative; display: inline-flex; }
+.busca-btn { width: 38px; height: 38px; }
+.busca-btn svg { width: 19px; height: 19px; }
+.sb-busca { margin-left: auto; }
+.sb-busca + .sb-sino { margin-left: 0; }
+@media (max-width: 899px) { .sb-busca { display: none; } }
+@media (min-width: 900px) { :root[data-sidebar="collapsed"] .sb-busca { margin: 0 auto; } }
+
+.busca-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.busca-camada { position: fixed; inset: 0; z-index: 70; display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 16px; }
+.busca-fundo { position: absolute; inset: 0; border: 0; padding: 0; margin: 0; background: rgb(var(--shade) / 0.55); cursor: default; }
+.busca-painel {
+  position: relative; width: min(640px, 100%); max-height: min(70vh, 620px); display: flex; flex-direction: column;
+  border-radius: var(--radius); border: 1px solid var(--glass-border); background: var(--solid); box-shadow: var(--shadow); overflow: hidden;
+}
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .busca-fundo { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+}
+@media (max-width: 899px) { .busca-camada { padding: 12px; } .busca-painel { max-height: calc(100dvh - 24px); } }
+.busca-topo { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--hairline); }
+.busca-topo > svg { flex: none; width: 20px; height: 20px; stroke: var(--muted); fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.busca-campo { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 16px; padding: 8px 0; }
+/* O campo é o próprio topo da paleta: sem a caixa dos inputs; o foco aparece como um traço laranja sob o topo. */
+.busca-topo input.busca-campo, .busca-topo input.busca-campo:focus { border: 0; outline: 0; box-shadow: none; background: transparent; border-radius: 0; padding: 8px 2px; min-height: 0; }
+.busca-topo:focus-within { box-shadow: inset 0 -2px 0 var(--orange); }
+.busca-campo::placeholder { color: var(--placeholder); }
+.busca-modo { flex: none; white-space: nowrap; }
+.busca-kbd, .busca-pe kbd {
+  font: inherit; font-size: 11.5px; font-weight: 700; color: var(--muted); padding: 2px 7px; border-radius: 8px;
+  border: 1px solid var(--glass-border); background: rgb(var(--tint) / 0.06);
+}
+.busca-lista { overflow-y: auto; padding: 6px 8px 10px; overscroll-behavior: contain; }
+.busca-grupo + .busca-grupo { margin-top: 6px; }
+.busca-grupo-tit { font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--heading); padding: 10px 10px 6px; }
+.busca-op { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: var(--radius-md); cursor: pointer; color: var(--text); }
+.busca-op.ativo { background: rgb(var(--tint) / 0.12); box-shadow: inset 3px 0 0 var(--orange); }
+.busca-ico { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: rgb(var(--tint) / 0.08); }
+.busca-ico svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.busca-op.ativo .busca-ico { background: var(--orange); color: var(--navy); }
+.busca-txt { display: grid; min-width: 0; flex: 1; }
+.busca-tit { font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.busca-det { font-size: 12.5px; color: var(--muted); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.busca-tag { flex: none; font-size: 11px; font-weight: 700; color: var(--muted); border: 1px solid var(--glass-border); border-radius: var(--radius-pill); padding: 2px 8px; }
+.busca-vazio { margin: 0; padding: 14px 10px; font-size: 13.5px; color: var(--muted); }
+.busca-avisos { padding: 8px 16px; border-top: 1px solid var(--hairline); color: var(--warn); }
+.busca-avisos p { margin: 2px 0; }
+.busca-pe { display: flex; gap: 16px; flex-wrap: wrap; padding: 9px 16px; border-top: 1px solid var(--hairline); font-size: 12px; color: var(--muted); }
+.busca-pe kbd { margin-right: 3px; }
+@media (max-width: 899px) { .busca-pe { display: none; } }
+@media (prefers-reduced-motion: no-preference) { .busca-painel { animation: busca-entra 0.14s ease-out; } }
+@keyframes busca-entra { from { opacity: 0; transform: translateY(-6px) scale(0.99); } to { opacity: 1; transform: none; } }

@@ -426,6 +426,10 @@ details[open] > summary::before { content: "– "; }
 .periodo { margin: 14px 0 8px; }
 .fontes { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
 .dsec { margin-top: 8px; }
+/* Marketing (/marketing): atalhos das seções e âncoras que não ficam sob a barra do celular. */
+.mk-secoes { margin: 14px 0 4px; }
+.mk-ancora { scroll-margin-top: 16px; }
+@media (max-width: 899px) { .mk-ancora { scroll-margin-top: 76px; } }
 .dsub { margin: -4px 0 12px; }
 .dsec > .grid + .grid, .dsec > .grid + .card, .dsec > .card + .card, .dsec > .notice + .grid { margin-top: 14px; }
 .dsec > .card + .card { margin-top: 14px; }
