@@ -2,6 +2,7 @@ import { Submit } from "@/components/Submit";
 import { MarcaRotulo } from "@/components/brand";
 import { ConectarMeta } from "@/components/canais/ConectarMeta";
 import { ConectarInstagram } from "@/components/canais/ConectarInstagram";
+import { ConectarGoogle } from "@/components/canais/ConectarGoogle";
 import { ago } from "@/lib/format";
 import { obterCanal, tokenDaPlataforma } from "@/lib/channels/store";
 import { canaisFixtureAtiva } from "@/lib/channels/fixture";
@@ -16,7 +17,7 @@ import Link from "next/link";
 import { carregarPublico, negocioDoNome } from "@/lib/channels/publico";
 import { SecaoPublico } from "@/components/canais/Publico";
 import { PERIODOS, ROTULO_PERIODO, ddmm, parsePeriodo, resolverPeriodo } from "@/lib/dashboards/periodo";
-import { atualizarAnunciosAgora, atualizarInstagramAgora, desconectarAnuncios, desconectarInstagram, reiniciarContagemAcao, salvarAlertaGastoAcao } from "../canais-actions";
+import { atualizarAnunciosAgora, atualizarGoogleAgoraAcao, atualizarInstagramAgora, desconectarAnuncios, desconectarGoogleAcao, desconectarInstagram, reiniciarContagemAcao, salvarAlertaGastoAcao } from "../canais-actions";
 
 type Estado = { rotulo: string; cls: string };
 const ST: Record<string, Estado> = {
@@ -42,6 +43,8 @@ export async function AbaCanais({ client, owner, periodo: periodoTxt }: { client
   const igCfg = Boolean(canal && canal.igSource !== "none");
   const stAds = estadoFonte(adsCfg, canal?.lastSyncAt ?? null, canal?.lastError ?? null);
   const stIg = estadoFonte(igCfg, canal?.igLastSyncAt ?? null, canal?.igLastError ?? null);
+  const gCfg = canal?.gbpSource === "windsor";
+  const stG = estadoFonte(gCfg, canal?.gbpLastSyncAt ?? null, canal?.gbpLastError ?? null);
   const ligado = canal && canal.status !== "desconectado";
   const igMeta = canal?.igSource === "meta";
   const hoje = spDate();
@@ -138,6 +141,31 @@ export async function AbaCanais({ client, owner, periodo: periodoTxt }: { client
         ) : (
           <p className="small muted">Somente administradores conectam, testam ou desconectam canais.</p>
         )}
+      </section>
+
+      <section aria-labelledby="sec-google" style={{ marginTop: 18 }}>
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="row"><h3 id="sec-google"><MarcaRotulo marca="google" tamanho={24}>Google · Perfil da Empresa</MarcaRotulo></h3><span className={`pill ${stG.cls}`}>{stG.rotulo}</span></div>
+          <p className="small muted" style={{ margin: "2px 0 0" }}>Fonte: Windsor.ai (conector Google My Business), com a mesma chave do Instagram. Aparece no Mapa como a aba “Google”; independente dos anúncios e do Instagram.</p>
+          {!canal || !gCfg ? (
+            <p className="muted" style={{ margin: "8px 0 0" }}>Google não configurado. Escolha Windsor.ai e informe o nome do local abaixo.</p>
+          ) : (
+            <ul className="plist">
+              <li><span>Local</span><b>{canal.gbpLocationName ? `“${canal.gbpLocationName}”` : "único local do Windsor.ai"}{canal.info.gbp_local && canal.info.gbp_local !== canal.gbpLocationName ? ` · ${canal.info.gbp_local}` : ""}</b></li>
+              <li><span>Chave</span><b>{origemChaveWindsor(canal) === "canal" ? `do canal · termina em ${canal.chaveWindsorHint ?? "····"}` : origemChaveWindsor(canal) === "plataforma" ? "da plataforma (WINDSOR_API_KEY)" : "nenhuma — WINDSOR_API_KEY ausente neste ambiente"}</b></li>
+              <li><span>Última coleta</span><b>{canal.gbpLastSyncAt ? ago(canal.gbpLastSyncAt) : "ainda não coletou"}</b></li>
+              {canal.gbpLastError && <li className="late"><span>Último erro</span><b style={{ overflowWrap: "anywhere" }}>{canal.gbpLastError}</b></li>}
+            </ul>
+          )}
+          {owner && ligado && gCfg && (
+            <div className="btn-row" style={{ marginTop: 12 }}>
+              <form action={atualizarGoogleAgoraAcao}><input type="hidden" name="client_id" value={id} /><Submit className="btn btn-sm btn-orange">Atualizar Google agora</Submit></form>
+              <form action={desconectarGoogleAcao}><input type="hidden" name="client_id" value={id} /><Submit className="btn btn-sm btn-danger" confirm="Desconectar o Google? O histórico já coletado (inclusive as avaliações) continua guardado; anúncios e Instagram não são afetados.">Desconectar Google</Submit></form>
+            </div>
+          )}
+          {owner && ligado && gCfg && <p className="small muted" style={{ margin: "8px 0 0" }}>“Atualizar” traz os últimos 90 dias (visualizações, rotas, ligações, avaliações e buscas). O Windsor só devolve as avaliações escritas no período pedido: cada uma fica guardada e o histórico acumula. A rotina diária roda sozinha.</p>}
+        </div>
+        {owner && <ConectarGoogle clientId={id} inicial={{ gbpSource: "windsor", local: canal?.gbpLocationName ?? "" }} />}
       </section>
     </>
   );

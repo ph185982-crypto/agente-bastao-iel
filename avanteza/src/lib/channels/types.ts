@@ -12,7 +12,10 @@ export const MIN_GASTO_RANKING = 30;
 export const DIAS_BACKFILL = 90;
 export const DIAS_ROTINA = 7;
 
-export type KindSnapshot = "campaign_daily" | "ad_daily" | "ig_daily" | "ig_media" | "ig_audience" | "ads_breakdown" | "adset_targeting";
+export type KindSnapshot = "campaign_daily" | "ad_daily" | "ig_daily" | "ig_media" | "ig_audience" | "ads_breakdown" | "adset_targeting" | KindGoogle;
+/** Google (Perfil da Empresa): por dia (key 'local'), por avaliação (key = id; date = dia em que foi escrita), por palavra-chave (date = 1º dia do mês) e dados do local (key 'local'; vale o último). */
+export type KindGoogle = "gbp_daily" | "gbp_review" | "gbp_keyword" | "gbp_profile";
+export type FonteGoogle = "windsor" | "none";
 export type StatusCanal = "pendente" | "ativo" | "erro" | "desconectado";
 /** Duas fontes independentes: tráfego/anúncios e mídias/Instagram. Cada uma tem credencial, coleta, status e erro próprios. */
 export type FonteAnuncios = "meta" | "windsor" | "none";
@@ -127,4 +130,20 @@ export interface MetricasIgAudiencia { idade?: Record<string, number>; genero?: 
 export interface MetricasIgMidia {
   type: string; product?: string | null; caption?: string | null; permalink?: string | null; thumb?: string | null; timestamp: string;
   likes?: number | null; comments?: number | null; reach?: number | null; saved?: number | null; shares?: number | null; views?: number | null; interactions?: number | null;
+}
+
+// Google (Perfil da Empresa) ──────────────────────────────────────────────────
+/** gbp_daily: visualizações por superfície e ações do dia. Só entra o que veio (null nunca vira zero). */
+export interface MetricasGbpDia {
+  maps_mobile?: number; maps_desktop?: number; search_mobile?: number; search_desktop?: number;
+  calls?: number; directions?: number; website?: number; conversations?: number; bookings?: number;
+}
+/** gbp_review: uma linha por avaliação (key = review_id). `reviewer` completo fica só no banco; a tela do cliente recebe o primeiro nome. */
+export interface MetricasGbpAvaliacao { stars: number | null; reviewer: string | null; comment: string | null; reply: string | null; created_at: string | null }
+/** gbp_keyword: buscas do mês (key = palavra). `value` null = o Google ocultou (poucas buscas). */
+export interface MetricasGbpPalavra { value: number | null }
+/** gbp_profile: dados do local e totais de avaliação (key 'local'). */
+export interface MetricasGbpLocal {
+  title?: string | null; category?: string | null; neighborhood?: string | null; city?: string | null;
+  maps_uri?: string | null; review_uri?: string | null; rating_avg?: number | null; rating_count?: number | null;
 }

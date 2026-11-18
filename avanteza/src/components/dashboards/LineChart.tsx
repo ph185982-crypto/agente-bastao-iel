@@ -2,7 +2,7 @@
 // Gráfico de linhas/área em SVG próprio (sem biblioteca). Mede a largura real do contêiner (os textos ficam no tamanho certo
 // no celular), tem cursor com dica ao passar o mouse/tocar e navegação por setas no teclado. Cores só por classes de token.
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { brl, compacto, inteiro } from "@/lib/dashboards/format";
+import { brl, compacto, decimal, inteiro } from "@/lib/dashboards/format";
 import { ddmm } from "@/lib/dashboards/periodo";
 
 export interface Serie {
@@ -13,9 +13,10 @@ export interface Serie {
   /** Preenchimento em degradê sob a linha (padrão: só na primeira série). */
   area?: boolean;
 }
-export type FormatoValor = "brl" | "inteiro" | "brl2";
+/** "nota": uma casa decimal (ex.: nota média 4,9). */
+export type FormatoValor = "brl" | "inteiro" | "brl2" | "nota";
 
-const fmt = (f: FormatoValor, v: number) => (f === "brl2" ? brl(v, true) : f === "brl" ? brl(v, Math.abs(v) < 100) : inteiro(v));
+const fmt = (f: FormatoValor, v: number) => (f === "brl2" ? brl(v, true) : f === "brl" ? brl(v, Math.abs(v) < 100) : f === "nota" ? decimal(v, 1) : inteiro(v));
 
 export function escalaBonita(max: number, min: number): { min: number; max: number; ticks: number[] } {
   const topo = Math.max(max, 0), base = Math.min(min, 0);

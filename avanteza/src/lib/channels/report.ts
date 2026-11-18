@@ -8,6 +8,7 @@ import { MIN_GASTO_RANKING, type KindSnapshot } from "./types";
 import { normalizarNome } from "./campanhas";
 import { limparNome } from "./nomes";
 import { linkMetaSeguro, rotuloCta } from "./links";
+import { googleNoIntervalo } from "./gbp-report";
 
 export interface Linha { kind: KindSnapshot; date: string; key: string; metrics: Record<string, any> }
 
@@ -311,8 +312,11 @@ export interface Marco {
   gasto: number; resultados: number; custoPorResultado: number | null; impressoes: number;
   alcanceIg: number | null; seguidoresFim: number | null; seguidoresGanho: number | null;
   /** Comparação com o período imediatamente anterior (mesmos dias, quando o atual está em andamento). */
-  anterior: { gasto: number; resultados: number; custoPorResultado: number | null; alcanceIg: number | null; seguidoresGanho: number | null; rotulo: string } | null;
+  anterior: { gasto: number; resultados: number; custoPorResultado: number | null; alcanceIg: number | null; seguidoresGanho: number | null; rotulo: string; google?: GoogleMarco | null } | null;
+  /** Google · Perfil da Empresa no período (null = sem dado do Google nele). */
+  google?: GoogleMarco | null;
 }
+export type GoogleMarco = NonNullable<ReturnType<typeof googleNoIntervalo>>;
 export type Agrupamento = "mes" | "semana";
 
 const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
@@ -323,7 +327,8 @@ const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 export function evolucao(rows: Linha[], agrup: Agrupamento, hoje: string, campanhasFiltro: string[], maxMarcos = 12): Marco[] {
   const camp = rows.filter((r) => r.kind === "campaign_daily" && (!campanhasFiltro.length || campanhasFiltro.includes(r.key)));
   const ig = rows.filter((r) => r.kind === "ig_daily");
-  const datas = [...camp, ...ig].map((r) => r.date).sort();
+  const gbp = rows.filter((r) => r.kind === "gbp_daily" || r.kind === "gbp_review");
+  const datas = [...camp, ...ig, ...rows.filter((r) => r.kind === "gbp_daily")].map((r) => r.date).sort();
   if (!datas.length) return [];
   const iniDe = (d: string) => (agrup === "mes" ? `${d.slice(0, 7)}-01` : inicioSemana(d));
   const fimDe = (ini: string) => (agrup === "mes" ? fimMes(ini.slice(0, 7)) : addDays(ini, 6));
@@ -339,7 +344,7 @@ export function evolucao(rows: Linha[], agrup: Agrupamento, hoje: string, campan
     const igs = noIntervalo(ig, de, ate).filter((r) => tem(r.metrics.reach));
     const alcance = igs.length ? igs.reduce((s, r) => s + n(r.metrics.reach), 0) : null;
     const fim = segPor.get(ate > hoje ? hoje : ate) ?? null, ini = segPor.get(addDays(de, -1)) ?? null;
-    return { ...t, alcanceIg: alcance, seguidoresFim: fim, seguidoresGanho: fim != null && ini != null ? fim - ini : null };
+    return { ...t, alcanceIg: alcance, seguidoresFim: fim, seguidoresGanho: fim != null && ini != null ? fim - ini : null, google: gbp.length ? googleNoIntervalo(gbp, de, ate) : null };
   };
   const rotulo = (ini: string) => (agrup === "mes" ? `${MESES[Number(ini.slice(5, 7)) - 1]}/${ini.slice(2, 4)}` : `${ddmm(ini)} a ${ddmm(fimDe(ini))}`);
 
@@ -352,9 +357,9 @@ export function evolucao(rows: Linha[], agrup: Agrupamento, hoje: string, campan
       const pIni = inicios[i - 1];
       const corte = fim > hoje ? addDays(pIni, diasEntre(ini, hoje) - 1) : fimDe(pIni);
       const pc = calc(pIni, corte);
-      anterior = { gasto: pc.gasto, resultados: pc.resultados, custoPorResultado: pc.custoPorResultado, alcanceIg: pc.alcanceIg, seguidoresGanho: pc.seguidoresGanho, rotulo: fim > hoje ? `${rotulo(pIni)} (mesmos ${diasEntre(ini, hoje)} dias)` : rotulo(pIni) };
+      anterior = { gasto: pc.gasto, resultados: pc.resultados, custoPorResultado: pc.custoPorResultado, alcanceIg: pc.alcanceIg, seguidoresGanho: pc.seguidoresGanho, google: pc.google, rotulo: fim > hoje ? `${rotulo(pIni)} (mesmos ${diasEntre(ini, hoje)} dias)` : rotulo(pIni) };
     }
-    return { id: ini, rotulo: rotulo(ini), de: ini, ate: ateEfetivo, parcial: fim > hoje, inicioParcial: ini < datas[0], gasto: c.gasto, resultados: c.resultados, custoPorResultado: c.custoPorResultado, impressoes: c.impressoes, alcanceIg: c.alcanceIg, seguidoresFim: c.seguidoresFim, seguidoresGanho: c.seguidoresGanho, anterior };
+    return { id: ini, rotulo: rotulo(ini), de: ini, ate: ateEfetivo, parcial: fim > hoje, inicioParcial: ini < datas[0], gasto: c.gasto, resultados: c.resultados, custoPorResultado: c.custoPorResultado, impressoes: c.impressoes, alcanceIg: c.alcanceIg, seguidoresFim: c.seguidoresFim, seguidoresGanho: c.seguidoresGanho, google: c.google, anterior };
   });
   return marcos.slice(-maxMarcos);
 }

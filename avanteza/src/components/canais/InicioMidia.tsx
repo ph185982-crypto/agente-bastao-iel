@@ -7,6 +7,7 @@ import { LineChart, Legenda } from "@/components/dashboards/LineChart";
 import { ComboChart } from "./ComboChart";
 import { Imagem } from "./Imagem";
 import { SeloFonte } from "./Paineis";
+import { InicioGoogle } from "./Google";
 import { CartaoGastoCiclo } from "./GastoCiclo";
 import { IconeTipoMidia, MarcaRotulo } from "@/components/brand";
 import { brl, compacto, inteiro, percentual } from "@/lib/dashboards/format";
@@ -33,6 +34,7 @@ export function InicioMidia({ d, hrefPeriodo }: { d: CanaisCliente; hrefPeriodo:
       {d.gastoCiclo && <CartaoGastoCiclo g={d.gastoCiclo} rotulo={nomeRes} id="ini-gasto" />}
       <Anuncios d={d} r={nomeRes} dl={dl} />
       <Instagram d={d} anteriorTxt={anteriorTxt} />
+      <InicioGoogle d={d} anteriorTxt={anteriorTxt} />
     </section>
   );
 }

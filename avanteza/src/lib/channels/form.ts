@@ -1,6 +1,6 @@
 // Leitura e validação dos formulários dos Canais (servidor): “Tráfego (anúncios) · Meta Ads” e “Mídias (Instagram)”.
 // Sem efeitos colaterais; nunca registra token nem chave.
-import { RESULTADO_PADRAO, type FonteAnuncios, type FonteInstagram } from "./types";
+import { RESULTADO_PADRAO, type FonteAnuncios, type FonteGoogle, type FonteInstagram } from "./types";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
@@ -59,4 +59,14 @@ export function lerCamposCanal(fd: FormData): { erro: string } | { campos: Campo
   const i = lerCamposInstagram(fd);
   if ("erro" in i) return i;
   return { campos: { ...a.campos, ...i.campos } };
+}
+
+export interface CamposGoogle { gbpSource: FonteGoogle; gbpLocationName: string | null }
+/** Seção do Google · Perfil da Empresa (Windsor.ai). O nome do local é o que o Windsor mostra (ex.: SHOW MAN BARBEARIA). */
+export function lerCamposGoogle(fd: FormData): { erro: string } | { campos: CamposGoogle } {
+  const pedida = str(fd, "gbp_source") || "windsor";
+  if (pedida !== "windsor" && pedida !== "none") return { erro: "Fonte do Google inválida." };
+  const nome = str(fd, "gbp_location_name").replace(/\s+/g, " ");
+  if (nome.length > 200 || /[<>"`\\]/.test(nome)) return { erro: "Nome do local: até 200 caracteres, sem < > \" ` ou \\." };
+  return { campos: { gbpSource: pedida, gbpLocationName: pedida === "windsor" ? nome || null : null } };
 }

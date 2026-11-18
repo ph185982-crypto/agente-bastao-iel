@@ -700,3 +700,30 @@ details.novo > summary { font-size: 15px; }
 .ta-met span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
 .ta-met b { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .ta-porque { margin: 2px 0 0; overflow-wrap: anywhere; }
+
+/* Canais → Google (Perfil da Empresa): local, nota, avaliações e buscas */
+.gbp-topo { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; }
+.gbp-local { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 260px; flex-wrap: wrap; }
+.gbp-local-t { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.gbp-link { color: var(--orange-2); font-weight: 700; }
+.gbp-nota { display: flex; flex-direction: column; gap: 2px; }
+.gbp-nota-v { display: flex; align-items: center; gap: 8px; }
+.gbp-nota-v b { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--heading); font-variant-numeric: tabular-nums; }
+.gbp-nota.compacta .gbp-nota-v b { font-size: 22px; }
+.gbp-sem { color: var(--danger); }
+.estrelas { display: inline-flex; gap: 1px; align-items: center; vertical-align: middle; }
+.gbp-buscas { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.gbp-buscas li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--hairline); font-size: 14px; overflow-wrap: anywhere; }
+.gbp-buscas li:last-child { border-bottom: 0; }
+.gbp-buscas b { font-variant-numeric: tabular-nums; }
+.rev-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin-top: 10px; }
+.rev-grid > .card.rev { margin-top: 0; padding: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.rev.sem-resp { border-color: var(--danger-border); }
+.rev-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rev-autor { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.rev-ini { width: 28px; height: 28px; border-radius: 999px; display: inline-grid; place-items: center; font-weight: 800; font-size: 13px; background: var(--sand); color: var(--navy); flex: none; }
+.rev-txt { margin: 0; font-size: 14px; overflow-wrap: anywhere; white-space: pre-line; }
+.rev-resp { display: grid; gap: 2px; padding: 8px 10px; border-radius: 14px; background: rgb(var(--tint) / 0.06); border-left: 3px solid var(--ok); }
+.rev-resp p { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.rev-resp .dest-lab { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+.gbp-sup .aud-r { white-space: normal; overflow: visible; }

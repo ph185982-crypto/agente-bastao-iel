@@ -538,6 +538,19 @@ begin
       check ((spend_alert_limit is null or spend_alert_limit > 0) and spend_alert_warn_pct between 1 and 99);
   end if;
 end $$;
+-- Google (Perfil da Empresa): TERCEIRA fonte independente (Windsor.ai, conector google_my_business, mesma chave do Instagram).
+--   gbp_source: 'windsor' | 'none'; gbp_location_name: nome do local no Windsor (obrigatório quando há mais de um local);
+--   gbp_last_sync_at / gbp_last_error: coleta própria (falha do Google não mexe nos anúncios nem no Instagram).
+alter table avanteza.client_channels add column if not exists gbp_source text not null default 'none';
+alter table avanteza.client_channels add column if not exists gbp_location_name text;
+alter table avanteza.client_channels add column if not exists gbp_last_sync_at timestamptz;
+alter table avanteza.client_channels add column if not exists gbp_last_error text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'client_channels_gbp_source_check') then
+    alter table avanteza.client_channels add constraint client_channels_gbp_source_check check (gbp_source in ('windsor','none'));
+  end if;
+end $$;
 create table if not exists avanteza.spend_alerts (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references avanteza.clients(id) on delete cascade,
@@ -558,11 +571,13 @@ create index if not exists spend_alerts_cliente_idx on avanteza.spend_alerts(cli
 --   kind: campaign_daily (key = campanha) | ad_daily (key = anúncio) | ig_daily (key = 'account') | ig_media (key = mídia; date = dia da postagem)
 --         | ig_audience (key = 'account'; idade/gênero/cidades)
 --         | ads_breakdown (key = '<idade_genero|regiao|posicionamento>|<campanha>|<valores>'; por dia) | adset_targeting (key = conjunto; date = dia da coleta, vale o último)
+--         | gbp_daily (key = 'local') | gbp_review (key = id da avaliação; date = dia em que foi escrita: acumula histórico)
+--         | gbp_keyword (key = palavra; date = 1º dia do mês) | gbp_profile (key = 'local'; date = dia da coleta, vale o último)
 --   source: de onde veio a linha ('meta' | 'windsor'). Faz parte da chave: trocar a fonte do Instagram nunca mistura nem sobrescreve dados de outra fonte.
 create table if not exists avanteza.channel_snapshots (
   client_id uuid not null references avanteza.clients(id) on delete cascade,
   provider text not null default 'meta',
-  kind text not null check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience','ads_breakdown','adset_targeting')),
+  kind text not null check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience','ads_breakdown','adset_targeting','gbp_daily','gbp_review','gbp_keyword','gbp_profile')),
   date date not null,
   key text not null,
   metrics jsonb not null default '{}'::jsonb,
@@ -572,7 +587,7 @@ create table if not exists avanteza.channel_snapshots (
 );
 alter table avanteza.channel_snapshots add column if not exists source text not null default 'meta';
 alter table avanteza.channel_snapshots drop constraint if exists channel_snapshots_kind_check;
-alter table avanteza.channel_snapshots add constraint channel_snapshots_kind_check check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience','ads_breakdown','adset_targeting'));
+alter table avanteza.channel_snapshots add constraint channel_snapshots_kind_check check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience','ads_breakdown','adset_targeting','gbp_daily','gbp_review','gbp_keyword','gbp_profile'));
 do $$
 begin
   -- chave primária antiga (cliente, tipo, dia, chave) → inclui a fonte

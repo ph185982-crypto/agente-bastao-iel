@@ -7,12 +7,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireOwner } from "@/lib/auth";
 import { adminDb } from "@/lib/db";
-import { desconectarFonte, obterCanal, salvarAnuncios, salvarInstagram } from "@/lib/channels/store";
-import { atualizarAgora, testarConexaoCanal, testarConexaoWindsor, testarConexaoWindsorAds } from "@/lib/channels/servico";
+import { desconectarFonte, desconectarGoogle, obterCanal, salvarAnuncios, salvarGoogle, salvarInstagram } from "@/lib/channels/store";
+import { atualizarAgora, atualizarGoogleAgora, testarConexaoGoogle, testarConexaoCanal, testarConexaoWindsor, testarConexaoWindsorAds } from "@/lib/channels/servico";
 import type { ResultadoTeste } from "@/lib/channels/types";
 import type { ResultadoTesteWindsor } from "@/lib/channels/windsor";
 import type { ResultadoTesteWindsorAds } from "@/lib/channels/windsor-ads";
-import { lerCamposAnuncios, lerCamposInstagram } from "@/lib/channels/form";
+import { lerCamposAnuncios, lerCamposGoogle, lerCamposInstagram } from "@/lib/channels/form";
+import type { ResultadoTesteGoogle } from "@/lib/channels/windsor-gbp";
 import { lerCamposAlerta, reiniciarContagem, salvarAlertaGasto, verificarAlertasGasto } from "@/lib/channels/alerta-gasto";
 import { spDate } from "@/lib/dates";
 
@@ -158,6 +159,54 @@ export async function desconectarInstagram(fd: FormData) {
   await desconectarFonte(clientId, "instagram");
   await auditar(actor, "channel_instagram_disconnected", clientId, { chave_hint: antes?.chaveWindsorHint ?? null });
   voltar(clientId, "Instagram desconectado: a chave do canal foi apagada. O histórico já coletado continua guardado. Os anúncios não foram alterados.");
+}
+
+// ─── Fonte 3: Google · Perfil da Empresa (Windsor.ai) ───────────────────────
+
+export async function salvarGoogleCanal(fd: FormData) {
+  const actor = await requireOwner();
+  const clientId = idDoForm(fd);
+  const r = lerCamposGoogle(fd);
+  if ("erro" in r) voltar(clientId, r.erro, "erro");
+  try {
+    await salvarGoogle(clientId, r.campos);
+    await auditar(actor, "channel_google_saved", clientId, { fonte: r.campos.gbpSource, local: r.campos.gbpLocationName });
+  } catch {
+    voltar(clientId, "Não foi possível salvar o Google.", "erro");
+  }
+  voltar(clientId, r.campos.gbpSource === "none" ? "Google desligado." : "Google (Perfil da Empresa) salvo. Use “Atualizar Google agora” para trazer os últimos 90 dias.");
+}
+
+export type EstadoTesteGoogle = { resultado?: ResultadoTesteGoogle; erro?: string } | null;
+
+/** Testa o Perfil da Empresa no Windsor.ai (só GET) com o nome do local do formulário. Usa a mesma chave do Instagram (canal > WINDSOR_API_KEY). */
+export async function testarConexaoGoogleAcao(_prev: EstadoTesteGoogle, fd: FormData): Promise<EstadoTesteGoogle> {
+  await requireOwner();
+  const clientId = str(fd, "client_id");
+  if (!UUID.test(clientId)) return { erro: "Cliente inválido." };
+  const r = lerCamposGoogle(fd);
+  if ("erro" in r) return { erro: r.erro };
+  try {
+    return { resultado: await testarConexaoGoogle({ clientId, local: r.campos.gbpLocationName }) };
+  } catch {
+    return { erro: "Não foi possível testar agora. Tente novamente." };
+  }
+}
+
+export async function atualizarGoogleAgoraAcao(fd: FormData) {
+  const actor = await requireOwner();
+  const clientId = idDoForm(fd);
+  const r = await atualizarGoogleAgora(clientId);
+  await auditar(actor, "channel_sync_now", clientId, { fonte: "google", ok: r.ok, linhas: r.linhas ?? null });
+  voltar(clientId, r.mensagem, r.ok ? "ok" : "erro");
+}
+
+export async function desconectarGoogleAcao(fd: FormData) {
+  const actor = await requireOwner();
+  const clientId = idDoForm(fd);
+  await desconectarGoogle(clientId);
+  await auditar(actor, "channel_google_disconnected", clientId, {});
+  voltar(clientId, "Google desconectado. O histórico já coletado (inclusive as avaliações) continua guardado. Anúncios e Instagram não foram alterados.");
 }
 
 // ─── Alerta de recarga (gasto acumulado das campanhas filtradas) ─────────────

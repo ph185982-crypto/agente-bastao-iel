@@ -3,13 +3,14 @@
 import { rawQuery } from "../db/client";
 import { decrypt, encrypt } from "../crypto";
 import { chaveWindsorDaPlataforma } from "./windsor";
-import { RESULTADO_PADRAO, type CanalConfig, type FonteAnuncios, type FonteInstagram, type KindSnapshot, type OrigemDado, type StatusCanal } from "./types";
+import { RESULTADO_PADRAO, type CanalConfig, type FonteAnuncios, type FonteGoogle, type FonteInstagram, type KindSnapshot, type OrigemDado, type StatusCanal } from "./types";
 
 // Nunca seleciona token_enc nem windsor_key_enc: só se existem (tem_*) e os 4 últimos caracteres (hint).
 const COLUNAS = `id, client_id, provider, ad_account_id, campaign_ids, ig_user_id, page_id, result_action_type, token_hint,
   (token_enc is not null) as tem_token, use_platform_token, status, info, last_sync_at, last_error, updated_at,
   ads_source, ig_source, windsor_account_name, (windsor_key_enc is not null) as tem_chave_windsor, windsor_key_hint, ig_last_sync_at, ig_last_error,
-  campaign_name_filter, spend_alert_limit::float8 as spend_alert_limit, spend_alert_warn_pct, to_char(spend_alert_since, 'YYYY-MM-DD') as spend_alert_since, spend_alert_emails`;
+  campaign_name_filter, spend_alert_limit::float8 as spend_alert_limit, spend_alert_warn_pct, to_char(spend_alert_since, 'YYYY-MM-DD') as spend_alert_since, spend_alert_emails,
+  gbp_source, gbp_location_name, gbp_last_sync_at, gbp_last_error`;
 
 /** Convenção: `lastSyncAt`/`lastError` = coleta dos ANÚNCIOS (Meta Ads); `igLastSyncAt`/`igLastError` = coleta do INSTAGRAM (Windsor ou Meta). */
 export interface CanalRow {
@@ -22,6 +23,8 @@ export interface CanalRow {
   campaignNameFilter: string | null;
   /** Alerta de recarga (null = desligado). */
   alertaGasto: AlertaGastoConfig | null;
+  /** Google (Perfil da Empresa): terceira fonte, independente (Windsor.ai, mesma chave do Instagram). */
+  gbpSource: FonteGoogle; gbpLocationName: string | null; gbpLastSyncAt: string | null; gbpLastError: string | null;
 }
 export interface AlertaGastoConfig { limite: number; avisoPct: number; desde: string; emails: string[] }
 const mapa = (r: any): CanalRow => ({
@@ -32,6 +35,7 @@ const mapa = (r: any): CanalRow => ({
   chaveWindsorHint: r.windsor_key_hint ?? null, igLastSyncAt: r.ig_last_sync_at ?? null, igLastError: r.ig_last_error ?? null,
   campaignNameFilter: r.campaign_name_filter ?? null,
   alertaGasto: r.spend_alert_limit != null && r.spend_alert_since ? { limite: Number(r.spend_alert_limit), avisoPct: Number(r.spend_alert_warn_pct ?? 80), desde: r.spend_alert_since, emails: r.spend_alert_emails ?? [] } : null,
+  gbpSource: r.gbp_source === "windsor" ? "windsor" : "none", gbpLocationName: r.gbp_location_name ?? null, gbpLastSyncAt: r.gbp_last_sync_at ?? null, gbpLastError: r.gbp_last_error ?? null,
 });
 
 export const configDe = (c: CanalRow): CanalConfig => ({
@@ -121,7 +125,7 @@ export async function salvarInstagram(clientId: string, e: EntradaInstagram): Pr
 
 /** Apaga TODAS as credenciais do canal (token da Meta e chave do Windsor) e as duas fontes. O histórico coletado continua guardado. */
 export async function desconectarCanal(clientId: string): Promise<void> {
-  await rawQuery("update avanteza.client_channels set token_enc = null, token_hint = null, use_platform_token = false, windsor_key_enc = null, windsor_key_hint = null, ads_source = 'none', ig_source = 'none', status = 'desconectado', updated_at = now() where client_id = $1 and provider = 'meta'", [clientId]);
+  await rawQuery("update avanteza.client_channels set token_enc = null, token_hint = null, use_platform_token = false, windsor_key_enc = null, windsor_key_hint = null, ads_source = 'none', ig_source = 'none', gbp_source = 'none', status = 'desconectado', updated_at = now() where client_id = $1 and provider = 'meta'", [clientId]);
 }
 
 /** Desliga uma fonte só (apaga a credencial dela) sem mexer na outra. O canal fica 'desconectado' quando as duas estão desligadas. */
@@ -133,7 +137,49 @@ export async function desconectarFonte(clientId: string, fonte: "ads" | "instagr
     `update avanteza.client_channels set ${sets}, updated_at = now() where client_id = $1 and provider = 'meta'`,
     [clientId],
   );
-  await rawQuery("update avanteza.client_channels set status = 'desconectado' where client_id = $1 and provider = 'meta' and ads_source = 'none' and ig_source = 'none'", [clientId]);
+  await rawQuery("update avanteza.client_channels set status = 'desconectado' where client_id = $1 and provider = 'meta' and ads_source = 'none' and ig_source = 'none' and gbp_source = 'none'", [clientId]);
+}
+
+// ─── Fonte 3: Google (Perfil da Empresa) ─────────────────────────────────────
+
+export interface EntradaGoogle { gbpSource: FonteGoogle; gbpLocationName?: string | null }
+/** Só a fonte do GOOGLE. Não toca em anúncios, Instagram, token nem chave. Trocar de local zera a última coleta (o próximo “Atualizar” refaz o histórico). */
+export async function salvarGoogle(clientId: string, e: EntradaGoogle): Promise<CanalRow> {
+  const [r] = await rawQuery(
+    `insert into avanteza.client_channels (client_id, provider, gbp_source, gbp_location_name, status)
+     values ($1,'meta',$2,$3,'pendente')
+     on conflict (client_id, provider) do update set
+       gbp_source = excluded.gbp_source, gbp_location_name = excluded.gbp_location_name,
+       gbp_last_sync_at = case when avanteza.client_channels.gbp_location_name is distinct from excluded.gbp_location_name or avanteza.client_channels.gbp_source is distinct from excluded.gbp_source then null else avanteza.client_channels.gbp_last_sync_at end,
+       gbp_last_error = case when avanteza.client_channels.gbp_location_name is distinct from excluded.gbp_location_name or avanteza.client_channels.gbp_source is distinct from excluded.gbp_source then null else avanteza.client_channels.gbp_last_error end,
+       status = case when avanteza.client_channels.status = 'desconectado' and excluded.gbp_source <> 'none' then 'pendente' else avanteza.client_channels.status end,
+       updated_at = now()
+     returning ${COLUNAS}`,
+    [clientId, e.gbpSource, e.gbpLocationName?.trim() || null],
+  );
+  return mapa(r);
+}
+
+/** Desliga só o Google. O histórico (inclusive as avaliações acumuladas) continua guardado. */
+export async function desconectarGoogle(clientId: string): Promise<void> {
+  await rawQuery("update avanteza.client_channels set gbp_source = 'none', updated_at = now() where client_id = $1 and provider = 'meta'", [clientId]);
+  await rawQuery("update avanteza.client_channels set status = 'desconectado' where client_id = $1 and provider = 'meta' and ads_source = 'none' and ig_source = 'none' and gbp_source = 'none'", [clientId]);
+}
+
+/** Resultado da coleta do Google: só as colunas gbp_*; o status geral só passa a 'ativo' (nunca a 'erro') por causa do Google. */
+export async function marcarColetaGoogle(clientId: string, r: { ok: boolean; erro?: string | null; info?: Record<string, unknown> }): Promise<void> {
+  await rawQuery(
+    `update avanteza.client_channels set gbp_last_error = $2, gbp_last_sync_at = case when $3::boolean then now() else gbp_last_sync_at end,
+       status = case when $3::boolean and status = 'pendente' then 'ativo' else status end, info = info || $4::jsonb, updated_at = now()
+     where client_id = $1 and provider = 'meta' and status <> 'desconectado'`,
+    [clientId, r.erro ? r.erro.slice(0, 500) : null, r.ok, JSON.stringify(r.info ?? {})],
+  );
+}
+
+/** Canais com o Google ligado (rotina diária), os mais antigos primeiro. */
+export async function listarCanaisGoogle(): Promise<CanalRow[]> {
+  const rows = await rawQuery(`select ${COLUNAS} from avanteza.client_channels where status <> 'desconectado' and gbp_source = 'windsor' order by gbp_last_sync_at asc nulls first`);
+  return rows.map(mapa);
 }
 
 export type FonteColeta = "ads" | "instagram";

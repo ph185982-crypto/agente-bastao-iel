@@ -13,6 +13,20 @@ export function linkMetaSeguro(v: unknown): string | null {
   return u.toString();
 }
 
+/** Links do Google mostrados ao cliente ("ver no Google Maps", "avaliar"): só https de google.com (e subdomínios), maps.app.goo.gl e g.page. */
+const HOSTS_GOOGLE = ["google.com", "maps.app.goo.gl", "g.page"];
+export function linkGoogleSeguro(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s || s.length > 2000 || /[\s<>"'`\\]/.test(s)) return null;
+  let u: URL;
+  try { u = new URL(s); } catch { return null; }
+  if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
+  const h = u.hostname.toLowerCase();
+  if (!HOSTS_GOOGLE.some((x) => h === x || h.endsWith(`.${x}`))) return null;
+  return u.toString();
+}
+
 /** call_to_action_type da Meta → texto do botão em português. */
 const CTA: Record<string, string> = {
   WHATSAPP_MESSAGE: "Conversar no WhatsApp", MESSAGE_PAGE: "Enviar mensagem", SEND_MESSAGE: "Enviar mensagem", INSTAGRAM_MESSAGE: "Enviar Direct",
