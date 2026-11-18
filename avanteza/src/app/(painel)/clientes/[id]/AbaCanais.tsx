@@ -5,10 +5,14 @@ import { ConectarInstagram } from "@/components/canais/ConectarInstagram";
 import { ago } from "@/lib/format";
 import { obterCanal, tokenDaPlataforma } from "@/lib/channels/store";
 import { canaisFixtureAtiva } from "@/lib/channels/fixture";
-import { origemChaveWindsor } from "@/lib/channels/servico";
+import { origemChaveWindsor, origemChaveWindsorAds } from "@/lib/channels/servico";
+import { gastoDoCiclo, historicoAlertasGasto } from "@/lib/channels/alerta-gasto";
+import { CartaoGastoCiclo } from "@/components/canais/GastoCiclo";
+import { spDate } from "@/lib/dates";
+import { envOptional } from "@/lib/env";
 import { chaveWindsorDaPlataforma } from "@/lib/channels/windsor";
 import { RESULTADO_PADRAO } from "@/lib/channels/types";
-import { atualizarAnunciosAgora, atualizarInstagramAgora, desconectarAnuncios, desconectarInstagram } from "../canais-actions";
+import { atualizarAnunciosAgora, atualizarInstagramAgora, desconectarAnuncios, desconectarInstagram, reiniciarContagemAcao, salvarAlertaGastoAcao } from "../canais-actions";
 
 type Estado = { rotulo: string; cls: string };
 const ST: Record<string, Estado> = {
@@ -36,6 +40,9 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
   const stIg = estadoFonte(igCfg, canal?.igLastSyncAt ?? null, canal?.igLastError ?? null);
   const ligado = canal && canal.status !== "desconectado";
   const igMeta = canal?.igSource === "meta";
+  const hoje = spDate();
+  const [gasto, historico] = await Promise.all([gastoDoCiclo(canal, hoje), canal ? historicoAlertasGasto(id) : []]);
+  const chaveAds = origemChaveWindsorAds(canal);
   return (
     <>
       {fixture && <div className="notice" role="note" style={{ marginTop: 12 }}><b>Dados simulados</b> (CHANNELS_FIXTURE, só desenvolvimento): testar e atualizar não chamam a Meta nem o Windsor.ai.</div>}
@@ -50,9 +57,9 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
           ) : (
             <ul className="plist">
               <li><span>Conta de anúncios</span><b>{`${canal.info.conta_nome ? `${canal.info.conta_nome} · ` : ""}${canal.adAccountId}`}</b></li>
-              <li><span>Campanhas</span><b>{canal.campaignIds.length ? canal.campaignIds.join(", ") : "todas da conta"}</b></li>
+              <li><span>Campanhas</span><b>{[canal.campaignIds.length ? `IDs ${canal.campaignIds.join(", ")}` : null, canal.campaignNameFilter ? `nome contém “${canal.campaignNameFilter}”` : null].filter(Boolean).join(" · ") || "todas da conta"}</b></li>
               <li><span>Fonte</span><b>{adsWin ? "Windsor.ai (conector Facebook Ads)" : "Meta Ads com token"}</b></li>
-              {adsWin ? <li><span>Chave</span><b>{origemChaveWindsor(canal) === "canal" ? `do canal · termina em ${canal.chaveWindsorHint ?? "····"}` : origemChaveWindsor(canal) === "plataforma" ? "da plataforma (WINDSOR_API_KEY)" : "nenhuma — WINDSOR_API_KEY ausente neste ambiente"}</b></li> : <li><span>Token</span><b>{canal.temToken ? `do cliente · termina em ${canal.tokenHint ?? "····"}` : canal.usarTokenPlataforma ? `da plataforma (META_ACCESS_TOKEN${tokenDaPlataforma() ? "" : ", ausente neste ambiente"})` : "nenhum — pendente"}</b></li>}
+              {adsWin ? <li><span>Chave</span><b>{chaveAds === "anuncios" ? "da agência (WINDSOR_ADS_API_KEY)" : chaveAds === "canal" ? `do canal · termina em ${canal.chaveWindsorHint ?? "····"} (WINDSOR_ADS_API_KEY ausente)` : chaveAds === "plataforma" ? "da plataforma (WINDSOR_API_KEY; WINDSOR_ADS_API_KEY ausente)" : "nenhuma — WINDSOR_ADS_API_KEY ausente neste ambiente"}</b></li> : <li><span>Token</span><b>{canal.temToken ? `do cliente · termina em ${canal.tokenHint ?? "····"}` : canal.usarTokenPlataforma ? `da plataforma (META_ACCESS_TOKEN${tokenDaPlataforma() ? "" : ", ausente neste ambiente"})` : "nenhum — pendente"}</b></li>}
               <li><span>Última coleta</span><b>{canal.lastSyncAt ? ago(canal.lastSyncAt) : "ainda não coletou"}</b></li>
               {canal.lastError && <li className="late"><span>Último erro</span><b style={{ overflowWrap: "anywhere" }}>{canal.lastError}</b></li>}
             </ul>
@@ -70,12 +77,14 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
             clientId={id}
             plataformaDisponivel={Boolean(tokenDaPlataforma())}
             inicial={{
-              adsSource: canal?.adsSource === "windsor" ? "windsor" : canal?.adsSource === "meta" || !canal ? "meta" : "none", adAccountId: canal?.adAccountId?.replace(/^act_/, "") ?? "", campaignIds: canal?.campaignIds.join(", ") ?? "",
+              adsSource: canal?.adsSource === "windsor" ? "windsor" : canal?.adsSource === "meta" || !canal ? "meta" : "none", adAccountId: canal?.adAccountId?.replace(/^act_/, "") ?? "", campaignIds: canal?.campaignIds.join(", ") ?? "", campaignNameFilter: canal?.campaignNameFilter ?? "",
               resultActionType: canal?.resultActionType ?? RESULTADO_PADRAO, usarTokenPlataforma: canal?.usarTokenPlataforma ?? false, temToken: canal?.temToken ?? false, tokenHint: canal?.tokenHint ?? null,
             }}
           />
         ) : null}
       </section>
+
+      <AlertaRecarga clientId={id} owner={owner} adsCfg={adsCfg} canal={canal} gasto={gasto} historico={historico} />
 
       <section aria-labelledby="sec-ig" style={{ marginTop: 18 }}>
         <div className="card" style={{ marginTop: 12 }}>
@@ -113,5 +122,83 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
         )}
       </section>
     </>
+  );
+}
+
+const NIVEL = { aviso: "Saldo acabando", limite: "Faça a recarga" } as const;
+const EMAIL: Record<string, { rotulo: string; cls: string }> = {
+  enviado: { rotulo: "E-mail enviado", cls: "pill-ok" },
+  coberto: { rotulo: "Coberto pelo aviso de 100%", cls: "pill-outline" },
+  sem_configuracao: { rotulo: "Pendente: e-mail não configurado", cls: "pill-danger" },
+  sem_destinatario: { rotulo: "Pendente: sem destinatário", cls: "pill-danger" },
+  falhou: { rotulo: "Envio falhou", cls: "pill-danger" },
+};
+const dmy = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
+
+/** Alerta de recarga (só administradores configuram): limite, % do aviso, data inicial do ciclo, e-mails, reinício e histórico. */
+function AlertaRecarga({ clientId, owner, adsCfg, canal, gasto, historico }: {
+  clientId: string; owner: boolean; adsCfg: boolean; canal: Awaited<ReturnType<typeof obterCanal>>;
+  gasto: Awaited<ReturnType<typeof gastoDoCiclo>>; historico: Awaited<ReturnType<typeof historicoAlertasGasto>>;
+}) {
+  const cfg = canal?.alertaGasto ?? null;
+  const copia = envOptional("ALERT_EMAIL_TO");
+  const emailOk = Boolean(envOptional("RESEND_API_KEY") && envOptional("ALERT_EMAIL_FROM"));
+  return (
+    <section aria-labelledby="sec-alerta" style={{ marginTop: 18 }}>
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="row"><h3 id="sec-alerta">Alerta de recarga dos anúncios</h3><span className={`pill ${cfg ? "pill-ok" : "pill-outline"}`}>{cfg ? "Ligado" : "Desligado"}</span></div>
+        <p className="small muted" style={{ margin: "2px 0 0" }}>
+          Soma o gasto das campanhas filtradas deste cliente desde a data inicial. Avisa por e-mail aos destinatários (com cópia ao dono{copia ? "" : ", ALERT_EMAIL_TO ausente"}), no sino e no Mapa: uma vez ao chegar no percentual de aviso e uma vez ao atingir o limite, em cada ciclo.
+        </p>
+        {!emailOk && <div className="notice" role="note" style={{ marginTop: 8 }}>O envio de e-mail não está configurado neste ambiente (RESEND_API_KEY / ALERT_EMAIL_FROM): os avisos ficam registrados como pendência e aparecem no sino.</div>}
+        {!adsCfg && <p className="muted" style={{ margin: "8px 0 0" }}>Configure os anúncios acima antes de ligar o alerta.</p>}
+        {gasto && <CartaoGastoCiclo g={gasto} compacto id="adm-gasto" />}
+        {owner && adsCfg && (
+          <form action={salvarAlertaGastoAcao} className="stack" style={{ marginTop: 12 }} aria-label="Configurar alerta de recarga">
+            <input type="hidden" name="client_id" value={clientId} />
+            <div className="grid two">
+              <div className="field"><label htmlFor="al-limite">Limite (R$)</label><input id="al-limite" name="limite" inputMode="decimal" defaultValue={cfg ? String(cfg.limite).replace(".", ",") : ""} placeholder="400" required /></div>
+              <div className="field"><label htmlFor="al-pct">Avisar ao chegar em (%)</label><input id="al-pct" name="aviso_pct" type="number" min={1} max={99} step={1} defaultValue={cfg?.avisoPct ?? 80} /></div>
+              <div className="field"><label htmlFor="al-desde">Contar a partir de</label><input id="al-desde" name="desde" type="date" defaultValue={cfg?.desde ?? spDate()} required /></div>
+              <div className="field"><label htmlFor="al-emails">E-mails do cliente</label><input id="al-emails" name="emails" defaultValue={cfg?.emails.join(", ") ?? ""} placeholder="contato@cliente.com.br, outro@cliente.com.br" /><div className="small muted">Separados por vírgula. O dono recebe cópia.</div></div>
+            </div>
+            <div className="btn-row"><Submit className="btn btn-orange">Salvar alerta</Submit></div>
+          </form>
+        )}
+        {owner && cfg && (
+          <div className="btn-row" style={{ marginTop: 12, alignItems: "center" }}>
+            <form action={reiniciarContagemAcao}>
+              <input type="hidden" name="client_id" value={clientId} />
+              <Submit className="btn btn-sm btn-orange" confirm={`Confirmar que a recarga foi feita? A contagem recomeça hoje (${dmy(spDate())}) e os avisos de ${cfg.avisoPct}% e 100% voltam a valer.`}>Recarga feita — reiniciar contagem</Submit>
+            </form>
+            <form action={salvarAlertaGastoAcao}>
+              <input type="hidden" name="client_id" value={clientId} /><input type="hidden" name="desligar" value="1" />
+              <Submit className="btn btn-sm btn-ghost" confirm="Desligar o alerta de recarga deste cliente?">Desligar alerta</Submit>
+            </form>
+            <span className="small muted">Ciclo atual desde {dmy(cfg.desde)}.</span>
+          </div>
+        )}
+        <h4 style={{ margin: "16px 0 6px" }}>Alertas enviados</h4>
+        {historico.length === 0 ? <p className="small muted" style={{ margin: 0 }}>Nenhum alerta enviado ainda.</p> : (
+          <div className="table-wrap">
+            <table className="t">
+              <thead><tr><th>Quando</th><th>Nível</th><th>Gasto / limite</th><th>Conversas</th><th>Ciclo desde</th><th>E-mail</th></tr></thead>
+              <tbody>
+                {historico.map((h) => (
+                  <tr key={h.id}>
+                    <td>{ago(h.criado_em)}</td>
+                    <td>{NIVEL[h.nivel]}</td>
+                    <td>{h.gasto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} / {h.limite.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                    <td>{h.conversas}</td>
+                    <td>{dmy(h.ciclo)}</td>
+                    <td><span className={`pill ${EMAIL[h.email_status ?? ""]?.cls ?? "pill-outline"}`}>{EMAIL[h.email_status ?? ""]?.rotulo ?? "Registrando…"}</span>{h.destinatarios.length ? <div className="small muted" style={{ overflowWrap: "anywhere" }}>{h.destinatarios.join(", ")}</div> : null}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

@@ -595,6 +595,16 @@ details.novo > summary { font-size: 15px; }
 .midia-fonte { margin-top: 12px; }
 .midia-fonte > .row { align-items: center; gap: 8px; flex-wrap: wrap; }
 .midia-fonte h3 { margin: 0; font-size: 16px; }
+/* Cartão “Total gasto até agora” (alerta de recarga dos anúncios) */
+.gasto-ciclo .gasto-valor { margin: 10px 0 8px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.gasto-ciclo .gasto-valor b { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; color: var(--heading); }
+.gasto-ciclo .progress { height: 12px; }
+.progress.limite > span { background: var(--danger); }
+.gasto-kpis { list-style: none; padding: 0; margin: 12px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gasto-kpis li { background: rgb(var(--tint) / 0.06); border: 1px solid var(--glass-border); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gasto-kpis span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 700; }
+.gasto-kpis b { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--heading); }
+.gasto-nota { margin: 10px 0 0; }
 .midia-destaques { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 12px; }
 .midia-destaques > .card { margin-top: 0; display: flex; gap: 12px; align-items: stretch; padding: 12px; min-width: 0; }
 .midia-destaques .art { width: 84px; flex: none; aspect-ratio: 1 / 1; border-radius: 10px; }

@@ -56,6 +56,19 @@ export async function enviarEmail(to: string, subject: string, html: string): Pr
   return true;
 }
 
+/** E-mail para vários destinatários com cópia (Resend `to` + `cc`). Sem configuração ou sem destinatário: devolve false e não envia. */
+export async function enviarEmailPara(m: { to: string[]; cc?: string[]; subject: string; html: string }): Promise<boolean> {
+  const to = [...new Set(m.to.map((x) => x.trim().toLowerCase()).filter(Boolean))];
+  const cc = [...new Set((m.cc ?? []).map((x) => x.trim().toLowerCase()).filter((x) => x && !to.includes(x)))];
+  if (!new EmailChannel().enabled() || !to.length) return false;
+  await fetchJson("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${envOptional("RESEND_API_KEY")}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: envOptional("ALERT_EMAIL_FROM"), to, ...(cc.length ? { cc } : {}), subject: m.subject, html: m.html }),
+  }, { retries: 2 });
+  return true;
+}
+
 /** Placeholder do WhatsApp: ligar quando houver provedor (ex.: API oficial do WhatsApp Business). */
 export class WhatsAppChannel implements NotificationChannel {
   readonly name = "whatsapp";

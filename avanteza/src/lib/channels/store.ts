@@ -8,7 +8,8 @@ import { RESULTADO_PADRAO, type CanalConfig, type FonteAnuncios, type FonteInsta
 // Nunca seleciona token_enc nem windsor_key_enc: só se existem (tem_*) e os 4 últimos caracteres (hint).
 const COLUNAS = `id, client_id, provider, ad_account_id, campaign_ids, ig_user_id, page_id, result_action_type, token_hint,
   (token_enc is not null) as tem_token, use_platform_token, status, info, last_sync_at, last_error, updated_at,
-  ads_source, ig_source, windsor_account_name, (windsor_key_enc is not null) as tem_chave_windsor, windsor_key_hint, ig_last_sync_at, ig_last_error`;
+  ads_source, ig_source, windsor_account_name, (windsor_key_enc is not null) as tem_chave_windsor, windsor_key_hint, ig_last_sync_at, ig_last_error,
+  campaign_name_filter, spend_alert_limit::float8 as spend_alert_limit, spend_alert_warn_pct, to_char(spend_alert_since, 'YYYY-MM-DD') as spend_alert_since, spend_alert_emails`;
 
 /** Convenção: `lastSyncAt`/`lastError` = coleta dos ANÚNCIOS (Meta Ads); `igLastSyncAt`/`igLastError` = coleta do INSTAGRAM (Windsor ou Meta). */
 export interface CanalRow {
@@ -18,17 +19,23 @@ export interface CanalRow {
   status: StatusCanal; info: Record<string, any>; lastSyncAt: string | null; lastError: string | null; updatedAt: string;
   adsSource: FonteAnuncios; igSource: FonteInstagram; windsorAccountName: string | null; temChaveWindsor: boolean; chaveWindsorHint: string | null;
   igLastSyncAt: string | null; igLastError: string | null;
+  campaignNameFilter: string | null;
+  /** Alerta de recarga (null = desligado). */
+  alertaGasto: AlertaGastoConfig | null;
 }
+export interface AlertaGastoConfig { limite: number; avisoPct: number; desde: string; emails: string[] }
 const mapa = (r: any): CanalRow => ({
   id: r.id, clientId: r.client_id, provider: r.provider, adAccountId: r.ad_account_id, campaignIds: r.campaign_ids ?? [], igUserId: r.ig_user_id, pageId: r.page_id,
   resultActionType: r.result_action_type, tokenHint: r.token_hint, temToken: Boolean(r.tem_token), usarTokenPlataforma: Boolean(r.use_platform_token),
   status: r.status, info: r.info ?? {}, lastSyncAt: r.last_sync_at, lastError: r.last_error, updatedAt: r.updated_at,
   adsSource: r.ads_source ?? "none", igSource: r.ig_source ?? "none", windsorAccountName: r.windsor_account_name ?? null, temChaveWindsor: Boolean(r.tem_chave_windsor),
   chaveWindsorHint: r.windsor_key_hint ?? null, igLastSyncAt: r.ig_last_sync_at ?? null, igLastError: r.ig_last_error ?? null,
+  campaignNameFilter: r.campaign_name_filter ?? null,
+  alertaGasto: r.spend_alert_limit != null && r.spend_alert_since ? { limite: Number(r.spend_alert_limit), avisoPct: Number(r.spend_alert_warn_pct ?? 80), desde: r.spend_alert_since, emails: r.spend_alert_emails ?? [] } : null,
 });
 
 export const configDe = (c: CanalRow): CanalConfig => ({
-  clientId: c.clientId, adAccountId: c.adAccountId, campaignIds: c.campaignIds, igUserId: c.igUserId, pageId: c.pageId, resultActionType: c.resultActionType,
+  clientId: c.clientId, adAccountId: c.adAccountId, campaignIds: c.campaignIds, campaignNameFilter: c.campaignNameFilter, igUserId: c.igUserId, pageId: c.pageId, resultActionType: c.resultActionType,
   adsSource: c.adsSource, igSource: c.igSource, windsorAccountName: c.windsorAccountName,
 });
 
@@ -46,7 +53,7 @@ export async function listarCanaisParaColeta(incluirSemToken: boolean): Promise<
 }
 
 export interface EntradaCanal {
-  adAccountId: string | null; campaignIds: string[]; igUserId: string | null; pageId: string | null; resultActionType?: string;
+  adAccountId: string | null; campaignIds: string[]; campaignNameFilter?: string | null; igUserId: string | null; pageId: string | null; resultActionType?: string;
   usarTokenPlataforma: boolean;
   /** Token novo em texto. Vazio/undefined = manter o que já está guardado. */
   token?: string | null;
@@ -58,12 +65,12 @@ export interface EntradaCanal {
 
 /** Cria/atualiza a configuração inteira (anúncios + Instagram). Token/chave novos são cifrados aqui; o texto puro nunca é guardado nem devolvido. */
 export async function salvarCanal(clientId: string, e: EntradaCanal): Promise<CanalRow> {
-  await salvarAnuncios(clientId, { adAccountId: e.adAccountId, campaignIds: e.campaignIds, resultActionType: e.resultActionType, usarTokenPlataforma: e.usarTokenPlataforma, token: e.token, adsSource: e.adsSource ?? (e.adAccountId ? "meta" : "none") });
+  await salvarAnuncios(clientId, { adAccountId: e.adAccountId, campaignIds: e.campaignIds, campaignNameFilter: e.campaignNameFilter, resultActionType: e.resultActionType, usarTokenPlataforma: e.usarTokenPlataforma, token: e.token, adsSource: e.adsSource ?? (e.adAccountId ? "meta" : "none") });
   return salvarInstagram(clientId, { igSource: e.igSource ?? (e.igUserId ? "meta" : "none"), igUserId: e.igUserId, pageId: e.pageId, windsorAccountName: e.windsorAccountName ?? null, windsorKey: e.windsorKey });
 }
 
 export interface EntradaAnuncios {
-  adAccountId: string | null; campaignIds: string[]; resultActionType?: string; usarTokenPlataforma: boolean; token?: string | null; adsSource: FonteAnuncios;
+  adAccountId: string | null; campaignIds: string[]; campaignNameFilter?: string | null; resultActionType?: string; usarTokenPlataforma: boolean; token?: string | null; adsSource: FonteAnuncios;
 }
 /** Só a fonte de ANÚNCIOS (Meta Ads). Não toca nas colunas do Instagram. */
 export async function salvarAnuncios(clientId: string, e: EntradaAnuncios): Promise<CanalRow> {
@@ -71,10 +78,11 @@ export async function salvarAnuncios(clientId: string, e: EntradaAnuncios): Prom
   const enc = token ? encrypt(token) : null;
   const hint = token ? token.slice(-4) : null;
   const [r] = await rawQuery(
-    `insert into avanteza.client_channels (client_id, provider, ad_account_id, campaign_ids, result_action_type, token_enc, token_hint, use_platform_token, ads_source, status)
-     values ($1,'meta',$2,$3,$4,$5,$6,$7,$8,'pendente')
+    `insert into avanteza.client_channels (client_id, provider, ad_account_id, campaign_ids, result_action_type, token_enc, token_hint, use_platform_token, ads_source, status, campaign_name_filter)
+     values ($1,'meta',$2,$3,$4,$5,$6,$7,$8,'pendente',$9)
      on conflict (client_id, provider) do update set
        ad_account_id = excluded.ad_account_id, campaign_ids = excluded.campaign_ids,
+       campaign_name_filter = case when $10::boolean then excluded.campaign_name_filter else avanteza.client_channels.campaign_name_filter end,
        result_action_type = excluded.result_action_type, use_platform_token = excluded.use_platform_token, ads_source = excluded.ads_source,
        last_sync_at = case when avanteza.client_channels.ads_source is distinct from excluded.ads_source then null else avanteza.client_channels.last_sync_at end,
        last_error = case when avanteza.client_channels.ads_source is distinct from excluded.ads_source then null else avanteza.client_channels.last_error end,
@@ -83,7 +91,7 @@ export async function salvarAnuncios(clientId: string, e: EntradaAnuncios): Prom
        status = case when avanteza.client_channels.status = 'desconectado' then 'pendente' else avanteza.client_channels.status end,
        updated_at = now()
      returning ${COLUNAS}`,
-    [clientId, e.adAccountId, e.campaignIds, e.resultActionType || RESULTADO_PADRAO, enc, hint, e.usarTokenPlataforma, e.adsSource],
+    [clientId, e.adAccountId, e.campaignIds, e.resultActionType || RESULTADO_PADRAO, enc, hint, e.usarTokenPlataforma, e.adsSource, e.campaignNameFilter?.trim() || null, e.campaignNameFilter !== undefined],
   );
   return mapa(r);
 }

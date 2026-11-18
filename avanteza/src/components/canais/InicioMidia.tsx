@@ -7,6 +7,7 @@ import { LineChart, Legenda } from "@/components/dashboards/LineChart";
 import { ComboChart } from "./ComboChart";
 import { Imagem } from "./Imagem";
 import { SeloFonte } from "./Paineis";
+import { CartaoGastoCiclo } from "./GastoCiclo";
 import { IconeTipoMidia, MarcaRotulo } from "@/components/brand";
 import { brl, compacto, inteiro, percentual } from "@/lib/dashboards/format";
 import { PERIODOS, ROTULO_PERIODO, ddmm, ddmmaa, variacaoPct, type PeriodoId } from "@/lib/dashboards/periodo";
@@ -29,6 +30,7 @@ export function InicioMidia({ d, hrefPeriodo }: { d: CanaisCliente; hrefPeriodo:
       </nav>
       <p className="muted small" style={{ margin: "4px 0 0" }}>{ddmm(atual.de)} a {ddmm(atual.ate)} ({atual.dias} {atual.dias === 1 ? "dia" : "dias"}) · variações comparam com o período anterior de mesmo tamanho.</p>
       {d.estado.simulado && <div className="notice" role="note" style={{ margin: "10px 0" }}><b>Dados simulados</b> (CHANNELS_FIXTURE, só desenvolvimento). Nada aqui é real.</div>}
+      {d.gastoCiclo && <CartaoGastoCiclo g={d.gastoCiclo} rotulo={nomeRes} id="ini-gasto" />}
       <Anuncios d={d} r={nomeRes} dl={dl} />
       <Instagram d={d} anteriorTxt={anteriorTxt} />
     </section>

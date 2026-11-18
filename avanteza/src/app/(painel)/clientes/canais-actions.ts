@@ -13,6 +13,8 @@ import type { ResultadoTeste } from "@/lib/channels/types";
 import type { ResultadoTesteWindsor } from "@/lib/channels/windsor";
 import type { ResultadoTesteWindsorAds } from "@/lib/channels/windsor-ads";
 import { lerCamposAnuncios, lerCamposInstagram } from "@/lib/channels/form";
+import { lerCamposAlerta, reiniciarContagem, salvarAlertaGasto, verificarAlertasGasto } from "@/lib/channels/alerta-gasto";
+import { spDate } from "@/lib/dates";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -41,7 +43,7 @@ export async function salvarAnunciosMeta(fd: FormData) {
   const c = r.campos;
   try {
     const canal = await salvarAnuncios(clientId, c);
-    await auditar(actor, "channel_ads_saved", clientId, { token_trocado: Boolean(c.token), token_hint: canal.tokenHint, fonte: c.adsSource, conta: Boolean(c.adAccountId), plataforma: c.usarTokenPlataforma });
+    await auditar(actor, "channel_ads_saved", clientId, { token_trocado: Boolean(c.token), token_hint: canal.tokenHint, fonte: c.adsSource, conta: Boolean(c.adAccountId), plataforma: c.usarTokenPlataforma, campanhas: c.campaignIds.length, filtro_nome: c.campaignNameFilter });
   } catch (e) {
     voltar(clientId, erroDeSalvar(e, "o token"), "erro"); // nunca ecoar o token
   }
@@ -82,7 +84,7 @@ export async function testarConexaoWindsorAdsAcao(_prev: EstadoTesteWindsorAds, 
   const r = lerCamposAnuncios(fd);
   if ("erro" in r) return { erro: r.erro };
   try {
-    return { resultado: await testarConexaoWindsorAds({ clientId, contaId: r.campos.adAccountId, campaignIds: r.campos.campaignIds, resultActionType: r.campos.resultActionType }) };
+    return { resultado: await testarConexaoWindsorAds({ clientId, contaId: r.campos.adAccountId, campaignIds: r.campos.campaignIds, campaignNameFilter: r.campos.campaignNameFilter, resultActionType: r.campos.resultActionType }) };
   } catch {
     return { erro: "Não foi possível testar agora. Tente novamente." };
   }
@@ -93,7 +95,10 @@ export async function atualizarAnunciosAgora(fd: FormData) {
   const clientId = idDoForm(fd);
   const r = await atualizarAgora(clientId, { fonte: "ads" });
   await auditar(actor, "channel_sync_now", clientId, { fonte: "ads", ok: r.ok, linhas: r.resultado?.linhas ?? null });
-  voltar(clientId, r.mensagem, r.ok ? "ok" : "erro");
+  // Com dados novos, o alerta de recarga é checado na hora (idempotente: cada nível sai uma vez por ciclo).
+  const chk = r.ok ? await verificarAlertasGasto(spDate(), { clientId }).catch(() => null) : null;
+  const enviados = chk?.detalhes[0]?.enviados ?? [];
+  voltar(clientId, `${r.mensagem}${enviados.length ? ` Alerta de recarga disparado (${enviados.includes("limite") ? "100%" : "aviso"}).` : ""}`, r.ok ? "ok" : "erro");
 }
 
 export async function desconectarAnuncios(fd: FormData) {
@@ -153,4 +158,31 @@ export async function desconectarInstagram(fd: FormData) {
   await desconectarFonte(clientId, "instagram");
   await auditar(actor, "channel_instagram_disconnected", clientId, { chave_hint: antes?.chaveWindsorHint ?? null });
   voltar(clientId, "Instagram desconectado: a chave do canal foi apagada. O histórico já coletado continua guardado. Os anúncios não foram alterados.");
+}
+
+// ─── Alerta de recarga (gasto acumulado das campanhas filtradas) ─────────────
+
+export async function salvarAlertaGastoAcao(fd: FormData) {
+  const actor = await requireOwner();
+  const clientId = idDoForm(fd);
+  const r = lerCamposAlerta(fd);
+  if ("erro" in r) voltar(clientId, r.erro, "erro");
+  const antes = await obterCanal(clientId);
+  if (!antes) voltar(clientId, "Configure os anúncios do canal antes do alerta.", "erro");
+  await salvarAlertaGasto(clientId, r.campos);
+  await auditar(actor, "spend_alert_config", clientId, { antes: antes.alertaGasto, depois: r.campos });
+  // Checa já (idempotente): se o ciclo já passou de um nível, o aviso sai agora em vez de esperar a próxima rotina.
+  const chk = r.campos ? await verificarAlertasGasto(spDate(), { clientId }).catch(() => null) : null;
+  const enviados = chk?.detalhes[0]?.enviados ?? [];
+  voltar(clientId, !r.campos ? "Alerta de recarga desligado." : `Alerta de recarga salvo.${enviados.length ? ` Aviso disparado agora (${enviados.includes("limite") ? "100%" : `${r.campos.avisoPct}%`}).` : ""}`);
+}
+
+export async function reiniciarContagemAcao(fd: FormData) {
+  const actor = await requireOwner();
+  const clientId = idDoForm(fd);
+  const hoje = spDate();
+  const r = await reiniciarContagem(clientId, hoje);
+  if (!r) voltar(clientId, "O alerta de recarga não está ligado para este cliente.", "erro");
+  await auditar(actor, "spend_alert_reset", clientId, { antes: r.antes, depois: hoje });
+  voltar(clientId, `Recarga registrada: a contagem recomeçou hoje (${hoje.split("-").reverse().join("/")}) e os avisos de 80% e 100% voltaram a valer.`);
 }

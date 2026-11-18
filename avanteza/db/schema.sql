@@ -522,6 +522,37 @@ begin
   end if;
 end $$;
 
+-- Filtro de campanhas por NOME (contém, sem caixa/acento), além dos ids. Ex.: Showman = 'SHOW MAN' (campanhas novas entram sozinhas;
+-- campanhas de outros projetos na mesma conta de anúncios ficam de fora da coleta, do painel e do alerta).
+alter table avanteza.client_channels add column if not exists campaign_name_filter text;
+-- Alerta de recarga (saldo pré-pago): soma do gasto das campanhas filtradas desde spend_alert_since. Dois níveis:
+-- 'aviso' (>= spend_alert_warn_pct % do limite) e 'limite' (>= 100 %). Cada nível no máximo UMA vez por ciclo (ciclo = since).
+alter table avanteza.client_channels add column if not exists spend_alert_limit numeric(12,2);
+alter table avanteza.client_channels add column if not exists spend_alert_warn_pct integer not null default 80;
+alter table avanteza.client_channels add column if not exists spend_alert_since date;
+alter table avanteza.client_channels add column if not exists spend_alert_emails text[] not null default '{}';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'client_channels_spend_alert_check') then
+    alter table avanteza.client_channels add constraint client_channels_spend_alert_check
+      check ((spend_alert_limit is null or spend_alert_limit > 0) and spend_alert_warn_pct between 1 and 99);
+  end if;
+end $$;
+create table if not exists avanteza.spend_alerts (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references avanteza.clients(id) on delete cascade,
+  ciclo date not null,                                   -- = spend_alert_since do ciclo
+  nivel text not null check (nivel in ('aviso','limite')),
+  gasto numeric(12,2) not null,
+  limite numeric(12,2) not null,
+  conversas integer not null default 0,
+  destinatarios text[] not null default '{}',
+  email_status text,                                     -- enviado | sem_configuracao | sem_destinatario | falhou | coberto
+  criado_em timestamptz not null default now(),
+  unique (client_id, ciclo, nivel)
+);
+create index if not exists spend_alerts_cliente_idx on avanteza.spend_alerts(client_id, criado_em desc);
+
 
 -- Histórico das séries coletadas (backup para a Evolução). Upsert idempotente por (cliente, tipo, dia, chave).
 --   kind: campaign_daily (key = campanha) | ad_daily (key = anúncio) | ig_daily (key = 'account') | ig_media (key = mídia; date = dia da postagem)

@@ -8,6 +8,7 @@ import { MetaErro } from "@/lib/dashboards/meta";
 import { esconderToken } from "./graph";
 import { WindsorErro, esconderChave, type FonteWindsor } from "./windsor";
 import type { FonteAnunciosApi } from "./windsor-ads";
+import { campanhaPassa } from "./campanhas";
 import { datasComIgDiario, gravarSnapshots, listarCanaisParaColeta, marcarColeta, configDe, type CanalRow, type FonteColeta, type SnapshotEntrada } from "./store";
 import {
   DIAS_BACKFILL, DIAS_ROTINA, IG_METRICAS_DIA,
@@ -46,6 +47,8 @@ export interface OpcoesColeta {
   agora?: () => number;
   /** Quais fontes coletar (padrão: as duas). Cada uma é independente. */
   fontes?: FonteColeta[];
+  /** Coleta leve (alerta de recarga): só o nível de campanha dos anúncios, sem anúncios/criativos. */
+  soCampanhas?: boolean;
 }
 export interface ResultadoFonte {
   fonte: FonteColeta; origem: OrigemDado | null;
@@ -103,21 +106,28 @@ const pulada = (fonte: FonteColeta, motivo: string): ResultadoFonte => ({ fonte,
 
 // ─── Fonte 1: anúncios (Meta Ads) ────────────────────────────────────────────
 
-async function coletarAnuncios(cfg: CanalConfig, api: FonteAnunciosApi, token: string | null | undefined, de: string, hoje: string, restante: () => number, origem: OrigemDado = "meta"): Promise<{ r: Rastreio; info: Record<string, unknown> }> {
+async function coletarAnuncios(cfg: CanalConfig, api: FonteAnunciosApi, token: string | null | undefined, de: string, hoje: string, restante: () => number, origem: OrigemDado = "meta", soCampanhas = false): Promise<{ r: Rastreio; info: Record<string, unknown> }> {
   const r = novoRastreio();
   const parte = executor(r, restante, token);
   const conta = cfg.adAccountId!;
+  // Filtro do canal (ids e nome) aplicado também aqui, seja qual for a fonte: campanha de outro projeto nunca é gravada.
+  const filtro = { campaignIds: cfg.campaignIds, campaignNameFilter: cfg.campaignNameFilter ?? null };
+  const aceitas = new Set<string>();
   await parte("Campanhas", async () => {
     const bruto = await api.insightsDiarios({ contaId: conta, nivel: "campaign", de, ate: hoje, campanhas: cfg.campaignIds });
     const rows: SnapshotEntrada[] = [];
     for (const x of bruto) {
       if (!x.date_start || !x.campaign_id) continue;
+      if (!campanhaPassa(x.campaign_id, x.campaign_name, filtro)) continue;
+      aceitas.add(x.campaign_id);
       rows.push({ kind: "campaign_daily", date: x.date_start, key: x.campaign_id, metrics: { ...metricasDaLinha(x, cfg.resultActionType, x.campaign_name ?? x.campaign_id) } });
     }
     r.linhas.campaign_daily = await gravarSnapshots(cfg.clientId, rows, origem);
   });
+  if (soCampanhas) return { r, info: {} };
   await parte("Anúncios", async () => {
-    const bruto = await api.insightsDiarios({ contaId: conta, nivel: "ad", de, ate: hoje, campanhas: cfg.campaignIds });
+    const bruto = (await api.insightsDiarios({ contaId: conta, nivel: "ad", de, ate: hoje, campanhas: cfg.campaignIds }))
+      .filter((x) => (x.campaign_name ? campanhaPassa(x.campaign_id, x.campaign_name, filtro) : !filtro.campaignNameFilter || aceitas.has(String(x.campaign_id ?? ""))));
     let infos: AnuncioInfo[] = [];
     try { infos = await api.anuncios({ contaId: conta, campanhas: cfg.campaignIds }); }
     catch (e) { r.avisos.push(`Criativos: ${mensagemSegura(e, token)}`); }
@@ -244,7 +254,7 @@ export async function coletarCanal(canal: CanalRow, api: CanaisApi | null, o: Op
     else {
       // Anúncios podem usar até ~70% do tempo; o Instagram sempre sobra algum.
       const fimAds = inicio + Math.floor(o.maxMs * 0.7);
-      const { r } = await coletarAnuncios(cfg, fonteApi, doWindsor ? windsorAds?.chave : token, addDays(hoje, -(o.dias - 1)), hoje, () => Math.min(fimAds, limite) - agora(), doWindsor ? "windsor" : "meta");
+      const { r } = await coletarAnuncios(cfg, fonteApi, doWindsor ? windsorAds?.chave : token, addDays(hoje, -(o.dias - 1)), hoje, () => Math.min(fimAds, limite) - agora(), doWindsor ? "windsor" : "meta", Boolean(o.soCampanhas));
       ads = fechar("ads", doWindsor ? "windsor" : "meta", r);
       await marcarColeta(cfg.clientId, { ok: ads.ok, erro: ads.erro }, "ads");
     }

@@ -360,7 +360,7 @@ test("cron: rota /api/cron/channels no vercel.json (1×/dia, no horário já agr
 test("ações do admin: todas exigem requireOwner e nenhuma chamada de escrita à Meta existe em src/lib/channels", () => {
   const acoes = readFileSync(new URL("../src/app/(painel)/clientes/canais-actions.ts", import.meta.url), "utf8");
   const exportadas = [...acoes.matchAll(/export async function (\w+)/g)].map((m) => m[1]);
-  assert.deepEqual(exportadas.sort(), ["atualizarAnunciosAgora", "atualizarInstagramAgora", "desconectarAnuncios", "desconectarInstagram", "salvarAnunciosMeta", "salvarInstagramCanal", "testarConexaoMeta", "testarConexaoWindsorAcao", "testarConexaoWindsorAdsAcao"]);
+  assert.deepEqual(exportadas.sort(), ["atualizarAnunciosAgora", "atualizarInstagramAgora", "desconectarAnuncios", "desconectarInstagram", "reiniciarContagemAcao", "salvarAlertaGastoAcao", "salvarAnunciosMeta", "salvarInstagramCanal", "testarConexaoMeta", "testarConexaoWindsorAcao", "testarConexaoWindsorAdsAcao"]);
   for (const nome of exportadas) {
     const corpo = acoes.slice(acoes.indexOf(`export async function ${nome}`)).split(/\nexport async function /)[0];
     assert.match(corpo, /await requireOwner\(\)/, nome);

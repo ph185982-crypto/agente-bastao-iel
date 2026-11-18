@@ -26,6 +26,8 @@ export interface CanalConfig {
   clientId: string;
   adAccountId: string | null;
   campaignIds: string[];
+  /** Filtro opcional por nome da campanha (contém, sem caixa/acento). Ex.: Showman = "SHOW MAN". */
+  campaignNameFilter: string | null;
   igUserId: string | null;
   pageId: string | null;
   resultActionType: string;

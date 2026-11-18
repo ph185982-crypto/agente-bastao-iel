@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Kpi } from "@/components/dashboards/Kpi";
 import { LineChart, Legenda } from "@/components/dashboards/LineChart";
 import { ComboChart } from "./ComboChart";
+import { CartaoGastoCiclo } from "./GastoCiclo";
 import { Imagem } from "./Imagem";
 import { IconeTipoMidia, LogoMarca, MarcaRotulo, type Marca } from "@/components/brand";
 import { brl, compacto, inteiro, percentual } from "@/lib/dashboards/format";
@@ -81,8 +82,9 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
   if (!d.estado.anuncios) return <Vazio titulo="Anúncios não conectados" texto="A conta de anúncios ainda não foi ligada. Assim que for, o investimento, as conversas e os criativos aparecem aqui." />;
   if (!d.estado.anunciosConectado || !a) return <Vazio titulo="Conectando anúncios (Meta Ads)" texto="Estamos ligando a conta de anúncios. Quando a conexão terminar, o investimento, as conversas e os criativos aparecem aqui automaticamente. Não é preciso fazer nada agora." />;
   const selo = <SeloFonte fonte={ROTULO_FONTE[d.estado.fonteAnuncios ?? "meta"]} marca="meta" quando={d.estado.anunciosAtualizadoEm} problema={d.estado.anunciosComProblema} />;
+  const gasto = d.gastoCiclo ? <CartaoGastoCiclo g={d.gastoCiclo} rotulo={r} id="can-gasto" /> : null;
   if (!a.temDadosNoPeriodo) {
-    return <>{selo}<Vazio titulo="Sem entrega de anúncios neste período" texto={`Não houve investimento entre ${ddmmaa(per.de)} e ${ddmmaa(per.ate)}. ${a.temHistorico ? "Tente um período maior." : "Os primeiros dados aparecem após a próxima atualização."}`} /></>;
+    return <>{selo}{gasto}<Vazio titulo="Sem entrega de anúncios neste período" texto={`Não houve investimento entre ${ddmmaa(per.de)} e ${ddmmaa(per.ate)}. ${a.temHistorico ? "Tente um período maior." : "Os primeiros dados aparecem após a próxima atualização."}`} /></>;
   }
   const t = a.atual, p = a.anterior;
   const dl = (x: number | null, y: number | null | undefined, inverso = false) => ({ pct: variacaoPct(x, y ?? null), inverso, anterior: `${ddmmaa(ant.de)} a ${ddmmaa(ant.ate)}` });
@@ -91,6 +93,7 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
     <>
       <h2 style={{ marginTop: 14 }}><MarcaRotulo marca="meta" tamanho={24}>Anúncios (Meta)</MarcaRotulo></h2>
       {selo}
+      {gasto}
       <div className="grid kpis k3" style={{ marginTop: 12 }}>
         <Kpi label="Investimento" valor={brl(t.gasto, t.gasto < 1000)} delta={dl(t.gasto, p?.gasto)} spark={a.serie.map((s) => s.gasto)} />
         <Kpi label={r.plural} valor={inteiro(t.resultados)} delta={dl(t.resultados, p?.resultados)} spark={a.serie.map((s) => s.resultados)} cor="ok" />

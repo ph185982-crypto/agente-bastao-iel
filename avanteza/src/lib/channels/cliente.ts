@@ -7,6 +7,8 @@ import { assertScope, type ClientScope } from "@/lib/mapa/scope";
 import { canaisFixtureAtiva } from "./fixture";
 import { evolucao, relAnuncios, relInstagram, type Agrupamento, type Marco, type RelAnuncios, type RelInstagram } from "./report";
 import { lerSnapshots, obterCanal } from "./store";
+import { filtrarLinhasCampanhas } from "./campanhas";
+import { gastoDoCiclo, type GastoCiclo } from "./alerta-gasto";
 import { RESULTADO_PADRAO, type OrigemDado } from "./types";
 
 export interface EstadoCanalCliente {
@@ -40,6 +42,8 @@ export interface CanaisCliente {
   anuncios: RelAnuncios | null;
   instagram: RelInstagram | null;
   evolucao: { mes: Marco[]; semana: Marco[] } | null;
+  /** “Total gasto até agora” do ciclo do alerta de recarga (null = alerta desligado). Só campanhas do filtro do canal. */
+  gastoCiclo: GastoCiclo | null;
 }
 
 /**
@@ -63,7 +67,8 @@ export async function carregarCanaisDoCliente(scope: ClientScope, periodoId: Per
     comProblema: false, simulado: canaisFixtureAtiva(), resultado: canal?.resultActionType === RESULTADO_PADRAO || !canal ? "conversas" : "resultados",
   };
   estado.comProblema = estado.anunciosComProblema || estado.instagramComProblema;
-  const vazio: CanaisCliente = { estado, periodo, anuncios: null, instagram: null, evolucao: null };
+  const gastoCiclo = adsOk ? await gastoDoCiclo(canal, hoje) : null;
+  const vazio: CanaisCliente = { estado, periodo, anuncios: null, instagram: null, evolucao: null, gastoCiclo };
   if (!canal || (!adsOk && !igOk)) return vazio;
 
   const historico = addDays(hoje, -420);
@@ -74,7 +79,8 @@ export async function carregarCanaisDoCliente(scope: ClientScope, periodoId: Per
     igOk ? lerSnapshots(scope.clientId, ["ig_media"], addDays(hoje, -120), hoje, fonteIg!) : [],
     igOk ? lerSnapshots(scope.clientId, ["ig_audience"], addDays(hoje, -60), hoje, fonteIg!) : [],
   ]);
-  const todas = [...camp, ...ig, ...ads, ...midias, ...aud];
+  // Campanhas fora do filtro do canal (ids e nome; ex.: outro projeto na mesma conta) nunca entram nos números do cliente.
+  const todas = filtrarLinhasCampanhas([...camp, ...ig, ...ads, ...midias, ...aud], { campaignIds: canal.campaignIds, campaignNameFilter: canal.campaignNameFilter });
   const filtro = canal.campaignIds;
   const anuncios = adsOk ? relAnuncios(todas, periodo, filtro) : null;
   const instagram = igOk ? relInstagram(todas, periodo) : null;
@@ -85,7 +91,7 @@ export async function carregarCanaisDoCliente(scope: ClientScope, periodoId: Per
   }
   instagram?.midias.forEach((m, i) => { m.id = `m${i}`; });
   return {
-    estado, periodo, anuncios, instagram,
+    estado, periodo, anuncios, instagram, gastoCiclo,
     evolucao: { mes: evolucao(todas, "mes" as Agrupamento, hoje, filtro), semana: evolucao(todas, "semana" as Agrupamento, hoje, filtro) },
   };
 }

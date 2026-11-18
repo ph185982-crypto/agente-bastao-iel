@@ -12,6 +12,7 @@ import { addDays } from "@/lib/dates";
 import { fetchJson } from "@/lib/http";
 import { safeImageUrl } from "@/lib/marketplaces/images";
 import { WINDSOR_HOST, WindsorErro, criarConsulta, esconderChave, traduzir, type Intervalo, type Linha, type OpcoesWindsor } from "./windsor";
+import { campanhaPassa } from "./campanhas";
 import { RESULTADO_PADRAO, type AnuncioInfo, type CanaisApi, type InsightBruto } from "./types";
 
 export const CONECTOR_ADS = "facebook";
@@ -22,13 +23,15 @@ export interface OpcoesWindsorAds extends OpcoesWindsor {
   /** Conta de anúncios (com ou sem act_). Filtra por account_id; sem ela, mais de uma conta no Windsor é recusado (nada é misturado). */
   contaId?: string | null;
   campaignIds?: string[];
+  /** Filtro por nome da campanha (contém, sem caixa/acento). Ex.: "SHOW MAN" deixa de fora "Destrava - SHOPEE" da mesma conta. */
+  campaignNameFilter?: string | null;
   /** action_type escolhido como resultado (padrão: conversas iniciadas, 7 dias). */
   resultActionType?: string;
 }
 
 export interface ResultadoTesteWindsorAds {
   ok: boolean;
-  origemChave: "canal" | "plataforma" | "nenhuma";
+  origemChave: "anuncios" | "canal" | "plataforma" | "nenhuma";
   /** Conector Facebook Ads ainda não ligado no Windsor desta chave (no_accounts_configured). O cliente segue em “Conectando anúncios”. */
   semConector: boolean;
   verificacoes: Array<{ id: string; rotulo: string; ok: boolean | null; detalhe: string }>;
@@ -79,7 +82,16 @@ export function criarWindsorAds(o: OpcoesWindsorAds): FonteWindsorAds {
     if (contas.length > 1) throw new WindsorErro(`O Windsor.ai devolveu ${contas.length} contas de anúncios (${desc}). Informe a conta de anúncios do cliente para escolher qual usar.`, "varias_contas");
     return { linhas, contas };
   }
-  const porCampanha = (linhas: Linha[]) => (campanhasAlvo.length ? linhas.filter((l) => campanhasAlvo.includes(txt(l.campaign_id) ?? "")) : linhas);
+  const filtro = { campaignIds: campanhasAlvo, campaignNameFilter: o.campaignNameFilter?.trim() || null };
+  /** Ids e nome. No nível de anúncio sem nome de campanha, vale o id já aceito no nível de campanha. */
+  const aceitas = new Set<string>();
+  const porCampanha = (linhas: Linha[]) => linhas.filter((l) => {
+    const id = txt(l.campaign_id), nome = txt(l.campaign);
+    if (nome == null && filtro.campaignNameFilter) return id != null && aceitas.has(id) && campanhaPassa(id, null, { ...filtro, campaignNameFilter: null });
+    const ok = campanhaPassa(id, nome, filtro);
+    if (ok && id) aceitas.add(id);
+    return ok;
+  });
 
   function paraInsight(l: Linha, nivel: "campaign" | "ad"): InsightBruto | null {
     const d = diaDe(l.date), campanha = txt(l.campaign_id);
@@ -127,7 +139,8 @@ export function criarWindsorAds(o: OpcoesWindsorAds): FonteWindsorAds {
     // Status vem em consulta própria (sem data): se falhar, os criativos seguem só com nome e miniatura.
     const status = new Map<string, { status: string | null; efetivo: string | null; thumb: string | null }>();
     try {
-      const bruto = await consultar(CAMPOS_STATUS, { preset: "last_30d" });
+      // Sem date_preset: o Windsor trata presets de forma inesperada (last_2y não inclui o ano corrente). Sempre datas explícitas.
+      const bruto = await consultar([...CAMPOS_STATUS, "campaign"], janela30());
       for (const l of porCampanha(porConta(bruto).linhas)) {
         const id = txt(l.ad_id); if (!id) continue;
         status.set(id, { status: txt(l.status), efetivo: txt(l.effective_status), thumb: safeImageUrl(l.thumbnail_url) });
@@ -146,7 +159,7 @@ export function criarWindsorAds(o: OpcoesWindsorAds): FonteWindsorAds {
     const add = (id: string, rotulo: string, ok: boolean | null, detalhe: string) => v.push({ id, rotulo, ok, detalhe: esconderChave(detalhe, o.chave) });
     let semConector = false;
     const fim = (): ResultadoTesteWindsorAds => ({ ok: v.every((x) => x.ok !== false), origemChave: "nenhuma", semConector, verificacoes: v, info });
-    const intervalo: Intervalo = { preset: "last_30d" };
+    const intervalo: Intervalo = janela30();
 
     let bruto: Linha[];
     try {
@@ -175,12 +188,21 @@ export function criarWindsorAds(o: OpcoesWindsorAds): FonteWindsorAds {
       linhas = porConta(bruto).linhas;
       add("conta_filtro", "Conta de anúncios do cliente", alvoConta ? true : null, alvoConta ? `A conta ${alvoConta} foi encontrada.` : "Não informada; há uma só conta, então ela será usada.");
     } catch (e) { add("conta_filtro", "Conta de anúncios do cliente", false, traduzir(e, o.chave, CONECTOR_ADS).message); return fim(); }
+    const todas = new Map<string, string>();
+    for (const l of linhas) { const id = txt(l.campaign_id); if (id) todas.set(id, txt(l.campaign) ?? id); }
     const camp = new Map<string, string>();
-    for (const l of linhas) { const id = txt(l.campaign_id); if (id) camp.set(id, txt(l.campaign) ?? id); }
-    info.campanhas = [...camp.entries()].map(([id, nome]) => ({ id, nome }));
-    const faltam = campanhasAlvo.filter((c) => !camp.has(c));
-    add("campanhas", "Campanhas", info.campanhas.length > 0 && faltam.length === 0 ? true : false,
-      !info.campanhas.length ? "Nenhuma campanha com entrega nos últimos 30 dias nesta conta." : faltam.length ? `Campanha(s) ${faltam.join(", ")} não encontrada(s) nos últimos 30 dias. Encontradas: ${info.campanhas.map((c) => `${c.nome} (${c.id})`).join("; ")}.` : `${info.campanhas.length} campanha(s): ${info.campanhas.map((c) => `${c.nome} (${c.id})`).join("; ")}.`);
+    for (const l of porCampanha(linhas)) { const id = txt(l.campaign_id); if (id) camp.set(id, txt(l.campaign) ?? id); }
+    // O admin vê todas as campanhas da conta (para escolher); o detalhe diz quais passam no filtro do canal.
+    info.campanhas = [...todas.entries()].map(([id, nome]) => ({ id, nome }));
+    const filtradas = [...camp.entries()].map(([id, nome]) => ({ id, nome }));
+    const faltam = campanhasAlvo.filter((c) => !todas.has(c));
+    const foraDoFiltro = [...todas.keys()].filter((id) => !camp.has(id)).length;
+    const nomeFiltro = filtro.campaignNameFilter ? ` com “${filtro.campaignNameFilter}” no nome` : "";
+    add("campanhas", "Campanhas", filtradas.length > 0 && faltam.length === 0 ? true : false,
+      !todas.size ? "Nenhuma campanha com entrega nos últimos 30 dias nesta conta."
+        : faltam.length ? `Campanha(s) ${faltam.join(", ")} não encontrada(s) nos últimos 30 dias. Encontradas: ${info.campanhas.map((c) => `${c.nome} (${c.id})`).join("; ")}.`
+        : !filtradas.length ? `Nenhuma campanha${nomeFiltro} nos últimos 30 dias (${todas.size} campanha(s) de outros projetos ficaram de fora).`
+        : `${filtradas.length} campanha(s)${nomeFiltro}: ${filtradas.map((c) => `${c.nome} (${c.id})`).join("; ")}.${foraDoFiltro ? ` ${foraDoFiltro} campanha(s) de outros projetos na mesma conta ficam de fora.` : ""}`);
     try {
       const ads = await insightsDiarios({ contaId: o.contaId ?? "", nivel: "ad", ...janela30(), campanhas: campanhasAlvo });
       const ids = new Set(ads.map((a) => a.ad_id));

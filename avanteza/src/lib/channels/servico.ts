@@ -6,9 +6,10 @@ import { spDate } from "@/lib/dates";
 import { criarApiGraph, criarGraph, esconderToken } from "./graph";
 import { canaisFixtureAtiva, criarApiFixture, criarWindsorFixture } from "./fixture";
 import { coletarCanal, coletarTodos, mensagemSegura, type FabricaApi, type FabricaWindsor, type FabricaWindsorAds, type ResultadoColeta, type ResultadoFonte } from "./collect";
-import { obterCanal, resolverChaveWindsor, resolverToken, salvarInfo, tokenDaPlataforma, type CanalRow } from "./store";
+import { verificarAlertasGasto } from "./alerta-gasto";
+import { listarCanaisParaColeta, obterCanal, resolverChaveWindsor, resolverToken, salvarInfo, tokenDaPlataforma, type CanalRow } from "./store";
 import { criarWindsorAds, type ResultadoTesteWindsorAds } from "./windsor-ads";
-import { chaveWindsorDaPlataforma, criarWindsor, esconderChave, type FonteWindsor, type ResultadoTesteWindsor } from "./windsor";
+import { chaveWindsorAdsDaPlataforma, chaveWindsorDaPlataforma, criarWindsor, esconderChave, type FonteWindsor, type ResultadoTesteWindsor } from "./windsor";
 import { DIAS_BACKFILL, PERMISSOES_ANUNCIOS, PERMISSOES_INSTAGRAM_META, type CanaisApi, type CanalConfig, type FonteInstagram, type ResultadoTeste } from "./types";
 
 /** Fábrica padrão da Meta (anúncios e Instagram-Meta): fixture (só desenvolvimento) ou Graph real com o token resolvido. Sem credencial: null. */
@@ -27,16 +28,59 @@ export const windsorPadrao: FabricaWindsor = async (canal: CanalRow) => {
   return { fonte: criarWindsor({ chave: k.chave, accountName: canal.windsorAccountName }), chave: k.chave };
 };
 
-/** Fábrica padrão do Windsor (anúncios, conector facebook): fixture (só desenvolvimento) ou Windsor real com a mesma chave do Instagram. Sem chave: null. */
+/**
+ * Chave dos ANÚNCIOS pelo Windsor: WINDSOR_ADS_API_KEY (conta Windsor da agência) e, só se ela não existir, a chave atual
+ * (do canal > WINDSOR_API_KEY). O Instagram nunca usa WINDSOR_ADS_API_KEY. Só para uso interno do servidor.
+ */
+export async function resolverChaveWindsorAds(clientId: string, env: NodeJS.ProcessEnv = process.env): Promise<{ chave: string; origem: "anuncios" | "canal" | "plataforma" } | null> {
+  const ads = chaveWindsorAdsDaPlataforma(env);
+  if (ads) return { chave: ads, origem: "anuncios" };
+  return resolverChaveWindsor(clientId, env);
+}
+
+/** Fábrica padrão do Windsor (anúncios, conector facebook): fixture (só desenvolvimento) ou Windsor real com a chave dos anúncios. Sem chave: null. */
 export const windsorAdsPadrao: FabricaWindsorAds = async (canal: CanalRow) => {
   if (canaisFixtureAtiva()) return { api: criarApiFixture(spDate()), chave: null };
-  const k = await resolverChaveWindsor(canal.clientId);
+  const k = await resolverChaveWindsorAds(canal.clientId);
   if (!k) return null;
-  return { api: criarWindsorAds({ chave: k.chave, contaId: canal.adAccountId, campaignIds: canal.campaignIds, resultActionType: canal.resultActionType }), chave: k.chave };
+  return { api: criarWindsorAds({ chave: k.chave, contaId: canal.adAccountId, campaignIds: canal.campaignIds, campaignNameFilter: canal.campaignNameFilter, resultActionType: canal.resultActionType }), chave: k.chave };
 };
 
+/** Rotina diária completa (anúncios + Instagram), seguida da checagem do alerta de recarga. */
 export async function rotinaCanais(maxMs = 240_000) {
-  return coletarTodos({ maxMs, apiPara: apiPadrao, windsorPara: windsorPadrao, windsorAdsPara: windsorAdsPadrao, incluirSemToken: canaisFixtureAtiva() });
+  const coleta = await coletarTodos({ maxMs, apiPara: apiPadrao, windsorPara: windsorPadrao, windsorAdsPara: windsorAdsPadrao, incluirSemToken: canaisFixtureAtiva() });
+  const alertas = await verificarAlertasGasto(spDate()).catch((e) => ({ erro: e instanceof Error ? e.message.slice(0, 200) : "falha" }));
+  return { ...coleta, alertas };
+}
+
+export const DIAS_COLETA_LEVE = 3;
+/**
+ * Coleta LEVE (a cada 2 h): só o nível de campanha dos anúncios dos últimos 3 dias, só nos canais com alerta de recarga ligado
+ * e que já tiveram a primeira coleta completa (o backfill continua com a rotina diária/“Atualizar agora”). Depois checa os alertas.
+ */
+export async function rotinaAnunciosLeve(o: { maxMs?: number; hoje?: string; meta?: FabricaApi; windsorAds?: FabricaWindsorAds; deps?: Parameters<typeof verificarAlertasGasto>[1] } = {}) {
+  const hoje = o.hoje ?? spDate();
+  const maxMs = o.maxMs ?? 120_000;
+  const inicio = Date.now();
+  const canais = (await listarCanaisParaColeta(canaisFixtureAtiva())).filter((c) => c.alertaGasto && (c.adsSource === "meta" || c.adsSource === "windsor") && c.adAccountId);
+  const coleta: Array<{ clientId: string; ok?: boolean; linhas?: number; pulado?: string }> = [];
+  for (const c of canais) {
+    const sobra = maxMs - (Date.now() - inicio);
+    if (sobra < 10_000) { coleta.push({ clientId: c.clientId, pulado: "tempo total esgotado" }); continue; }
+    if (!c.lastSyncAt) { coleta.push({ clientId: c.clientId, pulado: "aguardando a primeira coleta completa" }); continue; }
+    const doWindsor = c.adsSource === "windsor";
+    const meta = doWindsor ? null : await (o.meta ?? apiPadrao)(c).catch(() => null);
+    const winAds = doWindsor ? await (o.windsorAds ?? windsorAdsPadrao)(c).catch(() => null) : null;
+    if (!meta && !winAds) { coleta.push({ clientId: c.clientId, pulado: "sem credencial" }); continue; }
+    try {
+      const r = await coletarCanal(c, meta?.api ?? null, { hoje, dias: DIAS_COLETA_LEVE, maxMs: Math.min(sobra, 45_000), fontes: ["ads"], soCampanhas: true }, meta?.token ?? null, null, winAds);
+      coleta.push({ clientId: c.clientId, ok: r.ok, linhas: r.linhas.campaign_daily ?? 0 });
+    } catch (e) {
+      coleta.push({ clientId: c.clientId, pulado: `erro: ${mensagemSegura(e, meta?.token ?? winAds?.chave)}` });
+    }
+  }
+  const alertas = await verificarAlertasGasto(hoje, o.deps ?? {});
+  return { canais: canais.length, coleta, alertas };
 }
 
 export type FonteAtualizar = "ads" | "instagram" | "todas";
@@ -58,7 +102,7 @@ export async function atualizarAgora(clientId: string, o: OpcoesAtualizar = {}):
   const meta = precisaMeta ? await (o.meta ?? apiPadrao)(canal).catch(() => null) : null;
   const win = querIg && canal.igSource === "windsor" ? await (o.windsor ?? windsorPadrao)(canal).catch(() => null) : null;
   const winAds = querAds && adsWindsor ? await (o.windsorAds ?? windsorAdsPadrao)(canal).catch(() => null) : null;
-  if (fonte === "ads" && adsWindsor && !winAds) return { ok: false, mensagem: "Sem chave do Windsor.ai: informe a chave do canal (seção Instagram) ou configure WINDSOR_API_KEY na plataforma." };
+  if (fonte === "ads" && adsWindsor && !winAds) return { ok: false, mensagem: "Sem chave do Windsor.ai para anúncios: configure WINDSOR_ADS_API_KEY (conta Windsor da agência) na plataforma." };
   if (precisaMeta && !meta && !(querIg && win)) return { ok: false, mensagem: "Sem token da Meta: informe o token do cliente ou autorize o token da plataforma." };
   if (fonte === "instagram" && canal.igSource === "windsor" && !win) return { ok: false, mensagem: "Sem chave do Windsor.ai: informe a chave do canal ou configure WINDSOR_API_KEY na plataforma." };
 
@@ -168,6 +212,7 @@ export interface EntradaTesteWindsorAds {
   clientId: string;
   contaId: string | null;
   campaignIds: string[];
+  campaignNameFilter?: string | null;
   resultActionType?: string;
   chaveDigitada?: string | null;
   /** Provider injetado (testes): ignora chave e rede. */
@@ -186,22 +231,27 @@ export async function testarConexaoWindsorAds(e: EntradaTesteWindsorAds): Promis
     const digitada = e.chaveDigitada?.trim() || null;
     if (digitada) { chave = digitada; origem = "canal"; }
     else {
-      const k = await resolverChaveWindsor(e.clientId);
+      const k = await resolverChaveWindsorAds(e.clientId);
       if (k) { chave = k.chave; origem = k.origem; }
       else if (chaveWindsorDaPlataforma()) { chave = chaveWindsorDaPlataforma(); origem = "plataforma"; }
     }
     if (!chave) return { ...semChaveAds(), origemChave: "nenhuma" };
-    fonte = criarWindsorAds({ chave, contaId: e.contaId, campaignIds: e.campaignIds, resultActionType: e.resultActionType, baseDelayMs: 300 });
+    fonte = criarWindsorAds({ chave, contaId: e.contaId, campaignIds: e.campaignIds, campaignNameFilter: e.campaignNameFilter, resultActionType: e.resultActionType, baseDelayMs: 300 });
   }
   const r = await fonte.testar();
   return { ...r, origemChave: origem, verificacoes: r.verificacoes.map((v) => ({ ...v, detalhe: esconderChave(v.detalhe, chave) })) };
 }
 function semChaveAds(): ResultadoTesteWindsorAds {
-  return { ok: false, origemChave: "nenhuma", semConector: false, info: { contas: [], campanhas: [], anuncios: 0, gasto: null, resultados: null, comMiniatura: 0 }, verificacoes: [{ id: "chave", rotulo: "Chave do Windsor.ai", ok: false, detalhe: "Nenhuma chave disponível: configure WINDSOR_API_KEY na plataforma (Vercel) ou cole a chave do Windsor.ai na seção do Instagram deste cliente." }] };
+  return { ok: false, origemChave: "nenhuma", semConector: false, info: { contas: [], campanhas: [], anuncios: 0, gasto: null, resultados: null, comMiniatura: 0 }, verificacoes: [{ id: "chave", rotulo: "Chave do Windsor.ai", ok: false, detalhe: "Nenhuma chave disponível: configure WINDSOR_ADS_API_KEY (conta Windsor da agência) na plataforma (Vercel). Sem ela, valem a chave do canal ou WINDSOR_API_KEY." }] };
 }
 
 function semChave(): ResultadoTesteWindsor {
   return { ok: false, origemChave: "nenhuma", info: { contas: [], campos: [], dias: 0, midias: 0, seguidores: null }, verificacoes: [{ id: "chave", rotulo: "Chave do Windsor.ai", ok: false, detalhe: "Nenhuma chave disponível: cole a chave do Windsor.ai deste canal ou configure WINDSOR_API_KEY na plataforma (Vercel)." }] };
+}
+
+/** Estado seguro (sem segredo) da chave dos ANÚNCIOS pelo Windsor, para a tela do administrador. */
+export function origemChaveWindsorAds(canal: CanalRow | null, env: NodeJS.ProcessEnv = process.env): "anuncios" | "canal" | "plataforma" | "ausente" {
+  return chaveWindsorAdsDaPlataforma(env) ? "anuncios" : origemChaveWindsor(canal, env);
 }
 
 /** Estado seguro (sem segredo) da chave do Windsor, para a tela do administrador. */

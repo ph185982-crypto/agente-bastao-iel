@@ -9,7 +9,7 @@ import { processWebhookQueue } from "@/lib/webhooks";
 import { runAlerts } from "@/lib/alerts/engine";
 import { runApprovedQueue } from "@/lib/executor/executor";
 import { runDailyAgent } from "@/lib/ai/agent";
-import { rotinaCanais } from "@/lib/channels/servico";
+import { rotinaAnunciosLeve, rotinaCanais } from "@/lib/channels/servico";
 import { rotinaEntregas } from "@/lib/motor/rotina";
 import { spDate } from "@/lib/dates";
 import { processarPendentes } from "@/lib/eventos/barramento";
@@ -59,6 +59,8 @@ const JOBS: Record<string, () => Promise<unknown>> = {
   "ai-daily": () => runDailyAgent(200_000),
   // Canais dos clientes (Meta, somente leitura): coleta 1×/dia, um canal por vez, com tempo máximo.
   channels: () => rotinaCanais(240_000),
+  // Anúncios (leve, a cada 2 h): campanhas dos últimos 3 dias nos canais com alerta de recarga + checagem do alerta (80 % / 100 %).
+  anuncios: () => rotinaAnunciosLeve({ maxMs: 200_000 }),
   // Motor de Entregas (1×/dia, cedo): recorrências dos próximos 30 dias, saúde da carteira, resumo matinal e alerta de risco.
   entregas: () => rotinaEntregas(spDate()),
   // Barramento de eventos (contrato.assinado…): processa os pendentes vencidos, com retentativa e backoff.
