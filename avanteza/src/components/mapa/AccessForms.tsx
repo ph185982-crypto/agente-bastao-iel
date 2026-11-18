@@ -1,6 +1,6 @@
 "use client";
 import { useActionState } from "react";
-import { criarAcesso, redefinirAcesso, type AccessState } from "@/app/(painel)/clientes/mapa-actions";
+import { criarAcesso, redefinirAcesso, enviarBoasVindasAcesso, type AccessState } from "@/app/(painel)/clientes/mapa-actions";
 import { CopyButton } from "../CopyButton";
 
 function Secret({ state }: { state: AccessState }) {
@@ -39,6 +39,20 @@ export function ResetAccess({ clientId, email }: { clientId: string; email: stri
       <input type="hidden" name="email" value={email} />
       <button className="btn btn-sm btn-ghost" disabled={pending}>{pending ? "Gerando…" : "Redefinir senha"}</button>
       <Secret state={state} />
+    </form>
+  );
+}
+
+export function WelcomeEmail({ clientId, email }: { clientId: string; email: string }) {
+  const [state, action, pending] = useActionState(enviarBoasVindasAcesso, null);
+  return (
+    <form action={action} className="stack">
+      <input type="hidden" name="client_id" value={clientId} />
+      <input type="hidden" name="email" value={email} />
+      <button className="btn btn-sm btn-ghost" disabled={pending}>{pending ? "Enviando…" : "Enviar e-mail de boas-vindas"}</button>
+      {state?.ok && <div className="notice small" role="status">{state.ok}</div>}
+      {state?.erro && <div className="notice danger small" role="alert">{state.erro}</div>}
+      <span className="small muted">Link, login e passo a passo. A senha não vai no e-mail.</span>
     </form>
   );
 }
