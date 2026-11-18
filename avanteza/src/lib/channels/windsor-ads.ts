@@ -13,11 +13,24 @@ import { fetchJson } from "@/lib/http";
 import { safeImageUrl } from "@/lib/marketplaces/images";
 import { WINDSOR_HOST, WindsorErro, criarConsulta, esconderChave, traduzir, type Intervalo, type Linha, type OpcoesWindsor } from "./windsor";
 import { campanhaPassa } from "./campanhas";
-import { RESULTADO_PADRAO, type AnuncioInfo, type CanaisApi, type InsightBruto } from "./types";
+import { linkMetaSeguro } from "./links";
+import { RESULTADO_PADRAO, type AnuncioInfo, type CanaisApi, type DimensaoQuebra, type InsightBruto, type QuebraBruta, type SegmentacaoBruta } from "./types";
 
 export const CONECTOR_ADS = "facebook";
 /** Pedaço de CanaisApi que o coletor de anúncios usa. A Meta (Graph) e o Windsor implementam o mesmo contrato. */
-export type FonteAnunciosApi = Pick<CanaisApi, "insightsDiarios" | "anuncios">;
+export type FonteAnunciosApi = Pick<CanaisApi, "insightsDiarios" | "anuncios" | "quebras" | "segmentacoes">;
+
+/** Campos do conector facebook para cada corte (verificados no Windsor da agência, campanhas SHOW MAN, 01–18/11/2026). */
+export const CAMPOS_QUEBRA: Record<DimensaoQuebra, readonly string[]> = {
+  idade_genero: ["age", "gender"],
+  regiao: ["region"],
+  posicionamento: ["publisher_platform", "platform_position"],
+};
+/**
+ * Cortes em que o Windsor devolve a métrica de conversas zerada mesmo havendo conversas (visto com `region`): a métrica é tratada como
+ * INDISPONÍVEL neste corte (null), nunca como zero verdadeiro.
+ */
+export const CONVERSAS_INDISPONIVEIS_NO_CORTE: ReadonlySet<DimensaoQuebra> = new Set(["regiao"]);
 
 export interface OpcoesWindsorAds extends OpcoesWindsor {
   /** Conta de anúncios (com ou sem act_). Filtra por account_id; sem ela, mais de uma conta no Windsor é recusado (nada é misturado). */
@@ -47,6 +60,8 @@ export const campoResultado = (tipo: string): string => `actions_${tipo.replace(
 
 const CAMPOS_BASE = ["date", "account_id", "account_name", "campaign_id", "campaign", "spend", "impressions", "reach", "clicks", "ctr", "cpc", "frequency"] as const;
 const CAMPOS_ANUNCIO = ["ad_id", "ad_name", "thumbnail_url"] as const;
+/** Campos do criativo no conector facebook (confirmados no Windsor da agência). */
+export const CAMPOS_CRIATIVO = ["title", "body", "call_to_action_type", "ad_preview_shareable_link", "instagram_permalink_url"] as const;
 const CAMPOS_STATUS = ["ad_id", "ad_name", "campaign_id", "account_id", "status", "effective_status", "thumbnail_url"] as const;
 
 const semAct = (s: string) => s.trim().replace(/^act_/i, "");
@@ -146,10 +161,29 @@ export function criarWindsorAds(o: OpcoesWindsorAds): FonteWindsorAds {
         status.set(id, { status: txt(l.status), efetivo: txt(l.effective_status), thumb: safeImageUrl(l.thumbnail_url) });
       }
     } catch (e) { if (e instanceof WindsorErro && (e.codigo === "chave" || e.codigo === "sem_contas" || e.codigo === "conta" || e.codigo === "varias_contas")) throw e; }
+    // Criativo (conjunto, título, texto, CTA e links) em consulta própria: se o Windsor recusar algum campo, tenta com menos; se falhar, segue sem.
+    const criativo = new Map<string, Partial<AnuncioInfo>>();
+    try {
+      const { linhas } = await consultarComRecuo([
+        ["ad_id", "account_id", "campaign_id", "campaign", "adset_id", "adset_name", ...CAMPOS_CRIATIVO],
+        ["ad_id", "account_id", "campaign_id", "campaign", "adset_name", ...CAMPOS_CRIATIVO],
+        ["ad_id", "account_id", "campaign_id", "campaign", "adset_name", "title", "body"],
+      ], janela30());
+      for (const l of porCampanha(porConta(linhas).linhas)) {
+        const id = txt(l.ad_id); if (!id) continue;
+        const ant = criativo.get(id) ?? {};
+        const pick = (k: string) => (typeof l[k] === "string" && (l[k] as string).trim() ? (l[k] as string).trim() : null);
+        criativo.set(id, {
+          conjuntoId: txt(l.adset_id) ?? ant.conjuntoId ?? null, conjuntoNome: txt(l.adset_name) ?? ant.conjuntoNome ?? null,
+          titulo: pick("title") ?? ant.titulo ?? null, texto: pick("body") ?? ant.texto ?? null, cta: pick("call_to_action_type") ?? ant.cta ?? null,
+          previa: linkMetaSeguro(l.ad_preview_shareable_link) ?? ant.previa ?? null, instagram: linkMetaSeguro(l.instagram_permalink_url) ?? ant.instagram ?? null,
+        });
+      }
+    } catch (e) { if (e instanceof WindsorErro && (e.codigo === "chave" || e.codigo === "sem_contas" || e.codigo === "conta" || e.codigo === "varias_contas")) throw e; }
     const ids = new Set([...miniaturas.keys(), ...status.keys()]);
     return [...ids].map((id) => {
       const m = miniaturas.get(id), s = status.get(id);
-      return { id, nome: m?.nome ?? id, campanhaId: m?.campanha ?? null, status: s?.status ?? null, statusEfetivo: s?.efetivo ?? null, thumb: s?.thumb ?? m?.thumb ?? null, imagem: null, videoId: null };
+      return { id, nome: m?.nome ?? id, campanhaId: m?.campanha ?? null, status: s?.status ?? null, statusEfetivo: s?.efetivo ?? null, thumb: s?.thumb ?? m?.thumb ?? null, imagem: null, videoId: null, ...(criativo.get(id) ?? {}) };
     });
   }
 
@@ -215,7 +249,67 @@ export function criarWindsorAds(o: OpcoesWindsorAds): FonteWindsorAds {
     return fim();
   }
 
-  return { testar, insightsDiarios, anuncios };
+  /** Pede um corte; se o Windsor recusar algum campo, tenta de novo só com o essencial (gasto e impressões) em vez de perder o corte. */
+  async function consultarComRecuo(tentativas: string[][], i: Intervalo): Promise<{ linhas: Linha[]; campos: string[] }> {
+    let ultimo: unknown;
+    for (const campos of tentativas) {
+      try { return { linhas: await consultar(campos, i), campos }; }
+      catch (e) { ultimo = e; if (!(e instanceof WindsorErro && (e.codigo === "campo" || e.codigo === "api"))) throw e; }
+    }
+    throw ultimo;
+  }
+
+  async function quebras(p: { contaId: string; dimensao: DimensaoQuebra; de: string; ate: string; campanhas: string[] }): Promise<QuebraBruta[]> {
+    const dims = CAMPOS_QUEBRA[p.dimensao];
+    const base = ["date", "account_id", "campaign_id", "campaign", ...dims, "spend", "impressions"];
+    const semConversas = CONVERSAS_INDISPONIVEIS_NO_CORTE.has(p.dimensao);
+    const { linhas: bruto, campos } = await consultarComRecuo([
+      [...base, "reach", "clicks", ...(semConversas ? [] : [campoRes])],
+      [...base, ...(semConversas ? [] : [campoRes])],
+      base,
+    ], { de: p.de, ate: p.ate });
+    const pediuRes = campos.includes(campoRes), pediuReach = campos.includes("reach"), pediuClicks = campos.includes("clicks");
+    const out = new Map<string, QuebraBruta>();
+    for (const l of porCampanha(porConta(bruto).linhas)) {
+      const d = diaDe(l.date), cid = txt(l.campaign_id);
+      if (!d || !cid) continue;
+      const v = (k: string) => txt(l[k]);
+      const q: QuebraBruta = { dimensao: p.dimensao, date: d, campaign_id: cid, campaign_name: txt(l.campaign) ?? undefined, spend: Number(numTxt(l.spend) ?? 0), impressions: Number(numTxt(l.impressions) ?? 0), reach: null, clicks: null, results: null };
+      if (p.dimensao === "idade_genero") { q.idade = v("age") ?? undefined; q.genero = v("gender") ?? undefined; if (!q.idade && !q.genero) continue; }
+      if (p.dimensao === "regiao") { q.regiao = v("region") ?? undefined; if (!q.regiao) continue; }
+      if (p.dimensao === "posicionamento") { q.plataforma = v("publisher_platform") ?? undefined; q.posicao = v("platform_position") ?? undefined; if (!q.plataforma && !q.posicao) continue; }
+      if (pediuReach && numTxt(l.reach) !== undefined) q.reach = Number(numTxt(l.reach));
+      if (pediuClicks && numTxt(l.clicks) !== undefined) q.clicks = Number(numTxt(l.clicks));
+      if (pediuRes && !semConversas && numTxt(l[campoRes]) !== undefined) q.results = Number(numTxt(l[campoRes]));
+      const k = [d, cid, q.idade, q.genero, q.regiao, q.plataforma, q.posicao].join("|");
+      const a = out.get(k);
+      if (!a) { out.set(k, q); continue; }
+      a.spend += q.spend; a.impressions += q.impressions;
+      if (q.reach != null) a.reach = (a.reach ?? 0) + q.reach;
+      if (q.clicks != null) a.clicks = (a.clicks ?? 0) + q.clicks;
+      if (q.results != null) a.results = (a.results ?? 0) + q.results;
+    }
+    return [...out.values()];
+  }
+
+  /** Conjuntos com entrega na janela pedida (padrão: 90 dias). O Windsor só lista conjuntos que aparecem no período. */
+  async function segmentacoes(p: { contaId: string; campanhas: string[]; de?: string; ate?: string }): Promise<SegmentacaoBruta[]> {
+    const hoje = p.ate ?? new Date().toISOString().slice(0, 10);
+    const { linhas: bruto } = await consultarComRecuo([
+      ["account_id", "campaign_id", "campaign", "adset_id", "adset_name", "adset_targeting"],
+      ["account_id", "campaign_id", "campaign", "adset_name", "adset_targeting"],
+    ], { de: p.de ?? addDays(hoje, -89), ate: hoje });
+    const out = new Map<string, SegmentacaoBruta>();
+    for (const l of porCampanha(porConta(bruto).linhas)) {
+      const nome = txt(l.adset_name), id = txt(l.adset_id), alvo = l.adset_targeting;
+      if (!nome && !id) continue;
+      if (alvo == null || alvo === "") continue;
+      out.set(id ?? `nome:${nome}`, { adsetId: id, adsetNome: nome ?? "Conjunto", campaignId: txt(l.campaign_id), campaignNome: txt(l.campaign), status: null, targeting: alvo });
+    }
+    return [...out.values()];
+  }
+
+  return { testar, insightsDiarios, anuncios, quebras, segmentacoes };
 
   function janela30() { const hoje = new Date().toISOString().slice(0, 10); return { de: addDays(hoje, -29), ate: hoje }; }
   function porContaSemFiltro(linhas: Linha[]) {

@@ -12,6 +12,10 @@ import { spDate } from "@/lib/dates";
 import { envOptional } from "@/lib/env";
 import { chaveWindsorDaPlataforma } from "@/lib/channels/windsor";
 import { RESULTADO_PADRAO } from "@/lib/channels/types";
+import Link from "next/link";
+import { carregarPublico, negocioDoNome } from "@/lib/channels/publico";
+import { SecaoPublico } from "@/components/canais/Publico";
+import { PERIODOS, ROTULO_PERIODO, ddmm, parsePeriodo, resolverPeriodo } from "@/lib/dashboards/periodo";
 import { atualizarAnunciosAgora, atualizarInstagramAgora, desconectarAnuncios, desconectarInstagram, reiniciarContagemAcao, salvarAlertaGastoAcao } from "../canais-actions";
 
 type Estado = { rotulo: string; cls: string };
@@ -29,7 +33,7 @@ function estadoFonte(configurada: boolean, ultima: string | null, erro: string |
 }
 
 /** Aba “Canais” do cliente (administrador): duas fontes independentes, cada uma com conexão, teste, status e coleta próprios. Nunca recebe nem mostra token/chave: só o hint de 4 caracteres. */
-export async function AbaCanais({ client, owner }: { client: Record<string, any>; owner: boolean }) {
+export async function AbaCanais({ client, owner, periodo: periodoTxt }: { client: Record<string, any>; owner: boolean; periodo?: string }) {
   const id = client.id as string;
   const canal = await obterCanal(id);
   const fixture = canaisFixtureAtiva();
@@ -43,6 +47,10 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
   const hoje = spDate();
   const [gasto, historico] = await Promise.all([gastoDoCiclo(canal, hoje), canal ? historicoAlertasGasto(id) : []]);
   const chaveAds = origemChaveWindsorAds(canal);
+  const periodoId = parsePeriodo(periodoTxt);
+  const periodo = resolverPeriodo(periodoId, hoje);
+  const publico = canal ? await carregarPublico(canal, periodo, hoje, { negocio: negocioDoNome(client.name), tecnico: true }).catch(() => null) : null;
+  const rotulo = canal?.resultActionType === RESULTADO_PADRAO || !canal ? { um: "conversa", plural: "Conversas" } : { um: "resultado", plural: "Resultados" };
   return (
     <>
       {fixture && <div className="notice" role="note" style={{ marginTop: 12 }}><b>Dados simulados</b> (CHANNELS_FIXTURE, só desenvolvimento): testar e atualizar não chamam a Meta nem o Windsor.ai.</div>}
@@ -85,6 +93,16 @@ export async function AbaCanais({ client, owner }: { client: Record<string, any>
       </section>
 
       <AlertaRecarga clientId={id} owner={owner} adsCfg={adsCfg} canal={canal} gasto={gasto} historico={historico} />
+
+      {adsCfg && canal?.lastSyncAt && (
+        <div style={{ marginTop: 18 }}>
+          <nav className="tabs periodo" aria-label="Período do público">
+            {PERIODOS.map((p) => <Link key={p} href={`/clientes/${id}?aba=canais${p !== "30" ? `&periodo=${p}` : ""}#sec-publico`} aria-current={p === periodoId ? "page" : undefined}>{ROTULO_PERIODO[p]}</Link>)}
+          </nav>
+          <p className="small muted" style={{ margin: "4px 0 0" }}>{ddmm(periodo.atual.de)} a {ddmm(periodo.atual.ate)} · o cliente vê a mesma seção no Mapa → Canais → Anúncios (sem o bloco técnico).</p>
+          <SecaoPublico p={publico} r={rotulo} admin />
+        </div>
+      )}
 
       <section aria-labelledby="sec-ig" style={{ marginTop: 18 }}>
         <div className="card" style={{ marginTop: 12 }}>

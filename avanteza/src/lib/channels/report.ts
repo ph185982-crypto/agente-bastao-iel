@@ -5,6 +5,9 @@ import { addDays } from "@/lib/dates";
 import { diasEntre, listarDias, variacaoPct, type PeriodoResolvido } from "@/lib/dashboards/periodo";
 import { safeImageUrl } from "@/lib/marketplaces/images";
 import { MIN_GASTO_RANKING, type KindSnapshot } from "./types";
+import { normalizarNome } from "./campanhas";
+import { limparNome } from "./nomes";
+import { linkMetaSeguro, rotuloCta } from "./links";
 
 export interface Linha { kind: KindSnapshot; date: string; key: string; metrics: Record<string, any> }
 
@@ -27,6 +30,20 @@ export interface Criativo {
   id: string; nome: string; status: string | null; ativo: boolean; thumb: string | null; video: boolean;
   gasto: number; impressoes: number; cliques: number; resultados: number; ctr: number | null; cpc: number | null; custoPorResultado: number | null;
   selo: "melhor" | "pior" | null;
+  /** Soma do alcance diário (não é único no período). */
+  alcance: number;
+  /** Campanha e conjunto (nomes limpos, sem ids nem arquivos) e o público do conjunto em linguagem simples. */
+  campanha: string | null; conjunto: string | null; publico: string | null;
+  /** Criativo: título, texto, chamada para ação (já em português) e links seguros da Meta. */
+  titulo: string | null; texto: string | null; cta: string | null; previa: string | null; instagram: string | null;
+  /** "Por que": regras transparentes comparando com a campanha e o conjunto. */
+  porque: string[];
+  /** Mesmo criativo (mesmo nome) rodando em mais de um público: um cartão só, com a comparação por público. */
+  variantes?: VarianteCriativo[];
+}
+export interface VarianteCriativo {
+  campanha: string | null; conjunto: string | null; publico: string | null; ativo: boolean;
+  gasto: number; impressoes: number; cliques: number; resultados: number; ctr: number | null; custoPorResultado: number | null; porque: string[];
 }
 export interface LinhaCampanha extends Totais { id: string; nome: string }
 export interface RelAnuncios {
@@ -35,11 +52,19 @@ export interface RelAnuncios {
   serie: Array<{ data: string; gasto: number; resultados: number }>;
   campanhas: LinhaCampanha[];
   criativos: { ranking: Criativo[]; minGasto: number; foraDoRanking: number; totalAnuncios: number };
+  /** Todos os anúncios do período (um por anúncio, sem agrupar), cada um com o "Por que". */
+  anuncios: Criativo[];
+}
+export interface OpcoesRelAnuncios {
+  /** Público (resumo) do conjunto: chave = id do conjunto ou "nome:<nome normalizado>". */
+  publicos?: Map<string, string>;
+  /** Como chamar o resultado nas frases do "Por que". */
+  resultado?: { um: string; plural: string };
 }
 
 const statusAtivo = (s?: string | null) => !s || s === "ACTIVE";
 
-export function relAnuncios(rows: Linha[], periodo: PeriodoResolvido, campanhasFiltro: string[], minGasto = MIN_GASTO_RANKING): RelAnuncios {
+export function relAnuncios(rows: Linha[], periodo: PeriodoResolvido, campanhasFiltro: string[], minGasto = MIN_GASTO_RANKING, o: OpcoesRelAnuncios = {}): RelAnuncios {
   const filtra = (r: Linha) => !campanhasFiltro.length || campanhasFiltro.includes(r.key);
   const camp = rows.filter((r) => r.kind === "campaign_daily" && filtra(r));
   const ads = rows.filter((r) => r.kind === "ad_daily" && (!campanhasFiltro.length || campanhasFiltro.includes(String(r.metrics.campaign_id ?? ""))));
@@ -58,13 +83,42 @@ export function relAnuncios(rows: Linha[], periodo: PeriodoResolvido, campanhasF
 
   const porAd = new Map<string, Linha[]>();
   for (const r of noIntervalo(ads, a.de, a.ate)) porAd.set(r.key, [...(porAd.get(r.key) ?? []), r]);
-  const todos: Criativo[] = [...porAd.entries()].map(([id, rs]) => {
+  const ultimo = (rs: Linha[], k: string) => { for (let i = rs.length - 1; i >= 0; i--) { const v = rs[i].metrics[k]; if (v != null && v !== "") return v; } return null; };
+  const anuncios: Criativo[] = [...porAd.entries()].map(([id, rs]) => {
     const ult = rs[rs.length - 1].metrics;
     const comMeta = [...rs].reverse().find((r) => r.metrics.thumb || r.metrics.image || r.metrics.effective_status)?.metrics ?? ult;
     const t = somar(rs);
+    const conjuntoId = ultimo(rs, "adset_id"), conjuntoNome = ultimo(rs, "adset_name");
+    const publico = (conjuntoId && o.publicos?.get(String(conjuntoId))) || (conjuntoNome && o.publicos?.get(`nome:${normalizarNome(String(conjuntoNome))}`)) || null;
     return {
       id, nome: String(ult.nome ?? id), status: comMeta.effective_status ?? comMeta.status ?? null, ativo: statusAtivo(comMeta.effective_status ?? comMeta.status),
       thumb: safeImageUrl(comMeta.image) ?? safeImageUrl(comMeta.thumb), video: Boolean(comMeta.video_id), ...t, selo: null,
+      campanha: limparNome(String(ultimo(rs, "campaign_name") ?? "")) || null, conjunto: conjuntoNome ? limparNome(String(conjuntoNome)) || null : null, publico,
+      titulo: ultimo(rs, "title"), texto: ultimo(rs, "body"), cta: rotuloCta(ultimo(rs, "cta")), previa: linkMetaSeguro(ultimo(rs, "preview_url")), instagram: linkMetaSeguro(ultimo(rs, "ig_url")),
+      porque: [], _camp: String(ultimo(rs, "campaign_id") ?? ""), _conj: String(conjuntoId ?? conjuntoNome ?? ""),
+    } as Criativo & { _camp: string; _conj: string };
+  });
+  explicar(anuncios as Array<Criativo & { _camp: string; _conj: string }>, o.resultado ?? { um: "conversa", plural: "conversas" });
+  for (const x of anuncios as any[]) { delete x._camp; delete x._conj; }
+  anuncios.sort((x, y) => y.gasto - x.gasto);
+
+  // Ranking: o mesmo criativo (mesmo nome) em vários públicos vira UM cartão, com a comparação por público.
+  const grupos = new Map<string, Criativo[]>();
+  for (const c of anuncios) { const k = normalizarNome(c.nome); grupos.set(k, [...(grupos.get(k) ?? []), c]); }
+  const todos: Criativo[] = [...grupos.values()].map((vs) => {
+    if (vs.length === 1) return { ...vs[0] };
+    const base = [...vs].sort((x, y) => y.gasto - x.gasto)[0];
+    const gasto = arred(vs.reduce((t, v) => t + v.gasto, 0)), impressoes = vs.reduce((t, v) => t + v.impressoes, 0), cliques = vs.reduce((t, v) => t + v.cliques, 0), resultados = vs.reduce((t, v) => t + v.resultados, 0);
+    const publicos = new Set(vs.map((v) => v.publico ?? v.conjunto ?? v.campanha));
+    const ordenados = [...vs].sort((x, y) => y.gasto - x.gasto);
+    const variantes = compararVariantes(ordenados.map((v) => ({ campanha: v.campanha, conjunto: v.conjunto, publico: v.publico, ativo: v.ativo, gasto: v.gasto, impressoes: v.impressoes, cliques: v.cliques, resultados: v.resultados, ctr: v.ctr, custoPorResultado: v.custoPorResultado, porque: [...v.porque] })), o.resultado?.um ?? "conversa");
+    // A comparação entre públicos também explica cada anúncio em "Todos os anúncios".
+    ordenados.forEach((v, i) => { v.porque = variantes[i].porque; });
+    return {
+      ...base, gasto, impressoes, cliques, resultados, alcance: vs.reduce((t, v) => t + v.alcance, 0),
+      ctr: div(cliques * 100, impressoes), cpc: div(gasto, cliques), custoPorResultado: div(gasto, resultados), ativo: vs.some((v) => v.ativo),
+      thumb: vs.find((v) => v.thumb)?.thumb ?? null, campanha: publicos.size > 1 ? null : base.campanha, conjunto: publicos.size > 1 ? null : base.conjunto,
+      variantes,
     };
   });
   const elegiveis = todos.filter((c) => c.gasto >= minGasto);
@@ -81,7 +135,67 @@ export function relAnuncios(rows: Linha[], periodo: PeriodoResolvido, campanhasF
     temHistorico: camp.length > 0 || histAntes, temDadosNoPeriodo, atual: tAtual,
     anterior: cAnt.length ? somar(cAnt) : null, serie: [...porDia.values()], campanhas,
     criativos: { ranking: elegiveis, minGasto, foraDoRanking: todos.length - elegiveis.length, totalAnuncios: todos.length },
+    anuncios,
   };
+}
+
+/** Mesmo criativo em vários públicos: a primeira razão de cada um é a comparação direta de custo com o outro extremo. */
+function compararVariantes(vs: VarianteCriativo[], um: string): VarianteCriativo[] {
+  const com = vs.filter((v) => v.custoPorResultado != null);
+  if (com.length < 2) return vs;
+  const min = com.reduce((a, b) => (b.custoPorResultado! < a.custoPorResultado! ? b : a)), max = com.reduce((a, b) => (b.custoPorResultado! > a.custoPorResultado! ? b : a));
+  if (min === max || max.custoPorResultado! <= 0) return vs;
+  const nome = (v: VarianteCriativo) => `“${v.publico ?? v.conjunto ?? v.campanha ?? "outro público"}”`;
+  for (const v of com) {
+    const ref = v === min ? max : min;
+    const d = (v.custoPorResultado! - ref.custoPorResultado!) / ref.custoPorResultado!;
+    if (Math.abs(d) < 0.15) continue;
+    const frase = d >= 1 ? `custo por ${um} ${(1 + d).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} vezes o de ${nome(ref)}` : `custo por ${um} ${pctTxt(d)} ${d < 0 ? "menor" : "maior"} que em ${nome(ref)}`;
+    v.porque = [frase, ...v.porque.filter((p) => !p.startsWith("desempenho dentro da média"))].slice(0, 3);
+  }
+  return vs;
+}
+
+const pctTxt = (x: number) => `${Math.round(Math.abs(x) * 100)}%`;
+const brlTxt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const pctFmt = (v: number) => `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+
+/**
+ * "Por que" de cada anúncio, por regras transparentes (sem IA): entrega dentro do conjunto, custo por resultado e CTR contra a média da
+ * campanha, gasto sem resultado e o efeito de públicos de lista de clientes (menores e mais caros). No máximo 3 frases.
+ */
+export function explicar(ads: Array<Criativo & { _camp: string; _conj: string }>, r: { um: string; plural: string }) {
+  const grupo = <K extends "_camp" | "_conj">(k: K) => { const m = new Map<string, typeof ads>(); for (const a of ads) m.set(a[k], [...(m.get(a[k]) ?? []), a]); return m; };
+  const porCamp = grupo("_camp"), porConj = grupo("_conj");
+  const totalGasto = ads.reduce((t, a) => t + a.gasto, 0), totalRes = ads.reduce((t, a) => t + a.resultados, 0);
+  const mediaGeral = totalRes > 0 ? totalGasto / totalRes : null;
+  for (const a of ads) {
+    const out: string[] = [];
+    const conj = porConj.get(a._conj) ?? [a], camp = porCamp.get(a._camp) ?? [a];
+    const gConj = conj.reduce((t, x) => t + x.gasto, 0);
+    const pouca = conj.length >= 2 && a.gasto < Math.max(2, gConj * 0.05);
+    if (pouca) out.push(`teve pouca entrega (${brlTxt(a.gasto)}): o Meta priorizou outro anúncio do mesmo conjunto`);
+    else if (a.gasto < 5) out.push(`pouca entrega no período (${brlTxt(a.gasto)}): ainda há pouco dado para comparar`);
+    if (!pouca && a.gasto >= 5) {
+      const gC = camp.reduce((t, x) => t + x.gasto, 0), rC = camp.reduce((t, x) => t + x.resultados, 0);
+      const mediaC = rC > 0 ? gC / rC : null;
+      if (a.resultados === 0 && a.gasto >= 10) out.push(`gastou ${brlTxt(a.gasto)} sem nenhuma ${r.um}`);
+      else if (a.custoPorResultado != null && mediaC != null && camp.length >= 2) {
+        const d = (a.custoPorResultado - mediaC) / mediaC;
+        if (Math.abs(d) >= 0.15) out.push(`custo por ${r.um} ${pctTxt(d)} ${d < 0 ? "abaixo" : "acima"} da média da campanha (${brlTxt(arred(mediaC))})`);
+      }
+      const iC = camp.reduce((t, x) => t + x.impressoes, 0), cC = camp.reduce((t, x) => t + x.cliques, 0);
+      const ctrC = iC > 0 ? (cC / iC) * 100 : null;
+      if (a.ctr != null && ctrC && camp.length >= 2) {
+        const d = (a.ctr - ctrC) / ctrC;
+        if (Math.abs(d) >= 0.2) out.push(`CTR ${d > 0 ? "acima" : "abaixo"} da média da campanha (${pctFmt(a.ctr)} × ${pctFmt(arred(ctrC))})`);
+      }
+      if (a.publico && /lista de clientes/i.test(a.publico) && a.custoPorResultado != null && mediaGeral != null && a.custoPorResultado > mediaGeral * 1.15) {
+        out.push(`público de lista de clientes é menor e mais caro (${brlTxt(a.custoPorResultado)} por ${r.um} × ${brlTxt(arred(mediaGeral))} na média de todos os anúncios)`);
+      }
+    }
+    a.porque = (out.length ? out : [`desempenho dentro da média da campanha`]).slice(0, 3);
+  }
 }
 
 // ─── Instagram ───────────────────────────────────────────────────────────────

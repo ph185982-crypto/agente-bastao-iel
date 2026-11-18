@@ -5,6 +5,8 @@ import { LineChart, Legenda } from "@/components/dashboards/LineChart";
 import { ComboChart } from "./ComboChart";
 import { CartaoGastoCiclo } from "./GastoCiclo";
 import { Imagem } from "./Imagem";
+import { SecaoPublico } from "./Publico";
+import { TodosAnuncios } from "./TodosAnuncios";
 import { IconeTipoMidia, LogoMarca, MarcaRotulo, type Marca } from "@/components/brand";
 import { brl, compacto, inteiro, percentual } from "@/lib/dashboards/format";
 import { ddmm, ddmmaa, variacaoPct } from "@/lib/dashboards/periodo";
@@ -51,18 +53,26 @@ export function FontesAguardando({ anuncios = true, instagram = true }: { anunci
 
 function CartaoCriativo({ c, pos, r }: { c: Criativo; pos: number; r: Rotulo }) {
   const codigo = c.nome.split("|")[0].trim().slice(0, 4) || "Ad";
+  const v = c.variantes;
   return (
-    <article className="card" aria-label={c.nome}>
+    <article className={`card${v ? " cr-wide" : ""}`} aria-label={c.nome}>
       <div className="cr-top">
         <span className="cr-rank">#{pos}</span>
         <span className="row" style={{ gap: 6 }}>
           {c.selo === "melhor" && <span className="pill pill-ok">Melhor desempenho</span>}
           {c.selo === "pior" && <span className="pill pill-danger">Pior desempenho</span>}
+          {v && <span className="pill pill-sand">{v.length} públicos</span>}
           {!c.ativo && <span className="pill pill-outline">Pausado</span>}
         </span>
       </div>
       <Imagem src={c.thumb} alt={`Criativo ${c.nome}`} rotulo={codigo} />
       <div className="cr-name"><IconeTipoMidia tipo={c.video ? "video" : "imagem"} />{c.nome}{c.video && <span className="small muted"> · vídeo</span>}</div>
+      {!v && (c.campanha || c.publico) && (
+        <div className="cr-ctx small">
+          {c.campanha && <div><span className="muted">Campanha</span> {c.campanha}</div>}
+          {(c.publico || c.conjunto) && <div><span className="muted">Público</span> {c.publico ?? c.conjunto}</div>}
+        </div>
+      )}
       <ul className="cr-stats">
         <li className="destaque"><span>{r.plural}</span><b>{inteiro(c.resultados)}</b></li>
         <li className="destaque"><span>Custo/{r.um}</span><b>{c.custoPorResultado != null ? brl(c.custoPorResultado, true) : "—"}</b></li>
@@ -71,6 +81,18 @@ function CartaoCriativo({ c, pos, r }: { c: Criativo; pos: number; r: Rotulo }) 
         <li><span>CPC</span><b>{c.cpc != null ? brl(c.cpc, true) : "—"}</b></li>
         <li><span>Impressões</span><b>{inteiro(c.impressoes)}</b></li>
       </ul>
+      {v ? (
+        <div className="cr-var">
+          <div className="small muted">O mesmo criativo em públicos diferentes — é o público que explica a diferença:</div>
+          {v.map((x, i) => (
+            <div className="cr-var-i" key={i}>
+              <div className="cr-var-h"><b>{x.publico ?? x.conjunto ?? "Público"}</b>{x.campanha && <span className="small muted">{x.campanha}</span>}</div>
+              <div className="cr-var-m small"><span><b>{inteiro(x.resultados)}</b> {x.resultados === 1 ? r.um : r.plural.toLowerCase()}</span><span><b>{x.custoPorResultado != null ? brl(x.custoPorResultado, true) : "—"}</b>/{r.um}</span><span>{brl(x.gasto, true)}</span></div>
+              {x.porque[0] && <div className="small muted">Por que: {x.porque[0]}.</div>}
+            </div>
+          ))}
+        </div>
+      ) : c.porque[0] ? <p className="small muted" style={{ margin: 0 }}>Por que: {c.porque.join("; ")}.</p> : null}
     </article>
   );
 }
@@ -135,6 +157,10 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
       ) : (
         <div className="cr-grid">{c.ranking.map((x, i) => <CartaoCriativo key={x.id} c={x} pos={i + 1} r={r} />)}</div>
       )}
+
+      <TodosAnuncios anuncios={a.anuncios} r={r} />
+
+      <SecaoPublico p={d.publico} r={r} />
     </>
   );
 }

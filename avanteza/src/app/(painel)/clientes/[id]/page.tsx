@@ -67,7 +67,7 @@ export default async function Cliente({
     </div>
   );
   if (aba) {
-    return (<><Flash sp={sp} />{head}{tabs}{aba === "canais" ? <AbaCanais client={client} owner={isOwner} /> : aba === "entregas" ? <AbaEntregas client={client} previa={sp.previa === "1"} /> : aba === "comunicacao" ? <AbaComunicacao client={client} /> : <AbaMapa client={client} aba={aba} owner={isOwner} />}</>);
+    return (<><Flash sp={sp} />{head}{tabs}{aba === "canais" ? <AbaCanais client={client} owner={isOwner} periodo={typeof sp.periodo === "string" ? sp.periodo : undefined} /> : aba === "entregas" ? <AbaEntregas client={client} previa={sp.previa === "1"} /> : aba === "comunicacao" ? <AbaComunicacao client={client} /> : <AbaMapa client={client} aba={aba} owner={isOwner} />}</>);
   }
 
   const today = spDate();

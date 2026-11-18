@@ -557,11 +557,12 @@ create index if not exists spend_alerts_cliente_idx on avanteza.spend_alerts(cli
 -- Histórico das séries coletadas (backup para a Evolução). Upsert idempotente por (cliente, tipo, dia, chave).
 --   kind: campaign_daily (key = campanha) | ad_daily (key = anúncio) | ig_daily (key = 'account') | ig_media (key = mídia; date = dia da postagem)
 --         | ig_audience (key = 'account'; idade/gênero/cidades)
+--         | ads_breakdown (key = '<idade_genero|regiao|posicionamento>|<campanha>|<valores>'; por dia) | adset_targeting (key = conjunto; date = dia da coleta, vale o último)
 --   source: de onde veio a linha ('meta' | 'windsor'). Faz parte da chave: trocar a fonte do Instagram nunca mistura nem sobrescreve dados de outra fonte.
 create table if not exists avanteza.channel_snapshots (
   client_id uuid not null references avanteza.clients(id) on delete cascade,
   provider text not null default 'meta',
-  kind text not null check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience')),
+  kind text not null check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience','ads_breakdown','adset_targeting')),
   date date not null,
   key text not null,
   metrics jsonb not null default '{}'::jsonb,
@@ -571,7 +572,7 @@ create table if not exists avanteza.channel_snapshots (
 );
 alter table avanteza.channel_snapshots add column if not exists source text not null default 'meta';
 alter table avanteza.channel_snapshots drop constraint if exists channel_snapshots_kind_check;
-alter table avanteza.channel_snapshots add constraint channel_snapshots_kind_check check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience'));
+alter table avanteza.channel_snapshots add constraint channel_snapshots_kind_check check (kind in ('campaign_daily','ad_daily','ig_daily','ig_media','ig_audience','ads_breakdown','adset_targeting'));
 do $$
 begin
   -- chave primária antiga (cliente, tipo, dia, chave) → inclui a fonte

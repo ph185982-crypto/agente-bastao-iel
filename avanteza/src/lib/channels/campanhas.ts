@@ -19,14 +19,14 @@ export const temFiltroCampanhas = (f: FiltroCampanhas) => f.campaignIds.length >
 
 /**
  * Filtra linhas de snapshot (campaign_daily / ad_daily) pelo filtro do canal. campaign_daily: chave = id, nome em metrics.nome.
- * ad_daily: campaign_id/campaign_name nas métricas; sem nome, vale se a campanha do anúncio passou no nível de campanha.
+ * ad_daily, ads_breakdown e adset_targeting: campaign_id/campaign_name nas métricas; sem nome, vale se a campanha do anúncio passou no nível de campanha.
  */
 export function filtrarLinhasCampanhas<T extends { kind: string; key: string; metrics: Record<string, any> }>(rows: T[], f: FiltroCampanhas): T[] {
   if (!temFiltroCampanhas(f)) return rows;
   const aceitas = new Set(rows.filter((r) => r.kind === "campaign_daily" && campanhaPassa(r.key, r.metrics.nome, f)).map((r) => r.key));
   return rows.filter((r) => {
     if (r.kind === "campaign_daily") return aceitas.has(r.key);
-    if (r.kind === "ad_daily") {
+    if (r.kind === "ad_daily" || r.kind === "ads_breakdown" || r.kind === "adset_targeting") {
       const cid = String(r.metrics.campaign_id ?? "");
       return r.metrics.campaign_name ? campanhaPassa(cid, r.metrics.campaign_name, f) : aceitas.has(cid);
     }

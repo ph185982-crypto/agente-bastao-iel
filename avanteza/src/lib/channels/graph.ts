@@ -6,9 +6,11 @@ import { ApiError, backoffDelay, fetchJson, type RetryOptions } from "@/lib/http
 import { addDays } from "@/lib/dates";
 import { CODIGOS_TRANSITORIOS, GRAPH_VERSION, MetaErro, erroGraph, limiteDeUso, rotuloStatus, traduzirErroMeta, type CodigoErroMeta } from "@/lib/dashboards/meta";
 import { safeImageUrl } from "@/lib/marketplaces/images";
+import { linkMetaSeguro } from "./links";
 import {
   IG_METRICAS_DIA, PERMISSOES_NECESSARIAS,
-  type AnuncioInfo, type CanaisApi, type IgMetricaDia, type IgMidiaBruta, type IgPerfil, type InsightBruto, type ResultadoTeste, type VerificacaoTeste,
+  RESULTADO_PADRAO,
+  type AnuncioInfo, type CanaisApi, type DimensaoQuebra, type IgMetricaDia, type QuebraBruta, type SegmentacaoBruta, type IgMidiaBruta, type IgPerfil, type InsightBruto, type ResultadoTeste, type VerificacaoTeste,
 } from "./types";
 
 const HOST = "graph.facebook.com";
@@ -117,6 +119,27 @@ function valorDeInsight(item: any): number | null {
   return null;
 }
 
+/** breakdowns da Meta para cada corte (um corte por consulta). */
+export const BREAKDOWNS: Record<DimensaoQuebra, string> = { idade_genero: "age,gender", regiao: "region", posicionamento: "publisher_platform,platform_position" };
+
+/** Linha de insights com breakdowns → QuebraBruta. Conversas: só se a ação veio; na região, zero com ações ausentes = indisponível (null). */
+export function quebraDaLinhaGraph(r: any, dimensao: DimensaoQuebra, tipo = RESULTADO_PADRAO): QuebraBruta | null {
+  const d = typeof r?.date_start === "string" ? r.date_start.slice(0, 10) : null, cid = r?.campaign_id ? String(r.campaign_id) : null;
+  if (!d || !cid) return null;
+  const nOuNull = (v: unknown) => (v == null || v === "" ? null : num(v));
+  const acoes: Array<{ action_type: string; value: string }> | undefined = Array.isArray(r.actions) ? r.actions : undefined;
+  const acao = acoes?.find((x) => x.action_type === tipo);
+  const q: QuebraBruta = {
+    dimensao, date: d, campaign_id: cid, campaign_name: r.campaign_name ?? undefined,
+    spend: num(r.spend) ?? 0, impressions: num(r.impressions) ?? 0, reach: nOuNull(r.reach), clicks: nOuNull(r.clicks),
+    results: acao ? num(acao.value) : acoes ? 0 : dimensao === "regiao" ? null : 0,
+  };
+  if (dimensao === "idade_genero") { q.idade = r.age ?? undefined; q.genero = r.gender ?? undefined; }
+  if (dimensao === "regiao") q.regiao = r.region ?? undefined;
+  if (dimensao === "posicionamento") { q.plataforma = r.publisher_platform ?? undefined; q.posicao = r.platform_position ?? undefined; }
+  return q;
+}
+
 // ─── Implementação da API ────────────────────────────────────────────────────
 
 export function criarApiGraph(g: Graph): CanaisApi {
@@ -139,17 +162,42 @@ export function criarApiGraph(g: Graph): CanaisApi {
         id: String(r.id), nome: String(r.name ?? r.id), campanhaId: r.campaign_id ? String(r.campaign_id) : null,
         status: r.status ?? null, statusEfetivo: r.effective_status ?? null,
         thumb: safeImageUrl(r.creative?.thumbnail_url), imagem: safeImageUrl(r.creative?.image_url), videoId: r.creative?.video_id ? String(r.creative.video_id) : null,
+        conjuntoId: r.adset_id ? String(r.adset_id) : null, conjuntoNome: r.adset?.name ? String(r.adset.name) : null,
+        titulo: r.creative?.title ?? null, texto: r.creative?.body ?? null, cta: r.creative?.call_to_action_type ?? null,
+        previa: linkMetaSeguro(r.preview_shareable_link), instagram: linkMetaSeguro(r.creative?.instagram_permalink_url),
       });
       const consulta = (campos: string) => g.paginar<any>(`${contaId}/ads`, { fields: campos, limit: 100, filtering: filtroCampanhas(campanhas) }, 10);
       let rows: any[];
       try {
         // Miniatura em tamanho maior (a padrão é 64×64). Se a Meta recusar o modificador, cai para o campo simples.
-        rows = await consulta("id,name,status,effective_status,campaign_id,creative.thumbnail_width(400).thumbnail_height(400){thumbnail_url,image_url,video_id}");
+        rows = await consulta("id,name,status,effective_status,campaign_id,adset_id,adset{name},preview_shareable_link,creative.thumbnail_width(400).thumbnail_height(400){thumbnail_url,image_url,video_id,title,body,call_to_action_type,instagram_permalink_url}");
       } catch (e) {
         if (!(e instanceof GraphErro) || e.graphCode !== 100) throw e;
-        rows = await consulta("id,name,status,effective_status,campaign_id,creative{thumbnail_url,image_url,video_id}");
+        rows = await consulta("id,name,status,effective_status,campaign_id,adset_id,creative{thumbnail_url,image_url,video_id}");
       }
       return rows.map(parse);
+    },
+
+    async quebras({ contaId, dimensao, de, ate, campanhas, tipo }) {
+      if (!ACT.test(contaId)) throw new GraphErro("Identificador de conta inválido.", "api");
+      const out: QuebraBruta[] = [];
+      for (const [a, b] of janelas(de, ate)) {
+        const rows = await g.paginar<any>(`${contaId}/insights`, {
+          fields: "campaign_id,campaign_name,spend,impressions,reach,clicks,actions", level: "campaign", breakdowns: BREAKDOWNS[dimensao],
+          time_increment: 1, time_range: JSON.stringify({ since: a, until: b }), limit: 500, filtering: filtroCampanhas(campanhas),
+        });
+        for (const r of rows) { const q = quebraDaLinhaGraph(r, dimensao, tipo || RESULTADO_PADRAO); if (q) out.push(q); }
+      }
+      return out;
+    },
+
+    async segmentacoes({ contaId, campanhas }) {
+      if (!ACT.test(contaId)) throw new GraphErro("Identificador de conta inválido.", "api");
+      const rows = await g.paginar<any>(`${contaId}/adsets`, { fields: "id,name,campaign_id,campaign{name},effective_status,targeting", limit: 100, filtering: filtroCampanhas(campanhas) }, 5);
+      return rows.filter((r) => r && r.targeting).map((r): SegmentacaoBruta => ({
+        adsetId: r.id ? String(r.id) : null, adsetNome: String(r.name ?? "Conjunto"), campaignId: r.campaign_id ? String(r.campaign_id) : null,
+        campaignNome: r.campaign?.name ? String(r.campaign.name) : null, status: r.effective_status ?? null, targeting: r.targeting,
+      }));
     },
 
     async igPerfil(igId) {

@@ -9,6 +9,8 @@ import { evolucao, relAnuncios, relInstagram, type Agrupamento, type Marco, type
 import { lerSnapshots, obterCanal } from "./store";
 import { filtrarLinhasCampanhas } from "./campanhas";
 import { gastoDoCiclo, type GastoCiclo } from "./alerta-gasto";
+import { carregarPublico, negocioDoNome, resumosDosConjuntos, type LinhaSnap, type RelPublico } from "./publico";
+import { rawQuery } from "../db/client";
 import { RESULTADO_PADRAO, type OrigemDado } from "./types";
 
 export interface EstadoCanalCliente {
@@ -44,6 +46,8 @@ export interface CanaisCliente {
   evolucao: { mes: Marco[]; semana: Marco[] } | null;
   /** “Total gasto até agora” do ciclo do alerta de recarga (null = alerta desligado). Só campanhas do filtro do canal. */
   gastoCiclo: GastoCiclo | null;
+  /** Público e localização (cortes do período + segmentação dos conjuntos), em linguagem simples. Nunca traz o targeting bruto. */
+  publico: RelPublico | null;
 }
 
 /**
@@ -68,30 +72,44 @@ export async function carregarCanaisDoCliente(scope: ClientScope, periodoId: Per
   };
   estado.comProblema = estado.anunciosComProblema || estado.instagramComProblema;
   const gastoCiclo = adsOk ? await gastoDoCiclo(canal, hoje) : null;
-  const vazio: CanaisCliente = { estado, periodo, anuncios: null, instagram: null, evolucao: null, gastoCiclo };
+  const vazio: CanaisCliente = { estado, periodo, anuncios: null, instagram: null, evolucao: null, gastoCiclo, publico: null };
   if (!canal || (!adsOk && !igOk)) return vazio;
 
   const historico = addDays(hoje, -420);
-  const [camp, ig, ads, midias, aud] = await Promise.all([
+  const nome = adsOk ? await nomeDoCliente(scope.clientId) : null;
+  const negocio = negocioDoNome(nome);
+  const [camp, ig, ads, midias, aud, publico, segs] = await Promise.all([
     adsOk ? lerSnapshots(scope.clientId, ["campaign_daily"], historico, hoje, fonteAds!) : [],
     igOk ? lerSnapshots(scope.clientId, ["ig_daily"], historico, hoje, fonteIg!) : [],
     adsOk ? lerSnapshots(scope.clientId, ["ad_daily"], periodo.anterior.de, hoje, fonteAds!) : [],
     igOk ? lerSnapshots(scope.clientId, ["ig_media"], addDays(hoje, -120), hoje, fonteIg!) : [],
     igOk ? lerSnapshots(scope.clientId, ["ig_audience"], addDays(hoje, -60), hoje, fonteIg!) : [],
+    adsOk ? carregarPublico(canal, periodo, hoje, { negocio, tecnico: false }) : null,
+    adsOk ? lerSnapshots(scope.clientId, ["adset_targeting"], addDays(hoje, -120), hoje, fonteAds!) : [],
   ]);
   // Campanhas fora do filtro do canal (ids e nome; ex.: outro projeto na mesma conta) nunca entram nos números do cliente.
   const todas = filtrarLinhasCampanhas([...camp, ...ig, ...ads, ...midias, ...aud], { campaignIds: canal.campaignIds, campaignNameFilter: canal.campaignNameFilter });
   const filtro = canal.campaignIds;
-  const anuncios = adsOk ? relAnuncios(todas, periodo, filtro) : null;
+  // Público de cada conjunto em uma linha (para os cartões de anúncio). O mapa fica no servidor: só o texto chega à tela.
+  const publicos = resumosDosConjuntos(filtrarLinhasCampanhas([...camp, ...segs], { campaignIds: canal.campaignIds, campaignNameFilter: canal.campaignNameFilter }) as LinhaSnap[], negocio);
+  const anuncios = adsOk ? relAnuncios(todas, periodo, filtro, undefined, { publicos, resultado: estado.resultado === "conversas" ? { um: "conversa", plural: "conversas" } : { um: "resultado", plural: "resultados" } }) : null;
   const instagram = igOk ? relInstagram(todas, periodo) : null;
   // IDs externos (campanha, anúncio, mídia) não saem daqui: a tela só precisa de uma chave estável para listar.
   if (anuncios) {
     anuncios.campanhas.forEach((c, i) => { c.id = `c${i}`; });
     anuncios.criativos.ranking.forEach((c, i) => { c.id = `a${i}`; });
+    anuncios.anuncios.forEach((c, i) => { c.id = `t${i}`; });
   }
   instagram?.midias.forEach((m, i) => { m.id = `m${i}`; });
+  // Defesa extra: o cliente nunca recebe o bloco técnico, mesmo que alguém mude o carregador.
+  if (publico) delete publico.tecnico;
   return {
-    estado, periodo, anuncios, instagram, gastoCiclo,
+    estado, periodo, anuncios, instagram, gastoCiclo, publico,
     evolucao: { mes: evolucao(todas, "mes" as Agrupamento, hoje, filtro), semana: evolucao(todas, "semana" as Agrupamento, hoje, filtro) },
   };
+}
+
+async function nomeDoCliente(clientId: string): Promise<string | null> {
+  const [r] = await rawQuery<{ name: string }>("select name from avanteza.clients where id = $1", [clientId]);
+  return r?.name ?? null;
 }
