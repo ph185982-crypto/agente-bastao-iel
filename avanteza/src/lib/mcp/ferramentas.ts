@@ -49,15 +49,21 @@ export interface Deps {
   ia?: AiProvider;
   coletar?: (clientId: string, fonte: "ads" | "instagram" | "todas") => Promise<{ ok: boolean; mensagem: string; resultado?: { linhas?: Record<string, number> } }>;
   coletarGoogle?: (clientId: string) => Promise<{ ok: boolean; mensagem: string; linhas?: Record<string, number> }>;
+  /** Anúncios (marketplace): atualiza um anúncio no painel depois de criar/alterar. Padrão: collector.atualizarUmAnuncio. */
+  atualizarAnuncio?: (accountId: string, externalId: string) => Promise<unknown>;
+  /** Meta Ads: env (token da plataforma, teto) e coleta leve depois de criar/alterar. */
+  env?: NodeJS.ProcessEnv;
+  fetchMeta?: typeof fetch;
+  coletarAnunciosMeta?: (clientId: string) => Promise<unknown>;
 }
 
 /** Erro "de negócio": vira a mensagem da ferramenta (isError) sem detalhe técnico. */
 export class ErroFerramenta extends Error {}
 
 export const LIMITE = 50;
-const VIA = { via: "claude" } as const;
+export const VIA = { via: "claude" } as const;
 
-const corta = (s: unknown, n: number): string | null => (typeof s === "string" && s ? (s.length > n ? `${s.slice(0, n - 1)}…` : s) : null);
+export const corta = (s: unknown, n: number): string | null => (typeof s === "string" && s ? (s.length > n ? `${s.slice(0, n - 1)}…` : s) : null);
 const SENSIVEL = /(password|senha|hash|token|secret|segredo|_enc$|^enc_|api_?key|chave|credencial)/i;
 
 /** Defesa extra: remove qualquer campo com nome sensível, em qualquer nível. */
@@ -71,12 +77,12 @@ export function limpar<T>(v: T): T {
   return v;
 }
 
-async function auditar(ator: Ator, event: string, clientId: string | null, details: Record<string, unknown>) {
+export async function auditar(ator: Ator, event: string, clientId: string | null, details: Record<string, unknown>) {
   await adminDb().from("audit_log").insert({ event, actor: ator.email, client_id: clientId, details: { ...details, ...VIA } });
 }
 
-const ehAdmin = (a: Ator) => a.sessao.role === "admin";
-function exigir(ok: boolean, msg = "Restrito aos administradores.") {
+export const ehAdmin = (a: Ator) => a.sessao.role === "admin";
+export function exigir(ok: boolean, msg = "Restrito aos administradores.") {
   if (!ok) throw new ErroFerramenta(msg);
 }
 
@@ -129,7 +135,7 @@ function falhaExterna(e: unknown): never {
 
 // ─── Entradas (zod) ──────────────────────────────────────────────────────────
 
-const cliente = z.string().trim().min(1).max(120).describe("Id (uuid) ou nome do cliente.");
+export const cliente = z.string().trim().min(1).max(120).describe("Id (uuid) ou nome do cliente.");
 const data = z.string().refine(isDateStr, "Data inválida (use AAAA-MM-DD).");
 const uuid = z.string().refine(motor.isUuid, "Id inválido.");
 const escopoFin = z.enum(["empresa", "pessoal"]).default("empresa").describe("empresa (Avanteza) ou pessoal (só o dono).");
@@ -146,7 +152,7 @@ export interface Ferramenta<S extends z.ZodRawShape = z.ZodRawShape> {
   escrita: boolean;
   executar(ator: Ator, args: z.infer<z.ZodObject<S>>, deps: Deps): Promise<unknown>;
 }
-const def = <S extends z.ZodRawShape>(f: Ferramenta<S>) => f as unknown as Ferramenta;
+export const def = <S extends z.ZodRawShape>(f: Ferramenta<S>) => f as unknown as Ferramenta;
 
 export const FERRAMENTAS: Ferramenta[] = [
   // ─────────────── Leitura ───────────────
@@ -543,8 +549,8 @@ export const FERRAMENTAS: Ferramenta[] = [
 export const NOMES_FERRAMENTAS = FERRAMENTAS.map((f) => f.nome);
 
 /** Valida a entrada com o schema da ferramenta, executa e limpa a saída. Erros de entrada/negócio viram ErroFerramenta. */
-export async function executarFerramenta(nome: string, ator: Ator, args: unknown, deps: Deps = {}): Promise<unknown> {
-  const f = FERRAMENTAS.find((x) => x.nome === nome);
+export async function executarFerramenta(nome: string, ator: Ator, args: unknown, deps: Deps = {}, lista: Ferramenta[] = FERRAMENTAS): Promise<unknown> {
+  const f = lista.find((x) => x.nome === nome);
   if (!f) throw new ErroFerramenta(`Ferramenta desconhecida: ${nome}.`);
   const v = z.object(f.entrada).safeParse(args ?? {});
   if (!v.success) throw new ErroFerramenta(`Entrada inválida: ${v.error.issues.map((i) => `${i.path.join(".") || "entrada"}: ${i.message}`).join("; ").slice(0, 400)}`);

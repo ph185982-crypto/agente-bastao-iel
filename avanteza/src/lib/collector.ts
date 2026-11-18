@@ -287,3 +287,29 @@ export async function collectBatch(budgetMs = 45_000, accountId?: string): Promi
   }
   return results;
 }
+
+/**
+ * Atualiza UM anúncio (depois de criar/alterar pelo conector): lê no marketplace e grava em `listings` e no snapshot do
+ * dia, para o painel mostrar na hora sem esperar a coleta da conta. Mantém visitas e fotos que já existiam.
+ */
+export async function atualizarUmAnuncio(accountId: string, externalId: string): Promise<boolean> {
+  const db = adminDb();
+  const { token, account } = await getValidAccessToken(accountId);
+  const [l] = await getAdapter(account.marketplace).getListings(token, [externalId]);
+  if (!l) return false;
+  const { data: prev } = await db.from("listings").select("visits_30d, thumbnail, image_urls").eq("account_id", accountId).eq("external_id", externalId).maybeSingle();
+  const row = {
+    account_id: accountId, external_id: l.externalId, title: l.title, status: l.status, sub_status: l.subStatus, price: l.price, currency_id: l.currencyId,
+    available_quantity: l.availableQuantity, sold_quantity: l.soldQuantity, visits_30d: (prev?.visits_30d as number | null) ?? null, permalink: l.permalink,
+    thumbnail: l.thumbnail ?? (prev?.thumbnail as string | null) ?? null,
+    image_urls: l.imageUrls?.length ? JSON.stringify(l.imageUrls) : prev?.image_urls ? JSON.stringify(prev.image_urls) : null,
+    listing_type_id: l.listingTypeId, has_variations: l.hasVariations, variations: l.variations?.length ? l.variations : null, raw: null, updated_at: new Date().toISOString(),
+  };
+  const { error } = await db.from("listings").upsert(row);
+  if (error) throw new Error(`listings: ${error.message}`);
+  await db.from("listing_snapshots").upsert({
+    account_id: accountId, external_id: row.external_id, snapshot_date: spDate(), status: row.status, price: row.price,
+    available_quantity: row.available_quantity, sold_quantity: row.sold_quantity, visits_30d: row.visits_30d,
+  });
+  return true;
+}

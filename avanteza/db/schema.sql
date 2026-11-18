@@ -261,7 +261,8 @@ insert into avanteza.action_policies (client_id, action_type, mode, max_change_p
   (null,'answer_question','approval',null),
   (null,'update_ads_budget','approval',20),
   (null,'update_ads_status','approval',null),
-  (null,'create_promotion','approval',null)
+  (null,'create_promotion','approval',null),
+  (null,'create_listing','approval',null)
 on conflict do nothing;
 
 create table if not exists avanteza.actions (

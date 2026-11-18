@@ -6,7 +6,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createMcpHandler } from "mcp-handler";
 import { usuarioDoMcp } from "@/lib/mcp/acesso";
 import { mcpConfigurado, origem, subDoBearer } from "@/lib/mcp/oauth";
-import { ErroFerramenta, executarFerramenta, FERRAMENTAS, type Ator } from "@/lib/mcp/ferramentas";
+import { ErroFerramenta, type Ator } from "@/lib/mcp/ferramentas";
+import { executarQualquer, TODAS_FERRAMENTAS } from "@/lib/mcp/registro";
 
 export const dynamic = "force-dynamic";
 // "Atualizar agora" dos canais pode levar ~1,5 min (coleta + backfill).
@@ -20,7 +21,7 @@ const atorDaVez = new AsyncLocalStorage<Ator>();
 
 const handler = createMcpHandler(
   (server) => {
-    for (const f of FERRAMENTAS) {
+    for (const f of TODAS_FERRAMENTAS) {
       server.registerTool(
         f.nome,
         {
@@ -33,7 +34,7 @@ const handler = createMcpHandler(
           const ator = atorDaVez.getStore();
           if (!ator) return erro("Sessão do conector ausente. Conecte de novo.");
           try {
-            return texto(await executarFerramenta(f.nome, ator, args));
+            return texto(await executarQualquer(f.nome, ator, args));
           } catch (e) {
             if (e instanceof ErroFerramenta) return erro(e.message);
             console.error(`[mcp] ${f.nome} falhou:`, e instanceof Error ? e.message.slice(0, 200) : "erro");

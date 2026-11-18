@@ -96,6 +96,48 @@ export async function proposeAction(input: ProposeInput) {
   return action;
 }
 
+/**
+ * Modo DIRETO (conector do Claude, decisão do dono: publicar sem etapa de aprovação). Mesmo caminho do executor:
+ * valida o payload, lê o "antes", grava a ação já aprovada (decided_by = quem pediu, `direto` no audit) e executa
+ * com executeAction — que continua aplicando a pausa geral, a simulação global e os limites diários de preço/verba.
+ * Política "blocked" para o tipo/cliente recusa (não grava nada além da auditoria).
+ */
+export async function executarDireto(input: ProposeInput & { via?: string }) {
+  const db = adminDb();
+  const invalid = validatePayload(input.type, input.payload);
+  if (invalid) throw new Error(invalid);
+  const { data: policies } = await db.from("action_policies").select("*");
+  const policy = resolvePolicy(input.type, input.clientId, (policies ?? []) as PolicyRow[]);
+  if (policy.mode === "blocked") {
+    await audit({ client_id: input.clientId, event: "blocked", actor: input.actor, details: { type: input.type, target: input.targetId, mode: "direto", via: input.via ?? null } });
+    throw new Error("Este tipo de ação está bloqueado pela política do cliente (Configurações).");
+  }
+  let before: Record<string, unknown> | null = null;
+  try {
+    const { token, account } = await getValidAccessToken(input.accountId);
+    const ctx = await adsContext(account.id, account.site_id, account.ads_advertiser_id);
+    before = await getAdapter(account.marketplace).getStateForAction(token, input.type, input.targetId, ctx, input.payload);
+  } catch (err) {
+    before = { erro_leitura: err instanceof Error ? err.message : String(err) };
+  }
+  const agora = new Date().toISOString();
+  const { data: action, error } = await db
+    .from("actions")
+    .insert({
+      client_id: input.clientId, account_id: input.accountId, action_type: input.type, target_id: input.targetId, payload: input.payload,
+      reason: input.reason ?? null, source: input.source ?? "manual", status: "approved", dry_run: input.dryRun ?? false, before_state: before,
+      decided_by: input.actor, decided_at: agora,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  await audit({
+    action_id: action.id, client_id: input.clientId, event: "proposed", actor: input.actor, before_state: before,
+    details: { type: input.type, target: input.targetId, payload: input.payload, mode: "direto", policy_mode: policy.mode, via: input.via ?? null },
+  });
+  return executeAction(action.id, input.actor);
+}
+
 export async function decideAction(actionId: string, decision: "approve" | "reject", actor: string) {
   const db = adminDb();
   const { data: action } = await db
