@@ -10,7 +10,7 @@ const COLUNAS = `id, client_id, provider, ad_account_id, campaign_ids, ig_user_i
   (token_enc is not null) as tem_token, use_platform_token, status, info, last_sync_at, last_error, updated_at,
   ads_source, ig_source, windsor_account_name, (windsor_key_enc is not null) as tem_chave_windsor, windsor_key_hint, ig_last_sync_at, ig_last_error,
   campaign_name_filter, spend_alert_limit::float8 as spend_alert_limit, spend_alert_warn_pct, to_char(spend_alert_since, 'YYYY-MM-DD') as spend_alert_since, spend_alert_emails,
-  gbp_source, gbp_location_name, gbp_last_sync_at, gbp_last_error`;
+  gbp_source, gbp_location_name, gbp_last_sync_at, gbp_last_error, meta_daily_budget_cap::float8 as meta_daily_budget_cap`;
 
 /** Convenção: `lastSyncAt`/`lastError` = coleta dos ANÚNCIOS (Meta Ads); `igLastSyncAt`/`igLastError` = coleta do INSTAGRAM (Windsor ou Meta). */
 export interface CanalRow {
@@ -25,6 +25,8 @@ export interface CanalRow {
   alertaGasto: AlertaGastoConfig | null;
   /** Google (Perfil da Empresa): terceira fonte, independente (Windsor.ai, mesma chave do Instagram). */
   gbpSource: FonteGoogle; gbpLocationName: string | null; gbpLastSyncAt: string | null; gbpLastError: string | null;
+  /** Gestão de anúncios pelo conector do Claude: teto do orçamento diário (R$). */
+  metaTetoDiario: number;
 }
 export interface AlertaGastoConfig { limite: number; avisoPct: number; desde: string; emails: string[] }
 const mapa = (r: any): CanalRow => ({
@@ -36,7 +38,14 @@ const mapa = (r: any): CanalRow => ({
   campaignNameFilter: r.campaign_name_filter ?? null,
   alertaGasto: r.spend_alert_limit != null && r.spend_alert_since ? { limite: Number(r.spend_alert_limit), avisoPct: Number(r.spend_alert_warn_pct ?? 80), desde: r.spend_alert_since, emails: r.spend_alert_emails ?? [] } : null,
   gbpSource: r.gbp_source === "windsor" ? "windsor" : "none", gbpLocationName: r.gbp_location_name ?? null, gbpLastSyncAt: r.gbp_last_sync_at ?? null, gbpLastError: r.gbp_last_error ?? null,
+  metaTetoDiario: r.meta_daily_budget_cap != null ? Number(r.meta_daily_budget_cap) : 100,
 });
+
+/** Teto do orçamento diário (R$) para criar/alterar anúncios da Meta pelo conector. */
+export async function salvarTetoMeta(clientId: string, teto: number): Promise<boolean> {
+  const r = await rawQuery("update avanteza.client_channels set meta_daily_budget_cap = $2, updated_at = now() where client_id = $1 and provider = 'meta' returning id", [clientId, teto]);
+  return r.length > 0;
+}
 
 export const configDe = (c: CanalRow): CanalConfig => ({
   clientId: c.clientId, adAccountId: c.adAccountId, campaignIds: c.campaignIds, campaignNameFilter: c.campaignNameFilter, igUserId: c.igUserId, pageId: c.pageId, resultActionType: c.resultActionType,

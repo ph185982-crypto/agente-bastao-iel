@@ -16,6 +16,8 @@ import { atributosFaltando, mapearAtributo, montarItemMl, traduzirErroMl } from 
 import { validatePayload } from "../src/lib/executor/policy";
 import { ApiError } from "../src/lib/http";
 import { atualizarUmAnuncio } from "../src/lib/collector";
+import { FERRAMENTAS_META } from "../src/lib/mcp/ferramentas-meta";
+import { checarTeto, montarTargeting, nomeComPrefixo, padroesConjunto } from "../src/lib/channels/meta-gestao";
 import * as mcp from "../src/app/api/mcp/route";
 
 const skip = !HAS_DB && "defina TEST_DATABASE_URL (Postgres local de teste)";
@@ -312,4 +314,188 @@ test("saídas de marketplace: nunca levam token, refresh ou campo cifrado", { sk
   assert.ok(saidas.length >= 8);
   for (const proibido of [TOKEN_ML, "TG-REFRESH-SECRETO", "access_token", "_enc", "v1:"]) assert.ok(!tudo.includes(proibido), proibido);
   assert.deepEqual(limpar({ ok: 1, token: "x" }), { ok: 1 });
+});
+
+// ─── Meta Ads ────────────────────────────────────────────────────────────────
+
+const G = "https://graph.facebook.com/v21.0";
+const TOKEN_META = "EAAB-TOKEN-META-SECRETO-987654321";
+const TOKEN_PLAT = "EAAB-TOKEN-PLATAFORMA-SECRETO-111";
+const CONTA = "605261696580859";
+const coletas: string[] = [];
+const depsMeta = (extra: Deps = {}): Deps => ({ env: { ...process.env, META_ADS_MANAGE_TOKEN: TOKEN_PLAT }, coletarAnunciosMeta: async (id) => { coletas.push(id); }, ...extra });
+const rodarMeta = async (nome: string, args: unknown, d: Deps = depsMeta()) => { const r = await executarQualquer(nome, dono, args, d); saidas.push(r); return r as any; };
+const postsMeta = () => chamadas.filter((c) => c.metodo === "POST" && c.url.origin === "https://graph.facebook.com");
+const objeto = (id: string, conta: string, extra: Record<string, unknown> = {}) => ({ id, account_id: conta, name: `Obj ${id}`, status: "ACTIVE", ...extra });
+
+test("Meta puro: prefixo do filtro, teto (diário e média do vitalício), padrões por objetivo e targeting", () => {
+  assert.equal(nomeComPrefixo("Mensagens Nov", "SHOW MAN"), "SHOW MAN | Mensagens Nov");
+  assert.equal(nomeComPrefixo("Show Man - Nov", "SHOW MAN"), "Show Man - Nov", "não duplica");
+  assert.equal(nomeComPrefixo("Nov", null), "Nov");
+  assert.equal(checarTeto(100, { diario: 100 }), null);
+  assert.match(checarTeto(100, { diario: 100.01 })!, /acima do teto/);
+  assert.match(checarTeto(100, { vitalicio: 1000, inicio: "2026-12-01T00:00:00Z", fim: "2026-12-05T00:00:00Z" })!, /R\$ 250\.00\/dia/);
+  assert.equal(checarTeto(100, { vitalicio: 1000, inicio: "2026-12-01T00:00:00Z", fim: "2026-12-11T00:00:00Z" }), null);
+  assert.match(checarTeto(100, { vitalicio: 10 })!, /término/);
+  assert.deepEqual(padroesConjunto("OUTCOME_ENGAGEMENT", "WHATSAPP"), { optimization_goal: "CONVERSATIONS", billing_event: "IMPRESSIONS", destination_type: "WHATSAPP" });
+  assert.equal(padroesConjunto("OUTCOME_TRAFFIC", undefined).optimization_goal, "LINK_CLICKS");
+  assert.equal(padroesConjunto("OUTCOME_AWARENESS", undefined).optimization_goal, "REACH");
+  const t = montarTargeting({ idade_min: 25, generos: ["feminino"], pontos: [{ latitude: -3.7, longitude: -38.5, raio_km: 5 }] }) as any;
+  assert.deepEqual(t.geo_locations, { custom_locations: [{ latitude: -3.7, longitude: -38.5, radius: 5, distance_unit: "kilometer" }] });
+  assert.deepEqual(t.genders, [2]);
+  assert.equal(t.publisher_platforms, undefined, "automático");
+  assert.deepEqual((montarTargeting({}) as any).geo_locations, { countries: ["BR"] });
+  const nomes = TODAS_FERRAMENTAS.map((f) => f.nome);
+  for (const n of ["meta_status", "meta_listar", "meta_interesses_buscar", "meta_locais_buscar", "meta_publicos_listar", "meta_campanha_criar", "meta_conjunto_criar", "meta_criativo_criar", "meta_anuncio_criar", "meta_alterar"]) assert.ok(nomes.includes(n), n);
+  assert.ok(!FERRAMENTAS_META.some((f) => /exclu|apag|delet/.test(f.nome)));
+});
+
+test("Meta: preparar canais (conta, página, Instagram, filtro por nome; teto padrão R$ 100)", { skip }, async () => {
+  await rawQuery("insert into avanteza.client_channels (client_id, provider, ad_account_id, page_id, ig_user_id, campaign_name_filter, token_enc, token_hint, ads_source, status) values ($1,'meta',$2,'1111','2222','SHOW MAN',$3,'4321','meta','ativo')", [C1, `act_${CONTA}`, encrypt(TOKEN_META)]);
+  await rawQuery("insert into avanteza.client_channels (client_id, provider, ad_account_id, page_id, ads_source, status) values ($1,'meta','act_999000','3333','meta','ativo')", [C2]);
+  const [r] = await rawQuery<any>("select meta_daily_budget_cap::float8 cap from avanteza.client_channels where client_id = $1", [C1]);
+  assert.equal(r.cap, 100);
+});
+
+test("meta_status: sem ads_management → pode_gerenciar=false com explicação; com permissão → ok; token da plataforma quando o canal não tem", { skip }, async () => {
+  rota("GET", /\/me\/permissions$/, { json: { data: [{ permission: "ads_read", status: "granted" }, { permission: "ads_management", status: "declined" }] } });
+  rota("GET", new RegExp(`/act_${CONTA}$`), { json: { name: "Showman", account_status: 1, currency: "BRL" } });
+  const s1 = await rodarMeta("meta_status", { cliente: C1 });
+  assert.equal(s1.pode_gerenciar, false);
+  assert.equal(s1.ads_management, false);
+  assert.match(s1.problema, /ads_management/);
+  assert.equal(s1.origem_acesso, "cliente");
+  assert.ok(chamadas.every((c) => c.auth === `Bearer ${TOKEN_META}`), "token do canal no cabeçalho");
+  assert.ok(chamadas.every((c) => !c.url.search.includes("access_token")), "token nunca na URL");
+  rotas = [];
+  rota("GET", /\/me\/permissions$/, { json: { data: [{ permission: "ads_management", status: "granted" }] } });
+  rota("GET", new RegExp(`/act_${CONTA}$`), { json: { name: "Showman", account_status: 1, currency: "BRL" } });
+  const s2 = await rodarMeta("meta_status", { cliente: C1 });
+  assert.equal(s2.pode_gerenciar, true);
+  assert.equal(s2.teto_diario, 100);
+  const [info] = await rawQuery<any>("select info from avanteza.client_channels where client_id = $1", [C1]);
+  assert.equal(info.info.meta_gestao.pode_gerenciar, true);
+  // C2 não tem token próprio: usa META_ADS_MANAGE_TOKEN
+  chamadas = [];
+  rota("GET", /\/act_999000$/, { json: { name: "Outra", account_status: 1 } });
+  const s3 = await rodarMeta("meta_status", { cliente: C2 });
+  assert.equal(s3.origem_acesso, "plataforma");
+  assert.ok(chamadas.every((c) => c.auth === `Bearer ${TOKEN_PLAT}`));
+  const sem = await rodarMeta("meta_status", { cliente: C2 }, depsMeta({ env: { ...process.env, META_ADS_MANAGE_TOKEN: "" } }));
+  assert.equal(sem.origem_acesso, "nenhuma");
+  await assert.rejects(executarQualquer("meta_listar", dono, { cliente: C3 }, depsMeta()), /não tem conta de anúncios da Meta/);
+  // token inválido: mensagem clara, sem o token
+  rotas = [];
+  rota("GET", /\/me\/permissions$/, { status: 400, json: { error: { code: 190, message: `Invalid OAuth access token ${TOKEN_META}` } } });
+  const s4 = await rodarMeta("meta_status", { cliente: C1 });
+  assert.match(s4.problema, /Token da Meta inválido/);
+});
+
+test("Meta: campanha → conjunto → criativo → anúncio, na ordem e com os corpos certos (prefixo, centavos, WhatsApp, raio)", { skip }, async () => {
+  coletas.length = 0;
+  rota("POST", new RegExp(`/act_${CONTA}/campaigns$`), { json: { id: "120001" } });
+  rota("GET", /\/120001$/, { json: objeto("120001", CONTA, { objective: "OUTCOME_ENGAGEMENT", daily_budget: "5000" }) });
+  rota("POST", new RegExp(`/act_${CONTA}/adsets$`), { json: { id: "120002" } });
+  rota("GET", /^https:\/\/img\.test\/foto\.jpg$/, { json: { imagem: "bytes-falsos" } });
+  rota("POST", new RegExp(`/act_${CONTA}/adimages$`), { json: { images: { bytes: { hash: "HASH123", url: "https://scontent.test/x.jpg" } } } });
+  rota("POST", new RegExp(`/act_${CONTA}/adcreatives$`), { json: { id: "120003" } });
+  rota("GET", /\/120002$/, { json: objeto("120002", CONTA, { campaign_id: "120001" }) });
+  rota("GET", /\/120003$/, { json: objeto("120003", CONTA) });
+  rota("POST", new RegExp(`/act_${CONTA}/ads$`), { json: { id: "120004" } });
+
+  const camp = await rodarMeta("meta_campanha_criar", { cliente: C1, nome: "Mensagens Novembro", objetivo: "OUTCOME_ENGAGEMENT", orcamento_diario: 50 });
+  assert.equal(camp.campanha_id, "120001");
+  assert.equal(camp.nome, "SHOW MAN | Mensagens Novembro");
+  const conj = await rodarMeta("meta_conjunto_criar", {
+    cliente: C1, campanha_id: "120001", nome: "Fortaleza 5 km", destino: "WHATSAPP",
+    segmentacao: { idade_min: 25, idade_max: 55, pontos: [{ latitude: -3.73, longitude: -38.52, raio_km: 5 }], interesses: [{ id: "6003139266461", nome: "Moda" }] },
+  });
+  assert.equal(conj.conjunto_id, "120002");
+  const cri = await rodarMeta("meta_criativo_criar", { cliente: C1, nome: "Criativo 1", imagem_url: "https://img.test/foto.jpg", texto: "Chama no WhatsApp!", titulo: "Corte + barba", whatsapp: true });
+  assert.equal(cri.criativo_id, "120003");
+  const ad = await rodarMeta("meta_anuncio_criar", { cliente: C1, conjunto_id: "120002", criativo_id: "120003", nome: "Anúncio 1" });
+  assert.equal(ad.anuncio_id, "120004");
+
+  const posts = postsMeta();
+  assert.deepEqual(posts.map((c) => c.url.pathname.replace("/v21.0/", "")), [`act_${CONTA}/campaigns`, `act_${CONTA}/adsets`, `act_${CONTA}/adimages`, `act_${CONTA}/adcreatives`, `act_${CONTA}/ads`]);
+  assert.ok(posts.every((c) => c.auth === `Bearer ${TOKEN_META}` && !JSON.stringify(c.corpo).includes(TOKEN_META)));
+  assert.deepEqual(posts[0].corpo, { name: "SHOW MAN | Mensagens Novembro", objective: "OUTCOME_ENGAGEMENT", status: "ACTIVE", special_ad_categories: [], buying_type: "AUCTION", daily_budget: 5000, bid_strategy: "LOWEST_COST_WITHOUT_CAP" });
+  const as = posts[1].corpo;
+  assert.equal(as.campaign_id, "120001");
+  assert.equal(as.optimization_goal, "CONVERSATIONS");
+  assert.equal(as.billing_event, "IMPRESSIONS");
+  assert.equal(as.destination_type, "WHATSAPP");
+  assert.deepEqual(as.promoted_object, { page_id: "1111" });
+  assert.equal(as.daily_budget, undefined, "orçamento fica na campanha");
+  assert.deepEqual(as.targeting.geo_locations.custom_locations, [{ latitude: -3.73, longitude: -38.52, radius: 5, distance_unit: "kilometer" }]);
+  assert.deepEqual(as.targeting.flexible_spec, [{ interests: [{ id: "6003139266461", name: "Moda" }] }]);
+  assert.equal(as.targeting.age_min, 25);
+  assert.ok(typeof posts[2].corpo.bytes === "string" && posts[2].corpo.bytes.length > 0);
+  assert.deepEqual(posts[3].corpo, {
+    name: "Criativo 1",
+    object_story_spec: { page_id: "1111", instagram_user_id: "2222", link_data: { image_hash: "HASH123", link: "https://api.whatsapp.com/send", message: "Chama no WhatsApp!", name: "Corte + barba", call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } } } },
+  });
+  assert.deepEqual(posts[4].corpo, { name: "Anúncio 1", adset_id: "120002", creative: { creative_id: "120003" }, status: "ACTIVE" });
+  assert.equal(coletas.filter((x) => x === C1).length, 3, "coleta leve depois de campanha, conjunto e anúncio");
+  for (const ev of ["meta_campanha_criada", "meta_conjunto_criado", "meta_criativo_criado", "meta_anuncio_criado"]) {
+    const [a] = await auditoria(ev);
+    assert.equal(a.details.via, "claude", ev);
+    assert.equal(a.actor, DONO);
+    assert.equal(a.client_id, C1);
+  }
+  // conjunto com orçamento numa campanha que já tem orçamento → recusa
+  await assert.rejects(executarQualquer("meta_conjunto_criar", dono, { cliente: C1, campanha_id: "120001", nome: "Conj X", destino: "WHATSAPP", orcamento_diario: 10 }, depsMeta()), /já tem orçamento/);
+});
+
+test("Meta: teto diário recusa criação e alteração acima do limite (nada é enviado)", { skip }, async () => {
+  await assert.rejects(executarQualquer("meta_campanha_criar", dono, { cliente: C1, nome: "Grande", objetivo: "OUTCOME_TRAFFIC", orcamento_diario: 150 }, depsMeta()), /acima do teto deste cliente \(R\$ 100\.00\/dia\)/);
+  rota("GET", /\/120001$/, { json: objeto("120001", CONTA, { daily_budget: "5000" }) });
+  await assert.rejects(executarQualquer("meta_alterar", dono, { cliente: C1, nivel: "campanha", id: "120001", orcamento_diario: 101 }, depsMeta()), /acima do teto/);
+  assert.equal(postsMeta().length, 0);
+  assert.ok((await auditoria("meta_recusado_teto")).length >= 2);
+  // teto maior configurado pelo dono passa a valer
+  await rawQuery("update avanteza.client_channels set meta_daily_budget_cap = 300 where client_id = $1", [C1]);
+  rota("POST", new RegExp(`/act_${CONTA}/campaigns$`), { json: { id: "120010" } });
+  assert.equal((await rodarMeta("meta_campanha_criar", { cliente: C1, nome: "Grande", objetivo: "OUTCOME_TRAFFIC", orcamento_diario: 150, pausada: true })).status, "PAUSED");
+  await rawQuery("update avanteza.client_channels set meta_daily_budget_cap = 100 where client_id = $1", [C1]);
+});
+
+test("Meta alterar: objeto de outra conta recusado; aumento de orçamento respeita o limite % do dia; status e nome com prefixo", { skip }, async () => {
+  let orc = "5000";
+  rota("GET", /\/120001$/, () => ({ json: objeto("120001", CONTA, { daily_budget: orc }) }));
+  rota("POST", /\/120001$/, (c) => { if (c.corpo.daily_budget) orc = String(c.corpo.daily_budget); return { json: { success: true } }; });
+  rota("GET", /\/777000$/, { json: objeto("777000", "999000") });
+  await assert.rejects(executarQualquer("meta_alterar", dono, { cliente: C1, nivel: "campanha", id: "777000", status: "pausado" }, depsMeta()), /não pertence à conta de anúncios deste cliente/);
+  await assert.rejects(executarQualquer("meta_conjunto_criar", dono, { cliente: C1, campanha_id: "777000", nome: "Conj X", orcamento_diario: 10 }, depsMeta()), /não pertence/);
+  await assert.rejects(executarQualquer("meta_anuncio_criar", dono, { cliente: C1, conjunto_id: "777000", criativo_id: "120003", nome: "Anúncio X" }, depsMeta()), /não pertence/);
+  assert.equal(postsMeta().length, 0, "nada enviado para objeto de outra conta");
+
+  // política global update_ads_budget = 20 %/dia (schema). Referência do dia = 50.
+  const r1 = await rodarMeta("meta_alterar", { cliente: C1, nivel: "campanha", id: "120001", orcamento_diario: 55 });
+  assert.equal(r1.orcamento_antes, 50);
+  assert.equal(orc, "5500");
+  await assert.rejects(executarQualquer("meta_alterar", dono, { cliente: C1, nivel: "campanha", id: "120001", orcamento_diario: 65 }, depsMeta()), /Bloqueado pelo limite: Variação de 30\.0% no dia excede o limite de 20%/);
+  assert.equal(orc, "5500");
+  await rodarMeta("meta_alterar", { cliente: C1, nivel: "campanha", id: "120001", orcamento_diario: 40 });
+  assert.equal(orc, "4000", "redução não tem limite %");
+  const [ref] = await auditoria("meta_orcamento_alterado");
+  assert.equal(ref.details.via, "claude");
+  const r2 = await rodarMeta("meta_alterar", { cliente: C1, nivel: "campanha", id: "120001", status: "pausado", nome: "Promo Dezembro" });
+  assert.equal(r2.alterado.status, "PAUSED");
+  assert.equal(r2.alterado.name, "SHOW MAN | Promo Dezembro");
+  await assert.rejects(executarQualquer("meta_alterar", dono, { cliente: C1, nivel: "anuncio", id: "120004", orcamento_diario: 10 }, depsMeta()), /Anúncio não tem orçamento/);
+});
+
+test("Meta listar: só campanhas do filtro por nome; saídas sem token", { skip }, async () => {
+  rota("GET", new RegExp(`/act_${CONTA}/campaigns$`), { json: { data: [
+    { id: "1", name: "SHOW MAN | Mensagens", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_ENGAGEMENT", daily_budget: "5000" },
+    { id: "2", name: "Destrava - SHOPEE", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_SALES", daily_budget: "9000" },
+  ] } });
+  const l = await rodarMeta("meta_listar", { cliente: C1 });
+  assert.deepEqual(l.itens.map((x: any) => x.id), ["1"]);
+  assert.equal(l.itens[0].orcamento_diario, 50);
+  const tudo = JSON.stringify(saidas);
+  for (const proibido of [TOKEN_META, TOKEN_PLAT, "token_enc", "Bearer"]) assert.ok(!tudo.includes(proibido), proibido);
+  const auds = JSON.stringify(await rawQuery("select details from avanteza.audit_log"));
+  assert.ok(!auds.includes(TOKEN_META) && !auds.includes(TOKEN_PLAT) && !auds.includes(TOKEN_ML), "auditoria sem token");
 });

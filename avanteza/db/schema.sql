@@ -552,6 +552,14 @@ begin
     alter table avanteza.client_channels add constraint client_channels_gbp_source_check check (gbp_source in ('windsor','none'));
   end if;
 end $$;
+-- Gestão de anúncios pelo conector do Claude: teto do orçamento DIÁRIO (R$) por cliente para criar/alterar campanhas e conjuntos.
+alter table avanteza.client_channels add column if not exists meta_daily_budget_cap numeric(12,2) not null default 100;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'client_channels_meta_cap_check') then
+    alter table avanteza.client_channels add constraint client_channels_meta_cap_check check (meta_daily_budget_cap > 0);
+  end if;
+end $$;
 create table if not exists avanteza.spend_alerts (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references avanteza.clients(id) on delete cascade,

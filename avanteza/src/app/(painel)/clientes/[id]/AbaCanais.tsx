@@ -17,7 +17,8 @@ import Link from "next/link";
 import { carregarPublico, negocioDoNome } from "@/lib/channels/publico";
 import { SecaoPublico } from "@/components/canais/Publico";
 import { PERIODOS, ROTULO_PERIODO, ddmm, parsePeriodo, resolverPeriodo } from "@/lib/dashboards/periodo";
-import { atualizarAnunciosAgora, atualizarGoogleAgoraAcao, atualizarInstagramAgora, desconectarAnuncios, desconectarGoogleAcao, desconectarInstagram, reiniciarContagemAcao, salvarAlertaGastoAcao } from "../canais-actions";
+import { atualizarAnunciosAgora, atualizarGoogleAgoraAcao, atualizarInstagramAgora, desconectarAnuncios, desconectarGoogleAcao, desconectarInstagram, reiniciarContagemAcao, salvarAlertaGastoAcao, salvarTetoMetaAcao } from "../canais-actions";
+import { credencialGestaoDisponivel } from "@/lib/channels/meta-gestao";
 
 type Estado = { rotulo: string; cls: string };
 const ST: Record<string, Estado> = {
@@ -95,6 +96,8 @@ export async function AbaCanais({ client, owner, periodo: periodoTxt }: { client
         ) : null}
       </section>
 
+      {adsCfg && canal && <GestaoClaude clientId={id} owner={owner} canal={canal} />}
+
       <AlertaRecarga clientId={id} owner={owner} adsCfg={adsCfg} canal={canal} gasto={gasto} historico={historico} />
 
       {adsCfg && canal?.lastSyncAt && (
@@ -168,6 +171,32 @@ export async function AbaCanais({ client, owner, periodo: periodoTxt }: { client
         {owner && <ConectarGoogle clientId={id} inicial={{ gbpSource: "windsor", local: canal?.gbpLocationName ?? "" }} />}
       </section>
     </>
+  );
+}
+
+/** Gestão de anúncios pelo conector do Claude: teto diário e se há acesso de gestão (sem chamar a Meta ao abrir a página). */
+function GestaoClaude({ clientId, owner, canal }: { clientId: string; owner: boolean; canal: NonNullable<Awaited<ReturnType<typeof obterCanal>>> }) {
+  const origem = credencialGestaoDisponivel(canal.temToken);
+  const ultimo = canal.info?.meta_gestao as { pode_gerenciar?: boolean; verificado_em?: string } | undefined;
+  return (
+    <section aria-labelledby="sec-gestao" style={{ marginTop: 18 }}>
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="row"><h3 id="sec-gestao">Gerenciar anúncios pelo Claude</h3><span className={`pill ${origem ? "pill-ok" : "pill-outline"}`}>{origem ? "Com acesso" : "Sem acesso"}</span></div>
+        <ul className="plist">
+          <li><span>Acesso de gestão</span><b>{origem === "cliente" ? "token do cliente" : origem === "plataforma" ? "da plataforma (META_ADS_MANAGE_TOKEN)" : "nenhum — salve o token do cliente ou configure META_ADS_MANAGE_TOKEN"}</b></li>
+          <li><span>Permissão ads_management</span><b>{ultimo?.verificado_em ? `${ultimo.pode_gerenciar ? "sim" : "não"} · conferido ${ago(ultimo.verificado_em)}` : "ainda não conferida (o Claude confere com meta_status)"}</b></li>
+          <li><span>Teto diário</span><b>{canal.metaTetoDiario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} por campanha/conjunto</b></li>
+        </ul>
+        {owner && (
+          <form action={salvarTetoMetaAcao} className="btn-row" style={{ marginTop: 12, alignItems: "end" }} aria-label="Teto diário dos anúncios criados pelo Claude">
+            <input type="hidden" name="client_id" value={clientId} />
+            <div className="field" style={{ margin: 0 }}><label htmlFor="meta-teto">Teto diário (R$)</label><input id="meta-teto" name="teto" inputMode="decimal" defaultValue={String(canal.metaTetoDiario).replace(".", ",")} required /></div>
+            <Submit className="btn btn-sm btn-orange">Salvar teto</Submit>
+          </form>
+        )}
+        <p className="small muted" style={{ margin: "8px 0 0" }}>O Claude cria e altera campanhas só nesta conta de anúncios. Orçamento diário acima do teto é recusado; aumentos seguem o limite % diário da política de verba.</p>
+      </div>
+    </section>
   );
 }
 

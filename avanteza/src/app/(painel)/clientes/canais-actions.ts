@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireOwner } from "@/lib/auth";
 import { adminDb } from "@/lib/db";
-import { desconectarFonte, desconectarGoogle, obterCanal, salvarAnuncios, salvarGoogle, salvarInstagram } from "@/lib/channels/store";
+import { desconectarFonte, desconectarGoogle, obterCanal, salvarAnuncios, salvarGoogle, salvarInstagram, salvarTetoMeta } from "@/lib/channels/store";
 import { atualizarAgora, atualizarGoogleAgora, testarConexaoGoogle, testarConexaoCanal, testarConexaoWindsor, testarConexaoWindsorAds } from "@/lib/channels/servico";
 import type { ResultadoTeste } from "@/lib/channels/types";
 import type { ResultadoTesteWindsor } from "@/lib/channels/windsor";
@@ -234,4 +234,17 @@ export async function reiniciarContagemAcao(fd: FormData) {
   if (!r) voltar(clientId, "O alerta de recarga não está ligado para este cliente.", "erro");
   await auditar(actor, "spend_alert_reset", clientId, { antes: r.antes, depois: hoje });
   voltar(clientId, `Recarga registrada: a contagem recomeçou hoje (${hoje.split("-").reverse().join("/")}) e os avisos de 80% e 100% voltaram a valer.`);
+}
+
+// ─── Gestão de anúncios pelo conector do Claude: teto diário ─────────────────
+
+export async function salvarTetoMetaAcao(fd: FormData) {
+  const actor = await requireOwner();
+  const clientId = idDoForm(fd);
+  const teto = Number(str(fd, "teto").replace(/\./g, "").replace(",", "."));
+  if (!Number.isFinite(teto) || teto <= 0 || teto > 100_000) voltar(clientId, "Teto diário: informe um valor em reais entre 1 e 100.000.", "erro");
+  const antes = await obterCanal(clientId);
+  if (!antes || !(await salvarTetoMeta(clientId, Math.round(teto * 100) / 100))) voltar(clientId, "Configure os anúncios do canal antes do teto.", "erro");
+  await auditar(actor, "meta_teto_config", clientId, { antes: antes.metaTetoDiario, depois: teto });
+  voltar(clientId, `Teto diário dos anúncios criados pelo Claude: R$ ${teto.toFixed(2).replace(".", ",")}.`);
 }

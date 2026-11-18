@@ -2,7 +2,7 @@
 // A Meta real NUNCA é chamada: tudo usa fetch simulado ou a API em memória.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { HAS_DB, resetSchema, closeDb, mkClient, mkUser } from "./_mapa-fixtures";
 import { criarApiGraph, criarGraph, esconderToken, GraphErro, janelas, testarConexao } from "../src/lib/channels/graph";
 import { evolucao, relAnuncios, relInstagram, serieSeguidores, somar, type Linha } from "../src/lib/channels/report";
@@ -360,7 +360,7 @@ test("cron: rota /api/cron/channels no vercel.json (1×/dia, no horário já agr
 test("ações do admin: todas exigem requireOwner e nenhuma chamada de escrita à Meta existe em src/lib/channels", () => {
   const acoes = readFileSync(new URL("../src/app/(painel)/clientes/canais-actions.ts", import.meta.url), "utf8");
   const exportadas = [...acoes.matchAll(/export async function (\w+)/g)].map((m) => m[1]);
-  assert.deepEqual(exportadas.sort(), ["atualizarAnunciosAgora", "atualizarGoogleAgoraAcao", "atualizarInstagramAgora", "desconectarAnuncios", "desconectarGoogleAcao", "desconectarInstagram", "reiniciarContagemAcao", "salvarAlertaGastoAcao", "salvarAnunciosMeta", "salvarGoogleCanal", "salvarInstagramCanal", "testarConexaoGoogleAcao", "testarConexaoMeta", "testarConexaoWindsorAcao", "testarConexaoWindsorAdsAcao"]);
+  assert.deepEqual(exportadas.sort(), ["atualizarAnunciosAgora", "atualizarGoogleAgoraAcao", "atualizarInstagramAgora", "desconectarAnuncios", "desconectarGoogleAcao", "desconectarInstagram", "reiniciarContagemAcao", "salvarAlertaGastoAcao", "salvarAnunciosMeta", "salvarGoogleCanal", "salvarInstagramCanal", "salvarTetoMetaAcao", "testarConexaoGoogleAcao", "testarConexaoMeta", "testarConexaoWindsorAcao", "testarConexaoWindsorAdsAcao"]);
   for (const nome of exportadas) {
     const corpo = acoes.slice(acoes.indexOf(`export async function ${nome}`)).split(/\nexport async function /)[0];
     assert.match(corpo, /await requireOwner\(\)/, nome);
@@ -369,6 +369,9 @@ test("ações do admin: todas exigem requireOwner e nenhuma chamada de escrita �
     const src = readFileSync(new URL(`../src/lib/channels/${f}`, import.meta.url), "utf8");
     assert.ok(!/method:\s*["'](POST|PUT|PATCH|DELETE)["']/i.test(src), `${f}: só GET`);
   }
+  // Escrita na Meta só existe no módulo de GESTÃO (conector do Claude, com travas próprias): src/lib/channels/meta-gestao.ts.
+  const escritores = readdirSync(new URL("../src/lib/channels/", import.meta.url)).filter((f) => /method:\s*["'](POST|PUT|PATCH|DELETE)["']/i.test(readFileSync(new URL(`../src/lib/channels/${f}`, import.meta.url), "utf8")));
+  assert.deepEqual(escritores, ["meta-gestao.ts"]);
   const graph = readFileSync(new URL("../src/lib/channels/graph.ts", import.meta.url), "utf8");
   assert.equal([...graph.matchAll(/method:\s*"(\w+)"/g)].map((m) => m[1]).join(","), "GET");
 });

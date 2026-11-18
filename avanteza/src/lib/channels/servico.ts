@@ -130,6 +130,25 @@ export async function rotinaAnunciosLeve(o: { maxMs?: number; hoje?: string; met
   return { canais: canais.length, coleta, alertas };
 }
 
+/**
+ * Coleta LEVE de UM cliente (depois de criar/alterar anúncios pelo conector): nível de campanha dos últimos 3 dias,
+ * para o painel refletir a mudança. NÃO checa o alerta de recarga (sem e-mail).
+ */
+export async function coletaLeveDoCliente(clientId: string, o: { hoje?: string; meta?: FabricaApi; windsorAds?: FabricaWindsorAds } = {}): Promise<{ ok: boolean; motivo?: string }> {
+  const c = await obterCanal(clientId);
+  if (!c || !c.adAccountId || (c.adsSource !== "meta" && c.adsSource !== "windsor") || c.status === "desconectado") return { ok: false, motivo: "anúncios não configurados" };
+  const doWindsor = c.adsSource === "windsor";
+  const meta = doWindsor ? null : await (o.meta ?? apiPadrao)(c).catch(() => null);
+  const winAds = doWindsor ? await (o.windsorAds ?? windsorAdsPadrao)(c).catch(() => null) : null;
+  if (!meta && !winAds) return { ok: false, motivo: "sem credencial de leitura" };
+  try {
+    const r = await coletarCanal(c, meta?.api ?? null, { hoje: o.hoje ?? spDate(), dias: DIAS_COLETA_LEVE, maxMs: 30_000, fontes: ["ads"], soCampanhas: true }, meta?.token ?? null, null, winAds);
+    return { ok: r.ok };
+  } catch (e) {
+    return { ok: false, motivo: mensagemSegura(e, meta?.token ?? winAds?.chave) };
+  }
+}
+
 export type FonteAtualizar = "ads" | "instagram" | "todas";
 export interface OpcoesAtualizar { fonte?: FonteAtualizar; meta?: FabricaApi; windsor?: FabricaWindsor; windsorAds?: FabricaWindsorAds; maxMs?: number }
 
