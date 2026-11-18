@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { origemVendedoria, redirecionamentosComercial, reescritasComercial } from "./src/lib/comercial/zona";
+import { reescritasMcp } from "./src/lib/mcp/reescritas";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -8,7 +9,8 @@ const nextConfig: NextConfig = {
   // Comercial (Vendedor IA) sob /comercial/*: reescrita para VENDEDORIA_URL (src/lib/comercial/zona.ts).
   // Reverter = apagar estas duas funções (e COMERCIAL_ZONA=0 nos atalhos).
   async rewrites() {
-    return { beforeFiles: [], afterFiles: reescritasComercial(origemVendedoria()), fallback: [] };
+    // beforeFiles: descoberta OAuth do conector do Claude (/.well-known/oauth-*), antes de qualquer outra rota (src/lib/mcp/reescritas.ts).
+    return { beforeFiles: reescritasMcp(), afterFiles: reescritasComercial(origemVendedoria()), fallback: [] };
   },
   async redirects() {
     return redirecionamentosComercial();

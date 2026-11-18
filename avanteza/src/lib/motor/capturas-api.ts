@@ -71,7 +71,7 @@ export async function handleCaptura(req: Request, deps: { provider?: AiProvider;
 
 export async function notificarCaptura(clientId: string, origem: string, acoes: number, extra = "") {
   const [c] = await rawQuery<{ name: string }>("select name from avanteza.clients where id = $1", [clientId]);
-  const via: Record<string, string> = { whatsapp_max: "pelo Max (WhatsApp)", whatsapp_export: "por conversa exportada", extensao: "pela extensão", reuniao: "de reunião", manual: "manualmente" };
+  const via: Record<string, string> = { whatsapp_max: "pelo Max (WhatsApp)", whatsapp_export: "por conversa exportada", extensao: "pela extensão", reuniao: "de reunião", manual: "manualmente", claude: "pelo Claude" };
   await notificar({
     tipo: "captura", para: "equipe", clientId, link: `/operacoes/capturas?cliente=${clientId}`,
     titulo: `Captura registrada: ${c?.name ?? "cliente"}`,

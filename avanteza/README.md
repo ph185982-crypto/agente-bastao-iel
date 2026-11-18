@@ -183,3 +183,16 @@ DATABASE_URL=postgres://postgres@localhost:54329/mapa_dev node db/seed-canais-sh
 CHANNELS_FIXTURE=1 npm run dev   # dados simulados (6 anúncios do Showman e Instagram showmanbarbearia); depois "Atualizar agora" na aba Canais ou GET /api/cron/channels com o CRON_SECRET
 ```
 Passo a passo para o Cowork gerar e colar o token: `docs/PROMPT_COWORK_META_CLIENTE.md`.
+
+## Conector do Claude (MCP)
+Servidor MCP em `https://app.avanteza.com.br/api/mcp` para o Claude (claude.ai → Configurações → Conectores → "Adicionar conector
+personalizado"). Código: `src/lib/mcp/` (OAuth, acesso, ferramentas), `src/app/api/mcp`, `src/app/api/oauth/*`, tela `/oauth/autorizar`.
+- Login: sessão do Avanteza ID. Só **administrador** ativo em `ADMIN_EMAILS` autoriza (membro, revisor e cliente são recusados); o
+  cadastro é conferido de novo a cada chamada (desativar o usuário corta o Claude na hora).
+- OAuth 2.1 sem estado (PKCE S256, registro dinâmico; só os callbacks do Claude e `http://localhost`). Código 5 min, acesso 30 dias,
+  refresh 180 dias. Descoberta em `/.well-known/oauth-protected-resource` e `/.well-known/oauth-authorization-server` (reescritas no `next.config.ts`).
+- Variável nova: `AVANTEZA_MCP_SECRET` (obrigatória; sem ela todas as rotas respondem 503; trocá-la invalida todas as conexões).
+- Ferramentas: leitura (busca, clientes e saúde, ficha, fila de hoje, plano, reuniões, canais, financeiro, lançamentos, comercial,
+  entregas, notificações) e ação (criar/atualizar tarefa, registrar combinado e reunião, lançar no financeiro, atualizar coleta do canal).
+  Sem exclusão, sem acessos/senhas, sem e-mail a cliente. Toda escrita vai para `audit_log` com `details.via = "claude"`.
+- Schema: `node db/apply.mjs` (aceita a origem `claude` em `capturas`).

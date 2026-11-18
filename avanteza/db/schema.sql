@@ -940,3 +940,16 @@ create table if not exists avanteza.lembretes_cliente (
   criado_em timestamptz not null default now(),
   unique (client_id, dia)
 );
+
+-- Conector do Claude (MCP em /api/mcp): combinados registrados pelo Claude entram como captura de origem "claude".
+-- Idempotente: só recria a checagem se ela ainda não aceita 'claude'.
+do $$
+declare c text;
+begin
+  select conname into c from pg_constraint
+   where conrelid = 'avanteza.capturas'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%whatsapp_max%' and pg_get_constraintdef(oid) not like '%claude%';
+  if c is not null then
+    execute format('alter table avanteza.capturas drop constraint %I', c);
+    alter table avanteza.capturas add constraint capturas_origem_check check (origem in ('whatsapp_max','whatsapp_export','extensao','reuniao','manual','claude'));
+  end if;
+end $$;
