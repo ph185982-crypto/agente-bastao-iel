@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow">
+<title>UFFIR Diagnóstico Digital</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: relatório de reunião em coluna única, blocos por canal, plano em três etapas (30/60/90 dias). Marca Avanteza. */
+:root{
+  --bg:#F5F0E6; --surface:#FFFFFF; --ink:#0B1B33; --muted:#4A5568; --line:#EAD9C2;
+  --accent:#FF6A1F; --accent-ink:#B5410A; --soft:#FBEFE3;
+  --ok:#1F7A4D; --warn:#A15C00; --bad:#B42318;
+  --font:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0B1B33; --surface:#13264A; --ink:#F5F0E6; --muted:#B9C2D3; --line:#22375E;
+  --accent:#FF6A1F; --accent-ink:#FF9A5C; --soft:#1A2F57; --ok:#4CC38A; --warn:#F0B44C; --bad:#F47A6E; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0B1B33; --surface:#13264A; --ink:#F5F0E6; --muted:#B9C2D3; --line:#22375E;
+  --accent:#FF6A1F; --accent-ink:#FF9A5C; --soft:#1A2F57; --ok:#4CC38A; --warn:#F0B44C; --bad:#F47A6E; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.55}
+.wrap{max-width:980px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:28px}
+header{display:grid;gap:10px}
+.brand{font-weight:800;font-size:18px;letter-spacing:-.01em}.brand span{color:var(--accent)}
+h1{font-size:clamp(28px,5vw,42px);line-height:1.1;margin:0;letter-spacing:-.02em;text-wrap:balance}
+h2{font-size:22px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h3{font-size:16px;margin:0}
+p{margin:0;max-width:68ch}
+.meta{color:var(--muted);font-size:14px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink)}
+section{background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:24px;display:grid;gap:16px;min-width:0}
+.thesis{background:var(--ink);color:var(--bg);border:none}
+.thesis .eyebrow{color:var(--accent)}
+.thesis p{color:inherit;opacity:.92}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.kpi{background:var(--soft);border-radius:14px;padding:14px;display:grid;gap:2px}
+.kpi b{font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi small{color:var(--muted);font-size:13px}
+.pill{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;border:1px solid currentColor}
+.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}
+.channels{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.channel{border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:8px;align-content:start;min-width:0}
+.channel .head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+ul{margin:0;padding-left:20px;display:grid;gap:6px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.us td{background:var(--soft);font-weight:700}
+.bar{height:8px;background:var(--line);border-radius:999px;overflow:hidden;min-width:60px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.phases{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.phase{border-radius:16px;padding:16px;background:var(--soft);display:grid;gap:10px;align-content:start}
+.phase .when{font-weight:800;color:var(--accent-ink)}
+.note{font-size:13px;color:var(--muted)}
+.proj td:first-child{font-weight:600}
+a{color:var(--accent-ink)}
+footer{font-size:13px;color:var(--muted);display:grid;gap:6px}
+</style>
+<style>body{margin:0}</style></head><body>
+
+<div class="wrap">
+<header>
+  <div class="brand">avanteza<span>.</span></div>
+  <div class="eyebrow">Diagnóstico digital · reunião de 19/11/2026</div>
+  <h1>UFFIR Construtora: ponto de partida e plano para os próximos 90 dias</h1>
+  <p class="meta">Goiânia e região metropolitana · construção residencial, reformas prediais, obras industriais e licitações. Período analisado: 20/10 a 18/11/2026 (últimos 30 dias).</p>
+</header>
+
+<section class="thesis">
+  <div class="eyebrow">A leitura em uma frase</div>
+  <h2>A UFFIR ainda é invisível no digital, e isso é uma vantagem: o nicho de obras pequenas e médias em Goiânia tem concorrentes com audiência modesta, e quem mostrar obra real com constância ocupa o espaço.</h2>
+  <p>Hoje o cliente que pesquisa "construtora" ou "reforma comercial em Goiânia" não encontra prova de que a UFFIR existe e entrega. O trabalho dos próximos 90 dias é construir essa prova: obras reais, rosto da equipe, Google e LinkedIn para o público empresarial.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Instagram @uffir.oficial · dados reais (Windsor.ai)</div>
+  <h2>Perfil novo, ainda sem alcance</h2>
+  <div class="grid">
+    <div class="kpi"><small>Seguidores</small><b>22</b><small>segue 80 perfis</small></div>
+    <div class="kpi"><small>Publicações</small><b>6</b><small>todas em 09/10, no mesmo dia</small></div>
+    <div class="kpi"><small>Alcance em 30 dias</small><b>6</b><small>contas alcançadas</small></div>
+    <div class="kpi"><small>Visualizações em 30 dias</small><b>17</b><small>0 interações · 0 cliques no link</small></div>
+  </div>
+  <ul>
+    <li><strong>As 6 publicações saíram no mesmo dia (09/10)</strong> e o perfil está parado há 40 dias. O algoritmo só distribui perfis que publicam com frequência.</li>
+    <li><strong>Só imagens estáticas, sem Reels.</strong> Cada post alcançou de 3 a 5 pessoas, sem curtidas, comentários ou salvamentos.</li>
+    <li><strong>Conteúdo institucional genérico</strong> ("Todo grande projeto começa com uma ideia"). Falta o que vende obra: canteiro, antes e depois, equipe, prazo cumprido.</li>
+    <li><strong>A bio é clara</strong> (planejamento e execução; residencial e industrial; reformas prediais) e já tem o link do site. É uma boa base.</li>
+  </ul>
+  <p class="note">Referência de mercado: a taxa média de engajamento de marcas no Instagram foi de 0,48% em 2025, com Reels e carrosséis acima de imagens (Socialinsider, 2026).</p>
+</section>
+
+<section>
+  <div class="eyebrow">Demais canais · análise e projeção</div>
+  <h2>Onde a UFFIR está e onde precisa estar</h2>
+  <div class="channels">
+    <div class="channel">
+      <div class="head"><h3>TikTok</h3><span class="pill bad">Não existe</span></div>
+      <p>Nenhum perfil encontrado. Vídeos curtos de obra (fundação, laje, antes e depois, "quanto custa reformar uma loja") estão entre os formatos de construção que mais circulam. No TikTok a média de engajamento por post é de 3,70%, perto de 8 vezes a do Instagram (Socialinsider, 2026).</p>
+      <p><strong>Papel:</strong> alcance e marca. Reaproveita os mesmos vídeos do Reels, com custo extra quase zero.</p>
+    </div>
+    <div class="channel">
+      <div class="head"><h3>LinkedIn</h3><span class="pill bad">Não existe</span></div>
+      <p>Nenhuma página da empresa encontrada. É o canal para o público que mais paga: indústria, gestores de lojas e escritórios, síndicos e administradoras de condomínio, e quem acompanha licitações.</p>
+      <p><strong>Papel:</strong> credibilidade B2B. Página da empresa, perfil do responsável técnico ativo e cases de obra comercial e industrial.</p>
+    </div>
+    <div class="channel">
+      <div class="head"><h3>Site uffir.com.br</h3><span class="pill warn">Precisa de prova</span></div>
+      <ul>
+        <li>Imagens feitas por IA, e o próprio site avisa que não são obras da UFFIR.</li>
+        <li>Sem portfólio, depoimentos, CNPJ, CREA/CAU nem equipe visível. Isso pesa em licitação e em B2B.</li>
+        <li>Não leva para nenhuma rede social. O e-mail de contato é um Gmail de terceiro.</li>
+        <li>Ponto forte: o botão que abre o WhatsApp já com a mensagem preenchida.</li>
+      </ul>
+    </div>
+    <div class="channel">
+      <div class="head"><h3>Google (Perfil da Empresa)</h3><span class="pill bad">Não encontrado</span></div>
+      <p>As buscas por "construtora" e "reforma" em Goiânia trazem diretórios e perfis do Google no topo. Sem um Perfil da Empresa com fotos de obra e avaliações, a UFFIR fica de fora dessas buscas locais.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Concorrentes e referências em Goiânia</div>
+  <h2>O nicho tem audiência pequena: dá para alcançar</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Empresa</th><th>Instagram</th><th>Seguidores (aprox.)</th><th></th><th>Posicionamento</th></tr></thead>
+    <tbody>
+      <tr><td>Innovar Construtora</td><td>@innovarconstrutora</td><td class="num">~15 mil</td><td><div class="bar"><i style="width:100%"></i></div></td><td>25 anos, alto padrão e soluções logísticas; mais de 1 mil posts</td></tr>
+      <tr><td>Edificare Construtora</td><td>@edificareconstrutora</td><td class="num">~7,9 mil</td><td><div class="bar"><i style="width:53%"></i></div></td><td>Alto padrão em Goiânia e interior</td></tr>
+      <tr><td>Veza Construtora</td><td>@vezaconstrutora</td><td class="num">~7,3 mil</td><td><div class="bar"><i style="width:49%"></i></div></td><td>Projeto, financiamento e execução</td></tr>
+      <tr><td>Goiânia Reparos e Reformas</td><td>@goianiareparosereformas</td><td class="num">~4 mil</td><td><div class="bar"><i style="width:27%"></i></div></td><td>Reforma e manutenção residencial e comercial (o mais direto em reforma)</td></tr>
+      <tr><td>GP Construtora</td><td>@g.p.construtora</td><td class="num">~1,3 mil</td><td><div class="bar"><i style="width:9%"></i></div></td><td>Galpões comerciais e industriais</td></tr>
+      <tr><td>GDM Building</td><td>@gdmbuilding</td><td class="num">~900</td><td><div class="bar"><i style="width:6%"></i></div></td><td>Construção e reforma de alto padrão</td></tr>
+      <tr><td>Global Construtora</td><td>@global_construtora</td><td class="num">~680</td><td><div class="bar"><i style="width:4.5%"></i></div></td><td>Reformas, lazer e impermeabilização</td></tr>
+      <tr><td>Foizer Construtora</td><td>@foizer.construtora</td><td class="num">~560</td><td><div class="bar"><i style="width:3.7%"></i></div></td><td>Residencial, comercial e industrial (escopo mais parecido com o da UFFIR)</td></tr>
+      <tr class="us"><td>UFFIR</td><td>@uffir.oficial</td><td class="num">22</td><td><div class="bar"><i style="width:1%"></i></div></td><td>Residencial, predial, industrial e licitações</td></tr>
+    </tbody>
+  </table></div>
+  <p>Os concorrentes de escopo parecido (Foizer, GP, Global e GE Construtora) têm entre 500 e 1.300 seguidores. Com constância e conteúdo de obra real, a UFFIR alcança esse patamar em poucos meses. Os que passam de 7 mil apostam em alto padrão e em muitos anos de publicação.</p>
+  <p class="note">Seguidores levantados em buscas públicas em 19/11/2026; são aproximados e não foram auditados.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Mercado</div>
+  <h2>O setor está aquecido em Goiás</h2>
+  <ul>
+    <li>Goiás foi o 6º estado em saldo de empregos na construção (+9,5 mil vagas), quase metade em Goiânia e região metropolitana (CBIC, 2025).</li>
+    <li>O Sinduscon-GO relata falta de mão de obra porque o setor está aquecido (CBIC, 2025).</li>
+    <li>O PIB de Goiás cresceu 3,8% em 12 meses até dez/2025 (Instituto Mauro Borges, 2026).</li>
+  </ul>
+  <p>Leitura: há demanda. A disputa é pela confiança do contratante, e confiança, no digital, vem de prova (obra entregue, avaliação, equipe visível).</p>
+</section>
+
+<section>
+  <div class="eyebrow">Projeção · estimativa da Avanteza</div>
+  <h2>Onde a UFFIR pode estar em 90 dias</h2>
+  <div class="tbl"><table class="proj">
+    <thead><tr><th>Indicador</th><th>Hoje</th><th>Cenário base (90 dias)</th><th>Cenário com mídia paga</th></tr></thead>
+    <tbody>
+      <tr><td>Seguidores no Instagram</td><td class="num">22</td><td class="num">250 a 400</td><td class="num">600 a 1.000</td></tr>
+      <tr><td>Alcance mensal no Instagram</td><td class="num">6</td><td class="num">3 mil a 8 mil</td><td class="num">20 mil a 40 mil</td></tr>
+      <tr><td>Seguidores no TikTok</td><td class="num">0</td><td class="num">150 a 500</td><td class="num">500 a 1.500</td></tr>
+      <tr><td>Seguidores da página no LinkedIn</td><td class="num">0</td><td class="num">100 a 200</td><td class="num">200 a 400</td></tr>
+      <tr><td>Avaliações no Google</td><td class="num">0</td><td class="num">10 a 15</td><td class="num">15 a 25</td></tr>
+      <tr><td>Contatos no WhatsApp por mês</td><td class="num">sem medição</td><td class="num">5 a 10</td><td class="num">20 a 40</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Premissas: 3 a 4 publicações por semana (ao menos 2 Reels/vídeos), cada obra fotografada e filmada, pedido de avaliação a cada cliente atendido. O cenário com mídia paga considera de R$ 900 a R$ 1.500 por mês em anúncios de mensagem no WhatsApp, com raio em Goiânia e região. São estimativas para orientar metas, não garantia de resultado; serão recalibradas com os dados reais do primeiro mês.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Plano de ação</div>
+  <h2>O que fazer, em que ordem</h2>
+  <div class="phases">
+    <div class="phase">
+      <div class="when">Dias 1 a 30 · Fundação</div>
+      <ul>
+        <li>Banco de obras reais: fotos e vídeos de 3 a 5 obras (antes, durante, depois) e a equipe em campo. Responsável: UFFIR envia, Avanteza organiza.</li>
+        <li>Perfil da Empresa no Google: criar, verificar, fotos reais, horário, área atendida; pedir avaliação aos últimos clientes.</li>
+        <li>Página da UFFIR no LinkedIn e perfil do responsável técnico revisado.</li>
+        <li>Abrir o TikTok @uffir com o mesmo nome e bio.</li>
+        <li>Instagram: destaques (Obras, Reformas comerciais, Industrial, Como trabalhamos, Contato) e calendário de 3 a 4 posts por semana.</li>
+        <li>Site: trocar imagens de IA por obras reais, mostrar CNPJ e registro profissional, ligar Instagram, LinkedIn e TikTok, e-mail com domínio próprio.</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="when">Dias 31 a 60 · Constância</div>
+      <ul>
+        <li>Séries fixas: "Obra da semana" (antes e depois), "Quanto custa?" (faixas de investimento por tipo de obra), "Bastidores do canteiro".</li>
+        <li>Reels e TikTok com os mesmos vídeos, 2 a 3 por semana.</li>
+        <li>LinkedIn: 1 case por semana de obra comercial ou industrial, com prazo e resultado.</li>
+        <li>Anúncio de mensagem no WhatsApp com raio em Goiânia e região (meta, lojas, escritórios e condomínios), começando com R$ 30 a R$ 50 por dia.</li>
+        <li>Medição: origem de cada contato no WhatsApp (Instagram, Google, site, indicação).</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="when">Dias 61 a 90 · Escala</div>
+      <ul>
+        <li>Página de portfólio no site com as obras do período e depoimentos em vídeo.</li>
+        <li>Ampliar o anúncio que trouxer o menor custo por contato e testar público B2B (gestores, síndicos, administradoras).</li>
+        <li>Material de apresentação para licitações e propostas privadas (portfólio, equipe, certidões).</li>
+        <li>Revisão dos números com a UFFIR e metas do trimestre seguinte.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Para decidir hoje na reunião</div>
+  <h2>Decisões e o que a UFFIR precisa enviar</h2>
+  <ul>
+    <li>Quais 3 a 5 obras viram o primeiro portfólio, e quem envia fotos e vídeos toda semana.</li>
+    <li>Foco comercial do trimestre: residencial, reforma comercial, industrial ou licitações (define público e anúncios).</li>
+    <li>Verba mensal de anúncios (sugestão inicial: R$ 900 a R$ 1.500).</li>
+    <li>Acessos: Google (Perfil da Empresa e site), LinkedIn (administrador da página), Meta (conta de anúncios certa da UFFIR).</li>
+    <li>Responsável técnico que aparece nos vídeos e no LinkedIn.</li>
+  </ul>
+</section>
+
+<footer>
+  <div>Fontes: Instagram @uffir.oficial via Windsor.ai (20/10 a 18/11/2026); site uffir.com.br; perfis públicos dos concorrentes no Instagram; CBIC (2025); Instituto Mauro Borges (2026); Socialinsider, benchmarks 2026.</div>
+  <div>TikTok, LinkedIn e Google: não há perfis da UFFIR para medir. A seção de projeção é uma estimativa da Avanteza.</div>
+</footer>
+</div>
+</body></html>
