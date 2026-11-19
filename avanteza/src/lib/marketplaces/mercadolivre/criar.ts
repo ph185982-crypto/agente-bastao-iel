@@ -158,5 +158,9 @@ export function traduzirErroMl(e: unknown): string {
     return `${campo ? `${campo}: ` : ""}${String(c.message ?? c.code ?? "").slice(0, 160)}`;
   });
   const base = `O Mercado Livre recusou (${e.status}${b.error ? ` ${b.error}` : ""})`;
-  return itens.length ? `${base}: ${itens.join("; ")}` : `${base}: ${String(b.message ?? e.message).slice(0, 200)}`;
+  if (itens.length) return `${base}: ${itens.join("; ")}`;
+  // Sem causas estruturadas: devolve o corpo resumido (sem tokens; é a resposta do ML) para a pessoa ver o motivo real.
+  const resto = Object.fromEntries(Object.entries(b).filter(([k]) => !["message", "error", "status"].includes(k)));
+  const extra = Object.keys(resto).length ? ` · detalhes: ${JSON.stringify(resto).slice(0, 600)}` : "";
+  return `${base}: ${String(b.message ?? e.message).slice(0, 200)}${extra}`;
 }
