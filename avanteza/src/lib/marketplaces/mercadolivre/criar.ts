@@ -132,13 +132,15 @@ export function montarItemMl(a: NovoAnuncio, o: { me2: boolean }): Json {
   return item;
 }
 
-/** A conta usa Mercado Envios (me2)? Falha de leitura → false (o ML aplica o padrão da conta). */
+/** Envia com Mercado Envios (me2)? No Brasil o ML exige me2 para a maioria das contas ("ME2 adoption is mandatory"), inclusive
+ *  contas novas sem modos configurados. Só não usa me2 quando a conta tem modos configurados e nenhum deles é me2. */
 export async function contaUsaMe2(token: string, userId: string): Promise<boolean> {
   try {
     const r = await fetchJson<Json>(`${ML_API}/users/${userId}/shipping_preferences`, auth(token), { retries: 1 });
-    return Array.isArray(r?.modes) && r.modes.includes("me2");
+    const modos = Array.isArray(r?.modes) ? (r.modes as unknown[]) : [];
+    return modos.length === 0 || modos.includes("me2");
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -152,7 +154,9 @@ export function traduzirErroMl(e: unknown): string {
   if (e.status === 429) return "O Mercado Livre limitou as chamadas agora. Tente de novo em alguns minutos.";
   const b = (e.body && typeof e.body === "object" ? e.body : {}) as Json;
   // /items usa cause[]; /catalog/charts usa errors[] (code, message).
-  const causas = ((Array.isArray(b.cause) ? b.cause : Array.isArray(b.errors) ? b.errors : []) as Json[]).filter((c) => c && c.type !== "warning");
+  const todas = (Array.isArray(b.cause) ? b.cause : Array.isArray(b.errors) ? b.errors : []) as Json[];
+  const soErros = todas.filter((c) => c && c.type !== "warning");
+  const causas = soErros.length ? soErros : todas.filter(Boolean);
   const itens = causas.slice(0, 6).map((c) => {
     const campo = c.references?.[0] ?? c.code ?? "";
     return `${campo ? `${campo}: ` : ""}${String(c.message ?? c.code ?? "").slice(0, 160)}`;
