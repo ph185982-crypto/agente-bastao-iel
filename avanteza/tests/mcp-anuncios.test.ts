@@ -14,6 +14,7 @@ import { TODAS_FERRAMENTAS, executarQualquer } from "../src/lib/mcp/registro";
 import { ErroFerramenta, limpar, type Ator, type Deps } from "../src/lib/mcp/ferramentas";
 import { atributosFaltando, mapearAtributo, montarItemMl, traduzirErroMl } from "../src/lib/marketplaces/mercadolivre/criar";
 import { validatePayload } from "../src/lib/executor/policy";
+import { limparCacheMl } from "../src/lib/marketplaces/mercadolivre/publicar";
 import { ApiError } from "../src/lib/http";
 import { atualizarUmAnuncio } from "../src/lib/collector";
 import { FERRAMENTAS_META } from "../src/lib/mcp/ferramentas-meta";
@@ -132,7 +133,7 @@ before(async () => {
   await rawQuery("update avanteza.settings set dry_run = false, global_pause = false");
   await rawQuery("insert into avanteza.admins (email, role, name, active) values ($1,'admin','Dono',true)", [DONO]);
 });
-beforeEach(() => { chamadas = []; rotas = []; });
+beforeEach(() => { chamadas = []; rotas = []; limparCacheMl(); });
 after(async () => { globalThis.fetch = original; if (HAS_DB) await closeDb(); });
 
 test("rota MCP: tools/list devolve as ferramentas de anúncios", { skip }, async () => {
@@ -191,8 +192,11 @@ test("ML criar completo: atributos → frete → POST /items (variações) → d
   assert.equal(r.publicado, true);
   assert.equal(r.anuncio_id, "MLB999");
   assert.equal(r.descricao, "criada");
+  // Formato decidido antes (vendedor sem user_product_seller → clássico com variações); dumps sem rota falsa = ignorados.
+  assert.equal(r.formato, "variacoes");
   assert.deepEqual(chamadasMl(), [
-    "GET /categories/MLB1/attributes", "GET /categories/MLB1/sale_terms", "GET /users/111/shipping_preferences", "POST /items", "POST /items/MLB999/description",
+    "GET /categories/MLB1/attributes", "GET /categories/MLB1/sale_terms", "GET /users/111", "GET /categories/MLB1",
+    "GET /users/111/shipping_preferences", "POST /items", "POST /items/MLB999/description",
   ]);
   const post = chamadas.find((c) => c.metodo === "POST" && c.url.pathname === "/items")!;
   assert.equal(post.auth, `Bearer ${TOKEN_ML}`);
@@ -203,9 +207,10 @@ test("ML criar completo: atributos → frete → POST /items (variações) → d
   assert.equal(b.listing_type_id, "gold_pro");
   assert.equal(b.available_quantity, 5);
   assert.deepEqual(b.pictures, [{ source: "https://x.test/capa.jpg" }, { source: "https://x.test/preto.jpg" }]);
-  assert.deepEqual(b.attributes, [{ id: "BRAND", value_name: "Nike" }, { id: "MODEL", value_name: "Leve 2" }]);
+  // Nome → value_id pela lista do atributo (BRAND "Nike" = 1); MODEL sem lista segue por nome.
+  assert.deepEqual(b.attributes, [{ id: "BRAND", value_id: "1", value_name: "Nike" }, { id: "MODEL", value_name: "Leve 2" }]);
   assert.deepEqual(b.shipping, { mode: "me2", local_pick_up: false, free_shipping: false });
-  assert.deepEqual(b.variations[0], { attribute_combinations: [{ id: "COLOR", value_name: "Preto" }], price: 199.9, available_quantity: 3, picture_ids: ["https://x.test/preto.jpg"], attributes: [{ id: "SELLER_SKU", value_name: "TN-P" }] });
+  assert.deepEqual(b.variations[0], { attribute_combinations: [{ id: "COLOR", value_id: "52049", value_name: "Preto" }], price: 199.9, available_quantity: 3, picture_ids: ["https://x.test/preto.jpg"], attributes: [{ id: "SELLER_SKU", value_name: "TN-P" }] });
   assert.deepEqual(b.variations[1].attribute_combinations, [{ id: "COLOR", value_id: "52055" }]);
   assert.deepEqual(chamadas.find((c) => c.url.pathname === "/items/MLB999/description")!.corpo, { plain_text: "Tênis leve para corrida.\nSola de borracha." });
   assert.deepEqual(atualizados.at(-1), `${ACC1}:MLB999`, "atualiza o anúncio no painel");

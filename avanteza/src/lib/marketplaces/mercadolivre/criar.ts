@@ -151,7 +151,8 @@ export function traduzirErroMl(e: unknown): string {
   if (e.status === 403) return "O Mercado Livre recusou a operação (sem permissão para este anúncio/conta).";
   if (e.status === 429) return "O Mercado Livre limitou as chamadas agora. Tente de novo em alguns minutos.";
   const b = (e.body && typeof e.body === "object" ? e.body : {}) as Json;
-  const causas = ((Array.isArray(b.cause) ? b.cause : []) as Json[]).filter((c) => c && c.type !== "warning");
+  // /items usa cause[]; /catalog/charts usa errors[] (code, message).
+  const causas = ((Array.isArray(b.cause) ? b.cause : Array.isArray(b.errors) ? b.errors : []) as Json[]).filter((c) => c && c.type !== "warning");
   const itens = causas.slice(0, 6).map((c) => {
     const campo = c.references?.[0] ?? c.code ?? "";
     return `${campo ? `${campo}: ` : ""}${String(c.message ?? c.code ?? "").slice(0, 160)}`;

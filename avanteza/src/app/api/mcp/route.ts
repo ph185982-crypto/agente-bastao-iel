@@ -10,8 +10,8 @@ import { ErroFerramenta, type Ator } from "@/lib/mcp/ferramentas";
 import { executarQualquer, TODAS_FERRAMENTAS } from "@/lib/mcp/registro";
 
 export const dynamic = "force-dynamic";
-// "Atualizar agora" dos canais pode levar ~1,5 min (coleta + backfill).
-export const maxDuration = 150;
+// "Atualizar agora" dos canais pode levar ~1,5 min (coleta + backfill); lotes de anúncios do ML até ~4 min (Vercel Pro: 300 s).
+export const maxDuration = 300;
 
 const texto = (dado: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(dado) }] });
 const erro = (msg: string) => ({ isError: true, content: [{ type: "text" as const, text: JSON.stringify({ erro: msg }) }] });

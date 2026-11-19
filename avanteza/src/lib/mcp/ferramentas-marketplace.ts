@@ -3,6 +3,8 @@
 // aprovação) — mas sempre pelo executor (executarDireto), que grava a ação em `actions`, respeita a pausa geral, a simulação
 // global e os limites diários de preço/verba, e audita. Cada escrita também vai para a auditoria com { via: "claude" }.
 // Hoje só o Mercado Livre cria anúncio; o parâmetro `marketplace` já existe para Shopee/TikTok entrarem depois.
+// Criação no ML: formato automático (User Products/moda, clássico com variações ou catálogo), guia de medidas, fotos por
+// URL ou upload, validação sem publicar e lotes — regras e fontes da documentação em mercadolivre/publicar.ts.
 import { z } from "zod";
 import { rawQuery } from "@/lib/db/client";
 import { adminDb } from "@/lib/db";
@@ -14,9 +16,11 @@ import { atualizarUmAnuncio } from "@/lib/collector";
 import { addDays, spDate } from "@/lib/dates";
 import { ML_API } from "@/lib/marketplaces/mercadolivre/adapter";
 import { fetchJson } from "@/lib/http";
+import { atributosDaCategoria, fotosValidas, sugerirCategoria, traduzirErroMl, MAX_FOTOS } from "@/lib/marketplaces/mercadolivre/criar";
 import {
-  atributosDaCategoria, atributosFaltando, contaUsaMe2, fotosValidas, montarItemMl, sugerirCategoria, traduzirErroMl, MAX_FOTOS, type NovoAnuncio,
-} from "@/lib/marketplaces/mercadolivre/criar";
+  analisarCategoria, anunciosPorSku, buscarCatalogo, buscarGuias, criarGuia, decodificarImagem, dominioDaCategoria, emSerie, enviarFoto, lerGuia, montarGuia,
+  planejarProduto, validarNoMl, variacaoPorSku, type Produto,
+} from "@/lib/marketplaces/mercadolivre/publicar";
 import { ErroFerramenta, LIMITE, auditar, cliente, corta, def, ehAdmin, exigir, resolverCliente, type Ator, type Deps, type Ferramenta } from "./ferramentas";
 
 // ─── Conta e anúncio do cliente ──────────────────────────────────────────────
@@ -113,6 +117,195 @@ const atributo = z.object({
   valor: z.string().trim().min(1).max(255).optional(), valor_id: z.string().trim().max(40).optional().describe("Id do valor da lista do ML (opcional)."),
 });
 
+// ─── Publicação (todos os segmentos) ─────────────────────────────────────────
+
+/** Máximo de anúncios por chamada nas ferramentas de lote; tempo máximo de trabalho por chamada (rota: 300 s). */
+export const MAX_LOTE = 50;
+const PRAZO_MS = 240_000;
+/** Concorrência por produto ao publicar (limite de chamadas do ML). */
+const CONCORRENCIA = 2;
+
+const categoriaId = z.string().trim().regex(/^MLB\d{1,12}$/, "Categoria inválida (ex.: MLB1055).");
+const skuRef = z.string().trim().min(1).max(60).describe("SKU do vendedor (SELLER_SKU).");
+const foto = z.string().trim().min(1).max(14_500_000)
+  .describe("URL https pública, id de foto do ML (de ml_foto_enviar) ou imagem em base64 (data URI ou base64 puro; JPG/PNG/WEBP até 10 MB).");
+const motivoGtin = z.enum(["artesanal", "kit", "nao_registrado", "outro"])
+  .describe("Motivo de não ter GTIN (EMPTY_GTIN_REASON): artesanal (confecção própria), kit, nao_registrado ou outro (padrão).");
+const gtin = z.string().trim().regex(/^\d{8,14}$/, "GTIN/EAN: 8 a 14 dígitos.");
+
+const produtoShape = {
+  formato: z.enum(["user_products", "variacoes", "catalogo"]).optional()
+    .describe("Normalmente deixe vazio (automático pela categoria e pela conta). Força: user_products (um anúncio por cor/tamanho com family_name), variacoes (clássico) ou catalogo."),
+  categoria_id: categoriaId,
+  titulo: z.string().trim().min(3).max(60).optional().describe("Título (formato clássico). No User Products o ML gera o título; use family_name."),
+  family_name: z.string().trim().min(3).max(120).optional().describe('Nome genérico do produto, sem cor/tamanho (ex.: "Macaquinho Cirrê com Bolsos"). Obrigatório no User Products (se faltar, usa o titulo).'),
+  preco: z.number().finite().positive().max(10_000_000).optional().describe("Em reais (anúncio sem itens/variações)."),
+  estoque: z.number().int().min(1).max(100_000).default(1).describe("Anúncio sem itens/variações."),
+  condicao: z.enum(["new", "used"]).default("new").describe("new (novo) ou used (usado)."),
+  tipo: z.enum(["classico", "premium"]).default("classico").describe("classico (gold_special) ou premium (gold_pro)."),
+  fotos: z.array(foto).max(MAX_FOTOS).default([]).describe("Fotos comuns a todos os itens (no clássico: fotos do anúncio)."),
+  atributos: z.array(atributo).max(80).default([]).describe("Atributos comuns (marca, modelo, material…) por nome (valor) ou valor_id."),
+  descricao: z.string().max(50_000).optional().describe("Texto puro (sem HTML). No User Products vai em cada anúncio."),
+  garantia: z.object({ tipo: z.string().trim().min(2).max(60).describe('Ex.: "Garantia do vendedor", "Garantia de fábrica", "Sem garantia".'), tempo: z.string().trim().max(40).optional().describe('Ex.: "90 dias".') }).optional(),
+  variacoes: z.array(z.object({
+    atributos: z.array(atributo).min(1).max(5), preco: z.number().finite().positive().max(10_000_000), estoque: z.number().int().min(0).max(100_000),
+    fotos: z.array(foto).max(MAX_FOTOS).optional(), sku: z.string().trim().max(60).optional(),
+  })).max(60).optional().describe("Formato clássico. Se a conta estiver no User Products, cada variação vira um anúncio."),
+  itens: z.array(z.object({
+    cor: z.string().trim().min(1).max(60).optional(), tamanho: z.string().trim().min(1).max(30).optional(),
+    preco: z.number().finite().positive().max(10_000_000), estoque: z.number().int().min(1).max(100_000), sku: z.string().trim().min(1).max(60).optional(),
+    fotos: z.array(foto).max(MAX_FOTOS).default([]), gtin: gtin.optional(), motivo_sem_gtin: motivoGtin.optional(),
+    atributos: z.array(atributo).max(30).default([]).describe("Atributos só deste item."),
+  })).min(1).max(MAX_LOTE).optional().describe("User Products (moda etc.): um anúncio por item, todos com o mesmo family_name."),
+  sku: z.string().trim().max(60).optional(), frete_gratis: z.boolean().optional(),
+  envio: z.object({
+    modo: z.enum(["me2", "padrao"]).optional().describe("me2 = Mercado Envios (padrão quando a conta usa); padrao = não envia shipping (o ML aplica o da conta)."),
+    frete_gratis: z.boolean().optional(),
+    peso_g: z.number().int().positive().max(100_000).optional(), altura_cm: z.number().positive().max(300).optional(),
+    largura_cm: z.number().positive().max(300).optional(), comprimento_cm: z.number().positive().max(300).optional(),
+  }).optional().describe("Envio e pacote (peso em gramas, medidas em cm; os quatro juntos)."),
+  prazo_fabricacao_dias: z.number().int().min(1).max(120).optional().describe("Prazo de fabricação/disponibilidade (MANUFACTURING_TIME), se a categoria aceitar."),
+  gtin: gtin.optional(), motivo_sem_gtin: motivoGtin.optional(),
+  guia_id: z.string().trim().regex(/^\d{1,15}$/, "guia_id: só números.").optional().describe("Guia de medidas (ml_guias_listar / ml_guia_criar). Obrigatória nos domínios de moda que exigem."),
+  catalogo_produto_id: z.string().trim().regex(/^MLB\d{1,15}$/, "Produto de catálogo inválido (ex.: MLB12345678).").optional().describe("Publica no catálogo (ml_catalogo_buscar)."),
+};
+
+interface ResultadoItem {
+  sku: string | null; cor: string | null; tamanho: string | null;
+  anuncio_id?: string | null; link?: string | null; status?: string; status_ml?: string | null; descricao?: string | null; no_painel?: boolean; acao_id?: string; aviso?: string;
+  valido?: boolean; erros?: string[]; erro?: string;
+}
+interface ResultadoProduto {
+  ok: boolean; formato: string | null; publicado: boolean; validar_apenas?: boolean; itens: ResultadoItem[]; avisos: string[];
+  erro?: string; erros?: string[]; atributos_faltando?: unknown[]; dominio?: string | null; guia_exigida?: boolean;
+  // Compatibilidade (anúncio único): campos do primeiro item no topo.
+  anuncio_id?: string | null; link?: string | null; status?: string; status_ml?: string | null; descricao?: string | null; no_painel?: boolean; aviso?: string; acao_id?: string;
+}
+
+/**
+ * Planeja (formato, atributos, guia, fotos) e publica ou só valida um produto. Problema de entrada → nada é enviado e
+ * volta em erro/erros/atributos_faltando. Na publicação, cada anúncio é uma ação create_listing do executor; a falha
+ * de um não interrompe os outros.
+ */
+async function processarProduto(
+  ator: Ator, c: { id: string; name: string }, conta: Conta, token: string, p: Produto,
+  o: { validarApenas: boolean; deps: Deps; prazo: number; enviados: Map<string, string> },
+): Promise<ResultadoProduto> {
+  let plano;
+  try {
+    plano = await planejarProduto(token, conta.external_user_id, p, { atributos: atributosDaCategoria }, o.enviados);
+  } catch (e) {
+    return { ok: false, formato: null, publicado: false, itens: [], avisos: [], erro: `Não consegui preparar o anúncio: ${traduzirErroMl(e)}` };
+  }
+  const comum = { formato: plano.formato, avisos: plano.avisos, dominio: plano.analise.dominio_id, guia_exigida: plano.analise.exige_guia || undefined };
+  if (plano.faltando?.length) {
+    return {
+      ...comum, ok: false, publicado: false, itens: [], atributos_faltando: plano.faltando, erros: plano.erros,
+      erro: `Faltam ${plano.faltando.length} atributo(s) obrigatório(s) da categoria ${p.categoria_id}. Pergunte ao usuário e chame de novo com "atributos" (ou nos itens).`,
+    };
+  }
+  if (plano.erros?.length) return { ...comum, ok: false, publicado: false, itens: [], erros: plano.erros, erro: plano.erros.length === 1 ? plano.erros[0] : `${plano.erros.length} problemas na entrada; nada foi enviado. Veja "erros".` };
+
+  if (o.validarApenas) {
+    const itens = await emSerie(plano.cargas, CONCORRENCIA, async (cg): Promise<ResultadoItem> => {
+      const v = await validarNoMl(token, cg.item);
+      return { ...cg.unidade, valido: v.valido, erros: v.erros.length ? v.erros : undefined };
+    });
+    await auditar(ator, "anuncio_validado", c.id, { conta: conta.id, categoria: p.categoria_id, formato: plano.formato, itens: itens.length, validos: itens.filter((i) => i.valido).length });
+    return { ...comum, ok: itens.every((i) => i.valido), publicado: false, validar_apenas: true, itens };
+  }
+
+  const itens = await emSerie(plano.cargas, CONCORRENCIA, async (cg): Promise<ResultadoItem> => {
+    if (Date.now() > o.prazo) return { ...cg.unidade, erro: "Não processado: tempo da chamada esgotado. Chame de novo só com os que faltaram." };
+    const alvo = `novo:${p.categoria_id}${cg.unidade.sku ? `:${cg.unidade.sku.slice(0, 40)}` : ""}`;
+    try {
+      const r = await executar(ator, c, conta, "create_listing", alvo, { item: cg.item, ...(cg.description ? { description: cg.description } : {}) }, "Anúncio novo pelo conector do Claude");
+      const id = typeof r.depois?.id === "string" ? r.depois.id : null;
+      const painel = id ? await atualizarPainel(o.deps, conta.id, id) : false;
+      await auditar(ator, "anuncio_criado", c.id, {
+        acao_id: r.acao_id, conta: conta.id, anuncio_id: id, status: r.status, categoria: p.categoria_id, formato: plano.formato,
+        titulo: (p.titulo ?? p.family_name ?? "").slice(0, 60), family_name: cg.item.family_name, sku: cg.unidade.sku, variacoes: cg.item.variations?.length ?? 0,
+      });
+      return {
+        ...cg.unidade, anuncio_id: id, link: r.depois?.permalink ?? null, status: r.status, status_ml: r.depois?.status ?? null,
+        descricao: r.depois?.description ?? (cg.description ? null : "sem descrição"), no_painel: painel, acao_id: r.acao_id, aviso: r.aviso,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message.slice(0, 500) : "Falhou.";
+      await auditar(ator, "anuncio_criacao_falhou", c.id, { conta: conta.id, categoria: p.categoria_id, formato: plano.formato, sku: cg.unidade.sku, erro: msg.slice(0, 200) });
+      return { ...cg.unidade, erro: msg };
+    }
+  });
+  const okTodos = itens.every((i) => !i.erro);
+  const unico = itens.length === 1 ? itens[0] : null;
+  return {
+    ...comum, ok: okTodos, publicado: itens.some((i) => i.status === "executada"), itens,
+    ...(okTodos ? {} : { erro: `${itens.filter((i) => i.erro).length} de ${itens.length} anúncio(s) falharam; os outros seguiram. Veja "itens".` }),
+    ...(unico && !unico.erro ? { anuncio_id: unico.anuncio_id, link: unico.link, status: unico.status, status_ml: unico.status_ml, descricao: unico.descricao, no_painel: unico.no_painel, aviso: unico.aviso, acao_id: unico.acao_id } : {}),
+  };
+}
+
+// ─── Alteração (por id ou SKU) ───────────────────────────────────────────────
+
+type Op = [ActionType, Record<string, unknown>, string];
+interface Alvo { itemId: string; variacaoId?: string }
+
+function montarOps(a: { preco?: number; estoque?: number; variacao_id?: string; titulo?: string; descricao?: string; fotos?: string[]; status?: "ativo" | "pausado" }): Op[] {
+  const ops: Op[] = [];
+  if (a.preco !== undefined) ops.push(["update_price", { price: brl(a.preco) }, "preco"]);
+  if (a.estoque !== undefined) ops.push(["update_stock", { available_quantity: a.estoque, ...(a.variacao_id ? { variation_id: a.variacao_id } : {}) }, "estoque"]);
+  if (a.titulo !== undefined || a.descricao !== undefined || a.fotos !== undefined) {
+    let fotos: string[] | undefined;
+    try { fotos = a.fotos ? fotosValidas(a.fotos) : undefined; } catch (e) { throw new ErroFerramenta((e as Error).message); }
+    ops.push(["update_listing", { ...(a.titulo !== undefined ? { title: a.titulo } : {}), ...(a.descricao !== undefined ? { description: a.descricao } : {}), ...(fotos ? { pictures: fotos } : {}) }, "conteudo"]);
+  }
+  if (a.status) ops.push([a.status === "pausado" ? "pause_listing" : "activate_listing", {}, "status"]);
+  if (!ops.length) throw new ErroFerramenta("Nada para alterar: informe preco, estoque, titulo, descricao, fotos ou status.");
+  return ops;
+}
+
+/** Id do anúncio (direto ou pelo SKU na conta) já conferido como desta conta; pelo SKU também acha a variação (estoque). */
+async function resolverAlvo(conta: Conta, ref: { anuncio_id?: string; sku?: string }, precisaVariacao: boolean): Promise<Alvo> {
+  if (ref.anuncio_id) {
+    await garantirAnuncioDaConta(conta, ref.anuncio_id);
+    return { itemId: ref.anuncio_id };
+  }
+  soMl(conta.marketplace as MarketplaceId, "alterar por SKU");
+  const sku = ref.sku!;
+  const token = await tokenDa(conta);
+  let ids: string[];
+  try { ids = await anunciosPorSku(token, conta.external_user_id, sku); } catch (e) { throw new ErroFerramenta(`Não consegui buscar o SKU ${sku}: ${traduzirErroMl(e)}`); }
+  if (!ids.length) throw new ErroFerramenta(`Nenhum anúncio com o SKU "${sku}" na conta ${conta.nickname ?? conta.id}.`);
+  if (ids.length > 1) throw new ErroFerramenta(`O SKU "${sku}" está em ${ids.length} anúncios (${ids.slice(0, 10).join(", ")}): informe anuncio_id.`);
+  const itemId = ids[0];
+  await garantirAnuncioDaConta(conta, itemId);
+  if (!precisaVariacao) return { itemId };
+  try {
+    const v = await variacaoPorSku(token, itemId, sku);
+    return v && v.total > 1 ? { itemId, variacaoId: v.id } : { itemId };
+  } catch {
+    return { itemId }; // sem a variação, o executor pede variacao_id se o anúncio tiver várias
+  }
+}
+
+async function aplicarOps(ator: Ator, c: { id: string }, conta: Conta, alvo: Alvo, ops: Op[], motivo: string | undefined, deps: Deps) {
+  const feitos: Array<{ alteracao: string; status: string; acao_id?: string; aviso?: string }> = [];
+  for (const [tipo, payload0, rotulo] of ops) {
+    const payload = tipo === "update_stock" && alvo.variacaoId && !payload0.variation_id ? { ...payload0, variation_id: alvo.variacaoId } : payload0;
+    try {
+      const r = await executar(ator, c, conta, tipo, alvo.itemId, payload, motivo);
+      feitos.push({ alteracao: rotulo, status: r.status, acao_id: r.acao_id, aviso: r.aviso });
+      await auditar(ator, "anuncio_alterado", c.id, { acao_id: r.acao_id, conta: conta.id, anuncio_id: alvo.itemId, tipo, status: r.status });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falhou.";
+      await auditar(ator, "anuncio_alteracao_recusada", c.id, { conta: conta.id, anuncio_id: alvo.itemId, tipo, erro: msg.slice(0, 200) });
+      if (feitos.length) await atualizarPainel(deps, conta.id, alvo.itemId);
+      throw new ErroFerramenta(`${rotulo}: ${msg}${feitos.length ? ` (já feito antes disso: ${feitos.map((f) => f.alteracao).join(", ")})` : ""}`);
+    }
+  }
+  return feitos;
+}
+
 export const FERRAMENTAS_MARKETPLACE: Ferramenta[] = [
   def({
     nome: "marketplace_contas", titulo: "Contas de marketplace do cliente", escrita: false,
@@ -200,83 +393,216 @@ export const FERRAMENTAS_MARKETPLACE: Ferramenta[] = [
   }),
   def({
     nome: "ml_atributos_categoria", titulo: "Atributos da categoria (Mercado Livre)", escrita: false,
-    descricao: "Atributos da categoria do Mercado Livre, obrigatórios primeiro (id, nome, se vale por variação, valores aceitos) e os termos de venda (garantia).",
+    descricao: "Atributos da categoria do Mercado Livre, obrigatórios primeiro (id, nome, se vale por variação, valores aceitos), os termos de venda (garantia, prazo de fabricação) e o formato de publicação desta conta (user_products, variacoes ou catalogo_obrigatorio) com o aviso se exige guia de medidas.",
     entrada: { cliente, categoria_id: z.string().trim().regex(/^MLB\d{1,12}$/, "Categoria inválida (ex.: MLB1055)."), so_obrigatorios: z.boolean().default(false), conta: contaRef },
     async executar(ator, a) {
       exigir(ehAdmin(ator));
       const c = await resolverCliente(a.cliente);
       const conta = await contaDoCliente(c, "mercadolivre", a.conta);
-      let r;
-      try { r = await atributosDaCategoria(await tokenDa(conta), a.categoria_id); } catch (e) { if (e instanceof ErroFerramenta) throw e; throw new ErroFerramenta(traduzirErroMl(e)); }
+      let r, analise;
+      try {
+        const token = await tokenDa(conta);
+        r = await atributosDaCategoria(token, a.categoria_id);
+        analise = await analisarCategoria(token, a.categoria_id, conta.external_user_id, r.atributos);
+      } catch (e) { if (e instanceof ErroFerramenta) throw e; throw new ErroFerramenta(traduzirErroMl(e)); }
       const lista = r.atributos.filter((x) => !a.so_obrigatorios || x.obrigatorio).slice(0, 80);
       return {
         categoria_id: a.categoria_id,
         obrigatorios: r.atributos.filter((x) => x.obrigatorio).length,
         atributos: lista.map((x) => ({ id: x.id, nome: x.nome, obrigatorio: x.obrigatorio || undefined, de_variacao: x.de_variacao || undefined, tipo: x.tipo, valores: x.valores.slice(0, 15).map((v) => v.nome), unidades: x.unidades.length ? x.unidades.slice(0, 6) : undefined })),
         termos_venda: r.termos_venda,
+        formato: analise.formato, dominio: analise.dominio_id, exige_guia_de_medidas: analise.exige_guia, catalogo: analise.catalogo, max_fotos: analise.max_fotos,
+        avisos: analise.avisos.length ? analise.avisos : undefined,
       };
     },
   }),
   def({
     nome: "anuncio_criar", titulo: "Criar anúncio", escrita: true,
     descricao:
-      "Publica DIRETO um anúncio novo no Mercado Livre (fotos por URL pública, até 10; atributos; variações; descrição em texto puro; garantia). " +
-      "Antes confere os atributos obrigatórios da categoria: se faltar algum, NÃO publica e devolve a lista (id, nome, exemplos) para você perguntar ao usuário. " +
-      "Frete: Mercado Envios (me2) quando a conta usa; frete grátis só se pedido. Respeita a pausa geral e a simulação da Central.",
-    entrada: {
-      cliente, marketplace, conta: contaRef,
-      titulo: z.string().trim().min(3).max(60), categoria_id: z.string().trim().regex(/^MLB\d{1,12}$/, "Categoria inválida (ex.: MLB1055)."),
-      preco: z.number().finite().positive().max(10_000_000).describe("Em reais. Com variações, use o preço de cada variação."),
-      estoque: z.number().int().min(1).max(100_000).default(1).describe("Sem variações. Com variações, vale o estoque de cada uma."),
-      condicao: z.enum(["new", "used"]).default("new").describe("new (novo) ou used (usado)."),
-      tipo: z.enum(["classico", "premium"]).default("classico").describe("classico (gold_special) ou premium (gold_pro)."),
-      fotos: z.array(z.string().max(2000)).min(1).max(MAX_FOTOS).describe("URLs públicas (https) das fotos, na ordem."),
-      atributos: z.array(atributo).max(80).default([]),
-      descricao: z.string().max(50_000).optional().describe("Texto puro (sem HTML)."),
-      garantia: z.object({ tipo: z.string().trim().min(2).max(60).describe('Ex.: "Garantia do vendedor", "Garantia de fábrica", "Sem garantia".'), tempo: z.string().trim().max(40).optional().describe('Ex.: "90 dias".') }).optional(),
-      variacoes: z.array(z.object({
-        atributos: z.array(atributo).min(1).max(5), preco: z.number().finite().positive().max(10_000_000), estoque: z.number().int().min(0).max(100_000),
-        fotos: z.array(z.string().max(2000)).max(MAX_FOTOS).optional(), sku: z.string().trim().max(60).optional(),
-      })).max(60).optional(),
-      sku: z.string().trim().max(60).optional(), frete_gratis: z.boolean().optional(),
-    },
+      "Publica DIRETO no Mercado Livre, escolhendo o formato pela categoria e pela conta: (1) User Products/moda (vendedor com o modelo novo): " +
+      "family_name + lista de itens (cor, tamanho, preço, estoque, SKU, fotos, GTIN ou motivo sem GTIN) → um anúncio por item, sem título; " +
+      "(2) clássico com variações (titulo + variacoes); (3) catálogo (catalogo_produto_id, ache com ml_catalogo_buscar). " +
+      "Atributos por nome ou valor_id (o nome é convertido para o id da lista do ML); obrigatórios conferidos antes: se faltar algum, NÃO publica e devolve a lista. " +
+      "Moda que exige guia de medidas: envie guia_id (ml_guias_listar / ml_guia_criar); cada item é ligado à linha do seu tamanho. " +
+      "Fotos: URL https, id de foto do ML (ml_foto_enviar) ou imagem em base64 (até 10 por anúncio, 10 MB cada). Envio me2 quando a conta usa; dimensões do pacote; tipo clássico/premium; prazo de fabricação. " +
+      "validar_apenas=true só valida no ML (POST /items/validate) e não publica. Falha de um item não interrompe os outros. Respeita a pausa geral e a simulação da Central.",
+    entrada: { cliente, marketplace, conta: contaRef, ...produtoShape, validar_apenas: z.boolean().default(false).describe("true = só valida no Mercado Livre, sem publicar.") },
     async executar(ator, a, deps) {
       exigir(ehAdmin(ator));
       soMl(a.marketplace, "criar anúncio");
       const c = await resolverCliente(a.cliente);
       const conta = await contaDoCliente(c, "mercadolivre", a.conta);
       const token = await tokenDa(conta);
-      try { fotosValidas([...a.fotos, ...(a.variacoes ?? []).flatMap((v) => v.fotos ?? [])]); } catch (e) { throw new ErroFerramenta((e as Error).message); }
-      let cat;
-      try { cat = await atributosDaCategoria(token, a.categoria_id); } catch (e) { throw new ErroFerramenta(`Não consegui ler a categoria: ${traduzirErroMl(e)}`); }
-      const entrada: NovoAnuncio = { ...a, atributos: a.atributos, variacoes: a.variacoes };
-      const faltando = atributosFaltando(cat.atributos, entrada);
-      if (faltando.length) {
-        return {
-          ok: false, publicado: false,
-          erro: `Faltam ${faltando.length} atributo(s) obrigatório(s) da categoria ${a.categoria_id}. Pergunte ao usuário e chame de novo com "atributos".`,
-          atributos_faltando: faltando,
-        };
+      const r = await processarProduto(ator, c, conta, token, a as Produto, { validarApenas: a.validar_apenas, deps, prazo: Date.now() + PRAZO_MS, enviados: new Map() });
+      // Compatível com o formato antigo: anúncio único (clássico/catálogo) que o ML recusou vira erro da ferramenta.
+      if (!a.validar_apenas && r.formato !== "user_products" && r.itens.length === 1 && r.itens[0].erro) throw new ErroFerramenta(r.itens[0].erro);
+      return r;
+    },
+  }),
+  def({
+    nome: "anuncio_validar", titulo: "Validar anúncio (sem publicar)", escrita: false,
+    descricao: "Mesma entrada de anuncio_criar, mas NÃO publica: monta cada anúncio (formato automático, atributos, guia, fotos) e manda para POST /items/validate do Mercado Livre, devolvendo os erros do ML por item. Fotos em base64 são enviadas ao ML para obter o id (não ficam públicas).",
+    entrada: { cliente, conta: contaRef, ...produtoShape },
+    async executar(ator, a, deps) {
+      exigir(ehAdmin(ator));
+      const c = await resolverCliente(a.cliente);
+      const conta = await contaDoCliente(c, "mercadolivre", a.conta);
+      return processarProduto(ator, c, conta, await tokenDa(conta), a as Produto, { validarApenas: true, deps, prazo: Date.now() + PRAZO_MS, enviados: new Map() });
+    },
+  }),
+  def({
+    nome: "anuncios_criar_lote", titulo: "Criar anúncios em lote", escrita: true,
+    descricao:
+      `Cria (ou só valida, com validar_apenas) vários produtos de uma vez no Mercado Livre — cada produto no mesmo formato de anuncio_criar (modelo User Products com itens, clássico ou catálogo). ` +
+      `Até ${MAX_LOTE} anúncios por chamada (somando os itens), em sequência e com concorrência pequena para respeitar o limite do ML. ` +
+      "Devolve o relatório: criados (ids), falharam (motivo) e validados. Falha de um produto/item não interrompe os outros.",
+    entrada: {
+      cliente, conta: contaRef,
+      produtos: z.array(z.object(produtoShape)).min(1).max(MAX_LOTE),
+      validar_apenas: z.boolean().default(false),
+    },
+    async executar(ator, a, deps) {
+      exigir(ehAdmin(ator));
+      const total = a.produtos.reduce((s, p) => s + Math.max(1, p.itens?.length ?? 0, p.variacoes?.length ? (p.formato === "variacoes" ? 1 : p.variacoes.length) : 0), 0);
+      if (total > MAX_LOTE) throw new ErroFerramenta(`Lote grande demais: ${total} anúncios (máximo ${MAX_LOTE} por chamada). Divida em partes.`);
+      const c = await resolverCliente(a.cliente);
+      const conta = await contaDoCliente(c, "mercadolivre", a.conta);
+      const token = await tokenDa(conta);
+      const prazo = Date.now() + PRAZO_MS;
+      const enviados = new Map<string, string>();
+      const criados: unknown[] = [], falharam: unknown[] = [], validados: unknown[] = [];
+      const produtos: unknown[] = [];
+      for (const [i, p] of a.produtos.entries()) {
+        const nome = p.family_name ?? p.titulo ?? p.catalogo_produto_id ?? `produto ${i + 1}`;
+        if (Date.now() > prazo) {
+          falharam.push({ produto: nome, motivo: "Não processado: tempo da chamada esgotado. Chame de novo só com os que faltaram." });
+          continue;
+        }
+        const r = await processarProduto(ator, c, conta, token, p as Produto, { validarApenas: a.validar_apenas, deps, prazo, enviados });
+        produtos.push({ produto: nome, formato: r.formato, ok: r.ok, erro: r.erro, atributos_faltando: r.atributos_faltando, avisos: r.avisos.length ? r.avisos : undefined });
+        if (r.erro && !r.itens.length) { falharam.push({ produto: nome, motivo: r.erro, erros: r.erros, atributos_faltando: r.atributos_faltando }); continue; }
+        for (const it of r.itens) {
+          const base = { produto: nome, sku: it.sku, cor: it.cor, tamanho: it.tamanho };
+          if (a.validar_apenas) (it.valido ? validados : falharam).push(it.valido ? base : { ...base, motivo: (it.erros ?? []).join("; ") || it.erro });
+          else if (it.erro) falharam.push({ ...base, motivo: it.erro });
+          else criados.push({ ...base, anuncio_id: it.anuncio_id, link: it.link, status: it.status });
+        }
       }
-      let item;
-      try { item = montarItemMl(entrada, { me2: await contaUsaMe2(token, conta.external_user_id) }); } catch (e) { throw new ErroFerramenta((e as Error).message); }
-      const r = await executar(ator, c, conta, "create_listing", `novo:${a.categoria_id}`, { item, ...(a.descricao?.trim() ? { description: a.descricao } : {}) }, "Anúncio novo pelo conector do Claude");
-      const id = typeof r.depois?.id === "string" ? r.depois.id : null;
-      const painel = id ? await atualizarPainel(deps, conta.id, id) : false;
-      await auditar(ator, "anuncio_criado", c.id, { acao_id: r.acao_id, conta: conta.id, anuncio_id: id, status: r.status, categoria: a.categoria_id, titulo: a.titulo.slice(0, 60), variacoes: a.variacoes?.length ?? 0 });
-      return {
-        ok: true, publicado: r.status === "executada", status: r.status, anuncio_id: id, link: r.depois?.permalink ?? null, status_ml: r.depois?.status ?? null,
-        descricao: r.depois?.description ?? (a.descricao ? null : "sem descrição"), no_painel: painel, aviso: r.aviso, acao_id: r.acao_id,
-      };
+      await auditar(ator, a.validar_apenas ? "anuncios_lote_validado" : "anuncios_lote_criado", c.id, { conta: conta.id, produtos: a.produtos.length, criados: criados.length, falharam: falharam.length, validados: validados.length });
+      return { resumo: { criados: criados.length, falharam: falharam.length, validados: validados.length }, criados, falharam, validados: a.validar_apenas ? validados : undefined, produtos };
+    },
+  }),
+  def({
+    nome: "ml_foto_enviar", titulo: "Enviar foto ao Mercado Livre", escrita: true,
+    descricao: "Envia UMA imagem (base64: data URI ou puro; JPG/PNG/WEBP até 10 MB, conteúdo conferido) para o Mercado Livre (POST /pictures/items/upload) e devolve o foto_id. Use o foto_id nas fotos de anuncio_criar/itens para reaproveitar a mesma foto em vários anúncios sem reenviar.",
+    entrada: { cliente, conta: contaRef, imagem: z.string().min(16).max(14_500_000).describe("Imagem em base64 (data:image/jpeg;base64,... ou base64 puro).") },
+    async executar(ator, a) {
+      exigir(ehAdmin(ator));
+      const c = await resolverCliente(a.cliente);
+      const conta = await contaDoCliente(c, "mercadolivre", a.conta);
+      let img;
+      try { img = decodificarImagem(a.imagem, "imagem"); } catch (e) { throw new ErroFerramenta((e as Error).message); }
+      let r;
+      try { r = await enviarFoto(await tokenDa(conta), img.bytes, img.mime); } catch (e) { if (e instanceof ErroFerramenta) throw e; throw new ErroFerramenta(`Envio da foto falhou: ${traduzirErroMl(e)}`); }
+      await auditar(ator, "ml_foto_enviada", c.id, { conta: conta.id, foto_id: r.id, bytes: img.bytes.length, tipo: img.mime });
+      return { ok: true, foto_id: r.id, url: r.url, tipo: img.mime, tamanho_kb: Math.round(img.bytes.length / 1024) };
+    },
+  }),
+  def({
+    nome: "ml_guias_listar", titulo: "Guias de medidas (Mercado Livre)", escrita: false,
+    descricao: "Lista as guias (tabelas) de medidas disponíveis para a conta num domínio de moda: as da conta (SPECIFIC), as padrão do ML (STANDARD) e as de marca (BRAND), com as linhas (id da linha + tamanho). Informe categoria_id (ou dominio_id) e o gênero (ex.: Feminino).",
+    entrada: {
+      cliente, conta: contaRef,
+      categoria_id: categoriaId.optional(), dominio_id: z.string().trim().regex(/^(ML[A-Z]-)?[A-Z0-9_]{2,80}$/, "Domínio inválido (ex.: MLB-DRESSES).").optional(),
+      genero: z.string().trim().min(2).max(40).describe('Gênero da guia (ex.: "Feminino", "Masculino", "Sem gênero").'),
+      marca: z.string().trim().max(60).optional(), tipo: z.enum(["SPECIFIC", "STANDARD", "BRAND"]).optional().describe("SPECIFIC = da conta."),
+      com_linhas: z.boolean().default(true).describe("Lê as linhas (tamanhos) de até 10 guias."),
+    },
+    async executar(ator, a) {
+      exigir(ehAdmin(ator));
+      const c = await resolverCliente(a.cliente);
+      const conta = await contaDoCliente(c, "mercadolivre", a.conta);
+      const token = await tokenDa(conta);
+      try {
+        const dominio = a.dominio_id ?? (a.categoria_id ? await dominioDaCategoria(token, a.categoria_id) : null);
+        if (!dominio) throw new ErroFerramenta("Informe categoria_id ou dominio_id (não achei o domínio da categoria).");
+        const guias = await buscarGuias(token, { dominio, sellerId: conta.external_user_id, genero: a.genero, marca: a.marca, tipo: a.tipo });
+        const det = a.com_linhas ? await emSerie(guias.slice(0, 10), 2, async (g) => (g.linhas.length ? g : lerGuia(token, g.id).catch(() => g))) : guias;
+        return {
+          dominio, total: guias.length,
+          guias: [...det, ...guias.slice(det.length)].map((g) => ({ guia_id: g.id, nome: g.nome, tipo: g.tipo, atributo_principal: g.atributo_principal, linhas: g.linhas.length ? g.linhas.map((l) => ({ linha_id: l.id, tamanho: l.tamanho })) : undefined })),
+          aviso: guias.length ? undefined : "Nenhuma guia para este domínio/gênero: crie uma com ml_guia_criar.",
+        };
+      } catch (e) {
+        if (e instanceof ErroFerramenta) throw e;
+        throw new ErroFerramenta(traduzirErroMl(e));
+      }
+    },
+  }),
+  def({
+    nome: "ml_guia_criar", titulo: "Criar guia de medidas (Mercado Livre)", escrita: true,
+    descricao:
+      "Cria uma guia de medidas da conta (tipo SPECIFIC) a partir de uma tabela simples: tamanhos × medidas. Cada linha = um tamanho (ex.: P, M, G) e suas medidas por id de atributo do ML " +
+      '(ex.: {"CHEST_CIRCUMFERENCE": "88 cm", "WAIST_CIRCUMFERENCE": "70 cm"}). Gênero e marca vão no nível da guia. Os ids de medida aceitos dependem do domínio (o ML recusa os que não pertencem à ficha da guia e a mensagem diz o campo). ' +
+      "Devolve o guia_id e o id de cada linha. Respeita a pausa geral e a simulação da Central.",
+    entrada: {
+      cliente, conta: contaRef,
+      categoria_id: categoriaId.optional(), dominio_id: z.string().trim().regex(/^(ML[A-Z]-)?[A-Z0-9_]{2,80}$/).optional(),
+      nome: z.string().trim().min(3).max(60).describe("Nome da guia (letras, números e espaços)."),
+      genero: z.string().trim().min(2).max(40), marca: z.string().trim().min(1).max(60),
+      atributo_principal: z.string().trim().regex(/^[A-Z0-9_]{2,60}$/i).default("SIZE").describe("Atributo do tamanho principal (moda: SIZE)."),
+      linhas: z.array(z.object({ tamanho: z.string().trim().min(1).max(30), medidas: z.record(z.string().regex(/^[A-Z0-9_]{2,60}$/i), z.string().trim().min(1).max(40)) })).min(1).max(40),
+    },
+    async executar(ator, a) {
+      exigir(ehAdmin(ator));
+      const c = await resolverCliente(a.cliente);
+      const conta = await contaDoCliente(c, "mercadolivre", a.conta);
+      const token = await tokenDa(conta);
+      const { data: cfg } = await adminDb().from("settings").select("dry_run, global_pause").single();
+      try {
+        const dominio = a.dominio_id ?? (a.categoria_id ? await dominioDaCategoria(token, a.categoria_id) : null);
+        if (!dominio) throw new ErroFerramenta("Informe categoria_id ou dominio_id (não achei o domínio da categoria).");
+        const nova = { nome: a.nome, dominio, genero: a.genero, marca: a.marca, atributo_principal: a.atributo_principal, linhas: a.linhas };
+        try { montarGuia(nova); } catch (e) { throw new ErroFerramenta((e as Error).message); }
+        if (cfg?.global_pause || cfg?.dry_run) {
+          await auditar(ator, "ml_guia_simulada", c.id, { conta: conta.id, dominio, linhas: a.linhas.length });
+          return { ok: true, criada: false, aviso: cfg.global_pause ? "Pausa geral ligada: a guia não foi criada." : "Simulação ligada: a guia não foi criada no Mercado Livre." };
+        }
+        const g = await criarGuia(token, nova);
+        await auditar(ator, "ml_guia_criada", c.id, { conta: conta.id, guia_id: g.id, dominio, linhas: g.linhas.length });
+        return { ok: true, criada: true, guia_id: g.id, nome: g.nome, dominio, linhas: g.linhas.map((l) => ({ linha_id: l.id, tamanho: l.tamanho })) };
+      } catch (e) {
+        if (e instanceof ErroFerramenta) throw e;
+        await auditar(ator, "ml_guia_recusada", c.id, { conta: conta.id, erro: traduzirErroMl(e).slice(0, 200) });
+        throw new ErroFerramenta(`Guia de medidas recusada: ${traduzirErroMl(e)}`);
+      }
+    },
+  }),
+  def({
+    nome: "ml_catalogo_buscar", titulo: "Buscar produto no catálogo (Mercado Livre)", escrita: false,
+    descricao: "Procura produtos ativos no catálogo do Mercado Livre por GTIN/EAN (mais preciso) ou por texto. Use o id (catalogo_produto_id) em anuncio_criar para publicar no catálogo. Confira a ficha: o vendedor responde se o produto não for idêntico.",
+    entrada: { cliente, conta: contaRef, gtin: z.string().trim().regex(/^\d{8,14}$/, "GTIN: 8 a 14 dígitos.").optional(), texto: z.string().trim().min(3).max(120).optional() },
+    async executar(ator, a) {
+      exigir(ehAdmin(ator));
+      if (!a.gtin && !a.texto) throw new ErroFerramenta("Informe gtin ou texto.");
+      const c = await resolverCliente(a.cliente);
+      const conta = await contaDoCliente(c, "mercadolivre", a.conta);
+      try {
+        const r = await buscarCatalogo(await tokenDa(conta), { gtin: a.gtin, q: a.texto });
+        return { total: r.length, produtos: r.map((p) => ({ catalogo_produto_id: p.id, nome: p.nome, dominio: p.dominio_id, status: p.status, catalogo_obrigatorio: p.estrategia === "catalog_required" || undefined, atributos: p.atributos })) };
+      } catch (e) {
+        if (e instanceof ErroFerramenta) throw e;
+        throw new ErroFerramenta(traduzirErroMl(e));
+      }
     },
   }),
   def({
     nome: "anuncio_alterar", titulo: "Alterar anúncio", escrita: true,
     descricao:
-      "Altera DIRETO um anúncio do cliente: preço, estoque (com variacao_id se houver várias), título, descrição, fotos (substitui todas) e status ativo/pausado. " +
+      "Altera DIRETO um anúncio do cliente, pelo id (anuncio_id) OU pelo SKU (sku; precisa ser da conta do cliente): preço, estoque (com variacao_id se houver várias — pelo SKU da variação é automático), título, descrição, fotos (substitui todas) e status ativo/pausado. " +
       "Respeita o limite diário de variação de preço da política, a pausa geral e a simulação. Cada mudança vira uma ação no histórico do executor.",
     entrada: {
-      cliente, marketplace, conta: contaRef, anuncio_id: idAnuncio,
+      cliente, marketplace, conta: contaRef, anuncio_id: idAnuncio.optional(), sku: skuRef.optional(),
       preco: z.number().finite().positive().max(10_000_000).optional(), estoque: z.number().int().min(0).max(100_000).optional(),
       variacao_id: z.string().trim().regex(/^[0-9A-Za-z_-]{1,40}$/).optional(), titulo: z.string().trim().min(3).max(60).optional(),
       descricao: z.string().max(50_000).optional(), fotos: z.array(z.string().max(2000)).min(1).max(MAX_FOTOS).optional(),
@@ -284,34 +610,47 @@ export const FERRAMENTAS_MARKETPLACE: Ferramenta[] = [
     },
     async executar(ator, a, deps) {
       exigir(ehAdmin(ator));
-      const ops: Array<[ActionType, Record<string, unknown>, string]> = [];
-      if (a.preco !== undefined) ops.push(["update_price", { price: brl(a.preco) }, "preco"]);
-      if (a.estoque !== undefined) ops.push(["update_stock", { available_quantity: a.estoque, ...(a.variacao_id ? { variation_id: a.variacao_id } : {}) }, "estoque"]);
-      if (a.titulo !== undefined || a.descricao !== undefined || a.fotos !== undefined) {
-        let fotos: string[] | undefined;
-        try { fotos = a.fotos ? fotosValidas(a.fotos) : undefined; } catch (e) { throw new ErroFerramenta((e as Error).message); }
-        ops.push(["update_listing", { ...(a.titulo !== undefined ? { title: a.titulo } : {}), ...(a.descricao !== undefined ? { description: a.descricao } : {}), ...(fotos ? { pictures: fotos } : {}) }, "conteudo"]);
-      }
-      if (a.status) ops.push([a.status === "pausado" ? "pause_listing" : "activate_listing", {}, "status"]);
-      if (!ops.length) throw new ErroFerramenta("Nada para alterar: informe preco, estoque, titulo, descricao, fotos ou status.");
+      if (Boolean(a.anuncio_id) === Boolean(a.sku)) throw new ErroFerramenta('Informe "anuncio_id" OU "sku" (um dos dois).');
+      const ops = montarOps(a);
       const c = await resolverCliente(a.cliente);
       const conta = await contaDoCliente(c, a.marketplace, a.conta);
-      await garantirAnuncioDaConta(conta, a.anuncio_id);
-      const feitos: Array<Record<string, unknown>> = [];
-      for (const [tipo, payload, rotulo] of ops) {
+      const alvo = await resolverAlvo(conta, { anuncio_id: a.anuncio_id, sku: a.sku }, a.estoque !== undefined && !a.variacao_id);
+      const feitos = await aplicarOps(ator, c, conta, alvo, ops, a.motivo, deps);
+      return { ok: true, anuncio_id: alvo.itemId, sku: a.sku, variacao_id: alvo.variacaoId, alteracoes: feitos, no_painel: await atualizarPainel(deps, conta.id, alvo.itemId) };
+    },
+  }),
+  def({
+    nome: "anuncios_alterar_lote", titulo: "Alterar anúncios em lote (por SKU)", escrita: true,
+    descricao: `Altera preço, estoque e/ou status (ativo/pausado) de vários anúncios do cliente de uma vez, por SKU (ou id). Até ${MAX_LOTE} por chamada, em sequência. Cada um passa pelo executor (limite diário de preço, pausa geral, simulação, dono do anúncio). Devolve o resultado por SKU; falha de um não interrompe os outros.`,
+    entrada: {
+      cliente, marketplace, conta: contaRef, motivo: z.string().trim().max(300).optional(),
+      itens: z.array(z.object({
+        sku: skuRef.optional(), anuncio_id: idAnuncio.optional(),
+        preco: z.number().finite().positive().max(10_000_000).optional(), estoque: z.number().int().min(0).max(100_000).optional(), status: z.enum(["ativo", "pausado"]).optional(),
+      })).min(1).max(MAX_LOTE),
+    },
+    async executar(ator, a, deps) {
+      exigir(ehAdmin(ator));
+      const c = await resolverCliente(a.cliente);
+      const conta = await contaDoCliente(c, a.marketplace, a.conta);
+      const prazo = Date.now() + PRAZO_MS;
+      const resultados: Array<Record<string, unknown>> = [];
+      for (const it of a.itens) {
+        const ref = it.sku ?? it.anuncio_id ?? "?";
         try {
-          const r = await executar(ator, c, conta, tipo, a.anuncio_id, payload, a.motivo);
-          feitos.push({ alteracao: rotulo, status: r.status, acao_id: r.acao_id, aviso: r.aviso });
-          await auditar(ator, "anuncio_alterado", c.id, { acao_id: r.acao_id, conta: conta.id, anuncio_id: a.anuncio_id, tipo, status: r.status });
+          if (Date.now() > prazo) throw new ErroFerramenta("Não processado: tempo da chamada esgotado. Chame de novo só com os que faltaram.");
+          if (Boolean(it.anuncio_id) === Boolean(it.sku)) throw new ErroFerramenta('Informe "sku" OU "anuncio_id".');
+          const ops = montarOps(it);
+          const alvo = await resolverAlvo(conta, { anuncio_id: it.anuncio_id, sku: it.sku }, it.estoque !== undefined);
+          const feitos = await aplicarOps(ator, c, conta, alvo, ops, a.motivo, deps);
+          await atualizarPainel(deps, conta.id, alvo.itemId);
+          resultados.push({ ref, ok: true, anuncio_id: alvo.itemId, alteracoes: feitos.map((f) => `${f.alteracao}: ${f.status}`) });
         } catch (e) {
-          const msg = e instanceof Error ? e.message : "Falhou.";
-          await auditar(ator, "anuncio_alteracao_recusada", c.id, { conta: conta.id, anuncio_id: a.anuncio_id, tipo, erro: msg.slice(0, 200) });
-          if (feitos.length) await atualizarPainel(deps, conta.id, a.anuncio_id);
-          throw new ErroFerramenta(`${rotulo}: ${msg}${feitos.length ? ` (já feito antes disso: ${feitos.map((f) => f.alteracao).join(", ")})` : ""}`);
+          resultados.push({ ref, ok: false, erro: e instanceof Error ? e.message.slice(0, 400) : "Falhou." });
         }
       }
-      const painel = await atualizarPainel(deps, conta.id, a.anuncio_id);
-      return { ok: true, anuncio_id: a.anuncio_id, alteracoes: feitos, no_painel: painel };
+      const ok = resultados.filter((r) => r.ok).length;
+      return { resumo: { ok, falharam: resultados.length - ok }, resultados };
     },
   }),
   def({

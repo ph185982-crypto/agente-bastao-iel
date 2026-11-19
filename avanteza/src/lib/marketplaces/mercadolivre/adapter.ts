@@ -484,9 +484,14 @@ export class MercadoLivreAdapter implements MarketplaceAdapter {
         return after;
       }
       case "create_listing": {
-        // 1) POST /items com o corpo montado (montarItemMl); 2) POST /items/{id}/description em texto puro.
+        // 1) POST /items com o corpo montado (publicar.ts: clássico, User Products ou catálogo); 2) POST /items/{id}/description em texto puro.
         const item = await post(`${ML_API}/items`, payload.item);
-        const out: Record<string, unknown> = { id: item.id, status: item.status, permalink: item.permalink ?? null, title: item.title };
+        // User Products: sem title no envio (o ML gera); devolve family_name/user_product_id para o relatório.
+        const out: Record<string, unknown> = {
+          id: item.id, status: item.status, permalink: item.permalink ?? null, title: item.title ?? null,
+          ...(item.family_name ? { family_name: item.family_name } : {}), ...(item.user_product_id ? { user_product_id: item.user_product_id } : {}),
+          ...(item.catalog_listing ? { catalog_listing: true } : {}),
+        };
         if (typeof payload.description === "string" && payload.description.trim()) {
           try {
             await post(`${ML_API}/items/${item.id}/description`, { plain_text: payload.description });
