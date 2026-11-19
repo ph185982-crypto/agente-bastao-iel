@@ -84,12 +84,13 @@ function textoDoCorpo(b: unknown): string {
   return "";
 }
 
+const MSG_CHAVE_ADS = "A chave do Windsor.ai dos anúncios foi recusada (inválida, revogada ou sem permissão). Confira a chave na conta Windsor da agência e atualize a variável WINDSOR_ADS_API_KEY.";
 export const MSG_SEM_CONTAS_ADS = "O Windsor.ai ainda não tem o Facebook Ads (Meta Ads) conectado nesta conta (no_accounts_configured). Conecte o Facebook Ads nesta conta do Windsor em https://onboard.windsor.ai?datasource=facebook, escolhendo a conta de anúncios do cliente, e teste de novo. Enquanto isso o cliente vê “Conectando anúncios”.";
 
 export function classificar(status: number, texto: string, chave: string | null, conector: string = CONECTOR): WindsorErro {
   const t = esconderChave(texto, chave).slice(0, 200);
   if (/no_accounts_configured|no accounts? (are )?configured|no connected accounts?/i.test(texto)) return new WindsorErro(conector === "facebook" ? MSG_SEM_CONTAS_ADS : MSG.sem_contas, "sem_contas");
-  if (status === 401 || status === 403 || /api[_ ]?key|unauthori[sz]ed|forbidden|invalid (token|credential)/i.test(texto)) return new WindsorErro(MSG.chave, "chave");
+  if (status === 401 || status === 403 || /api[_ ]?key|unauthori[sz]ed|forbidden|invalid (token|credential)/i.test(texto)) return new WindsorErro(conector === "facebook" ? MSG_CHAVE_ADS : MSG.chave, "chave");
   if (status === 429) return new WindsorErro(MSG.limite, "limite");
   if (status >= 500) return new WindsorErro(`O Windsor.ai está fora do ar no momento (HTTP ${status}). A próxima atualização tenta de novo.`, "api");
   if (status === 400 && /field/i.test(texto)) return new WindsorErro(`O Windsor.ai não reconheceu algum campo pedido${t ? ` (${t})` : ""}.`, "campo");
@@ -347,4 +348,11 @@ export function criarWindsor(o: OpcoesWindsor): FonteWindsor {
 /** Chave do Windsor da plataforma (variável de ambiente). Nunca é devolvida a uma tela: só se sabe se existe. */
 export function chaveWindsorDaPlataforma(env: NodeJS.ProcessEnv = process.env): string | null {
   return env.WINDSOR_API_KEY?.trim() || null;
+}
+/**
+ * Chave do Windsor só dos ANÚNCIOS (conector facebook): conta Windsor da agência, diferente da do Instagram. Duas contas Windsor,
+ * nunca misturadas: o Instagram NUNCA usa esta chave; os anúncios só caem na chave do Instagram/canal se esta não existir.
+ */
+export function chaveWindsorAdsDaPlataforma(env: NodeJS.ProcessEnv = process.env): string | null {
+  return env.WINDSOR_ADS_API_KEY?.trim() || null;
 }

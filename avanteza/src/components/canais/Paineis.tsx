@@ -3,9 +3,12 @@ import Link from "next/link";
 import { Kpi } from "@/components/dashboards/Kpi";
 import { LineChart, Legenda } from "@/components/dashboards/LineChart";
 import { ComboChart } from "./ComboChart";
+import { CartaoGastoCiclo } from "./GastoCiclo";
 import { Imagem } from "./Imagem";
+import { SecaoPublico } from "./Publico";
+import { TodosAnuncios } from "./TodosAnuncios";
 import { IconeTipoMidia, LogoMarca, MarcaRotulo, type Marca } from "@/components/brand";
-import { brl, compacto, inteiro, percentual } from "@/lib/dashboards/format";
+import { brl, compacto, decimal, inteiro, percentual } from "@/lib/dashboards/format";
 import { ddmm, ddmmaa, variacaoPct } from "@/lib/dashboards/periodo";
 import { ago } from "@/lib/format";
 import { ROTULO_FONTE, ROTULO_FONTE_IG } from "@/lib/channels/types";
@@ -35,12 +38,13 @@ export function SeloFonte({ fonte, quando, problema, marca }: { fonte: string; q
   );
 }
 
-export function FontesAguardando({ anuncios = true, instagram = true }: { anuncios?: boolean; instagram?: boolean }) {
+export function FontesAguardando({ anuncios = true, instagram = true, google = false }: { anuncios?: boolean; instagram?: boolean; google?: boolean }) {
   return (
     <Vazio titulo="Conectando fontes de dados" texto="Estamos ligando suas contas de anúncios e redes. Quando a conexão terminar, os números aparecem aqui automaticamente. Não é preciso fazer nada agora.">
       <ul className="list" style={{ marginTop: 12 }}>
         {anuncios && <li><div className="row"><MarcaRotulo marca="meta"><strong>Anúncios (Meta Ads)</strong></MarcaRotulo><span className="pill pill-outline">Aguardando conexão</span></div></li>}
         {instagram && <li><div className="row"><MarcaRotulo marca="instagram"><strong>Instagram</strong></MarcaRotulo><span className="pill pill-outline">Aguardando conexão</span></div></li>}
+        {google && <li><div className="row"><MarcaRotulo marca="google"><strong>Google · Perfil da Empresa</strong></MarcaRotulo><span className="pill pill-outline">Aguardando conexão</span></div></li>}
       </ul>
     </Vazio>
   );
@@ -50,18 +54,26 @@ export function FontesAguardando({ anuncios = true, instagram = true }: { anunci
 
 function CartaoCriativo({ c, pos, r }: { c: Criativo; pos: number; r: Rotulo }) {
   const codigo = c.nome.split("|")[0].trim().slice(0, 4) || "Ad";
+  const v = c.variantes;
   return (
-    <article className="card" aria-label={c.nome}>
+    <article className={`card${v ? " cr-wide" : ""}`} aria-label={c.nome}>
       <div className="cr-top">
         <span className="cr-rank">#{pos}</span>
         <span className="row" style={{ gap: 6 }}>
           {c.selo === "melhor" && <span className="pill pill-ok">Melhor desempenho</span>}
           {c.selo === "pior" && <span className="pill pill-danger">Pior desempenho</span>}
+          {v && <span className="pill pill-sand">{v.length} públicos</span>}
           {!c.ativo && <span className="pill pill-outline">Pausado</span>}
         </span>
       </div>
       <Imagem src={c.thumb} alt={`Criativo ${c.nome}`} rotulo={codigo} />
       <div className="cr-name"><IconeTipoMidia tipo={c.video ? "video" : "imagem"} />{c.nome}{c.video && <span className="small muted"> · vídeo</span>}</div>
+      {!v && (c.campanha || c.publico) && (
+        <div className="cr-ctx small">
+          {c.campanha && <div><span className="muted">Campanha</span> {c.campanha}</div>}
+          {(c.publico || c.conjunto) && <div><span className="muted">Público</span> {c.publico ?? c.conjunto}</div>}
+        </div>
+      )}
       <ul className="cr-stats">
         <li className="destaque"><span>{r.plural}</span><b>{inteiro(c.resultados)}</b></li>
         <li className="destaque"><span>Custo/{r.um}</span><b>{c.custoPorResultado != null ? brl(c.custoPorResultado, true) : "—"}</b></li>
@@ -70,6 +82,18 @@ function CartaoCriativo({ c, pos, r }: { c: Criativo; pos: number; r: Rotulo }) 
         <li><span>CPC</span><b>{c.cpc != null ? brl(c.cpc, true) : "—"}</b></li>
         <li><span>Impressões</span><b>{inteiro(c.impressoes)}</b></li>
       </ul>
+      {v ? (
+        <div className="cr-var">
+          <div className="small muted">O mesmo criativo em públicos diferentes — é o público que explica a diferença:</div>
+          {v.map((x, i) => (
+            <div className="cr-var-i" key={i}>
+              <div className="cr-var-h"><b>{x.publico ?? x.conjunto ?? "Público"}</b>{x.campanha && <span className="small muted">{x.campanha}</span>}</div>
+              <div className="cr-var-m small"><span><b>{inteiro(x.resultados)}</b> {x.resultados === 1 ? r.um : r.plural.toLowerCase()}</span><span><b>{x.custoPorResultado != null ? brl(x.custoPorResultado, true) : "—"}</b>/{r.um}</span><span>{brl(x.gasto, true)}</span></div>
+              {x.porque[0] && <div className="small muted">Por que: {x.porque[0]}.</div>}
+            </div>
+          ))}
+        </div>
+      ) : c.porque[0] ? <p className="small muted" style={{ margin: 0 }}>Por que: {c.porque.join("; ")}.</p> : null}
     </article>
   );
 }
@@ -81,8 +105,9 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
   if (!d.estado.anuncios) return <Vazio titulo="Anúncios não conectados" texto="A conta de anúncios ainda não foi ligada. Assim que for, o investimento, as conversas e os criativos aparecem aqui." />;
   if (!d.estado.anunciosConectado || !a) return <Vazio titulo="Conectando anúncios (Meta Ads)" texto="Estamos ligando a conta de anúncios. Quando a conexão terminar, o investimento, as conversas e os criativos aparecem aqui automaticamente. Não é preciso fazer nada agora." />;
   const selo = <SeloFonte fonte={ROTULO_FONTE[d.estado.fonteAnuncios ?? "meta"]} marca="meta" quando={d.estado.anunciosAtualizadoEm} problema={d.estado.anunciosComProblema} />;
+  const gasto = d.gastoCiclo ? <CartaoGastoCiclo g={d.gastoCiclo} rotulo={r} id="can-gasto" /> : null;
   if (!a.temDadosNoPeriodo) {
-    return <>{selo}<Vazio titulo="Sem entrega de anúncios neste período" texto={`Não houve investimento entre ${ddmmaa(per.de)} e ${ddmmaa(per.ate)}. ${a.temHistorico ? "Tente um período maior." : "Os primeiros dados aparecem após a próxima atualização."}`} /></>;
+    return <>{selo}{gasto}<Vazio titulo="Sem entrega de anúncios neste período" texto={`Não houve investimento entre ${ddmmaa(per.de)} e ${ddmmaa(per.ate)}. ${a.temHistorico ? "Tente um período maior." : "Os primeiros dados aparecem após a próxima atualização."}`} /></>;
   }
   const t = a.atual, p = a.anterior;
   const dl = (x: number | null, y: number | null | undefined, inverso = false) => ({ pct: variacaoPct(x, y ?? null), inverso, anterior: `${ddmmaa(ant.de)} a ${ddmmaa(ant.ate)}` });
@@ -91,6 +116,7 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
     <>
       <h2 style={{ marginTop: 14 }}><MarcaRotulo marca="meta" tamanho={24}>Anúncios (Meta)</MarcaRotulo></h2>
       {selo}
+      {gasto}
       <div className="grid kpis k3" style={{ marginTop: 12 }}>
         <Kpi label="Investimento" valor={brl(t.gasto, t.gasto < 1000)} delta={dl(t.gasto, p?.gasto)} spark={a.serie.map((s) => s.gasto)} />
         <Kpi label={r.plural} valor={inteiro(t.resultados)} delta={dl(t.resultados, p?.resultados)} spark={a.serie.map((s) => s.resultados)} cor="ok" />
@@ -132,6 +158,10 @@ export function PainelAnuncios({ d }: { d: CanaisCliente }) {
       ) : (
         <div className="cr-grid">{c.ranking.map((x, i) => <CartaoCriativo key={x.id} c={x} pos={i + 1} r={r} />)}</div>
       )}
+
+      <TodosAnuncios anuncios={a.anuncios} r={r} />
+
+      <SecaoPublico p={d.publico} r={r} />
     </>
   );
 }
@@ -258,10 +288,12 @@ export function PainelEvolucao({ d, agrup, hrefAgrup }: { d: CanaisCliente; agru
   const datas = marcos.map((m) => m.de), nomes = marcos.map((m) => m.rotulo);
   const temIg = marcos.some((m) => m.alcanceIg != null), temSeg = marcos.some((m) => m.seguidoresFim != null);
   const temAds = marcos.some((m) => m.gasto > 0);
+  const temG = marcos.some((m) => m.google != null);
   const rev = [...marcos].reverse();
   /** Pontos só dos períodos que têm o dado (nunca um zero falso no lugar de “sem dado”). */
   const pontos = (f: (m: Marco) => number | null) => { const ms = marcos.filter((m) => f(m) != null); return { datas: ms.map((m) => m.de), nomes: ms.map((m) => m.rotulo), valores: ms.map((m) => f(m) as number) }; };
   const pCpr = pontos((m) => m.custoPorResultado), pSeg = pontos((m) => m.seguidoresFim), pAlc = pontos((m) => m.alcanceIg);
+  const gm = marcos.filter((m) => m.google), pNota = pontos((m) => m.google?.nota ?? null);
   return (
     <>
       {toggle}
@@ -286,6 +318,19 @@ export function PainelEvolucao({ d, agrup, hrefAgrup }: { d: CanaisCliente; agru
             <LineChart titulo="Seguidores" datas={pSeg.datas} nomes={pSeg.nomes} altura={220} formato="inteiro" series={[{ nome: "Seguidores", valores: pSeg.valores, cor: "ok" }]} />
           </div>
         )}
+        {temG && (
+          <div className="card">
+            <h3><MarcaRotulo marca="google" tamanho={20}>Google: visualizações × rotas</MarcaRotulo></h3>
+            <ComboChart titulo={`Google: visualizações e pedidos de rota ${agrup === "mes" ? "por mês" : "por semana"}`} datas={gm.map((m) => m.de)} nomes={gm.map((m) => m.rotulo)} altura={220}
+              barras={{ nome: "Visualizações", valores: gm.map((m) => m.google!.visualizacoes), formato: "inteiro" }} linha={{ nome: "Rotas", valores: gm.map((m) => m.google!.rotas), formato: "inteiro" }} />
+          </div>
+        )}
+        {temG && pNota.valores.length > 0 && (
+          <div className="card">
+            <h3><MarcaRotulo marca="google" tamanho={20}>Google: nota média das avaliações</MarcaRotulo></h3>
+            <LineChart titulo="Nota média das avaliações do Google" datas={pNota.datas} nomes={pNota.nomes} altura={220} formato="nota" series={[{ nome: "Nota média", valores: pNota.valores, cor: "ok" }]} />
+          </div>
+        )}
         {temIg && (
           <div className="card">
             <h3>Alcance do Instagram</h3>
@@ -297,7 +342,7 @@ export function PainelEvolucao({ d, agrup, hrefAgrup }: { d: CanaisCliente; agru
       <h2>Comparação {agrup === "mes" ? "mês a mês" : "semana a semana"}</h2>
       <div className="card table-wrap">
         <table className="t">
-          <thead><tr><th>{agrup === "mes" ? "Mês" : "Semana"}</th>{temAds && <><th>Investimento</th><th>{r.plural}</th><th>Custo/{r.um}</th></>}{temSeg && <th>Seguidores</th>}{temIg && <th>Alcance</th>}</tr></thead>
+          <thead><tr><th>{agrup === "mes" ? "Mês" : "Semana"}</th>{temAds && <><th>Investimento</th><th>{r.plural}</th><th>Custo/{r.um}</th></>}{temSeg && <th>Seguidores</th>}{temIg && <th>Alcance</th>}{temG && <><th>Google: visualizações</th><th>Rotas</th><th>Ligações</th><th>Nota média</th></>}</tr></thead>
           <tbody>
             {rev.map((m) => (
               <tr key={m.id}>
@@ -309,12 +354,18 @@ export function PainelEvolucao({ d, agrup, hrefAgrup }: { d: CanaisCliente; agru
                 </>}
                 {temSeg && <td className="num">{m.seguidoresFim != null ? inteiro(m.seguidoresFim) : "—"}{m.seguidoresGanho != null && <span className="delta muted">{sinal(m.seguidoresGanho)}</span>}</td>}
                 {temIg && <td className="num">{m.alcanceIg != null ? compacto(m.alcanceIg) : "—"}{m.anterior && <DeltaTxt atual={m.alcanceIg} ant={m.anterior.alcanceIg} />}</td>}
+                {temG && <>
+                  <td className="num">{m.google ? inteiro(m.google.visualizacoes) : "—"}{m.google && m.anterior?.google && <DeltaTxt atual={m.google.visualizacoes} ant={m.anterior.google.visualizacoes} />}</td>
+                  <td className="num">{m.google ? inteiro(m.google.rotas) : "—"}{m.google && m.anterior?.google && <DeltaTxt atual={m.google.rotas} ant={m.anterior.google.rotas} />}</td>
+                  <td className="num">{m.google ? inteiro(m.google.ligacoes) : "—"}{m.google && m.anterior?.google && <DeltaTxt atual={m.google.ligacoes} ant={m.anterior.google.ligacoes} />}</td>
+                  <td className="num">{m.google?.nota != null ? decimal(m.google.nota, 1) : "—"}{m.google && m.google.avaliacoes > 0 && <span className="delta muted">{inteiro(m.google.avaliacoes)} aval.</span>}</td>
+                </>}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="small muted">As variações comparam com o período anterior; no {agrup === "mes" ? "mês" : "período"} em andamento, com o mesmo número de dias do anterior. O alcance do Instagram é a soma dos dias.</p>
+      <p className="small muted">As variações comparam com o período anterior; no {agrup === "mes" ? "mês" : "período"} em andamento, com o mesmo número de dias do anterior. O alcance do Instagram é a soma dos dias. No Google, a nota média é a das avaliações escritas em cada período.</p>
 
       <h2>Linha do tempo</h2>
       <ol className="tl">
@@ -325,6 +376,7 @@ export function PainelEvolucao({ d, agrup, hrefAgrup }: { d: CanaisCliente; agru
               {temAds && <><div><span>Investiu</span> <b>{brl(m.gasto, true)}</b></div><div><span>{r.plural}</span> <b>{inteiro(m.resultados)}</b></div><div><span>Custo/{r.um}</span> <b>{m.custoPorResultado != null ? brl(m.custoPorResultado, true) : "—"}</b></div></>}
               {m.seguidoresFim != null && <div><span>Seguidores</span> <b>{inteiro(m.seguidoresFim)}{m.seguidoresGanho != null ? ` (${sinal(m.seguidoresGanho)})` : ""}</b></div>}
               {m.alcanceIg != null && <div><span>Alcance</span> <b>{compacto(m.alcanceIg)}</b></div>}
+              {m.google && <><div><span>Google</span> <b>{inteiro(m.google.visualizacoes)} visualizações</b></div><div><span>Rotas</span> <b>{inteiro(m.google.rotas)}</b></div><div><span>Ligações</span> <b>{inteiro(m.google.ligacoes)}</b></div>{m.google.nota != null && <div><span>Nota</span> <b>{decimal(m.google.nota, 1)} ({inteiro(m.google.avaliacoes)} aval.)</b></div>}</>}
             </div>
             {m.anterior && m.anterior.resultados !== m.resultados && <div className="small muted" style={{ marginTop: 4 }}>{r.plural} {m.resultados > m.anterior.resultados ? "subiram" : "caíram"} de {inteiro(m.anterior.resultados)} para {inteiro(m.resultados)} vs. {m.anterior.rotulo}.</div>}
           </li>

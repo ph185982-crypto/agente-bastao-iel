@@ -19,6 +19,7 @@ import type {
   WebhookNotification,
 } from "../types";
 import { firstImage, imageList } from "../images";
+import { traduzirErroMl } from "./criar";
 
 // ML_API_BASE só existe para o teste de ponta a ponta com o Mercado Livre simulado.
 export const ML_API = process.env.ML_API_BASE && process.env.NODE_ENV !== "production" ? process.env.ML_API_BASE : "https://api.mercadolibre.com";
@@ -360,6 +361,9 @@ export class MercadoLivreAdapter implements MarketplaceAdapter {
   // ───────────── Escrita ─────────────
   async getStateForAction(token: string, type: ActionType, targetId: string, ctx?: AdsContext | null, payload?: Record<string, unknown>) {
     switch (type) {
+      case "create_listing":
+        // Anúncio novo: não há "antes".
+        return { novo: true, categoria: (payload?.item as Json | undefined)?.category_id ?? null };
       case "update_price":
       case "update_stock":
       case "pause_listing":
@@ -392,6 +396,22 @@ export class MercadoLivreAdapter implements MarketplaceAdapter {
   }
 
   async executeAction(
+    token: string,
+    type: ActionType,
+    targetId: string,
+    payload: Record<string, unknown>,
+    ctx?: AdsContext | null,
+  ): Promise<Record<string, unknown>> {
+    try {
+      return await this.executar(token, type, targetId, payload, ctx);
+    } catch (err) {
+      // Erro do ML (cause[]) vira mensagem em português com o campo; vai para actions.error e para a ferramenta.
+      if (err instanceof ApiError) throw new Error(traduzirErroMl(err));
+      throw err;
+    }
+  }
+
+  private async executar(
     token: string,
     type: ActionType,
     targetId: string,
@@ -452,11 +472,36 @@ export class MercadoLivreAdapter implements MarketplaceAdapter {
           const r = await put(`${ML_API}/items/${targetId}`, { title: payload.title });
           after.title = r.title;
         }
+        if (Array.isArray(payload.pictures)) {
+          // Substitui a lista inteira de fotos (URLs públicas, já validadas pela política).
+          const r = await put(`${ML_API}/items/${targetId}`, { pictures: (payload.pictures as string[]).map((source) => ({ source })) });
+          after.pictures = Array.isArray(r.pictures) ? r.pictures.length : (payload.pictures as string[]).length;
+        }
         if (typeof payload.description === "string") {
           await put(`${ML_API}/items/${targetId}/description`, { plain_text: payload.description });
           after.description = "atualizada";
         }
         return after;
+      }
+      case "create_listing": {
+        // 1) POST /items com o corpo montado (publicar.ts: clássico, User Products ou catálogo); 2) POST /items/{id}/description em texto puro.
+        const item = await post(`${ML_API}/items`, payload.item);
+        // User Products: sem title no envio (o ML gera); devolve family_name/user_product_id para o relatório.
+        const out: Record<string, unknown> = {
+          id: item.id, status: item.status, permalink: item.permalink ?? null, title: item.title ?? null,
+          ...(item.family_name ? { family_name: item.family_name } : {}), ...(item.user_product_id ? { user_product_id: item.user_product_id } : {}),
+          ...(item.catalog_listing ? { catalog_listing: true } : {}),
+        };
+        if (typeof payload.description === "string" && payload.description.trim()) {
+          try {
+            await post(`${ML_API}/items/${item.id}/description`, { plain_text: payload.description });
+            out.description = "criada";
+          } catch (e) {
+            // O anúncio já existe: não falha a ação inteira; avisa para tentar a descrição de novo.
+            out.description = `falhou: ${traduzirErroMl(e)}`;
+          }
+        }
+        return out;
       }
       case "answer_question": {
         const r = await post(`${ML_API}/answers`, { question_id: Number(targetId), text: String(payload.text) });

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, canAccess, isMapaPath, verifySessionFull } from "@/lib/session";
 import { ZONA_PUBLICA } from "@/lib/comercial/zona";
 
-const PUBLIC = [/^\/\.well-known\//, /^\/login/, /^\/conectado/, /^\/api\/auth\//, /^\/api\/webhooks\//, /^\/api\/cron\//, /^\/api\/health/, /^\/api\/mapa\/reunioes\/?$/, /^\/api\/capturas\/?$/, /^\/api\/capturas\/(pendencias|concluir|importar)\/?$/, /^\/api\/eventos\/?$/]; // reuniões, capturas e eventos conferem a própria chave (CRON_SECRET/admin; AVANTEZA_CAPTURE_KEY; AVANTEZA_EVENTS_KEY)
+const PUBLIC = [/^\/\.well-known\//, /^\/login/, /^\/conectado/, /^\/api\/auth\//, /^\/api\/webhooks\//, /^\/api\/cron\//, /^\/api\/health/, /^\/api\/mapa\/reunioes\/?$/, /^\/api\/capturas\/?$/, /^\/api\/capturas\/(pendencias|concluir|importar)\/?$/, /^\/api\/eventos\/?$/, /^\/api\/mcp\/?$/, /^\/api\/oauth\//, /^\/oauth\/autorizar\/?$/]; // reuniões, capturas e eventos conferem a própria chave (CRON_SECRET/admin; AVANTEZA_CAPTURE_KEY; AVANTEZA_EVENTS_KEY); MCP e OAuth do conector do Claude conferem o próprio token e a sessão (src/lib/mcp)
 
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;

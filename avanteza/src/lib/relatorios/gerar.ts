@@ -12,6 +12,7 @@ import { addDaysStr } from "../mapa/plan";
 import { isUuid } from "../motor/repo";
 import { lerSnapshots, obterCanal } from "../channels/store";
 import { relAnuncios, relInstagram } from "../channels/report";
+import { filtrarLinhasCampanhas } from "../channels/campanhas";
 import { RESULTADO_PADRAO, type OrigemDado } from "../channels/types";
 import type { PeriodoResolvido } from "../dashboards/periodo";
 import { aberturaModelo, destaquesDe, semanaAnterior, type DadosRelatorio, type ItemRelatorio } from "./semana";
@@ -57,7 +58,7 @@ export async function coletarDados(clientId: string, de: string, ate: string, ho
     const igOk = (canal.igSource === "windsor" || (canal.igSource === "meta" && Boolean(canal.igUserId))) && Boolean(canal.igLastSyncAt);
     if (adsOk) {
       const rows = await lerSnapshots(clientId, ["campaign_daily"], antDe, ate, canal.adsSource as OrigemDado);
-      const rel = relAnuncios(rows as any, periodo, canal.campaignIds);
+      const rel = relAnuncios(filtrarLinhasCampanhas(rows, { campaignIds: canal.campaignIds, campaignNameFilter: canal.campaignNameFilter }) as any, periodo, canal.campaignIds);
       if (rel.temDadosNoPeriodo) {
         anuncios = {
           gasto: rel.atual.gasto, resultados: rel.atual.resultados, custoPorResultado: rel.atual.custoPorResultado, cliques: rel.atual.cliques, impressoes: rel.atual.impressoes,

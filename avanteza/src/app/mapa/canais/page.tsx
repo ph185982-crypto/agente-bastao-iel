@@ -10,9 +10,10 @@ import { PERIODOS, ROTULO_PERIODO, ddmm, parsePeriodo, type PeriodoId } from "@/
 import { ago } from "@/lib/format";
 import { MarcaRotulo, type Marca } from "@/components/brand";
 import { FontesAguardando, PainelAnuncios, PainelEvolucao, PainelInstagram } from "@/components/canais/Paineis";
+import { PainelGoogle } from "@/components/canais/Google";
 
 export const dynamic = "force-dynamic";
-const ABAS = [{ k: "anuncios", label: "Anúncios (Meta)", marca: "meta" }, { k: "instagram", label: "Instagram", marca: "instagram" }, { k: "evolucao", label: "Evolução", marca: null }] as const satisfies ReadonlyArray<{ k: string; label: string; marca: Marca | null }>;
+const ABAS = [{ k: "anuncios", label: "Anúncios (Meta)", marca: "meta" }, { k: "instagram", label: "Instagram", marca: "instagram" }, { k: "google", label: "Google", marca: "google" }, { k: "evolucao", label: "Evolução", marca: null }] as const satisfies ReadonlyArray<{ k: string; label: string; marca: Marca | null }>;
 type Aba = (typeof ABAS)[number]["k"];
 
 export default async function Canais({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -40,15 +41,15 @@ export default async function Canais({ searchParams }: { searchParams: Promise<R
       <div className="eyebrow">{client.name}</div>
       <h1>Canais</h1>
       <p className="muted small" style={{ marginTop: 4 }}>
-        Anúncios (Meta Ads) e Instagram: investimento, resultados, criativos e evolução. Cada fonte é independente e mostra de onde vieram os dados.
+        Anúncios (Meta Ads), Instagram e Google (Perfil da Empresa): investimento, resultados, criativos, avaliações e evolução. Cada fonte é independente e mostra de onde vieram os dados.
         {d.estado.conectado && d.estado.ultimaAtualizacao && <> Última atualização {ago(d.estado.ultimaAtualizacao)}.</>}
       </p>
       {d.estado.simulado && <div className="notice" role="note" style={{ margin: "10px 0" }}><b>Dados simulados</b> (CHANNELS_FIXTURE, só desenvolvimento). Nada aqui é real.</div>}
       {!d.estado.conectado ? (
-        <FontesAguardando anuncios={d.estado.anuncios || !d.estado.instagram} instagram={d.estado.instagram || !d.estado.anuncios} />
+        <FontesAguardando anuncios={d.estado.anuncios || (!d.estado.instagram && !d.estado.google)} instagram={d.estado.instagram || (!d.estado.anuncios && !d.estado.google)} google={d.estado.google} />
       ) : (
         <>
-          <nav className="tabs abas" aria-label="Seções de canais">
+          <nav className="tabs abas wrap" aria-label="Seções de canais">
             {ABAS.map((a) => <Link key={a.k} href={href({ aba: a.k })} aria-current={aba === a.k ? "page" : undefined}>{a.marca ? <MarcaRotulo marca={a.marca} tamanho={20}>{a.label}</MarcaRotulo> : a.label}</Link>)}
           </nav>
           {aba !== "evolucao" && (
@@ -61,6 +62,7 @@ export default async function Canais({ searchParams }: { searchParams: Promise<R
           )}
           {aba === "anuncios" && <PainelAnuncios d={d} />}
           {aba === "instagram" && <PainelInstagram d={d} />}
+          {aba === "google" && <PainelGoogle d={d} />}
           {aba === "evolucao" && <PainelEvolucao d={d} agrup={agrup} hrefAgrup={(g) => href({ agrup: g })} />}
         </>
       )}

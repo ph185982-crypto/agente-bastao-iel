@@ -468,7 +468,8 @@ export type AcaoRapida =
   | { tipo: "desfazer_ia" };
 
 /** Aplica uma ação rápida. Toda mudança feita por gente marca edited_at (o gerador não sobrescreve mais) e vai para a auditoria. */
-export async function acaoRapida(actor: string, id: string, a: AcaoRapida): Promise<{ ok: boolean; erro?: string }> {
+/** `extra` entra nos detalhes da auditoria (ex.: { via: "claude" } quando vem do conector do Claude). */
+export async function acaoRapida(actor: string, id: string, a: AcaoRapida, extra: Record<string, unknown> = {}): Promise<{ ok: boolean; erro?: string }> {
   const clientId = await clienteDaAcao(id);
   if (!clientId) return { ok: false, erro: "Ação não encontrada." };
   let sql = "", params: unknown[] = [id];
@@ -523,13 +524,13 @@ export async function acaoRapida(actor: string, id: string, a: AcaoRapida): Prom
       const r = await rawQuery<{ id: string; captura_id: string | null }>("delete from avanteza.plan_actions where id = $1 and ai_generated returning id, captura_id", [id]);
       if (!r.length) return { ok: false, erro: "Só ações geradas por IA podem ser desfeitas." };
       if (r[0].captura_id) await rawQuery("update avanteza.capturas set acoes_geradas = array_remove(acoes_geradas, $2::uuid) where id = $1", [r[0].captura_id, id]);
-      await audit(actor, "motor_ia_desfeita", clientId, { id });
+      await audit(actor, "motor_ia_desfeita", clientId, { id, ...extra });
       return { ok: true };
     }
   }
   const r = await rawQuery(sql + " returning id", params);
   if (!r.length) return { ok: false, erro: "Nada mudou (a ação pode já estar concluída)." };
-  await audit(actor, `motor_${a.tipo}`, clientId, { id, ...(a.tipo === "bloquear" ? { motivo: a.motivo.slice(0, 120) } : a.tipo === "adiar" ? { para: a.para } : a.tipo === "reatribuir" ? { para: a.para } : {}) });
+  await audit(actor, `motor_${a.tipo}`, clientId, { id, ...(a.tipo === "bloquear" ? { motivo: a.motivo.slice(0, 120) } : a.tipo === "adiar" ? { para: a.para } : a.tipo === "reatribuir" ? { para: a.para } : {}), ...extra });
   return { ok: true };
 }
 

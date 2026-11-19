@@ -7,7 +7,7 @@ import { useFormStatus } from "react-dom";
 import { salvarAnunciosMeta, testarConexaoMeta, testarConexaoWindsorAdsAcao, type EstadoTeste, type EstadoTesteWindsorAds } from "@/app/(painel)/clientes/canais-actions";
 
 export interface CanalForm {
-  adsSource: "meta" | "windsor" | "none"; adAccountId: string; campaignIds: string; resultActionType: string; usarTokenPlataforma: boolean; temToken: boolean; tokenHint: string | null;
+  adsSource: "meta" | "windsor" | "none"; adAccountId: string; campaignIds: string; campaignNameFilter: string; resultActionType: string; usarTokenPlataforma: boolean; temToken: boolean; tokenHint: string | null;
 }
 
 export function Botao({ children, className = "btn", formAction }: { children: React.ReactNode; className?: string; formAction?: (fd: FormData) => void }) {
@@ -48,7 +48,7 @@ export function ResultadoTesteWindsorAdsView({ estado }: { estado: EstadoTesteWi
       {w && (
         <div className={`notice ${w.ok ? "ok" : "danger"}`} role="status" aria-live="polite">
           <strong>{w.ok ? "Windsor.ai lendo os anúncios" : w.semConector ? "Conecte o Facebook Ads nesta conta do Windsor" : "Há pendências na conexão com o Windsor.ai"}</strong>
-          <div className="small muted">Chave usada: {w.origemChave === "canal" ? "do canal" : w.origemChave === "plataforma" ? "da plataforma (WINDSOR_API_KEY)" : "nenhuma"}</div>
+          <div className="small muted">Chave usada: {w.origemChave === "anuncios" ? "da agência (WINDSOR_ADS_API_KEY)" : w.origemChave === "canal" ? "do canal" : w.origemChave === "plataforma" ? "da plataforma (WINDSOR_API_KEY)" : "nenhuma"}</div>
           <ul className="list" style={{ marginTop: 8 }}>
             {w.verificacoes.map((x) => (
               <li key={x.id}>
@@ -75,7 +75,7 @@ export function ConectarMeta({ clientId, inicial, plataformaDisponivel }: { clie
   return (
     <form action={salvarAnunciosMeta} className="card stack" autoComplete="off" style={{ marginTop: 12 }} aria-label="Configurar anúncios (Meta Ads)">
       <h3>Configurar anúncios · Meta Ads</h3>
-      <p className="small muted" style={{ margin: 0 }}>Somente leitura: a Avanteza só consulta (GET) a conta de anúncios. Nada é alterado na Meta. {windsor ? <>Pelo Windsor.ai não é preciso token da Meta: vale a chave do Windsor (WINDSOR_API_KEY ou a chave do canal, na seção do Instagram) com o <b>Facebook Ads</b> conectado.</> : <>Permissões do token: <b>ads_read</b> e <b>read_insights</b>.</>}</p>
+      <p className="small muted" style={{ margin: 0 }}>Somente leitura: a Avanteza só consulta (GET) a conta de anúncios. Nada é alterado na Meta. {windsor ? <>Pelo Windsor.ai não é preciso token da Meta: vale a chave dos anúncios (WINDSOR_ADS_API_KEY, conta Windsor da agência; sem ela, a chave do Instagram) com o <b>Facebook Ads</b> conectado.</> : <>Permissões do token: <b>ads_read</b> e <b>read_insights</b>.</>}</p>
       <input type="hidden" name="client_id" value={clientId} />
       <input type="hidden" name="escopo" value="ads" />
       <div className="grid two">
@@ -88,7 +88,8 @@ export function ConectarMeta({ clientId, inicial, plataformaDisponivel }: { clie
           </select>
         </div>
         <div className="field"><label htmlFor="cm-conta">Conta de anúncios</label><input id="cm-conta" name="ad_account_id" value={v.adAccountId} onChange={set("adAccountId")} placeholder="605261696580859" inputMode="numeric" /></div>
-        <div className="field"><label htmlFor="cm-camp">Campanhas</label><input id="cm-camp" name="campaign_ids" value={v.campaignIds} onChange={set("campaignIds")} placeholder="em branco = todas; ou IDs separados por vírgula" /></div>
+        <div className="field"><label htmlFor="cm-camp">Campanhas (IDs)</label><input id="cm-camp" name="campaign_ids" value={v.campaignIds} onChange={set("campaignIds")} placeholder="em branco = todas; ou IDs separados por vírgula" /></div>
+        <div className="field"><label htmlFor="cm-nome">Nome da campanha contém</label><input id="cm-nome" name="campaign_name_filter" value={v.campaignNameFilter} onChange={set("campaignNameFilter")} placeholder="ex.: SHOW MAN (em branco = sem filtro)" maxLength={120} /><div className="small muted">Sem diferença de maiúsculas e acentos. Campanhas novas com esse nome entram sozinhas; as de outros projetos na mesma conta ficam de fora.</div></div>
       </div>
       {!windsor && <div className="field">
         <label htmlFor="cm-token">Token da Meta</label>

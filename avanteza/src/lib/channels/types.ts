@@ -12,7 +12,10 @@ export const MIN_GASTO_RANKING = 30;
 export const DIAS_BACKFILL = 90;
 export const DIAS_ROTINA = 7;
 
-export type KindSnapshot = "campaign_daily" | "ad_daily" | "ig_daily" | "ig_media" | "ig_audience";
+export type KindSnapshot = "campaign_daily" | "ad_daily" | "ig_daily" | "ig_media" | "ig_audience" | "ads_breakdown" | "adset_targeting" | KindGoogle;
+/** Google (Perfil da Empresa): por dia (key 'local'), por avaliação (key = id; date = dia em que foi escrita), por palavra-chave (date = 1º dia do mês) e dados do local (key 'local'; vale o último). */
+export type KindGoogle = "gbp_daily" | "gbp_review" | "gbp_keyword" | "gbp_profile";
+export type FonteGoogle = "windsor" | "none";
 export type StatusCanal = "pendente" | "ativo" | "erro" | "desconectado";
 /** Duas fontes independentes: tráfego/anúncios e mídias/Instagram. Cada uma tem credencial, coleta, status e erro próprios. */
 export type FonteAnuncios = "meta" | "windsor" | "none";
@@ -26,6 +29,8 @@ export interface CanalConfig {
   clientId: string;
   adAccountId: string | null;
   campaignIds: string[];
+  /** Filtro opcional por nome da campanha (contém, sem caixa/acento). Ex.: Showman = "SHOW MAN". */
+  campaignNameFilter: string | null;
   igUserId: string | null;
   pageId: string | null;
   resultActionType: string;
@@ -46,6 +51,9 @@ export interface InsightBruto {
 export interface AnuncioInfo {
   id: string; nome: string; campanhaId: string | null; status: string | null; statusEfetivo: string | null;
   thumb: string | null; imagem: string | null; videoId: string | null;
+  /** Conjunto (público) do anúncio e o criativo em si: título, texto, chamada para ação e links (só https de fb.me/facebook.com/instagram.com). */
+  conjuntoId?: string | null; conjuntoNome?: string | null;
+  titulo?: string | null; texto?: string | null; cta?: string | null; previa?: string | null; instagram?: string | null;
 }
 
 export interface IgPerfil { username: string | null; nome: string | null; seguidores: number | null; midias: number | null; foto: string | null }
@@ -68,11 +76,27 @@ export interface ResultadoTeste {
   info: { conta_nome?: string; moeda?: string; conta_status?: string; ig_username?: string; ig_sugerido?: string };
 }
 
+/** Cortes de público/localização dos anúncios, pedidos UM POR CONSULTA (Windsor e Meta não aceitam misturar). */
+export type DimensaoQuebra = "idade_genero" | "regiao" | "posicionamento";
+export const DIMENSOES_QUEBRA: readonly DimensaoQuebra[] = ["idade_genero", "regiao", "posicionamento"];
+/** Linha de um corte, por dia e campanha. `results` null = a fonte não trouxe a métrica neste corte (nunca vira zero). */
+export interface QuebraBruta {
+  dimensao: DimensaoQuebra; date: string; campaign_id: string; campaign_name?: string;
+  idade?: string; genero?: string; regiao?: string; plataforma?: string; posicao?: string;
+  spend: number; impressions: number; reach: number | null; clicks: number | null; results: number | null;
+}
+/** Segmentação (targeting) de um conjunto de anúncios como veio da fonte (objeto ou texto JSON). */
+export interface SegmentacaoBruta { adsetId: string | null; adsetNome: string; campaignId: string | null; campaignNome: string | null; status: string | null; targeting: unknown }
+
 /** Tudo o que o coletor e a tela de teste precisam da Meta. Implementações: Graph real (graph.ts) e simulada (fixture.ts, testes). */
 export interface CanaisApi {
   testar(cfg: Pick<CanalConfig, "adAccountId" | "campaignIds" | "igUserId" | "pageId">): Promise<ResultadoTeste>;
   insightsDiarios(p: { contaId: string; nivel: "campaign" | "ad"; de: string; ate: string; campanhas: string[] }): Promise<InsightBruto[]>;
   anuncios(p: { contaId: string; campanhas: string[] }): Promise<AnuncioInfo[]>;
+  /** Um corte (idade×gênero, região ou posicionamento) por dia e campanha. Opcional: fonte sem suporte simplesmente não tem a seção. */
+  quebras?(p: { contaId: string; dimensao: DimensaoQuebra; de: string; ate: string; campanhas: string[]; tipo?: string }): Promise<QuebraBruta[]>;
+  /** Segmentação atual de cada conjunto de anúncios (só leitura). */
+  segmentacoes?(p: { contaId: string; campanhas: string[]; de?: string; ate?: string }): Promise<SegmentacaoBruta[]>;
   igPerfil(igId: string): Promise<IgPerfil>;
   /** Variação líquida de seguidores por dia (a API só devolve os últimos ~30 dias). */
   igSeguidoresDiarios(igId: string, de: string, ate: string): Promise<Record<string, number>>;
@@ -86,7 +110,17 @@ export interface MetricasCampanhaDia { nome: string; spend: number; impressions:
 export interface MetricasAnuncioDia extends MetricasCampanhaDia {
   campaign_id?: string; campaign_name?: string; status?: string | null; effective_status?: string | null;
   thumb?: string | null; image?: string | null; video_id?: string | null;
+  adset_id?: string | null; adset_name?: string | null;
+  title?: string | null; body?: string | null; cta?: string | null; preview_url?: string | null; ig_url?: string | null;
 }
+/** ads_breakdown: key = "<dimensão>|<campanha>|<valores>"; uma linha por dia. */
+export interface MetricasQuebra {
+  dimensao: DimensaoQuebra; campaign_id: string; campaign_name?: string;
+  idade?: string; genero?: string; regiao?: string; plataforma?: string; posicao?: string;
+  spend: number; impressions: number; reach: number | null; clicks: number | null; results: number | null;
+}
+/** adset_targeting: key = id do conjunto (ou "nome:<nome>"); date = dia da coleta; vale o último estado. Só o administrador vê o bruto. */
+export interface MetricasSegmentacao { adset_name: string; campaign_id: string | null; campaign_name: string | null; status: string | null; targeting: unknown }
 export interface MetricasIgDia {
   reach?: number; views?: number; profile_views?: number; accounts_engaged?: number; total_interactions?: number;
   follower_net?: number; followers?: number; indisponiveis?: string[];
@@ -96,4 +130,20 @@ export interface MetricasIgAudiencia { idade?: Record<string, number>; genero?: 
 export interface MetricasIgMidia {
   type: string; product?: string | null; caption?: string | null; permalink?: string | null; thumb?: string | null; timestamp: string;
   likes?: number | null; comments?: number | null; reach?: number | null; saved?: number | null; shares?: number | null; views?: number | null; interactions?: number | null;
+}
+
+// Google (Perfil da Empresa) ──────────────────────────────────────────────────
+/** gbp_daily: visualizações por superfície e ações do dia. Só entra o que veio (null nunca vira zero). */
+export interface MetricasGbpDia {
+  maps_mobile?: number; maps_desktop?: number; search_mobile?: number; search_desktop?: number;
+  calls?: number; directions?: number; website?: number; conversations?: number; bookings?: number;
+}
+/** gbp_review: uma linha por avaliação (key = review_id). `reviewer` completo fica só no banco; a tela do cliente recebe o primeiro nome. */
+export interface MetricasGbpAvaliacao { stars: number | null; reviewer: string | null; comment: string | null; reply: string | null; created_at: string | null }
+/** gbp_keyword: buscas do mês (key = palavra). `value` null = o Google ocultou (poucas buscas). */
+export interface MetricasGbpPalavra { value: number | null }
+/** gbp_profile: dados do local e totais de avaliação (key 'local'). */
+export interface MetricasGbpLocal {
+  title?: string | null; category?: string | null; neighborhood?: string | null; city?: string | null;
+  maps_uri?: string | null; review_uri?: string | null; rating_avg?: number | null; rating_count?: number | null;
 }

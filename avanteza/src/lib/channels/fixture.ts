@@ -3,7 +3,7 @@
 // números são inventados de forma determinística. Sem imagens remotas: os criativos usam o fallback da tela.
 import { addDays } from "@/lib/dates";
 import { listarDias } from "@/lib/dashboards/periodo";
-import type { AnuncioInfo, CanaisApi, IgMetricaDia, IgMidiaBruta, InsightBruto, ResultadoTeste } from "./types";
+import type { AnuncioInfo, CanaisApi, IgMetricaDia, IgMidiaBruta, InsightBruto, QuebraBruta, ResultadoTeste, SegmentacaoBruta } from "./types";
 import type { FonteWindsor, Intervalo, PerfilWindsor } from "./windsor";
 import { RESULTADO_PADRAO } from "./types";
 
@@ -52,6 +52,45 @@ function linhaAnuncio(d: string, a: (typeof ANUNCIOS_FIXTURE)[number]): InsightB
   };
 }
 
+/** Fatias do gasto por público (proporções inspiradas nas linhas reais do Showman, 01–18/11/2026) e conversas por R$. */
+const PUBLICO_FIXTURE: Array<[string, string, number, number]> = [
+  ["18-24", "male", 0.13, 0.3], ["25-34", "male", 0.385, 0.18], ["35-44", "male", 0.3, 0.15], ["45-54", "male", 0.025, 0.2],
+  ["18-24", "female", 0.04, 0.12], ["25-34", "female", 0.06, 0.08], ["35-44", "female", 0.035, 0], ["25-34", "unknown", 0.025, 0.1],
+];
+const REGIOES_FIXTURE: Array<[string, number]> = [["Goiás", 0.97], ["Distrito Federal", 0.03]];
+const POSICOES_FIXTURE: Array<[string, string, number]> = [
+  ["facebook", "feed", 0.3], ["facebook", "facebook_reels", 0.16], ["facebook", "facebook_stories", 0.06], ["facebook", "facebook_reels_overlay", 0.01],
+  ["instagram", "feed", 0.17], ["instagram", "instagram_reels", 0.18], ["instagram", "instagram_stories", 0.1], ["instagram", "instagram_explore", 0.02],
+];
+/** Segmentações no formato da Meta (como as dos conjuntos reais, com coordenadas de demonstração). */
+export const SEGMENTACOES_FIXTURE: SegmentacaoBruta[] = [
+  { adsetId: "120252388371440661", adsetNome: "CJ1 | Ilimitado R$69,90 | Floresta 3km", campaignId: CAMPANHA_FIXTURE.id, campaignNome: CAMPANHA_FIXTURE.nome, status: "ACTIVE",
+    targeting: JSON.stringify({ age_max: 45, age_min: 18, excluded_custom_audiences: [{ id: "120252609561060661", name: "SM_base_completa.csv" }], genders: [1], geo_locations: { custom_locations: [{ distance_unit: "kilometer", latitude: -16.6253, longitude: -49.2643, radius: 3, country: "BR" }], location_types: ["home", "recent"] }, publisher_platforms: ["facebook", "instagram"], facebook_positions: ["feed", "facebook_reels", "story"], instagram_positions: ["stream", "story", "reels", "explore"], targeting_automation: { advantage_audience: 0 } }) },
+  { adsetId: "120252609606480661", adsetNome: "BASE | Clientes cadastrados", campaignId: "120252609606470661", campaignNome: "SHOW MAN | BASE CLIENTES", status: "ACTIVE",
+    targeting: JSON.stringify({ age_max: 65, age_min: 18, custom_audiences: [{ id: "120252609561060661", name: "SM_base_completa.csv" }], geo_locations: { custom_locations: [{ distance_unit: "kilometer", latitude: -16.5981, longitude: -49.2741, radius: 10, country: "BR" }] } }) },
+  { adsetId: "120252609607970661", adsetNome: "SEMELHANTE 1% | Clientes", campaignId: "120252609607960661", campaignNome: "SHOW MAN | SEMELHANTE 1%", status: "ACTIVE",
+    targeting: JSON.stringify({ age_max: 50, age_min: 20, genders: [1], custom_audiences: [{ id: "120252609600000001", name: "Lookalike (BR, 1%) - SM_base_completa.csv" }], excluded_custom_audiences: [{ id: "120252609561060661", name: "SM_base_completa.csv" }], geo_locations: { custom_locations: [{ distance_unit: "kilometer", latitude: -16.6253, longitude: -49.2643, radius: 5, country: "BR" }] }, targeting_automation: { advantage_audience: 1 } }) },
+];
+
+/** Cortes simulados: o gasto do dia (o mesmo da campanha) repartido por público, região e posicionamento. Região sem conversas (como no Windsor). */
+export function quebrasFixture(dimensao: QuebraBruta["dimensao"], de: string, ate: string, hoje: string): QuebraBruta[] {
+  const out: QuebraBruta[] = [];
+  for (const d of listarDias(de, ate)) {
+    if (d > hoje) continue;
+    const g = ANUNCIOS_FIXTURE.reduce((t, a) => t + Number(linhaAnuncio(d, a).spend), 0);
+    const base = { date: d, campaign_id: CAMPANHA_FIXTURE.id, campaign_name: CAMPANHA_FIXTURE.nome, dimensao };
+    const linha = (fatia: number, taxa: number | null, extra: Partial<QuebraBruta>, semente: string): QuebraBruta => {
+      const spend = r2(g * fatia * (0.85 + rnd(`${semente}${d}`) * 0.3));
+      const impressions = Math.round(spend * (60 + rnd(`i${semente}${d}`) * 40));
+      return { ...base, ...extra, spend, impressions, reach: Math.round(impressions * 0.7), clicks: Math.round(impressions * 0.015), results: taxa == null ? null : Math.round(spend * taxa * (0.6 + rnd(`x${semente}${d}`) * 0.8)) };
+    };
+    if (dimensao === "idade_genero") for (const [idade, genero, f, t] of PUBLICO_FIXTURE) out.push(linha(f, t, { idade, genero }, `${idade}${genero}`));
+    if (dimensao === "regiao") for (const [regiao, f] of REGIOES_FIXTURE) out.push(linha(f, null, { regiao }, regiao));
+    if (dimensao === "posicionamento") for (const [plataforma, posicao, f] of POSICOES_FIXTURE) out.push(linha(f, 0.16, { plataforma, posicao }, `${plataforma}${posicao}`));
+  }
+  return out;
+}
+
 const MIDIAS = [
   ["REEL", "Corte + barba sem hora marcada: o Ilimitado por R$69,90"], ["IMAGE", "4 motivos para assinar a barbearia do Floresta"], ["REEL", "Antes e depois: degradê com acabamento na navalha"],
   ["CAROUSEL_ALBUM", "Cardápio de serviços do clube"], ["REEL", "Bastidores: um dia na cadeira"], ["IMAGE", "Promoção do mês para novos assinantes"],
@@ -91,6 +130,8 @@ export function criarApiFixture(hoje: string): CanaisApi {
       }
       return out;
     },
+    async quebras({ dimensao, de, ate }) { return quebrasFixture(dimensao, de, ate, hoje); },
+    async segmentacoes() { return SEGMENTACOES_FIXTURE.filter((s) => s.campaignId === CAMPANHA_FIXTURE.id).concat(SEGMENTACOES_FIXTURE.filter((s) => s.campaignId !== CAMPANHA_FIXTURE.id).map((s) => ({ ...s, campaignId: CAMPANHA_FIXTURE.id, campaignNome: CAMPANHA_FIXTURE.nome }))); },
     async anuncios(): Promise<AnuncioInfo[]> {
       return ANUNCIOS_FIXTURE.map((a) => ({ id: a.id, nome: a.nome, campanhaId: CAMPANHA_FIXTURE.id, status: "ACTIVE", statusEfetivo: a.id.endsWith("6") ? "PAUSED" : "ACTIVE", thumb: null, imagem: null, videoId: a.video ? `v${a.id}` : null }));
     },

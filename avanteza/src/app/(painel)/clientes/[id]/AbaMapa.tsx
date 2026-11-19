@@ -2,7 +2,7 @@ import { adminDb } from "@/lib/db";
 import { spDate } from "@/lib/dates";
 import { dt } from "@/lib/format";
 import { Submit } from "@/components/Submit";
-import { CreateAccess, ResetAccess } from "@/components/mapa/AccessForms";
+import { CreateAccess, ResetAccess, WelcomeEmail } from "@/components/mapa/AccessForms";
 import { listClientUsers } from "@/lib/mapa/admin";
 import { OWNER_LABEL, STATUS_LABEL, fmtDate, isOverdue, planSummary } from "@/lib/mapa/progress";
 import {
@@ -195,6 +195,7 @@ export async function AbaMapa({ client, aba, owner }: { client: Client; aba: str
                 {owner && (
                   <div className="stack" style={{ marginTop: 8 }}>
                     <ResetAccess clientId={id} email={u.email} />
+                    {u.active && <WelcomeEmail clientId={id} email={u.email} />}
                     <form action={alternarAcesso}><input type="hidden" name="client_id" value={id} /><input type="hidden" name="email" value={u.email} /><input type="hidden" name="active" value={u.active ? "0" : "1"} /><Submit className="btn btn-sm btn-ghost">{u.active ? "Desativar acesso" : "Reativar acesso"}</Submit></form>
                     {(group ?? []).length > 1 && (
                       <div className="small"><div className="muted">Empresas do grupo:</div>

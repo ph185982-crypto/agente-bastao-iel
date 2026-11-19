@@ -13,7 +13,7 @@ const enviarNuvem = (m, o) => T.criar({ caminho: '/api/top/piloto/rodada', corpo
 const enviarPadrao = () => (T.naNuvem() ? enviarNuvem : (m, o) => fila().send(TOPICO, m, o));
 const podeAgendar = () => T.naNuvem() || (process.env.VERCEL && process.env.VERCEL_ENV === 'production');
 const TOPICO = 'pedro-piloto';
-const ATIVO_S = 300; const PARADO_MIN_S = 600; const PARADO_MAX_S = 3000; // econômico: o limite de CPU do plano gratuito estourou com tique a cada 1 min // a fila guarda a mensagem por 1 h: o atraso fica abaixo disso
+const ATIVO_S = 300; const PARADO_MIN_S = 1800; const PARADO_MAX_S = 3000; // econômico: o limite de CPU do plano gratuito estourou com tique a cada 1 min // a fila guarda a mensagem por 1 h: o atraso fica abaixo disso
 
 function proximo(rodada, agora = Date.now()) {
   const ativo = (rodada?.avancados || []).some((x) => x.estado === 'em_andamento') || !!rodada?.criado;

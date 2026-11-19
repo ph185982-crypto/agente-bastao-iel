@@ -9,6 +9,8 @@ import { canPreviewClients, canUseApp, VIEW_COOKIE, VIEW_TTL_S, signViewToken } 
 import { generatePlanFor, createClientUser, resetClientUserPassword, setClientUserActive, setCompanyLink } from "@/lib/mapa/admin";
 import { ingestMeeting, saveMeetingManual, type NewAction } from "@/lib/mapa/meetings";
 import { isDateStr } from "@/lib/mapa/plan";
+import { enviarBoasVindas } from "@/lib/mapa/boas-vindas";
+import { obterCanal } from "@/lib/channels/store";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -229,6 +231,34 @@ export async function redefinirAcesso(_p: AccessState, fd: FormData): Promise<Ac
     return r;
   } catch (e) {
     return { erro: errMsg(e) };
+  }
+}
+
+export type WelcomeState = { ok?: string; erro?: string } | null;
+
+/** E-mail de boas-vindas (link, login, passo a passo) ao usuário do cliente, com cópia ao dono. Sem senha. */
+export async function enviarBoasVindasAcesso(_p: WelcomeState, fd: FormData): Promise<WelcomeState> {
+  const actor = await requireOwner();
+  const clientId = str(fd, "client_id");
+  const email = str(fd, "email").toLowerCase();
+  if (!UUID.test(clientId)) return { erro: "Cliente inválido." };
+  const db = adminDb();
+  const { data: link } = await db.from("client_user_clients").select("user_email").eq("user_email", email).eq("client_id", clientId).maybeSingle();
+  if (!link) return { erro: "Usuário não pertence a este cliente." };
+  const [{ data: client }, { data: user }, canal] = await Promise.all([
+    db.from("clients").select("name").eq("id", clientId).maybeSingle(),
+    db.from("admins").select("name, active").eq("email", email).eq("role", "client").maybeSingle(),
+    obterCanal(clientId).catch(() => null),
+  ]);
+  if (!client) return { erro: "Cliente não encontrado." };
+  if (user && user.active === false) return { erro: "Acesso desativado: reative antes de enviar." };
+  try {
+    const ok = await enviarBoasVindas({ cliente: client.name, email, nome: user?.name ?? null, limiteRecarga: canal?.alertaGasto?.limite ?? null });
+    await audit(actor, "client_welcome_email", clientId, { email, status: ok ? "enviado" : "sem_email_configurado" });
+    return ok ? { ok: `E-mail de boas-vindas enviado para ${email} (cópia para a Avanteza).` } : { erro: "E-mail não configurado (RESEND_API_KEY/ALERT_EMAIL_FROM)." };
+  } catch (e) {
+    await audit(actor, "client_welcome_email", clientId, { email, status: "falhou" });
+    return { erro: `Falha no envio: ${errMsg(e)}` };
   }
 }
 

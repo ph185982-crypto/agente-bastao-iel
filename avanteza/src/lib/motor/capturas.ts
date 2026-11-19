@@ -10,8 +10,11 @@ import { MeetingAnalysisSchema } from "../mapa/meetings";
 import { addDaysStr, isDateStr } from "../mapa/plan";
 import { spDate } from "../dates";
 
+/** Origens aceitas pela API pública de capturas (/api/capturas). */
 export const ORIGENS = ["whatsapp_max", "whatsapp_export", "extensao", "reuniao", "manual"] as const;
-export type OrigemCaptura = (typeof ORIGENS)[number];
+/** Todas as origens gravadas: as da API + "claude" (conector do Claude, só pelo /api/mcp — nunca pela API pública). */
+export const ORIGENS_CAPTURA = [...ORIGENS, "claude"] as const;
+export type OrigemCaptura = (typeof ORIGENS_CAPTURA)[number];
 
 export const CapturaAnaliseSchema = z.object({
   resumo: z.string().max(1000).nullable().describe("Uma frase com o assunto da conversa, ou null"),
@@ -30,7 +33,7 @@ const httpUrl = z.string().max(2000).refine((u) => /^https?:\/\/\S+$/i.test(u), 
 
 export const CapturaInputSchema = z
   .object({
-    origem: z.enum(ORIGENS),
+    origem: z.enum(ORIGENS_CAPTURA),
     clientId: z.string().uuid(),
     autor: z.string().trim().max(120).nullish(),
     texto: z.string().max(50_000).nullish(),

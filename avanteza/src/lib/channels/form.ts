@@ -1,11 +1,11 @@
 // Leitura e validação dos formulários dos Canais (servidor): “Tráfego (anúncios) · Meta Ads” e “Mídias (Instagram)”.
 // Sem efeitos colaterais; nunca registra token nem chave.
-import { RESULTADO_PADRAO, type FonteAnuncios, type FonteInstagram } from "./types";
+import { RESULTADO_PADRAO, type FonteAnuncios, type FonteGoogle, type FonteInstagram } from "./types";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 export interface CamposAnuncios {
-  adAccountId: string | null; campaignIds: string[]; resultActionType: string; usarTokenPlataforma: boolean; token: string | null; adsSource: FonteAnuncios;
+  adAccountId: string | null; campaignIds: string[]; campaignNameFilter: string | null; resultActionType: string; usarTokenPlataforma: boolean; token: string | null; adsSource: FonteAnuncios;
 }
 export interface CamposInstagram {
   igSource: FonteInstagram; igUserId: string | null; pageId: string | null; windsorAccountName: string | null; windsorKey: string | null;
@@ -22,6 +22,8 @@ export function lerCamposAnuncios(fd: FormData): { erro: string } | { campos: Ca
   }
   const campanhas = str(fd, "campaign_ids").split(/[\s,;]+/).filter(Boolean);
   if (campanhas.some((c) => !/^\d{3,25}$/.test(c))) return { erro: "Campanhas: informe só os IDs numéricos, separados por vírgula." };
+  const nomeFiltro = str(fd, "campaign_name_filter").replace(/\s+/g, " ");
+  if (nomeFiltro.length > 120) return { erro: "Filtro por nome: no máximo 120 caracteres." };
   const resultado = str(fd, "result_action_type") || RESULTADO_PADRAO;
   if (!/^[a-z0-9_.:\-]{3,100}$/i.test(resultado)) return { erro: "Tipo de resultado inválido." };
   const token = str(fd, "token").replace(/\s+/g, "");
@@ -30,7 +32,7 @@ export function lerCamposAnuncios(fd: FormData): { erro: string } | { campos: Ca
   if (pedida && pedida !== "meta" && pedida !== "windsor" && pedida !== "none") return { erro: "Fonte de anúncios inválida." };
   const adsSource: FonteAnuncios = (pedida as FonteAnuncios) || (conta ? "meta" : "none");
   if ((adsSource === "meta" || adsSource === "windsor") && !conta) return { erro: `Informe a conta de anúncios para ler os anúncios ${adsSource === "windsor" ? "pelo Windsor.ai" : "pela Meta"} (ou escolha “Sem anúncios”).` };
-  return { campos: { adAccountId: conta || null, campaignIds: [...new Set(campanhas)], resultActionType: resultado, usarTokenPlataforma: fd.get("use_platform_token") === "on", token: adsSource === "meta" ? token || null : null, adsSource } };
+  return { campos: { adAccountId: conta || null, campaignIds: [...new Set(campanhas)], campaignNameFilter: nomeFiltro || null, resultActionType: resultado, usarTokenPlataforma: fd.get("use_platform_token") === "on", token: adsSource === "meta" ? token || null : null, adsSource } };
 }
 
 /** Seção de Instagram (Windsor.ai ou Meta). */
@@ -57,4 +59,14 @@ export function lerCamposCanal(fd: FormData): { erro: string } | { campos: Campo
   const i = lerCamposInstagram(fd);
   if ("erro" in i) return i;
   return { campos: { ...a.campos, ...i.campos } };
+}
+
+export interface CamposGoogle { gbpSource: FonteGoogle; gbpLocationName: string | null }
+/** Seção do Google · Perfil da Empresa (Windsor.ai). O nome do local é o que o Windsor mostra (ex.: SHOW MAN BARBEARIA). */
+export function lerCamposGoogle(fd: FormData): { erro: string } | { campos: CamposGoogle } {
+  const pedida = str(fd, "gbp_source") || "windsor";
+  if (pedida !== "windsor" && pedida !== "none") return { erro: "Fonte do Google inválida." };
+  const nome = str(fd, "gbp_location_name").replace(/\s+/g, " ");
+  if (nome.length > 200 || /[<>"`\\]/.test(nome)) return { erro: "Nome do local: até 200 caracteres, sem < > \" ` ou \\." };
+  return { campos: { gbpSource: pedida, gbpLocationName: pedida === "windsor" ? nome || null : null } };
 }

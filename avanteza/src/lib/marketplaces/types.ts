@@ -114,7 +114,8 @@ export type ActionType =
   | "answer_question"
   | "update_ads_budget"
   | "update_ads_status"
-  | "create_promotion";
+  | "create_promotion"
+  | "create_listing";
 
 export interface WebhookNotification {
   topic: string;

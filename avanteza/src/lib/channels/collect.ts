@@ -8,10 +8,12 @@ import { MetaErro } from "@/lib/dashboards/meta";
 import { esconderToken } from "./graph";
 import { WindsorErro, esconderChave, type FonteWindsor } from "./windsor";
 import type { FonteAnunciosApi } from "./windsor-ads";
+import { campanhaPassa } from "./campanhas";
+import { linkMetaSeguro } from "./links";
 import { datasComIgDiario, gravarSnapshots, listarCanaisParaColeta, marcarColeta, configDe, type CanalRow, type FonteColeta, type SnapshotEntrada } from "./store";
 import {
-  DIAS_BACKFILL, DIAS_ROTINA, IG_METRICAS_DIA,
-  type OrigemDado, type AnuncioInfo, type CanaisApi, type CanalConfig, type IgMetricaDia, type InsightBruto, type IgMidiaBruta, type MetricasAnuncioDia, type MetricasCampanhaDia, type MetricasIgDia, type MetricasIgMidia,
+  DIAS_BACKFILL, DIAS_ROTINA, DIMENSOES_QUEBRA, IG_METRICAS_DIA,
+  type MetricasQuebra, type MetricasSegmentacao, type OrigemDado, type AnuncioInfo, type CanaisApi, type CanalConfig, type IgMetricaDia, type InsightBruto, type IgMidiaBruta, type MetricasAnuncioDia, type MetricasCampanhaDia, type MetricasIgDia, type MetricasIgMidia,
 } from "./types";
 
 const num = (v: unknown): number => { const n = typeof v === "number" ? v : parseFloat(String(v ?? "")); return Number.isFinite(n) ? n : 0; };
@@ -46,6 +48,8 @@ export interface OpcoesColeta {
   agora?: () => number;
   /** Quais fontes coletar (padrão: as duas). Cada uma é independente. */
   fontes?: FonteColeta[];
+  /** Coleta leve (alerta de recarga): só o nível de campanha dos anúncios, sem anúncios/criativos. */
+  soCampanhas?: boolean;
 }
 export interface ResultadoFonte {
   fonte: FonteColeta; origem: OrigemDado | null;
@@ -103,21 +107,29 @@ const pulada = (fonte: FonteColeta, motivo: string): ResultadoFonte => ({ fonte,
 
 // ─── Fonte 1: anúncios (Meta Ads) ────────────────────────────────────────────
 
-async function coletarAnuncios(cfg: CanalConfig, api: FonteAnunciosApi, token: string | null | undefined, de: string, hoje: string, restante: () => number, origem: OrigemDado = "meta"): Promise<{ r: Rastreio; info: Record<string, unknown> }> {
+async function coletarAnuncios(cfg: CanalConfig, api: FonteAnunciosApi, token: string | null | undefined, de: string, hoje: string, restante: () => number, origem: OrigemDado = "meta", soCampanhas = false): Promise<{ r: Rastreio; info: Record<string, unknown> }> {
   const r = novoRastreio();
   const parte = executor(r, restante, token);
   const conta = cfg.adAccountId!;
+  // Filtro do canal (ids e nome) aplicado também aqui, seja qual for a fonte: campanha de outro projeto nunca é gravada.
+  const filtro = { campaignIds: cfg.campaignIds, campaignNameFilter: cfg.campaignNameFilter ?? null };
+  const aceitas = new Set<string>();
   await parte("Campanhas", async () => {
     const bruto = await api.insightsDiarios({ contaId: conta, nivel: "campaign", de, ate: hoje, campanhas: cfg.campaignIds });
     const rows: SnapshotEntrada[] = [];
     for (const x of bruto) {
       if (!x.date_start || !x.campaign_id) continue;
+      if (!campanhaPassa(x.campaign_id, x.campaign_name, filtro)) continue;
+      aceitas.add(x.campaign_id);
       rows.push({ kind: "campaign_daily", date: x.date_start, key: x.campaign_id, metrics: { ...metricasDaLinha(x, cfg.resultActionType, x.campaign_name ?? x.campaign_id) } });
     }
     r.linhas.campaign_daily = await gravarSnapshots(cfg.clientId, rows, origem);
   });
+  await coletarPublico(cfg, api, token, de, hoje, restante, origem, filtro, aceitas, r);
+  if (soCampanhas) return { r, info: {} };
   await parte("Anúncios", async () => {
-    const bruto = await api.insightsDiarios({ contaId: conta, nivel: "ad", de, ate: hoje, campanhas: cfg.campaignIds });
+    const bruto = (await api.insightsDiarios({ contaId: conta, nivel: "ad", de, ate: hoje, campanhas: cfg.campaignIds }))
+      .filter((x) => (x.campaign_name ? campanhaPassa(x.campaign_id, x.campaign_name, filtro) : !filtro.campaignNameFilter || aceitas.has(String(x.campaign_id ?? ""))));
     let infos: AnuncioInfo[] = [];
     try { infos = await api.anuncios({ contaId: conta, campanhas: cfg.campaignIds }); }
     catch (e) { r.avisos.push(`Criativos: ${mensagemSegura(e, token)}`); }
@@ -130,12 +142,66 @@ async function coletarAnuncios(cfg: CanalConfig, api: FonteAnunciosApi, token: s
         ...metricasDaLinha(x, cfg.resultActionType, x.ad_name ?? a?.nome ?? x.ad_id),
         campaign_id: x.campaign_id, campaign_name: x.campaign_name,
         ...(a ? { status: a.status, effective_status: a.statusEfetivo, thumb: a.thumb, image: a.imagem, video_id: a.videoId } : {}),
+        ...(a ? criativoDe(a) : {}),
       };
       rows.push({ kind: "ad_daily", date: x.date_start, key: x.ad_id, metrics: { ...m } });
     }
     r.linhas.ad_daily = await gravarSnapshots(cfg.clientId, rows, origem);
   });
   return { r, info: {} };
+}
+
+/** Conjunto e criativo (título, texto, CTA, links) do anúncio — só o que veio; links já sanitizados na fonte e de novo aqui. */
+function criativoDe(a: AnuncioInfo): Partial<MetricasAnuncioDia> {
+  const m: Partial<MetricasAnuncioDia> = {};
+  if (a.conjuntoId) m.adset_id = a.conjuntoId;
+  if (a.conjuntoNome) m.adset_name = a.conjuntoNome;
+  if (a.titulo) m.title = a.titulo.slice(0, 300);
+  if (a.texto) m.body = a.texto.slice(0, 3000);
+  if (a.cta) m.cta = a.cta.slice(0, 60);
+  const previa = linkMetaSeguro(a.previa), ig = linkMetaSeguro(a.instagram);
+  if (previa) m.preview_url = previa;
+  if (ig) m.ig_url = ig;
+  return m;
+}
+
+/** Chave estável de um corte: dimensão, campanha e valores (ex.: "idade_genero|120…|25-34|male"). */
+export const chaveQuebra = (q: Pick<MetricasQuebra, "dimensao" | "campaign_id" | "idade" | "genero" | "regiao" | "plataforma" | "posicao">) =>
+  [q.dimensao, q.campaign_id, ...(q.dimensao === "idade_genero" ? [q.idade ?? "?", q.genero ?? "?"] : q.dimensao === "regiao" ? [q.regiao ?? "?"] : [q.plataforma ?? "?", q.posicao ?? "?"])].join("|").slice(0, 300);
+
+/**
+ * Público e localização (extra dos anúncios): um corte por consulta (idade×gênero, região, posicionamento) e a segmentação dos conjuntos.
+ * Mesmo filtro de campanhas. Falha aqui vira AVISO (não derruba nem marca erro nos anúncios): é um complemento.
+ */
+async function coletarPublico(cfg: CanalConfig, api: FonteAnunciosApi, segredo: string | null | undefined, de: string, hoje: string, restante: () => number, origem: OrigemDado, filtro: { campaignIds: string[]; campaignNameFilter: string | null }, aceitas: Set<string>, r: Rastreio) {
+  const passa = (id: string | null | undefined, nome: string | null | undefined) => (nome ? campanhaPassa(id, nome, filtro) : !filtro.campaignNameFilter || aceitas.has(String(id ?? "")));
+  const conta = cfg.adAccountId!;
+  if (api.quebras) {
+    const rows: SnapshotEntrada[] = [];
+    for (const dimensao of DIMENSOES_QUEBRA) {
+      if (restante() <= 2_000) { r.parcial = true; r.avisos.push("Público e localização: tempo esgotado; continua na próxima atualização."); break; }
+      try {
+        const lista = await api.quebras({ contaId: conta, dimensao, de, ate: hoje, campanhas: cfg.campaignIds, tipo: cfg.resultActionType });
+        for (const q of lista) {
+          if (!q.date || q.date > hoje || !passa(q.campaign_id, q.campaign_name)) continue;
+          const m: MetricasQuebra = { ...q, spend: arred(q.spend) };
+          delete (m as any).date;
+          rows.push({ kind: "ads_breakdown", date: q.date, key: chaveQuebra(q), metrics: { ...m } });
+        }
+      } catch (e) { r.avisos.push(`Público (${dimensao.replace("_", " × ")}): ${mensagemSegura(e, segredo)}`); }
+    }
+    if (rows.length) r.linhas.ads_breakdown = await gravarSnapshots(cfg.clientId, rows, origem);
+  }
+  if (api.segmentacoes && restante() > 2_000) {
+    try {
+      const lista = await api.segmentacoes({ contaId: conta, campanhas: cfg.campaignIds, de, ate: hoje });
+      const rows: SnapshotEntrada[] = lista.filter((s) => passa(s.campaignId, s.campaignNome)).map((s) => {
+        const m: MetricasSegmentacao = { adset_name: s.adsetNome, campaign_id: s.campaignId, campaign_name: s.campaignNome, status: s.status, targeting: s.targeting };
+        return { kind: "adset_targeting" as const, date: hoje, key: (s.adsetId ?? `nome:${s.adsetNome}`).slice(0, 300), metrics: { ...m } };
+      });
+      if (rows.length) r.linhas.adset_targeting = await gravarSnapshots(cfg.clientId, rows, origem);
+    } catch (e) { r.avisos.push(`Segmentação dos conjuntos: ${mensagemSegura(e, segredo)}`); }
+  }
 }
 
 // ─── Fonte 2a: Instagram pelo Windsor.ai ─────────────────────────────────────
@@ -244,7 +310,7 @@ export async function coletarCanal(canal: CanalRow, api: CanaisApi | null, o: Op
     else {
       // Anúncios podem usar até ~70% do tempo; o Instagram sempre sobra algum.
       const fimAds = inicio + Math.floor(o.maxMs * 0.7);
-      const { r } = await coletarAnuncios(cfg, fonteApi, doWindsor ? windsorAds?.chave : token, addDays(hoje, -(o.dias - 1)), hoje, () => Math.min(fimAds, limite) - agora(), doWindsor ? "windsor" : "meta");
+      const { r } = await coletarAnuncios(cfg, fonteApi, doWindsor ? windsorAds?.chave : token, addDays(hoje, -(o.dias - 1)), hoje, () => Math.min(fimAds, limite) - agora(), doWindsor ? "windsor" : "meta", Boolean(o.soCampanhas));
       ads = fechar("ads", doWindsor ? "windsor" : "meta", r);
       await marcarColeta(cfg.clientId, { ok: ads.ok, erro: ads.erro }, "ads");
     }

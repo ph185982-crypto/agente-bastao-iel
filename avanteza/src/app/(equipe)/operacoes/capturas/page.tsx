@@ -11,7 +11,7 @@ import { ImportarConversa } from "@/components/capturas/ImportarConversa";
 import { podeTrabalharMotor, podeVerMotor } from "@/lib/motor/acesso";
 import { clientesAtivos, isUuid } from "@/lib/motor/repo";
 import { listarCapturas } from "@/lib/capturas/importar";
-import { ORIGENS } from "@/lib/motor/capturas";
+import { ORIGENS_CAPTURA } from "@/lib/motor/capturas";
 import { fmtDate } from "@/lib/mapa/progress";
 import { acaoRapidaForm } from "../motor-actions";
 import "@/components/motor/motor.css";
@@ -23,7 +23,7 @@ export const metadata: Metadata = { title: "Capturas — Operações — Avantez
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
-const ROTULO_ORIGEM: Record<string, string> = { whatsapp_max: "Max (WhatsApp)", whatsapp_export: "Conversa exportada", extensao: "Extensão", reuniao: "Reunião", manual: "Manual" };
+const ROTULO_ORIGEM: Record<string, string> = { whatsapp_max: "Max (WhatsApp)", whatsapp_export: "Conversa exportada", extensao: "Extensão", reuniao: "Reunião", manual: "Manual", claude: "Claude" };
 const ROTULO_STATUS: Record<string, { t: string; c: string }> = {
   processada: { t: "Analisada", c: "pill-ok" }, sem_ia: { t: "Sem IA", c: "pill-outline" }, erro: { t: "Erro na análise", c: "pill-danger" }, recebida: { t: "Recebida", c: "pill-outline" },
 };
@@ -34,7 +34,7 @@ export default async function Capturas({ searchParams }: { searchParams: Promise
   if (!podeVerMotor(sess)) redirect("/central");
   const sp = await searchParams;
   const cliente = isUuid(one(sp.cliente)) ? one(sp.cliente) : null;
-  const origem = (ORIGENS as readonly string[]).includes(one(sp.origem)) ? one(sp.origem) : null;
+  const origem = (ORIGENS_CAPTURA as readonly string[]).includes(one(sp.origem)) ? one(sp.origem) : null;
   const [clientes, capturas] = await Promise.all([clientesAtivos(), listarCapturas({ clientId: cliente, origem, limite: 60 })]);
   const pode = podeTrabalharMotor(sess);
   const back = `/operacoes/capturas${cliente || origem ? `?${new URLSearchParams({ ...(cliente ? { cliente } : {}), ...(origem ? { origem } : {}) })}` : ""}`;
@@ -63,7 +63,7 @@ export default async function Capturas({ searchParams }: { searchParams: Promise
             <label className="sr-only" htmlFor="f-ori">Origem</label>
             <select id="f-ori" name="origem" defaultValue={origem ?? ""}>
               <option value="">Todas as origens</option>
-              {ORIGENS.map((o) => <option key={o} value={o}>{ROTULO_ORIGEM[o]}</option>)}
+              {ORIGENS_CAPTURA.map((o) => <option key={o} value={o}>{ROTULO_ORIGEM[o]}</option>)}
             </select>
             <button className="btn btn-sm btn-ghost" type="submit">Filtrar</button>
           </form>
