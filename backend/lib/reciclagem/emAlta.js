@@ -36,6 +36,7 @@ const MAX_CONTAS_COTA_MEDIA = 4;      // quando a Meta diz que já usamos 50% ou
 const COTA_MEDIA = 50; const COTA_ALTA = 75;
 const LIMITE_MIDIAS = 25;
 const MAX_INSTAGRAM = 40;             // melhores posts guardados por rodada
+const MAX_POR_CONTA = 4;              // diversidade: uma página que posta muito (ex.: Choquei) não ocupa o ranking inteiro
 const MAX_TRENDS = 25;
 const RECUSA_DIAS = 7;
 const INTERVALO_MANUAL_MS = 5 * 60000; // "Atualizar agora" seguido não gasta cota de novo
@@ -309,7 +310,7 @@ async function coletar({ deps = {}, origem = 'manual', agora = Date.now() } = {}
           else if (c.invalida || c.tipo === 'permissao') recusadas[c.handle] = { erro: c.original || c.erro, ate: iso(agora + RECUSA_DIAS * 86400000) };
         }
         if (r.contas.some((c) => c.tipo === 'limite')) pausaMeta = iso(agora + Math.max(30, uso.regain_min || 0) * 60000);
-        const melhores = [...r.itens].sort((a, b) => b.score - a.score).slice(0, MAX_INSTAGRAM);
+        const porConta = {}; const melhores = [...r.itens].sort((a, b) => b.score - a.score).filter((x) => { const h = x.conta?.handle || x.handle || ''; porConta[h] = (porConta[h] || 0) + 1; return porConta[h] <= MAX_POR_CONTA; }).slice(0, MAX_INSTAGRAM);
         itens.push(...melhores);
         fontes.instagram = { ok: r.contas.some((c) => c.ok), contas_lidas: r.contas.filter((c) => c.ok).length, chamadas: r.chamadas, max_por_rodada: max, uso_meta_pct: pct ?? null, recusadas: r.contas.filter((c) => !c.ok).map((c) => ({ handle: c.handle, erro: c.erro })), itens: melhores.length, parcial: r.parcial };
       }
@@ -353,6 +354,7 @@ async function listar({ fonte = null, limite = 80, agora = Date.now() } = {}) {
   const max = {}; for (const d of docs) max[d.fonte] = Math.max(max[d.fonte] || 0, d.score || 0);
   const itens = docs.map((d) => ({ ...d, score_bruto: d.score ?? 0, score: max[d.fonte] > 0 ? Math.round((100 * (d.score || 0)) / max[d.fonte]) : 0 }));
   itens.sort((a, b) => b.score - a.score || b.score_bruto - a.score_bruto || Date.parse(b.publicado_em) - Date.parse(a.publicado_em));
+  { const n = {}; const filtrados = itens.filter((d) => { if (d.fonte !== 'instagram') return true; const h = d.conta?.handle || ''; n[h] = (n[h] || 0) + 1; return n[h] <= MAX_POR_CONTA; }); itens.length = 0; itens.push(...filtrados); } // até 4 posts por página do Instagram na lista
   const porFonte = {}; for (const d of docs) porFonte[d.fonte] = (porFonte[d.fonte] || 0) + 1;
   return { itens: itens.slice(0, Math.min(200, Math.max(1, Number(limite) || 80))), total: itens.length, por_fonte: porFonte };
 }

@@ -233,3 +233,8 @@ test('acesso: rotas do "Em alta" pedem login; o cron passa só com o CRON_SECRET
     assert.strictEqual(await passa('/api/reciclagem/em-alta/contas', 'Bearer segredo-cron-em-alta'), 401);
   } finally { for (const k of Object.keys(process.env)) if (!(k in antes)) delete process.env[k]; Object.assign(process.env, antes); }
 });
+
+test('em alta: no máximo 4 posts por página no ranking de uma rodada', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'emAlta.js'), 'utf8');
+  assert.match(src, /MAX_POR_CONTA = 4/);
+});
