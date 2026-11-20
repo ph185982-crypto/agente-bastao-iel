@@ -179,7 +179,7 @@ etapa('render-slide', 40, async (b) => {
   const s = b.slide;
   if (!s || typeof s !== 'object') throw Object.assign(new Error('Falta o slide.'), { code: 'ENTRADA' });
   // Sem corte silencioso: o texto inteiro vai para a arte (teto alto só contra abuso) e, se não couber, a arte marca cabe:false e a revisão bloqueia.
-  const slide = { ...s, texto: txt(s.texto, 6000), titulo: s.titulo ? txt(s.titulo, 200) : null, rotulo: s.rotulo ? txt(s.rotulo, 40) : null, ...(s.tema_visual === 'reportagem' ? { tema_visual: 'reportagem', recorte_id: /^[a-f0-9]{12}$/.test(String(s.recorte_id || '')) ? s.recorte_id : null } : { tema_visual: undefined }) };
+  const slide = { ...s, texto: txt(s.texto, 6000), titulo: s.titulo ? txt(s.titulo, 200) : null, rotulo: s.rotulo ? txt(s.rotulo, 40) : null, ...(s.tema_visual === 'reportagem' ? { tema_visual: 'reportagem', recorte_id: /^[a-f0-9]{12}$/.test(String(s.recorte_id || '')) ? s.recorte_id : null } : ['dialogo', 'papel_de_parede'].includes(s.tema_visual) ? { tema_visual: s.tema_visual } : { tema_visual: undefined }) };
   let imagem = await decodificaImagem(b.imagem, 'Imagem do slide');
   if (!imagem && slide.recorte_id) imagem = await require('../lib/recortes').obter(slide.recorte_id);
   const arquivoEncerramento = await decodificaImagem(b.encerramento, 'Arquivo de encerramento');

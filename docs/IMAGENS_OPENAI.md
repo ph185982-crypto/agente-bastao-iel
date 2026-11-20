@@ -2,6 +2,8 @@
 
 **Vem DESLIGADO por padrão**: cada imagem gasta crédito da OpenAI. Nada é gerado até `IMAGEM_OPENAI_LIGADA=1` estar definido na Vercel e a `OPENAI_API_KEY` existir.
 
+A ilustração da cena do carrossel **Diálogo ilustrado** usa a mesma chave, a mesma chave de liga e os mesmos tetos: ver [CARROSSEIS_DIALOGO_E_PAPEL.md](CARROSSEIS_DIALOGO_E_PAPEL.md).
+
 ## Como funciona (híbrido)
 
 | Parte do slide | Quem faz | Por quê |

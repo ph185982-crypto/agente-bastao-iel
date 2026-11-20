@@ -69,6 +69,7 @@ app.use('/api/videos', require('./routes/videos'));
 app.use('/api/reciclagem', require('./routes/reciclagem'));
 app.use('/api/historias', require('./routes/historias'));
 app.use('/api/linkedin', require('./routes/linkedin'));
+app.use('/api/carrosseis', require('./routes/carrosseis')); // diálogo ilustrado e papel de parede (topo de funil)
 // Manutenção do banco (limite de 512 MB do Postgres gratuito): ver espaço e limpar prévias/fotos/revisões sem uso.
 app.get('/api/manutencao/espaco', async (req, res) => { try { const a = require('./lib/armazem').armazem(); res.json(a?.arquivos?.espaco ? await a.arquivos.espaco() : {}); } catch (e) { res.status(500).json({ error: e.message }); } });
 app.post('/api/manutencao/limpar', async (req, res) => { try { res.json(await require('./lib/manutencao').limpar({ simular: req.body?.simular === true })); } catch (e) { res.status(500).json({ error: e.message }); } });
