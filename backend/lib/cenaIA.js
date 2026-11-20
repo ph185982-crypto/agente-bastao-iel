@@ -70,8 +70,10 @@ async function gerar(c, cena, deps = {}) {
     }
     return { aviso: 'A IA devolveu a ilustração com letras ou números duas vezes; o carrossel saiu com a cena desenhada pelo código.', custo_usd: arred(custo), modelo };
   } catch (e) {
-    const porCodigo = { ImagemRecusada: 'A OpenAI recusou gerar a ilustração', ImagemTeto: 'O teto de gasto com imagens foi atingido', ImagemSemChave: 'Falta a chave da OpenAI', ImagemFalhou: 'A OpenAI não respondeu a tempo' }[e.name] || ({ IMAGEM_RECUSADA: 'A OpenAI recusou gerar a ilustração', IMAGEM_TETO: 'O teto de gasto com imagens foi atingido', IMAGEM_SEM_CHAVE: 'Falta a chave da OpenAI', IMAGEM_FALHOU: 'A OpenAI não respondeu a tempo' }[e.code]);
-    return { aviso: `${porCodigo || 'Não consegui gerar a ilustração'}; o carrossel saiu com a cena desenhada pelo código.`, custo_usd: arred(custo), modelo };
+    const porCodigo = { ImagemRecusada: 'A OpenAI recusou gerar a ilustração', ImagemTeto: 'O teto de gasto com imagens foi atingido', ImagemSemChave: 'Falta a chave da OpenAI', ImagemFalhou: 'A OpenAI não gerou a ilustração' }[e.name] || ({ IMAGEM_RECUSADA: 'A OpenAI recusou gerar a ilustração', IMAGEM_TETO: 'O teto de gasto com imagens foi atingido', IMAGEM_SEM_CHAVE: 'Falta a chave da OpenAI', IMAGEM_FALHOU: 'A OpenAI não gerou a ilustração' }[e.code]);
+    // Motivo fixo do módulo de imagem (nunca o corpo cru da API nem a chave): ajuda a saber se foi tempo, chave, saldo ou modelo.
+    const motivo = (e.name === 'ImagemFalhou' || e.code === 'IMAGEM_FALHOU') && typeof e.message === 'string' && e.message.length < 140 && !/sk-|Bearer/i.test(e.message) ? ` (${e.message})` : '';
+    return { aviso: `${porCodigo || 'Não consegui gerar a ilustração'}${motivo}; o carrossel saiu com a cena desenhada pelo código.`, custo_usd: arred(custo), modelo };
   }
 }
 
