@@ -377,7 +377,8 @@ function postgres({ url, pool }) {
 let _atual;
 function armazem() {
   if (_atual !== undefined) return _atual;
-  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
+  // ESTUDIO_DATABASE_URL: banco reserva (outro projeto Neon, com cota própria) quando o principal estoura a cota gratuita do mês.
+  const url = process.env.ESTUDIO_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_URL || '';
   _atual = url ? postgres({ url }) : null;
   return _atual;
 }
