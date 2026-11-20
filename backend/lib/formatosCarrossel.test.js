@@ -252,7 +252,8 @@ test('nenhuma chave aparece em resposta, conteúdo ou log, mesmo com erro vindo 
     const r2 = await F.criarPapelDeParede({ frases: FRASES }, { deps: { armazem: a, fotoPedro: async () => null, buscarFoto: async () => { throw new Error('A busca de fotos não respondeu (401).'); } } });
     const tudo = JSON.stringify([r1, r2, (await a.conteudos.obter(conta, r1.id)).doc, (await a.conteudos.obter(conta, r2.id)).doc, logs]);
     assert.ok(!tudo.includes('SEGREDO'), 'nenhuma chave vazou');
-    assert.match(r1.cena.aviso, /OpenAI não respondeu/);
+    assert.match(r1.cena.aviso, /OpenAI não gerou a ilustração/);
+    assert.ok(!/Bearer/.test(r1.cena.aviso), 'motivo com credencial não aparece');
     assert.strictEqual(r2.fundo, 'gradiente');
   } finally {
     Object.assign(console, orig);
