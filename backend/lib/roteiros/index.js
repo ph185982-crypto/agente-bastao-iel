@@ -17,6 +17,7 @@ const { armazem } = require('../armazem');
 const { ACCOUNT } = require('../account');
 const S = require('./skill');
 const Angulo = require('./angulo');
+const Escada = require('./escada');
 
 const conta = () => ACCOUNT.ig_id;
 const META_DIA = 5;
@@ -81,6 +82,8 @@ function promptRoteirista({ formato, feedback = '', angulo = null }) {
   const f = S.FORMATOS[formato];
   return `Você é o roteirista de Reels do @pedro_destrava. Escreva UM roteiro falado, gravado por ele olhando para a câmera, lido no teleprompter.
 ${S.SKILL}
+
+${Escada.bloco()}
 
 FORMATO DESTE ROTEIRO: ${formato} · ${f.nome}
 ${f.estrutura}
@@ -169,7 +172,9 @@ TOM E MARCA (critérios 8, 9, 10, 14, 15): número inventado, fato que a pauta n
     ? 'FISCAL DE RETENÇÃO E VIRALIDADE. Você pensa como Paddy Galloway, Jenny Hoyos e Kallaway: a pessoa decide em 3 segundos se fica, e sai no primeiro trecho sem novidade.'
     : 'FISCAL DE VERDADE, VOZ E REPUTAÇÃO. Você protege o Pedro: número inventado, fato não sustentado pela pauta, tom de palanque, ataque pessoal e texto com cara de IA queimam a reputação dele.';
   return `Você é o ${papel}
-Avalie o roteiro de Reel do @pedro_destrava (público: dono de pequena empresa, MEI, vendedor de marketplace) com rigor; nota 8+ só para o que está realmente pronto para gravar. Na dúvida, nota menor.
+Avalie o roteiro de Reel do @pedro_destrava (público: o do degrau atual da escada abaixo) com rigor; nota 8+ só para o que está realmente pronto para gravar. Na dúvida, nota menor.
+${Escada.bloco()}
+Um roteiro que fala com empresário ou usa jargão de negócio num degrau de audiência geral perde nota em gancho e retenção.
 Critérios (0 a 10; ★ = eliminatório):
 ${crit.map((c) => `${c.n}${c.el ? '★' : ''}. ${c.nome}`).join('\n')}
 ${qual !== 'retencao' ? 'Critério 8: compare cada número, data, valor e fato com a PAUTA. O que não está na pauta e é afirmado como fato = nota 0. Opinião assumida ("na minha leitura") e cena genérica do dia a dia são permitidas.\n' : ''}${qual !== 'retencao' ? `Além das notas:

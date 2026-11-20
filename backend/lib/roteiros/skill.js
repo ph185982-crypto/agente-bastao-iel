@@ -26,7 +26,7 @@ const FORMATOS = {
 };
 
 const SKILL = `SKILL: ROTEIRO DE VÍDEO CURTO (Reels de 30 a 75 s) do @pedro_destrava
-Público: dono de pequena empresa, MEI, quem vende em marketplace, autônomo no Brasil. Voz: Pedro Martins, direita assumida, liberdade econômica, fala direto, com convicção, sem palanque.
+Público: definido pela ESCADA DE POSICIONAMENTO abaixo (começa na audiência geral e sobe aos poucos até o empreendedor). Voz: Pedro Martins, direita assumida, liberdade econômica, fala direto, com convicção, sem palanque.
 
 1. GANCHO (0–3 s; Kallaway, Hoyos, TikTok, Galloway): a PRIMEIRA FRASE JÁ É O ASSUNTO E A PROMESSA, até 15 palavras. Proibido "Oi, pessoal", "hoje eu vou falar", "você sabia que". Teste: serviria como título de vídeo longo? Entende-se sem som? Tipos: contraste ("todo mundo acha X. Mas…"), número específico (só da pauta), erro/alerta (aversão à perda), identidade ("se você é MEI…"), pergunta com lacuna, reenquadramento ("isso não tem nome de imposto, tem nome de sócio"), letras miúdas.
 2. TRÊS CAMADAS DIZEM A MESMA COISA (Kallaway): o que ele fala, o texto na tela [TELA: 3 a 5 palavras] e o que se vê (objeto, gesto, cenário).
