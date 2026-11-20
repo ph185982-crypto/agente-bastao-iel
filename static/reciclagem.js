@@ -3,6 +3,7 @@
 // viralidade (VL), tema, mecanismo e tese neutra; tendências do dia no Google; e "Reciclar como…" carrossel, post ou reel.
 // O app só MOSTRA e comanda; coleta, classificação e escrita rodam no servidor. Nunca copiamos o texto de terceiros:
 // o que aparece aqui é tema/tese/ponte escritos pela IA e os números públicos do post. Nada é publicado sozinho.
+// Sub-seção "Em alta no Brasil" (rc2-ea-*): o que está bombando agora no Brasil, sem filtro de nicho, para ideia de topo de funil.
 // Ações com prefixo rc2- (rc- já é dos Recortes).
 (function () {
   'use strict';
@@ -10,6 +11,8 @@
     carregando: false, carregou: false, erro: null, itens: [], total: 0, estado: null, tendencias: null, tela: 'lista',
     filtro: { mecanismo: '', idioma: '', min_vl: '2', dias: '30' }, menu: null, ocupado: {}, roteiro: null, producao: null,
     contas: null, contasForm: { handle: '', nome: '', pais: 'BR', idioma: 'pt', por_que: '', canal: '', canal_nome: '', canal_pais: 'BR', canal_idioma: 'pt' }, contasAlterado: false, autoriza: null, autForm: {},
+    // Sub-seção "Em alta no Brasil" (sem filtro de nicho). secao: 'teses' (o Radar de sempre) | 'em_alta'.
+    secao: 'teses', ea: { carregando: false, carregou: false, erro: null, itens: [], total: 0, por_fonte: {}, estado: null, fonte: '', menu: null, contas: null, verContas: false, novo: '', novoCat: 'entretenimento' },
   };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const TZ = 'America/Sao_Paulo';
@@ -227,6 +230,121 @@
       ${removidas ? `<h3 class="rc2-h3">Removidas</h3><ul class="rc2-contas">${removidas}</ul>` : ''}`;
   }
 
+  // ── Em alta no Brasil ─────────────────────────────────────────────────────────
+  // O que está bombando agora no Brasil, sem filtro de nicho: posts das grandes páginas (Instagram), buscas em alta
+  // (Google Trends) e top de hashtags gerais. Só link, números e miniatura; "Reciclar" usa o mesmo clone das teses.
+  const FONTE_EA = { instagram: 'Instagram', instagram_hashtag: 'Hashtag', google_trends: 'Google' };
+  const CAT_EA = { noticias: 'Notícias', entretenimento: 'Entretenimento', esporte: 'Esporte', humor: 'Humor', celebridade: 'Celebridade', outros: 'Outros' };
+  const atras = (iso) => { const t = Date.parse(iso || ''); if (!Number.isFinite(t)) return '—'; const m = Math.max(0, Math.round((Date.now() - t) / 60000)); return m < 60 ? `há ${m} min` : m < 48 * 60 ? `há ${Math.round(m / 60)} h` : `há ${Math.round(m / 1440)} dias`; };
+  async function carregarEmAlta(ctx, forcar) {
+    const E = ST.ea; if (E.carregando || (E.carregou && !forcar)) return;
+    E.carregando = true; ctx.render();
+    try { const r = await ctx.api('/api/reciclagem/em-alta?limite=120'); Object.assign(E, { itens: r.itens || [], total: r.total || 0, por_fonte: r.por_fonte || {}, estado: r.estado || null, erro: null }); }
+    catch (e) { E.erro = e.message || 'Não consegui abrir o "Em alta no Brasil".'; }
+    E.carregando = false; E.carregou = true; ctx.render();
+  }
+  async function coletarEmAlta(ctx) {
+    if (ST.ocupado.ea_coletar) return;
+    ST.ocupado.ea_coletar = true; ctx.render();
+    try {
+      const r = await ctx.api('/api/reciclagem/em-alta/coletar', { method: 'POST', body: {} });
+      if (r.ocupado) ctx.toast('Já tem uma coleta rodando. Em instantes a lista atualiza.');
+      else if (r.recente) ctx.toast('A lista foi atualizada há menos de 5 minutos.');
+      else { const f = r.fontes || {}; ctx.toast(`Atualizado: ${f.instagram?.contas_lidas ?? 0} páginas lidas, ${f.google_trends?.itens ?? 0} buscas do Google, ${r.novos || 0} novos.`); }
+      await carregarEmAlta(ctx, true);
+    } catch (e) { ctx.toast(e.status === 429 ? 'Atualizou há pouco. Espere alguns minutos.' : e.message); }
+    delete ST.ocupado.ea_coletar; ctx.render();
+  }
+  async function carregarContasEmAlta(ctx) {
+    try { ST.ea.contas = await ctx.api('/api/reciclagem/em-alta/contas'); } catch (e) { ctx.toast(e.message); }
+    ctx.render();
+  }
+  async function salvarContasEmAlta(ctx, cfg) {
+    try { ST.ea.contas = await ctx.api('/api/reciclagem/em-alta/contas', { method: 'PUT', body: cfg }); ctx.toast('Lista de páginas salva.'); } catch (e) { ctx.toast(e.message); }
+    ctx.render();
+  }
+  // Leva o post para a lista da Reciclagem (id rc_…) e roda o mesmo clone das teses.
+  async function reciclarEmAlta(ctx, id, opcoes) {
+    if (ST.ocupado[id]) return;
+    ST.ocupado[id] = 'clone'; ST.ea.menu = null; ctx.render();
+    let rcId = null;
+    try { rcId = (await ctx.api(`/api/reciclagem/em-alta/${encodeURIComponent(id)}/levar`, { method: 'POST', body: {} })).id; }
+    catch (e) { ctx.toast(e.message || 'Não foi possível reciclar este post.'); }
+    delete ST.ocupado[id]; ctx.render();
+    if (!rcId) return;
+    const it = ST.ea.itens.find((x) => x.id === id); if (it) it.levado = { id: rcId, em: new Date().toISOString() };
+    await clonar(ctx, rcId, opcoes);
+  }
+  function cartaoEmAlta(i) {
+    const c = i.conta || {}; const m = i.metricas || {}; const oc = ST.ocupado[i.id];
+    const metricas = [m.curtidas != null ? `${num(m.curtidas)} curtidas` : null, m.comentarios != null ? `${num(m.comentarios)} comentários` : null, m.visualizacoes != null ? `${num(m.visualizacoes)} views` : null, m.por_hora != null ? `${num(m.por_hora)} interações/h` : null].filter(Boolean).join(' · ');
+    const reciclavel = ['carrossel', 'imagem'].includes(i.tipo);
+    const thumb = /^https:\/\//.test(i.thumbnail || '') ? `<img class="rc2-ea-thumb" src="${esc(i.thumbnail)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
+    const texto = String(i.titulo || '').slice(0, 220);
+    return `<article class="rc2-card" data-rc2-ea="${esc(i.id)}">
+      <div class="rc2-vl" aria-label="Força em alta ${esc(i.score)} de 100"><b>${esc(i.score)}</b><small>EM ALTA</small></div>
+      <div class="rc2-corpo">
+        <div class="rc2-conta"><b>${c.handle && !String(c.handle).startsWith('#') ? '@' : ''}${esc(c.handle || '?')}</b><span>${esc(c.nome && c.nome !== c.handle ? c.nome : '')}</span><span class="rc2-tag suave">${esc(FONTE_EA[i.fonte] || i.fonte)} · ${esc(TIPO[i.tipo] || i.tipo || '')}</span>${c.cat && CAT_EA[c.cat] && c.cat !== 'outros' ? `<span class="rc2-tag suave">${esc(CAT_EA[c.cat])}</span>` : ''}</div>
+        <p class="rc2-metrica">${esc(metricas || 'sem métricas públicas')} · ${esc(atras(i.publicado_em))}</p>
+        <div class="rc2-ea-midia">${thumb}<p class="rc2-ea-texto">${texto ? esc(texto) + (String(i.titulo || '').length > 220 ? '…' : '') : '<span class="rc2-mudo">(sem legenda)</span>'}</p></div>
+        <div class="rc2-acoes">
+          ${reciclavel ? `<button class="rc2-btn laranja" data-action="rc2-ea-menu" data-id="${esc(i.id)}" aria-expanded="${ST.ea.menu === i.id}" ${oc ? 'disabled' : ''}>${oc ? 'Reciclando…' : i.levado ? 'Reciclar de novo' : 'Reciclar'}</button>` : ''}
+          <a class="rc2-btn fantasma" href="${esc(link(i.permalink))}" target="_blank" rel="noopener noreferrer">Abrir no Instagram ↗</a>
+          ${ST.ea.menu === i.id && !oc ? `<div class="rc2-clone-opcoes" role="group" aria-label="Como reciclar">
+            <button class="rc2-opcao" data-action="rc2-ea-clonar" data-id="${esc(i.id)}" data-modo="original"><b>Formato original</b><small>Mesmo visual do post, só traduzido/ajustado. Tira a assinatura do autor e põe o seu @.</small></button>
+            <button class="rc2-opcao" data-action="rc2-ea-clonar" data-id="${esc(i.id)}" data-modo="nosso" data-fundo="branco"><b>Nosso formato · fundo branco</b><small>Pega o texto e monta no seu padrão.</small></button>
+            <button class="rc2-opcao preto" data-action="rc2-ea-clonar" data-id="${esc(i.id)}" data-modo="nosso" data-fundo="preto"><b>Nosso formato · fundo preto</b><small>O mesmo, com fundo preto e texto branco.</small></button>
+          </div>` : ''}
+        </div>
+      </div></article>`;
+  }
+  function buscasEmAlta(lista) {
+    if (!lista.length) return '';
+    return `<section class="rc2-trends" aria-labelledby="rc2-ea-g"><div class="rc2-h2"><h2 id="rc2-ea-g">Buscas em alta no Google</h2><span>Brasil · agora</span></div>
+      <ol class="rc2-ea-buscas">${lista.map((t) => { const n = (t.noticias || [])[0]; return `<li><a href="${esc(link(t.permalink))}" target="_blank" rel="noopener noreferrer"><b>${esc(t.titulo)}</b>${t.metricas?.trafego ? `<small>${esc(t.metricas.trafego)} buscas</small>` : ''}</a>${n ? `<span>${esc(n.titulo)}${n.fonte ? ` · ${esc(n.fonte)}` : ''}</span>` : ''}</li>`; }).join('')}</ol></section>`;
+  }
+  function contasEmAltaHtml() {
+    const C = ST.ea.contas; const E = ST.ea;
+    if (!C) return '<p class="rc2-meta">Abrindo a lista…</p>';
+    return `<p class="rc2-meta">Até ${C.max_por_rodada} páginas por rodada, em rodízio (as lidas há mais tempo primeiro). Só perfis profissionais podem ser lidos pela Meta; página recusada fica 7 dias fora.</p>
+      <div class="rc2-form rc2-ea-add"><label>Adicionar página<input data-rc2-ea-campo="novo" value="${esc(E.novo)}" placeholder="handle, sem @" maxlength="30" autocapitalize="off"></label>
+        <label>Assunto<select data-rc2-ea-campo="novoCat">${Object.entries(CAT_EA).map(([k, r]) => `<option value="${k}" ${E.novoCat === k ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+        <button class="rc2-btn" data-action="rc2-ea-conta-add">Adicionar</button></div>
+      <ul class="rc2-contas">${C.contas.map((x) => `<li class="rc2-conta-item ${x.recusada ? 'off' : ''}"><div><b>@${esc(x.handle)}</b> ${x.adicionada ? '<span class="rc2-tag suave">sua</span>' : ''}${x.recusada ? '<span class="rc2-tag aviso">recusada pela Meta</span>' : ''}<small>${esc(x.nome !== x.handle ? x.nome : '')} · ${esc(CAT_EA[x.cat] || x.cat || '')} · ${x.lida_em ? `lida ${esc(atras(x.lida_em))}` : 'ainda não lida'}</small>${x.recusada ? `<small>${esc(x.recusada.erro || '')}</small>` : ''}</div><button class="rc2-btn peq fantasma" data-action="rc2-ea-conta-remover" data-id="${esc(x.handle)}">Remover</button></li>`).join('')}</ul>
+      ${(C.removidas || []).length ? `<h3 class="rc2-h3">Removidas</h3><ul class="rc2-contas">${C.removidas.map((h) => `<li class="rc2-conta-item off"><div><b>@${esc(h)}</b></div><button class="rc2-btn peq fantasma" data-action="rc2-ea-conta-restaurar" data-id="${esc(h)}">Restaurar</button></li>`).join('')}</ul>` : ''}`;
+  }
+  function emAltaHtml(ctx) {
+    const E = ST.ea; if (!E.carregou && !E.carregando && !E.erro) setTimeout(() => carregarEmAlta(ctx), 0);
+    const u = E.estado?.ultima_coleta; const pf = E.por_fonte || {};
+    const tile = (r, v, s, peq) => `<div class="rc2-stat"><span>${r}</span><b class="${peq ? 'peq' : ''}">${v}</b>${s ? `<small>${s}</small>` : ''}</div>`;
+    const chip = (v, r) => `<button class="rc2-chip" data-action="rc2-ea-fonte" data-v="${esc(v)}" aria-pressed="${E.fonte === v}">${r}</button>`;
+    const posts = E.itens.filter((i) => i.fonte !== 'google_trends' && (!E.fonte || E.fonte === i.fonte));
+    const buscas = !E.fonte || E.fonte === 'google_trends' ? E.itens.filter((i) => i.fonte === 'google_trends').slice(0, 15) : [];
+    const avisos = u?.avisos?.length ? `<p class="rc2-meta">${u.avisos.map(esc).join('<br>')}</p>` : '';
+    const vazio = E.carregando && !E.itens.length ? '<div class="rc2-vazio">Abrindo o que está em alta…</div>' : !E.itens.length ? `<div class="rc2-vazio">${u ? 'Nada nas últimas 72 h. Toque em “Atualizar agora”.' : 'Ainda não houve coleta. Toque em “Atualizar agora” (depois ela roda sozinha a cada 3 h).'}</div>` : '';
+    return `<p class="rc2-sub">O que está bombando AGORA no Brasil, sem filtro de nicho (notícia, esporte, novela, humor, celebridade), para tirar ideia de conteúdo de topo de funil. A nota vai de 0 a 100 dentro de cada fonte e favorece o que é recente: interações por hora desde a publicação. Só link, números e miniatura; nada é copiado.</p>
+      ${E.erro ? `<div class="rc2-aviso erro">${esc(E.erro)} <button class="rc2-btn peq" data-action="rc2-ea-recarregar">Tentar de novo</button></div>` : ''}
+      ${E.estado && !E.estado.banco ? '<div class="rc2-aviso erro">Precisa do banco de dados no servidor (Cópia no servidor) para guardar a lista.</div>' : ''}
+      <div class="rc2-stats" role="list">
+        ${tile('Última coleta', u ? dh(u.em) : 'Nenhuma ainda', u ? `${u.fontes?.instagram?.contas_lidas ?? 0} páginas · ${u.fontes?.google_trends?.ok ? 'Google ok' : 'Google falhou'}` : 'Toque em “Atualizar agora”', true)}
+        ${tile('Na lista', String(E.total || 0), `${pf.instagram || 0} Instagram · ${pf.google_trends || 0} Google${pf.instagram_hashtag ? ` · ${pf.instagram_hashtag} hashtag` : ''}`)}
+        ${tile('Próxima coleta', 'a cada 3 h', 'automática; guarda 72 h', true)}
+      </div>
+      <div class="rc2-acoes rc2-topo"><button class="rc2-btn laranja cheio" data-action="rc2-ea-coletar" ${ST.ocupado.ea_coletar ? 'disabled' : ''}>${ST.ocupado.ea_coletar ? 'Lendo as páginas… (até 1 min)' : 'Atualizar agora'}</button><button class="rc2-btn fantasma" data-action="rc2-ea-contas" aria-expanded="${E.verContas}">Páginas lidas</button></div>
+      ${E.verContas ? `<section class="rc2-trends rc2-ea-contas"><div class="rc2-h2"><h2>Páginas lidas</h2><span>${E.contas ? `${E.contas.contas.length} páginas` : ''}</span></div>${contasEmAltaHtml()}</section>` : ''}
+      ${producaoHtml()}
+      <div class="rc2-chips" role="group" aria-label="Fonte">${chip('', 'Tudo')}${chip('instagram', 'Instagram')}${chip('google_trends', 'Google')}${pf.instagram_hashtag ? chip('instagram_hashtag', 'Hashtags') : ''}</div>
+      ${buscasEmAlta(buscas)}
+      ${E.fonte === 'google_trends' ? '' : `<div class="rc2-h2"><h2>Posts em alta</h2><span>${posts.length} ${posts.length === 1 ? 'post' : 'posts'} · últimas 48 h</span></div>`}
+      ${vazio || (E.fonte === 'google_trends' ? '' : posts.length ? posts.map(cartaoEmAlta).join('') : '<div class="rc2-vazio">Nenhum post nesta fonte agora.</div>')}
+      ${u?.fontes?.instagram?.recusadas?.length ? `<details class="rc2-det"><summary>Páginas que a Meta recusou na última coleta (${u.fontes.instagram.recusadas.length})</summary><ul class="rc2-lista">${u.fontes.instagram.recusadas.map((r) => `<li><b>@${esc(r.handle)}</b>: ${esc(r.erro)}</li>`).join('')}</ul></details>` : ''}
+      ${avisos}`;
+  }
+  function abasSecao() {
+    const b = (v, r) => `<button class="rc2-aba" role="tab" data-action="rc2-secao" data-v="${v}" aria-selected="${ST.secao === v}">${r}</button>`;
+    return `<div class="rc2-abas" role="tablist" aria-label="Seções da Reciclagem">${b('teses', 'Teses das contas vigiadas')}${b('em_alta', 'Em alta no Brasil')}</div>`;
+  }
+
   // Com a aba aberta e visível: a cada 30 s lê mais uma conta no servidor (rodízio, sem IA) e atualiza a lista.
   let timer = null;
   function vigiar(ctx) {
@@ -245,7 +363,7 @@
     if (e && !e.banco) avisos.push('<div class="rc2-aviso erro">A Reciclagem precisa do banco de dados no servidor (Cópia no servidor) para guardar as teses.</div>');
     if (e && !e.instagram) avisos.push('<div class="rc2-aviso">A conexão com a Meta não está configurada (META_PAGE_ACCESS_TOKEN / META_IG_USER_ID): sem ela as contas de Instagram não são lidas.</div>');
     if (e && !e.ia) avisos.push('<div class="rc2-aviso erro">Nenhuma IA configurada no servidor: os posts entram sem tema e tese, e nada pode ser reciclado.</div>');
-    const corpo = ST.tela === 'contas' ? telaContas() : `
+    const corpo = ST.tela === 'contas' ? telaContas() : ST.secao === 'em_alta' ? emAltaHtml(ctx) : `
       ${painel()}
       <div class="rc2-acoes rc2-topo"><button class="rc2-btn laranja cheio" data-action="rc2-coletar" ${ST.ocupado.coletar || (e && !e.banco) ? 'disabled' : ''}>${ST.ocupado.coletar ? 'Lendo as contas… (até 1 min)' : 'Atualizar agora'}</button><button class="rc2-btn fantasma" data-action="rc2-tela" data-t="contas">Contas vigiadas</button></div>
       ${producaoHtml()}${tendenciasHtml()}
@@ -254,8 +372,9 @@
       ${e?.ultima_coleta?.instagram?.recusadas?.length ? `<details class="rc2-det"><summary>Contas que a Meta recusou na última coleta (${e.ultima_coleta.instagram.recusadas.length})</summary><ul class="rc2-lista">${e.ultima_coleta.instagram.recusadas.map((r) => `<li><b>@${esc(r.handle)}</b>: ${esc(r.erro)}</li>`).join('')}</ul></details>` : ''}
       ${e?.ultima_coleta?.avisos?.length ? `<p class="rc2-meta">${e.ultima_coleta.avisos.map(esc).join('<br>')}</p>` : ''}`;
     return `<div class="rc2" id="rc2-topo"><span class="rc2-eyebrow">Radar de Reciclagem</span><h1>O que viralizou lá fora, na voz do Pedro</h1>
-      <p class="rc2-sub">Todo dia às 9h o radar lê contas de empreendedorismo em 7 países, mede o que saiu da curva e extrai a TESE. Você recicla a tese, nunca o texto, em carrossel, post ou reel. Nada vai ao Instagram sem você.</p>
-      ${ST.erro ? `<div class="rc2-aviso erro">${esc(ST.erro)} <button class="rc2-btn peq" data-action="rc2-recarregar">Tentar de novo</button></div>` : ''}${avisos.join('')}
+      ${ST.tela === 'contas' ? '' : abasSecao()}
+      ${ST.secao === 'em_alta' && ST.tela !== 'contas' ? '' : `<p class="rc2-sub">Todo dia às 9h o radar lê contas de empreendedorismo em 7 países, mede o que saiu da curva e extrai a TESE. Você recicla a tese, nunca o texto, em carrossel, post ou reel. Nada vai ao Instagram sem você.</p>
+      ${ST.erro ? `<div class="rc2-aviso erro">${esc(ST.erro)} <button class="rc2-btn peq" data-action="rc2-recarregar">Tentar de novo</button></div>` : ''}${avisos.join('')}`}
       ${corpo}</div>${roteiroModal()}`;
   }
 
@@ -318,6 +437,24 @@
           aplicarConfigLocal(); ST.contasAlterado = true; ctx.render(); break;
         }
         case 'rc2-contas-salvar': await salvarContas(ctx); break;
+        // Em alta no Brasil
+        case 'rc2-secao': ST.secao = el.dataset.v === 'em_alta' ? 'em_alta' : 'teses'; ST.tela = 'lista'; ctx.render(); if (ST.secao === 'em_alta') await carregarEmAlta(ctx); break;
+        case 'rc2-ea-recarregar': await carregarEmAlta(ctx, true); break;
+        case 'rc2-ea-coletar': await coletarEmAlta(ctx); break;
+        case 'rc2-ea-fonte': ST.ea.fonte = el.dataset.v || ''; ctx.render(); break;
+        case 'rc2-ea-menu': ST.ea.menu = ST.ea.menu === id ? null : id; ctx.render(); break;
+        case 'rc2-ea-clonar': await reciclarEmAlta(ctx, id, { modo: el.dataset.modo || 'original', fundo: el.dataset.fundo || 'branco' }); break;
+        case 'rc2-ea-contas': ST.ea.verContas = !ST.ea.verContas; ctx.render(); if (ST.ea.verContas) await carregarContasEmAlta(ctx); break;
+        case 'rc2-ea-conta-add': case 'rc2-ea-conta-remover': case 'rc2-ea-conta-restaurar': {
+          const C = ST.ea.contas; if (!C) break; const cfg = { adicionar: [...(C.config?.adicionar || [])], remover: [...(C.config?.remover || [])] };
+          if (a === 'rc2-ea-conta-add') {
+            const handle = String(ST.ea.novo || '').trim().replace(/^@/, '').toLowerCase(); if (!/^[a-z0-9._]{2,30}$/.test(handle)) { ctx.toast('Handle inválido: só letras, números, ponto e sublinhado.'); break; }
+            cfg.remover = cfg.remover.filter((x) => x !== handle); if (!cfg.adicionar.some((x) => x.handle === handle) && !C.contas.some((x) => x.handle === handle)) cfg.adicionar.push({ handle, nome: handle, cat: ST.ea.novoCat || 'outros' });
+            ST.ea.novo = '';
+          } else if (a === 'rc2-ea-conta-remover') { if (cfg.adicionar.some((x) => x.handle === id)) cfg.adicionar = cfg.adicionar.filter((x) => x.handle !== id); else if (!cfg.remover.includes(id)) cfg.remover.push(id); }
+          else cfg.remover = cfg.remover.filter((x) => x !== id);
+          await salvarContasEmAlta(ctx, cfg); break;
+        }
         default: return false;
       }
     } catch (e) { ctx.toast(e.message || 'Não foi possível concluir.'); }
@@ -345,6 +482,8 @@
   const root = document.getElementById('esteira');
   if (root) {
     root.addEventListener('input', (ev) => { const k = ev.target?.dataset?.rc2Campo; if (k) ST.contasForm[k] = ev.target.value; });
+    root.addEventListener('input', (ev) => { const k = ev.target?.dataset?.rc2EaCampo; if (k) ST.ea[k] = ev.target.value; });
+    root.addEventListener('change', (ev) => { const k = ev.target?.dataset?.rc2EaCampo; if (k) ST.ea[k] = ev.target.value; });
     root.addEventListener('input', (ev) => { const k = ev.target?.dataset?.rc2Aut; if (k && ev.target.tagName !== 'FORM') ST.autForm[k] = ev.target.value; });
     root.addEventListener('change', (ev) => { const k = ev.target?.dataset?.rc2Aut; if (k && ev.target.tagName === 'SELECT') ST.autForm[k] = ev.target.value; });
     root.addEventListener('change', async (ev) => {

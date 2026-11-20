@@ -51,6 +51,31 @@ router.put('/contas', limita({ max: 20, janelaMs: 60000, nome: 'reciclagem-conta
   res.json(await Contas.carregar());
 }));
 
+// ── Em alta no Brasil (sem filtro de nicho: grandes páginas do Instagram, Google Trends e top de hashtag) ──────
+// Vem antes de /:id. GET /em-alta/coletar é o cron da Vercel (a cada 3 h, com o CRON_SECRET); POST é o "Atualizar agora".
+const EmAlta = require('../lib/reciclagem/emAlta');
+const ID_EA = /^ea_[a-f0-9]{16}$/;
+router.get('/em-alta', rota(async (req, res) => {
+  const fonte = EmAlta.FONTES.includes(req.query?.fonte) ? req.query.fonte : null;
+  const r = await EmAlta.listar({ fonte, limite: req.query?.limite });
+  const e = await EmAlta.lerEstado().catch(() => ({}));
+  res.json({ ...r, estado: { banco: EmAlta.disponivel(), ultima_coleta: e.ultima || null, agenda: { cron_utc: '17 */3 * * *', descricao: 'a cada 3 horas' }, fontes: EmAlta.FONTES, retencao_h: EmAlta.RETENCAO_H } });
+}));
+async function coletarEmAlta(req, res) {
+  if (!EmAlta.disponivel()) return res.status(503).json({ error: 'O "Em alta no Brasil" precisa do banco de dados no servidor (Cópia no servidor).', code: 'SEM_BANCO' });
+  const origem = process.env.CRON_SECRET && req.headers?.authorization === `Bearer ${process.env.CRON_SECRET}` ? 'cron' : 'manual';
+  res.json(await EmAlta.coletar({ deps: depsDeTeste().emAlta || {}, origem }));
+}
+router.post('/em-alta/coletar', limita({ max: 3, janelaMs: 10 * 60000, nome: 'reciclagem-em-alta' }), rota(coletarEmAlta));
+router.get('/em-alta/coletar', limita({ max: 3, janelaMs: 10 * 60000, nome: 'reciclagem-em-alta' }), rota(coletarEmAlta));
+router.get('/em-alta/contas', rota(async (req, res) => { res.json(await EmAlta.carregarContas()); }));
+router.put('/em-alta/contas', limita({ max: 20, janelaMs: 60000, nome: 'reciclagem-em-alta-contas' }), rota(async (req, res) => { res.json(await EmAlta.salvarConfig(req.body || {})); }));
+// Leva um post do Instagram para a lista da Reciclagem e devolve o id rc_… para o "Reciclar" (clone) que já existe.
+router.post('/em-alta/:id/levar', limita({ max: 20, janelaMs: 60000, nome: 'reciclagem-em-alta-levar' }), rota(async (req, res) => {
+  if (!ID_EA.test(String(req.params.id))) throw Object.assign(new Error('Identificador inválido.'), { code: 'ENTRADA', status: 400 });
+  res.status(201).json(await EmAlta.levarParaReciclagem(req.params.id));
+}));
+
 router.get('/:id', rota(async (req, res) => {
   const d = await Coletar.obter(exigeId(req.params.id)); if (!d) return res.status(404).json({ error: 'Item não encontrado.', code: 'NAO_ENCONTRADO' });
   res.json(Coletar.visao(d));
