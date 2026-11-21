@@ -28,6 +28,11 @@ const FEEDS = [
   { id: 'seudinheiro', nome: 'Seu Dinheiro', url: 'https://www.seudinheiro.com/feed/', tipo: 'jornal' },
   { id: 'moneytimes', nome: 'Money Times', url: 'https://www.moneytimes.com.br/feed/', tipo: 'jornal' },
   { id: 'estadao_economia', nome: 'Estadão Economia', url: 'https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/economia/', tipo: 'jornal' },
+  // Busca do Bing Notícias (RSS com o link real da matéria): pautas de famosos com dinheiro ("Quem é ele?") e de marcas.
+  { id: 'bing_famosos_invest', nome: 'Bing Notícias: famosos que investiram', url: 'https://www.bing.com/news/search?q=famoso+investiu+milh%C3%B5es+empresa&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
+  { id: 'bing_celebridade_negocio', nome: 'Bing Notícias: celebridade e negócios', url: 'https://www.bing.com/news/search?q=celebridade+empresa+fortuna+investimento&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
+  { id: 'bing_atleta_invest', nome: 'Bing Notícias: atletas investidores', url: 'https://www.bing.com/news/search?q=atleta+investiu+marca+milh%C3%B5es&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
+  { id: 'bing_marca_estrategia', nome: 'Bing Notícias: estratégia de marcas', url: 'https://www.bing.com/news/search?q=estrat%C3%A9gia+marca+faturamento+lojas&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
 ];
 
 const ENTIDADES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', ldquo: '“', rdquo: '”', lsquo: '‘', rsquo: '’', aacute: 'á', eacute: 'é', iacute: 'í', oacute: 'ó', uacute: 'ú', acirc: 'â', ecirc: 'ê', ocirc: 'ô', atilde: 'ã', otilde: 'õ', ccedil: 'ç', agrave: 'à', Aacute: 'Á', Eacute: 'É', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú', Ccedil: 'Ç', Atilde: 'Ã', Otilde: 'Õ', Acirc: 'Â', Ecirc: 'Ê', Ocirc: 'Ô' };
@@ -59,6 +64,8 @@ function parseFeed(xml, feed = {}) {
     const titulo = semTags(campo(b, 'title'));
     let url = semTags(campo(b, 'link'));
     if (!url) { const m = b.match(/<link[^>]*href="([^"]+)"/i); url = m ? decodifica(m[1]) : ''; }
+    // Bing Notícias embrulha o link num clique de rastreio: o endereço real vem no parâmetro url=
+    if (/bing\.com\/news\/apiclick/i.test(url)) { try { url = new URL(url.replace(/&amp;/g, '&')).searchParams.get('url') || url; } catch { /* fica o embrulhado */ } }
     const publicada = dataISO(campo(b, 'pubDate') || campo(b, 'published') || campo(b, 'updated') || campo(b, 'dc:date'));
     const resumo = semTags(campo(b, 'description') || campo(b, 'summary') || campo(b, 'content:encoded')).slice(0, 500);
     if (!titulo || !/^https?:\/\//i.test(url)) continue;
