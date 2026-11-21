@@ -23,8 +23,8 @@ const sharp = require('sharp');
 const llmJson = require('../llmJson');
 
 const MAX_CANDIDATAS = 30; const MAX_IG = 22; const MAX_MATERIA = 6; const POR_PAGINA = 30;
-const LADO_MIN = 900; const PALAVRAS_TEXTO = 5; const DIST_REPETIDA = 6; const SEGUIDORES_MIN = 50000;
-// PALAVRAS_TEXTO 5: arte de promoção com letra estilizada, o OCR lê só 6 a 12 palavras (teste Coco Bambu, 21/11).
+const LADO_MIN = 900; const PALAVRAS_TEXTO = 12; const DIST_REPETIDA = 6; const SEGUIDORES_MIN = 50000;
+// PALAVRAS_TEXTO 12: o OCR conta ruído de foto de comida como palavra (9 a 24); post de promoção sai pela legenda (PROMO).
 const sha = (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 12);
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const compacto = (s) => norm(s).replace(/[^a-z0-9]/g, '');
