@@ -281,6 +281,9 @@ async function criarFrase(entrada, { deps = {}, origem = 'frase' } = {}) {
   const slides = [{ id: 's1', funcao: 'capa', layout: 'frase_classica', tema_visual: 'frase', titulo: null, texto: e.frase, imagem_id: null, dados: { fundo: e.fundo, autor: e.autor }, claim_ids: [] }];
   const legenda = (e.legenda || [`“${limpa}” — ${e.autor}`, 'Salva e manda pra quem precisa ler isso hoje. Se fez sentido, reposta nos seus stories.'].join('\n\n')).slice(0, LIMITE.legenda);
   c.frase = { texto: limpa, autor: e.autor, fonte: e.fonte, fundo: e.fundo };
+  // A legenda cita a frase entre aspas: a fonte (Wikiquote, seção Verificadas) entra como fonte principal para o portão de
+  // citação conferir que o texto é exatamente o da fonte (sem isso o post ficava travado em "Preparar automaticamente").
+  c.fonte_principal = { tipo: 'texto', titulo: `Citação de ${e.autor} (Wikiquote, citações verificadas)`, url: e.fonte, veiculo: 'Wikiquote', origem: e.fonte, texto: limpa };
   M.registrar(c, 'sistema', 'post_frase', `Frase de ${e.autor} (fundo ${e.fundo}).`);
   const { versao, avisos } = await salvarCarrossel(a, c, { slides, legenda, cta: '', hashtags: e.hashtags, rotulo: 'post frase', origem, deps });
   return { id: c.id, titulo: c.titulo, formato: 'frase', slides: versao.slides.length, fundo: e.fundo, avisos };

@@ -53,3 +53,13 @@ test('produzir sem IA: sorteia e destaca a palavra mais longa', async () => {
   const c = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, r.criados[0].id)).doc;
   assert.match(M.versaoAtiva(c).slides[0].texto, /\*\*estiver\.\*\*/);
 });
+
+test('post de frase passa nos portões de publicação (a citação da legenda tem a fonte do Wikiquote)', async () => {
+  novo();
+  const r = await F.produzir(1, { deps: { ia: async () => ({ dados: { itens: [{ i: 0, nota: 9, destaque: 'fazer' }] } }), banco: [BANCO[1]] } });
+  const c = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, r.criados[0].id)).doc;
+  const QG = require('../../static/qualityGates.js');
+  const k = M.clone(c); k.claims.forEach((x) => { x.revisao = { ...(x.revisao || {}), confirmada_por_pedro: true }; });
+  assert.deepStrictEqual(QG.avaliar(k, { conta: M.ACCOUNT_PIN }).bloqueios.map((b) => b.codigo || b.id), []);
+  assert.strictEqual(c.fonte_principal.url, 'https://pt.wikiquote.org/wiki/Walt_Disney');
+});
