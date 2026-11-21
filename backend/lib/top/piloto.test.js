@@ -48,7 +48,7 @@ test('rodada na janela de produção: escolhe a pauta de maior prioridade com li
   assert.strictEqual(r.criado.titulo, 'Alta');
   assert.deepStrictEqual(criados[0], { url: 'https://agenciabrasil.ebc.com.br/b', titulo: 'Alta', origem: 'piloto', formato: 'estatico' }); // 'auto' sem placar: rodízio estatico/ensaio (tweet saiu da produção em 21/11)
   // fora da janela de produção não cria
-  const r2 = await Pi.rodada({ agora: SP('2026-10-29', '23:30'), deps });
+  const r2 = await Pi.rodada({ agora: SP('2026-10-29', '23:50'), deps });
   assert.strictEqual(r2.criado, null);
 });
 
@@ -199,11 +199,11 @@ test('pedido de pautas extras: vale só no dia, ignora o horário e soma ao limi
     descobrir: async () => ({ pautas: [{ id: 'p1', titulo: 'Uma', prioridade: 50, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/a' }] }] }),
     criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
   };
-  const noite = SP('2026-10-29', '22:00');
+  const noite = SP('2026-10-29', '23:45');
   assert.strictEqual((await Pi.rodada({ agora: noite, deps })).criado, null, 'fora do horário não cria');
   const r = await Pi.rodada({ agora: noite, deps, extra: 3 });
   assert.strictEqual(r.criado.titulo, 'Uma', 'com extra cria mesmo fora do horário');
-  const amanha = SP('2026-10-30', '22:00');
+  const amanha = SP('2026-10-30', '23:45');
   assert.strictEqual((await Pi.rodada({ agora: amanha, deps })).criado, null, 'o extra não passa para o dia seguinte');
 });
 

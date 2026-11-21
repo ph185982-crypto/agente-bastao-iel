@@ -32,6 +32,11 @@ const FEEDS = [
   { id: 'bing_famosos_invest', nome: 'Bing Notícias: famosos que investiram', url: 'https://www.bing.com/news/search?q=famoso+investiu+milh%C3%B5es+empresa&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
   { id: 'bing_celebridade_negocio', nome: 'Bing Notícias: celebridade e negócios', url: 'https://www.bing.com/news/search?q=celebridade+empresa+fortuna+investimento&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
   { id: 'bing_atleta_invest', nome: 'Bing Notícias: atletas investidores', url: 'https://www.bing.com/news/search?q=atleta+investiu+marca+milh%C3%B5es&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
+  { id: 'bing_fundador', nome: 'Bing Notícias: fundador conta', url: 'https://www.bing.com/news/search?q=fundador+empresa+fatura+bilh%C3%A3o&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
+  { id: 'bing_franquia', nome: 'Bing Notícias: franquias', url: 'https://www.bing.com/news/search?q=franquia+rede+lojas+expans%C3%A3o+faturamento&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
+  { id: 'bing_empresario_famoso', nome: 'Bing Notícias: empresários famosos', url: 'https://www.bing.com/news/search?q=bilion%C3%A1rio+investiu+empresa+participa%C3%A7%C3%A3o&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
+  { id: 'bing_bolso', nome: 'Bing Notícias: bolso do consumidor', url: 'https://www.bing.com/news/search?q=pre%C3%A7o+consumidor+conta+aumento+brasileiro&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
+  { id: 'bing_pequeno_negocio', nome: 'Bing Notícias: pequeno negócio', url: 'https://www.bing.com/news/search?q=pequenas+empresas+empreendedor+vendas+MEI&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
   { id: 'bing_marca_estrategia', nome: 'Bing Notícias: estratégia de marcas', url: 'https://www.bing.com/news/search?q=estrat%C3%A9gia+marca+faturamento+lojas&format=rss&setlang=pt-BR&cc=BR', tipo: 'jornal' },
 ];
 

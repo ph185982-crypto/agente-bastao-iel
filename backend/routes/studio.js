@@ -107,7 +107,8 @@ router.post('/:id/decidir',limita({max:12,janelaMs:60000,nome:'studio-decidir'})
       await require('../lib/top/piloto').registrarDecisao(d.id,'descartado').catch(()=>{});return res.json(await studio.ler(d.id));}}
     const c=await studio.decidir(req.params.id,req.body||{});
     // Carrossel "top" (piloto): aprovar AGENDA no próximo horário da grade; "agora:true" publica na hora como antes.
-    if(c.top&&['aprovar','descartar'].includes(req.body.acao))await require('../lib/top/piloto').registrarDecisao(c.id,req.body.acao==='aprovar'?'aprovado':'descartado').catch(()=>{});
+    // Toda peça do piloto (carrossel, frase): a decisão libera ou ocupa a vaga do dia
+    if(['aprovar','descartar'].includes(req.body.acao))await require('../lib/top/piloto').registrarDecisao(c.id,req.body.acao==='aprovar'?'aprovado':'descartado').catch(()=>{});
     // Agendar vale para qualquer conteúdo (piloto, cópia da Reciclagem, criado à mão): entra no próximo horário livre.
     if(req.body.acao==='aprovar'&&!req.body.agora&&(c.top||req.body.agendar)){await require('../lib/top/piloto').agendar(c.id);return res.status(202).json(await studio.ler(c.id));}
     if(req.body.acao==='aprovar'){
