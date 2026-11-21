@@ -561,6 +561,6 @@ test('Quem é ele?: apostas sem o nome, revelação, explicação e lição; log
   assert.ok(els[1].includes('logo_texto'));
   assert.ok(doc.arte.renders.filter((x) => x.versao === v.id).every((x) => x.metrics.cabe !== false), 'tudo cabe');
   // aposta sem valor não passa na checagem
-  const semNumero = K.checarRoteiro({ capa: 'Ele botou dinheiro no Uber.', telas: [{ papel: 'aposta', empresa: 'Uber', titulo: 'Ele botou dinheiro no Uber.', texto: 'Está no portfólio dele.' }, { papel: 'aposta', empresa: 'Rodaki', titulo: 'Botou US$ 500 mil na Rodaki.', texto: 'Virou US$ 60 milhões.' }, { papel: 'revelacao', titulo: 'É ele', texto: 'x' }, { papel: 'estrategia', titulo: 't', texto: 'x' }, { papel: 'leitura', texto: 'x' }], legenda: '' }, FATOS_REV.fatos, { formato: 'marca', estilo: 'revelacao' });
+  const semNumero = K.checarRoteiro({ capa: 'Ele botou dinheiro no Uber.', telas: [{ papel: 'aposta', empresa: 'Uber', titulo: 'Ele entrou no Uber em 2011.', texto: 'Está no portfólio dele.' }, { papel: 'aposta', empresa: 'Rodaki', titulo: 'Botou US$ 500 mil na Rodaki.', texto: 'Virou US$ 60 milhões.' }, { papel: 'revelacao', titulo: 'É ele', texto: 'x' }, { papel: 'estrategia', titulo: 't', texto: 'x' }, { papel: 'leitura', texto: 'x' }], legenda: '' }, FATOS_REV.fatos, { formato: 'marca', estilo: 'revelacao' });
   assert.ok(semNumero.problemas.some((p) => /tela 1: aposta sem valor/.test(p)) && !semNumero.problemas.some((p) => /tela 2: aposta sem valor/.test(p)));
 });
