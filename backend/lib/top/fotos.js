@@ -10,8 +10,11 @@ const limpaHtml = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&amp;/
 
 // Só CC0 / domínio público (licenças que não exigem crédito): usado no "Por trás da marca", que não leva crédito na legenda.
 const LICENCA_LIVRE = /^(cc0( 1\.0)?|public domain|domínio público|pd(-[a-z]+)?)$/i;
+// 21/11: o Pedro decidiu não filtrar por direito de uso ("pule eles"). Toda licença do Commons entra; o nome da licença fica
+// registrado na imagem. FOTOS_SO_LIVRE=1 volta ao filtro antigo (só CC BY/CC0/domínio público; soLivre: só CC0/PD).
 function licencaAceita(meta, { soLivre = false } = {}) {
   const nome = limpaHtml(meta?.LicenseShortName?.value || meta?.License?.value || '');
+  if (process.env.FOTOS_SO_LIVRE !== '1') return nome.trim() || 'licença não informada';
   return (soLivre ? LICENCA_LIVRE : LICENCA_OK).test(nome.trim()) ? nome : null;
 }
 

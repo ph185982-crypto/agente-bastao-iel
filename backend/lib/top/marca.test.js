@@ -234,7 +234,8 @@ test('ângulo: matéria sem decisão de negócio explicável é descartada; entr
   assert.deepStrictEqual(ok, { marca: 'Vaca Mimosa', fotos: ['https://exemplo.test/a.jpg'], foco: 'calda' });
 });
 
-test('Commons da marca: várias fotos, só licença aceita (sem CC BY-SA), sem logotipo, só do host do Commons', async () => {
+test('[filtro de licença ligado, FOTOS_SO_LIVRE=1] Commons da marca: várias fotos, só licença aceita (sem CC BY-SA), sem logotipo, só do host do Commons', async (t) => {
+  process.env.FOTOS_SO_LIVRE = '1'; t.after(() => { delete process.env.FOTOS_SO_LIVRE; });
   const pagina = (title, lic, url = `https://upload.wikimedia.org/x/${encodeURIComponent(title)}`) => ({ title, imageinfo: [{ thumburl: url, descriptionurl: `https://commons.wikimedia.org/wiki/${title}`, width: 1400, height: 1000, extmetadata: { LicenseShortName: { value: lic }, Artist: { value: '<a>Autora</a>' } } }] });
   const busca = { query: { pages: { 1: pagina('File:Vaca Mimosa loja centro 2025.jpg', 'CC BY 4.0'), 2: pagina('File:Vaca Mimosa logo.png', 'Public domain'), 3: pagina('File:Vaca Mimosa quiosque.jpg', 'CC BY-SA 4.0'), 4: pagina('File:Vaca Mimosa fachada.jpg', 'CC0'), 5: pagina('File:Outra marca.jpg', 'CC BY 4.0'), 6: pagina('File:Vaca Mimosa produto.jpg', 'CC BY 4.0', 'https://evil.test/x.jpg') } } };
   const grande = Buffer.alloc(30000, 1); const pedidos = [];
@@ -326,7 +327,8 @@ const DESC = {
   [matId('https://exemplo.test/img/calda.jpg')]: { descricao: 'caldas de chocolate na fábrica', tags: ['calda', 'fábrica'], impacto: 7 },
 };
 
-test('fotos por conteúdo: Instagram oficial (vídeo fora, repetida e foto com texto descartadas) + Divulgação da matéria + visão + casamento validado; foto do Pedro sempre entra; lacuna pelo Commons CC0; legenda sem crédito', async () => {
+test('[filtro de licença ligado, FOTOS_SO_LIVRE=1] fotos por conteúdo: Instagram oficial (vídeo fora, repetida e foto com texto descartadas) + Divulgação da matéria + visão + casamento validado; foto do Pedro sempre entra; lacuna pelo Commons CC0; legenda sem crédito', async (t) => {
+  process.env.FOTOS_SO_LIVRE = '1'; t.after(() => { delete process.env.FOTOS_SO_LIVRE; });
   novo();
   const og = matId('https://exemplo.test/img/og-fachada.jpg'); const calda = matId('https://exemplo.test/img/calda.jpg');
   const casar = () => ({ slides: [
@@ -451,7 +453,8 @@ test('troca manual: GET /fotos lista candidatas e motivos; POST /foto troca um s
   }
 });
 
-test('unidades: casamento pelo conteúdo (delivery listado por último), sem repetir; Instagram respeita o freio e confere o perfil; matéria só Divulgação; dHash acha a repetida', async () => {
+test('[filtro de licença ligado, FOTOS_SO_LIVRE=1] unidades: casamento pelo conteúdo (delivery listado por último), sem repetir; Instagram respeita o freio e confere o perfil; matéria só Divulgação; dHash acha a repetida', async (t) => {
+  process.env.FOTOS_SO_LIVRE = '1'; t.after(() => { delete process.env.FOTOS_SO_LIVRE; });
   const slides = [{ sid: 's1', i: 0, texto: 'O quiosque que virou rede' }, { sid: 's2', i: 1, texto: 'O delivery paga a conta — o entregador leva o copo de bairro em bairro' }, { sid: 's3', i: 2, texto: 'O volume vem do celular' }];
   const cands = [
     { id: 'c1', origem: 'instagram', descricao: 'balcão do quiosque com clientes', tags: ['quiosque', 'balcão'], impacto: 8 },
@@ -574,7 +577,7 @@ test('Google Imagens: só foto grande de site de notícia/marca (banco pago e re
     { url: 'https://site.com/pequena.jpg', title: 'Pequena', width: 400, height: 300 },
   ] }) }; };
   const r = await G.buscar('Vaca Mimosa loja', { fetcher });
-  assert.deepStrictEqual(r.map((x) => x.url), ['https://exame.com/img/loja-vaca.jpg']);
+  assert.deepStrictEqual(r.map((x) => x.url), ['https://exame.com/img/loja-vaca.jpg', 'https://scontent.cdninstagram.com/a.jpg'], 'sem filtro de direito de uso: só banco com marca d\'água e foto pequena saem');
   await assert.rejects(G.buscar('x', { fetcher: async () => ({ status: 403, ok: false, text: async () => 'You are not subscribed to this API.' }) }), (e) => e.semAssinatura === true);
   // na etapa de fotos
   const FC = require('./fotosCandidatas');
@@ -588,4 +591,11 @@ test('Google Imagens: só foto grande de site de notícia/marca (banco pago e re
   const g = c.top.fotos_candidatas.find((x) => x.origem === 'google');
   assert.ok(g && g.pagina === 'https://exame.com/x');
   assert.match(FC.metaDe(c, g, null).licenca, /Google Imagens \(Exame\)/);
+});
+
+test('sem filtro de direito de uso (padrão desde 21/11): Commons aceita qualquer licença e a matéria entrega todas as fotos', () => {
+  const Fo = require('./fotos'); const FC = require('./fotosCandidatas');
+  assert.strictEqual(Fo.licencaAceita({ LicenseShortName: { value: 'CC BY-SA 4.0' } }, { soLivre: true }), 'CC BY-SA 4.0');
+  const html = '<figure><img src="https://x.test/a.jpg"><figcaption>Loja. Foto: Fulano/Reuters</figcaption></figure><figure><img src="https://x.test/b.jpg"><figcaption>Fábrica (Divulgação)</figcaption></figure>';
+  assert.deepStrictEqual(FC.imagensDaMateria(html, 'https://x.test/m').map((x) => x.url), ['https://x.test/b.jpg', 'https://x.test/a.jpg'], 'Divulgação primeiro, depois as outras');
 });
