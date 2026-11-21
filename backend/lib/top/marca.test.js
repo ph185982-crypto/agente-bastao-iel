@@ -352,7 +352,7 @@ test('fotos por conteúdo: Instagram oficial (vídeo fora, repetida e foto com t
   assert.ok(!log.carregar.some((u) => /\.mp4|reuters/.test(u)), 'nem vídeo nem foto de agência');
   assert.ok(C.some((x) => x.id === igId('m9')), 'leu a 2ª página');
   assert.match(C.find((x) => x.id === igId('m5')).descartada, /repetida/);
-  assert.match(C.find((x) => x.id === igId('m4')).descartada, /texto/);
+  assert.ok(!C.some((x) => x.id === igId('m4')) && !log.carregar.includes('https://cdn.test/cartaz.jpg'), 'post de promoção (arte com texto) nem é baixado');
   assert.ok(!log.visao.flat().includes(igId('m5')), 'repetida nem vai para a visão');
   // casamento: escolhas válidas da IA; inválidas trocadas; foto do Pedro entra; lacunas por palavras e pelo Commons
   const fps = doc.top.foto_por_slide; const dada = `dada_${sha12(pedroUrl)}`;
