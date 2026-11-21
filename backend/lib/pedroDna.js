@@ -10,15 +10,18 @@ const { ACCOUNT } = require('./account');
 const PROFILE_HANDLE = ACCOUNT.handle;
 const PROFILE_NAME   = ACCOUNT.nome;
 
-const PEDRO_DNA = `CONTEXTO: o perfil tem ~175 mil seguidores construídos com curiosidades, ciência, história e fatos surpreendentes. Está migrando GRADUALMENTE pra também construir autoridade em negócios/marketing — SEM abandonar o que fez o perfil crescer.
+// Texto-base dos geradores de carrossel/vídeo (síncrono). A versão EDITÁVEL fica em lib/dnaEditorial.js (Ajustes → DNA Editorial) e já
+// alimenta o motor de roteiros; este bloco acompanha o mesmo posicionamento.
+const PEDRO_DNA = `CONTEXTO: o perfil tem ~165 mil seguidores construídos com curiosidades, ciência, história e fatos surpreendentes. Está se reposicionando GRADUALMENTE, sem abandonar a curiosidade que fez o perfil crescer.
 
-POSICIONAMENTO: "Pedro Destrava mostra coisas que ninguém percebe e explica o que isso ensina sobre negócios, comportamento, marketing e vendas."
+POSICIONAMENTO: "Pedro Destrava — o cara que mostra a estratégia escondida por trás das coisas." Política, economia, empresas, tecnologia, consumo e empreendedorismo.
+PROMESSA: "Eu mostro quem ganha, quem paga e qual é o jogo por trás das coisas que mexem no seu bolso e nos negócios."
 
-REGRA DE OURO — A PONTE: continue entregando curiosidade, ciência, história e fatos surpreendentes de verdade (é isso que fez o perfil crescer). Quando fizer sentido NATURALMENTE, conecte o fato curioso a um insight de negócios/comportamento/marketing — NUNCA force essa ponte se ela não existir de verdade. Nem todo conteúdo precisa terminar em negócios; tudo bem ser 100% curiosidade pura.
+REGRA DE OURO — A ESCADA: a curiosidade é a porta de entrada; a conversa sobe aos poucos: curiosidade → identificação → dinheiro → estratégia → negócios → autoridade. Quando fizer sentido NATURALMENTE, mostre quem ganha e quem paga no fato curioso. NUNCA force essa ponte se ela não existir de verdade; tudo bem ser curiosidade pura.
 
-NÃO FAZER: linguagem corporativa ("implementação", "otimização", "sinergia"); formato genérico "5 dicas para..."; forçar consultoria em todo post; clichês de IA ("você não vai acreditar", "chocante", "imperdível"); promessa vaga de resultado.
+NÃO FAZER: linguagem corporativa ("implementação", "otimização", "sinergia"); "você sabia?", "nos dias de hoje", "em um mundo cada vez mais", "isso nos mostra que"; clichês de IA ("você não vai acreditar", "chocante", "imperdível"); título que não cumpre a promessa; forçar consultoria em todo post; inventar opinião ou experiência do Pedro.
 
-FAZER: curiosidade real e verificável; linguagem de amigo inteligente explicando algo, não de professor; quando aplicável, conectar o fato a uma lição prática de negócio/comportamento humano.`;
+FAZER: curiosidade real e verificável; linguagem de amigo inteligente explicando algo, simples, direta, curiosa, questionadora e humana; mostrar quem ganha, quem paga e qual é o jogo.`;
 
 // Público real do perfil — regra de clareza aplicada a qualquer texto gerado.
 const LINGUAGEM_LEIGO = `PÚBLICO-ALVO: pessoa comum, classe C/D/E, pouco tempo de leitura, sem vocabulário técnico.

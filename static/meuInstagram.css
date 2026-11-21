@@ -38,3 +38,21 @@
 .ig-tabela thead th { line-height: 1.2; vertical-align: bottom; }
 .ig-tabela thead th { font-size: 12px; color: var(--avz-muted); font-weight: 600; }
 .ig-tabela tbody th { text-align: left; font-weight: 600; }
+
+/* Growth Dashboard (static/crescimento.js) */
+.cr-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 8px 0; }
+@media (min-width: 720px) { .cr-grid { grid-template-columns: repeat(3, 1fr); } }
+.cr-kpi { background: var(--cz-surface); border: 1px solid var(--avz-glass-border); border-radius: var(--avz-radius-sm); padding: 10px 12px; }
+.cr-kpi.cr-off { opacity: .72; }
+.cr-k-rot { font-size: 12px; color: var(--avz-muted); line-height: 1.25; }
+.cr-k-val { font-size: 22px; font-weight: 700; color: var(--avz-text); margin-top: 2px; }
+.cr-k-nota { font-size: 11.5px; color: var(--avz-muted); line-height: 1.3; margin-top: 4px; }
+.cr-nd { color: var(--avz-muted); }
+.cr-var { font-size: 12px; font-weight: 600; }
+.cr-sobe { color: #22c55e; } .cr-desce { color: #ef4444; }
+.cr-decisao { display: grid; gap: 8px; margin: 10px 0; }
+.cr-dec { background: var(--cz-surface); border: 1px solid var(--avz-glass-border); border-radius: var(--avz-radius-sm); padding: 10px 12px; font-size: 14px; line-height: 1.4; }
+.cr-dec b { display: block; font-size: 12px; color: var(--avz-muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+.cr-dec.cr-acao { border-color: #f97316; }
+.cr-bloco { margin-top: 10px; }
+.cr-pct { width: 64px; display: inline-block; padding: 4px 6px; }
