@@ -128,7 +128,7 @@ async function lerInstagram({ marca, handles, forcado = false, graph, igId, frei
     } catch (e) {
       if (e?.meta?.tipo === 'limite' || e?.meta?.tipo === 'token') return { pausado: e.meta.tipo === 'limite', itens: [], erro: String(e.message).slice(0, 160) };
       // @ inexistente ou que não é conta profissional: tenta o próximo (guarda o motivo para o diagnóstico)
-      ultimo = `@${h}: ${String(e?.meta?.amigavel || e?.message || 'falhou').slice(0, 120)}`;
+      ultimo = `@${h}: ${String(e?.meta?.mensagem_original ? `${e.meta.mensagem_original} (code ${e.meta.code}/${e.meta.subcode})` : e?.message || 'falhou').slice(0, 160)}`;
     }
   }
   return { itens: [], erro: ultimo || `nenhum perfil oficial confirmado (${handles.slice(0, 3).map((h) => `@${h}`).join(', ') || 'sem sugestão'})` };
