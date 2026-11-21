@@ -10,7 +10,7 @@ async function pelaVersaoAtual() {
   const segredo = process.env.CRON_SECRET; const base = (process.env.PUBLIC_BASE_URL || 'https://agente-bastao-iel.vercel.app').replace(/\/$/, '');
   if (!segredo || process.env.VERCEL_ENV !== 'production') return false;
   try {
-    const r = await fetch(`${base}/api/top/piloto/rodada`, { method: 'POST', headers: { Authorization: `Bearer ${segredo}`, 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(57000) });
+    const r = await fetch(`${base}/api/top/piloto/rodada`, { method: 'POST', headers: { Authorization: `Bearer ${segredo}`, 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(Piloto.ORCAMENTO_MS() + 45000) });
     return r.ok;
   } catch (e) { console.error('[piloto] versão atual não respondeu:', String(e.message).slice(0, 120)); return false; }
 }
@@ -21,6 +21,6 @@ module.exports = fila().handleNodeCallback(async () => {
   if (process.env.VERCEL_ENV !== 'production') return;
   if (await pelaVersaoAtual()) return;
   let r = null;
-  try { r = await Piloto.rodada({ orcamentoMs: 45000 }); } catch (e) { console.error('[piloto] rodada falhou:', String(e.message).slice(0, 160)); }
+  try { r = await Piloto.rodada({}); } catch (e) { console.error('[piloto] rodada falhou:', String(e.message).slice(0, 160)); }
   await Relogio.agendarProxima(r);
-}, { visibilityTimeoutSeconds: 90, retry: () => ({ afterSeconds: 60 }) });
+}, { visibilityTimeoutSeconds: 330, retry: () => ({ afterSeconds: 60 }) });

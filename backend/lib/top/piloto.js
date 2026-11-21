@@ -13,9 +13,11 @@ const T = require('./pipeline');
 
 const conta = () => ACCOUNT.ig_id;
 const PADRAO = Object.freeze({
-  // Qualidade, não quantidade (pedido do Pedro, 21/11): hipótese de 2–3 carrosséis e 4–5 Reels por semana. A reserva existe para
-  // escolher; a fila de aprovação é ordenada pela prioridade estratégica (lib/prioridade.js). Quem já salvou outra meta mantém a dele.
-  ativo: true, meta_dia: 1, reserva: 1, candidatos_max_dia: 30,
+  // Pedido do Pedro (21/11, depois da hipótese "qualidade, não quantidade" do mesmo dia): 40 peças por dia em 3 modelos.
+  // "mix" diz quantas de cada; meta_dia é a soma. frase = post de 1 imagem para repostar nos stories; noticia = carrossel/
+  // estático/ensaio topo de funil; marca = "Por trás da marca". A fila de aprovação segue ordenada pela prioridade estratégica.
+  ativo: true, meta_dia: 40, reserva: 1, candidatos_max_dia: 90, paralelo: 3,
+  mix: { frase: 20, noticia: 12, marca: 8 },
   inicio_producao: '03:00', fim_producao: '20:30', // começa de madrugada: às 8h já há carrosséis prontos
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
@@ -27,6 +29,12 @@ const PADRAO = Object.freeze({
 const FORMATOS_PILOTO = ['tweet', 'estatico', 'ensaio', 'alterna', 'auto'];
 const FORMATOS_AUTO = ['tweet', 'estatico', 'ensaio'];
 const RODIZIO = ['tweet', 'ensaio', 'estatico'];
+const TIPOS = ['frase', 'noticia', 'marca'];
+// Tempo de cada rodada: 240 s (a função tem 300 s no plano Pro); PILOTO_ORCAMENTO_MS muda.
+const ORCAMENTO_MS = () => Number(process.env.PILOTO_ORCAMENTO_MS) || 240000;
+// Tipo de cada peça criada pelo piloto (as linhas próprias do Pedro contam como notícia: ocupam a vaga do feed).
+const tipoDe = (x) => (x.linha === 'frase' ? 'frase' : x.linha === 'marca' || x.formato === 'marca' ? 'marca' : 'noticia');
+const mixDe = (cfg) => ({ ...PADRAO.mix, ...(cfg.mix || {}) });
 const proximoDoRodizio = (ultimo) => RODIZIO[(RODIZIO.indexOf(ultimo) + 1) % RODIZIO.length]; // desconhecido (-1) → tweet
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 const erro = (msg, status = 400) => Object.assign(new Error(msg), { status, code: 'PILOTO' });
@@ -42,7 +50,13 @@ function validar(patch = {}) {
   const out = {};
   if ('ativo' in patch) { if (typeof patch.ativo !== 'boolean') throw erro('ativo deve ser verdadeiro ou falso.'); out.ativo = patch.ativo; }
   const inteiro = (k, min, max) => { if (!(k in patch)) return; const n = Number(patch[k]); if (!Number.isInteger(n) || n < min || n > max) throw erro(`${k} deve ser um inteiro de ${min} a ${max}.`); out[k] = n; };
-  inteiro('meta_dia', 1, 15); inteiro('reserva', 0, 5); inteiro('candidatos_max_dia', 1, 30); inteiro('roteiros_dia', 0, 15);
+  inteiro('meta_dia', 1, 60); inteiro('reserva', 0, 5); inteiro('candidatos_max_dia', 1, 150); inteiro('roteiros_dia', 0, 15); inteiro('paralelo', 1, 4);
+  if ('mix' in patch) {
+    const m = patch.mix || {}; const mix = {};
+    for (const k of TIPOS) { const n = Number(m[k] ?? 0); if (!Number.isInteger(n) || n < 0 || n > 40) throw erro(`mix.${k} deve ser um inteiro de 0 a 40.`); mix[k] = n; }
+    if (!Object.values(mix).some((n) => n > 0)) throw erro('O mix precisa de pelo menos um tipo com quantidade.');
+    out.mix = mix; if (!('meta_dia' in patch)) out.meta_dia = Math.max(1, Math.min(60, Object.values(mix).reduce((x, y) => x + y, 0)));
+  }
   for (const k of ['inicio_producao', 'fim_producao']) if (k in patch) { if (!HORA.test(patch[k])) throw erro(`${k} deve estar no formato HH:MM.`); out[k] = patch[k]; }
   if ('formato_padrao' in patch) { if (!FORMATOS_PILOTO.includes(patch.formato_padrao)) throw erro(`formato_padrao deve ser ${FORMATOS_PILOTO.slice(0, -1).join(', ')} ou auto.`); out.formato_padrao = patch.formato_padrao; }
   for (const k of ['horarios', 'janelas_aprovacao']) if (k in patch) {
@@ -156,6 +170,48 @@ async function proximaPauta(est, { agora, deps, restante }) {
   return fila.shift() || null;
 }
 
+// Pautas de "Por trás da marca": notícias de negócio (faturamento, expansão, franquia…) em que a IA reconhece UMA marca
+// conhecida do público brasileiro. Fila própria, renovada a cada 3 h.
+const PILAR_MARCAS = { id: 'marcas', nome: 'Estratégia de marcas conhecidas', palavras: ['faturamento', 'franquia', 'franquias', 'rede', 'lojas', 'marca', 'fundador', 'expansão', 'vendas', 'lucro', 'varejo', 'aquisição', 'unidades', 'investimento', 'receita', 'IPO'] };
+const SIS_MARCAS = `Para cada notícia, diga se ela conta a estratégia ou um movimento de negócio de UMA marca/empresa que o público brasileiro comum conhece (ex.: Havaianas, Cacau Show, Coco Bambu, Magalu, iFood, Natura, O Boticário, McDonald's, Nubank). Marca de nicho, órgão público, banco central, governo, pessoa ou setor inteiro não contam. Responda só JSON: {"itens":[{"i":0,"marca":"Nome da marca ou vazio","conhecida":0}]} com "conhecida" de 0 a 10 (quanto o público geral reconhece a marca).`;
+async function proximaMarca(est, { agora, deps, restante }) {
+  const usadas = new Set((est.usadas || []).map((u) => u.id));
+  let fila = (est.fila_marca || []).filter((p) => !usadas.has(p.id));
+  const velha = !est.fila_marca_em || agora - Date.parse(est.fila_marca_em) > 3 * 3600000;
+  if ((!fila.length || velha) && restante() > 40000) {
+    est.fila_marca_em = new Date(agora).toISOString();
+    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 4, pilares: [PILAR_MARCAS] });
+    const cands = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).slice(0, 14);
+    if (cands.length) {
+      const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));
+      const x = await pedir({ sistema: SIS_MARCAS, usuario: cands.map((p, i) => `${i}. ${p.titulo}`).join('\n'), maxTokens: 900, temperatura: 0.1, etapa: 'pauta_marca' });
+      fila = (x?.dados?.itens || []).filter((it) => cands[it.i] && String(it.marca || '').trim().length >= 2 && Number(it.conhecida) >= 7)
+        .map((it) => ({ id: cands[it.i].id, titulo: cands[it.i].titulo, url: melhorLink(cands[it.i]), marca: String(it.marca).trim().slice(0, 60), conhecida: Number(it.conhecida) }))
+        .filter((p, k, l) => l.findIndex((q) => q.marca.toLowerCase() === p.marca.toLowerCase()) === k)
+        .sort((a, b) => b.conhecida - a.conhecida);
+    } else fila = [];
+  }
+  // a mesma marca não volta na mesma semana
+  const recentes = new Set((est.criados || []).filter((x) => x.marca && Date.parse(x.em) > agora - 7 * 86400000).map((x) => x.marca.toLowerCase()));
+  fila = fila.filter((p) => !recentes.has(p.marca.toLowerCase()));
+  est.fila_marca = fila;
+  return fila.shift() || null;
+}
+
+// Frases: lote barato (1 chamada de IA, arte por código). Cada rodada faz até 5; vão direto para a fila de aprovação.
+async function passoFrases(cfg, est, r, { agora, dia, deps, restante }) {
+  const meta = mixDe(cfg).frase || 0;
+  const feitas = est.criados.filter((x) => x.dia === dia && x.linha === 'frase').length;
+  const tentativas = (est.frases_dia?.dia === dia ? est.frases_dia.n : 0);
+  if (feitas >= meta || tentativas >= Math.ceil(meta / 2) + 4 || restante() < 25000) return;
+  est.frases_dia = { dia, n: tentativas + 1 };
+  try {
+    const f = await (deps.frases || ((n, o) => require('../frases').produzir(n, o)))(Math.min(5, meta - feitas), { agora });
+    for (const c of f.criados) est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), titulo: c.frase.slice(0, 120), estado: 'concluida', formato: 'frase', linha: 'frase' });
+    r.frases = { criadas: f.criados.length, barradas: f.barradas.length };
+  } catch (e) { r.avisos.push(`Frases falharam: ${String(e.message).slice(0, 120)}`); }
+}
+
 async function passoRoteiros(cfg, est, r, { agora, dia, hora, deps, restante }) {
   const metaRoteiros = Number.isInteger(cfg.roteiros_dia) ? cfg.roteiros_dia : PADRAO.roteiros_dia;
   if (!(metaRoteiros > 0 && hora >= '05:00' && hora <= '22:30' && restante() > 16000 && !deps.semRoteiros)) return;
@@ -194,7 +250,7 @@ function proximaAcao(cfg, est, { agora, dia, hora, removidos = new Set(), semPau
   return Math.min(...c);
 }
 
-async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extra = 0 } = {}) {
+async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps = {}, extra = 0 } = {}) {
   const inicio = Date.now(); const restante = () => orcamentoMs - (Date.now() - inicio);
   const a = armazem(); if (!a?.duravel) return { executou: false, motivo: 'O piloto precisa do banco de dados no servidor.' };
   const cfg = await config();
@@ -265,11 +321,13 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
     return { executou: true, ...r, motivo: 'Piloto desligado: agenda conferida e roteiros de vídeo avançados.' };
   }
 
-  // 2) Avança o que está em produção.
+  // 2) Avança o que está em produção. Com orçamento longo (Pro: 300 s por função), dá várias voltas na fila.
+  for (let volta = 0; volta < 6 && (volta === 0 || restante() > 90000); volta++) {
+  const antes = est.criados.filter((y) => y.estado === 'em_andamento').length; if (!antes) break;
   for (const x of est.criados.filter((y) => y.estado === 'em_andamento')) {
     if (restante() < 16000) break;
     try {
-      const p = await T.passo(x.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) });
+      const p = await (deps.passo || T.passo)(x.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) });
       x.estado = p.conteudo.top.estado; x.nota = p.conteudo.top.escolha?.nota ?? null; r.avancados.push({ id: x.id, estado: x.estado });
       if (p.conteudo.top.cota_dia && p.conteudo.top.adiar_ate) est.ia_pausa_ate = p.conteudo.top.adiar_ate;
       // IA gratuita sem cota por pelo menos 1 h: avisa uma vez por dia, de dia.
@@ -285,6 +343,8 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
       }
     } catch (e) { if (/não encontrado/i.test(e.message)) x.estado = 'erro'; r.avisos.push(`${x.id}: ${String(e.message).slice(0, 120)}`); }
   }
+  if (est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora) break;
+  }
 
   // 3) Janela de aprovação: um aviso por janela, se houver algo pronto.
   const prontos = est.criados.filter((x) => x.estado === 'concluida' && !x.decidido).length;
@@ -299,15 +359,29 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
   // Descartado pelo Pedro não conta na meta: abre vaga para outro.
   const prontosHoje = est.criados.filter((x) => x.dia === dia && x.estado === 'concluida' && x.decidido !== 'descartado').length;
   const emAndamento = est.criados.filter((x) => x.estado === 'em_andamento').length;
+  const paralelo = Number.isInteger(cfg.paralelo) ? cfg.paralelo : PADRAO.paralelo;
+  const mix = mixDe(cfg);
+  // Por tipo: prontas hoje + em produção (descartada pelo Pedro libera a vaga).
+  const ocupadas = (tipo) => est.criados.filter((x) => tipoDe(x) === tipo && ((x.dia === dia && x.estado === 'concluida' && x.decidido !== 'descartado') || x.estado === 'em_andamento')).length;
   const naJanela = (hora >= cfg.inicio_producao && hora <= cfg.fim_producao) || folga > 0;
   const iaPausada = est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora;
   if (iaPausada) r.avisos.push(`IA gratuita sem cota até ${horaSP(Date.parse(est.ia_pausa_ate))}: nenhuma pauta nova até lá.`);
-  if (naJanela && !iaPausada && !emAndamento && prontosHoje < cfg.meta_dia + cfg.reserva + folga && (est.criados_hoje || 0) < cfg.candidatos_max_dia + folga && restante() > 12000) {
+  if (naJanela && !iaPausada) await passoFrases(cfg, est, r, { agora, dia, deps, restante });
+  const querMarca = ocupadas('marca') < mix.marca; const querNoticia = ocupadas('noticia') < mix.noticia + cfg.reserva + folga;
+  if (naJanela && !iaPausada && emAndamento < paralelo && (querMarca || querNoticia) && prontosHoje < cfg.meta_dia + cfg.reserva + folga && (est.criados_hoje || 0) < cfg.candidatos_max_dia + folga && restante() > 12000) {
     try {
+      // "Por trás da marca": vaga de marca aberta e uma pauta de marca conhecida na fila.
+      const pm = querMarca ? await proximaMarca(est, { agora, deps, restante }).catch((e) => { r.avisos.push(`Pauta de marca falhou: ${String(e.message).slice(0, 100)}`); return null; }) : null;
+      if (pm) {
+        const c = await (deps.criar || T.criar)({ url: pm.url, titulo: pm.titulo, origem: 'piloto', formato: 'marca', marca: pm.marca });
+        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pm.id, titulo: pm.titulo, estado: 'em_andamento', formato: 'marca', linha: 'marca', marca: pm.marca });
+        est.usadas.push({ id: pm.id, em: new Date(agora).toISOString() });
+        est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: c.id, titulo: pm.titulo, linha: 'marca', marca: pm.marca };
+      }
       // Linhas próprias do Pedro: havendo história, caso ou passo a passo ainda não usado, 1 de cada 3 peças do dia sai dele.
-      const doDia = est.criados.filter((x) => x.dia === dia); const proprias = doDia.filter((x) => x.linha && x.linha !== 'noticia').length;
+      const doDia = est.criados.filter((x) => x.dia === dia && x.linha !== 'frase'); const proprias = doDia.filter((x) => x.linha && !['noticia', 'marca'].includes(x.linha)).length;
       let historia = null;
-      if (!deps.semHistorias && proprias * 3 <= doDia.length) { try { historia = await (deps.proximaHistoria || (() => require('../historias').proximaNaoUsada()))(); } catch { historia = null; } }
+      if (pm || !querNoticia) { /* a vaga desta rodada foi para a marca (ou notícia já está cheia) */ } else if (!deps.semHistorias && proprias * 3 <= doDia.length) { try { historia = await (deps.proximaHistoria || (() => require('../historias').proximaNaoUsada()))(); } catch { historia = null; } }
       if (historia) {
         const g = await (deps.gerarHistoria || ((id) => require('../historias').gerar(id, { origem: 'piloto' })))(historia.id);
         est.criados.push({ id: g.id, dia, em: new Date(agora).toISOString(), titulo: g.titulo, estado: 'em_andamento', formato: g.formato, linha: historia.tipo, historia_id: historia.id });
@@ -316,8 +390,8 @@ async function rodada({ agora = Date.now(), orcamentoMs = 45000, deps = {}, extr
           try { const p2 = await T.passo(g.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) }); const x = est.criados[est.criados.length - 1]; x.estado = p2.conteudo.top.estado; r.avancados.push({ id: g.id, estado: x.estado }); } catch (e) { r.avisos.push(`${g.id}: ${String(e.message).slice(0, 120)}`); }
         }
       }
-      const pauta = historia ? null : await proximaPauta(est, { agora, deps, restante });
-      if (historia) { /* a vaga desta rodada foi para a linha própria */ } else if (pauta) {
+      const pauta = historia || pm || !querNoticia ? null : await proximaPauta(est, { agora, deps, restante });
+      if (historia || pm || !querNoticia) { /* a vaga desta rodada foi para a linha própria */ } else if (pauta) {
         // Formato padrão do feed: "reportagem" (o visual da marca). Dá para mudar em config.piloto (formato_padrao);
         // "alterna" faz o rodízio tweet → ensaio → estatico a cada pauta.
         const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto'; // 'reportagem' salvo antes vira 'auto'
@@ -407,4 +481,4 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   };
 }
 
-module.exports = { avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
+module.exports = { ORCAMENTO_MS, tipoDe, proximaMarca, passoFrases, avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };

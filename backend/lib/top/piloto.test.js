@@ -26,7 +26,11 @@ test('próximo horário: depois de agora + 10 min, pulando ocupados, e vira o di
 test('configuração valida horários e limites', async () => {
   novo();
   await assert.rejects(Pi.salvarConfig({ horarios: ['25:00'] }), /HH:MM/);
-  await assert.rejects(Pi.salvarConfig({ meta_dia: 40 }), /1 a 15/);
+  await assert.rejects(Pi.salvarConfig({ meta_dia: 61 }), /1 a 60/);
+  await assert.rejects(Pi.salvarConfig({ mix: { frase: 41 } }), /mix\.frase/);
+  await assert.rejects(Pi.salvarConfig({ mix: { frase: 0, noticia: 0, marca: 0 } }), /pelo menos um/);
+  const m = await Pi.salvarConfig({ mix: { frase: 10, noticia: 5, marca: 3 } });
+  assert.deepStrictEqual([m.mix, m.meta_dia], [{ frase: 10, noticia: 5, marca: 3 }, 18], 'meta do dia vira a soma do mix');
   const c = await Pi.salvarConfig({ meta_dia: 6, horarios: ['18:00', '09:00'] });
   assert.deepStrictEqual([c.meta_dia, c.horarios], [6, ['09:00', '18:00']]);
 });
@@ -267,4 +271,34 @@ test('formato automático: com placar o piloto segue os envios reais (com 20% de
   await Pi.rodada({ agora: SP('2026-10-29', '07:30'), deps: deps(0.95) });
   assert.strictEqual(criados[1].formato, 'estatico', 'os 20% de teste caem em formato ainda sem dado');
   assert.strictEqual(coletas, 1, 'resultados lidos uma vez por dia');
+});
+
+test('40 por dia: frases em lote, pauta de marca conhecida e até 3 carrosséis em produção ao mesmo tempo', async () => {
+  novo(); const criados = []; let lotes = 0;
+  const pautas = [
+    { id: 'n1', titulo: 'Juros sobem de novo', prioridade: 50, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/n1' }] },
+    { id: 'n2', titulo: 'Inflação de alimentos', prioridade: 40, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/n2' }] },
+    { id: 'n3', titulo: 'Desemprego cai', prioridade: 30, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/n3' }] }];
+  const marcas = [
+    { id: 'm1', titulo: 'Cacau Show abre 300 lojas', fontes: [{ url: 'https://exame.com/m1' }] },
+    { id: 'm2', titulo: 'Banco Central muda regra', fontes: [{ url: 'https://exame.com/m2' }] }];
+  const deps = {
+    descobrir: async (o) => ({ pautas: o?.pilares?.[0]?.id === 'marcas' ? marcas : pautas }),
+    iaMarcas: async ({ usuario }) => ({ dados: { itens: [{ i: 0, marca: 'Cacau Show', conhecida: 9 }, { i: 1, marca: 'Banco Central', conhecida: 3 }] }, usuario }),
+    criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
+    passo: async (id) => ({ conteudo: { top: { estado: 'em_andamento' } } }), // continuam em produção
+    frases: async (n) => { lotes++; return { criados: Array.from({ length: n }, (_, k) => ({ id: `f_${lotes}_${k}`, frase: `Frase ${lotes}.${k}` })), barradas: [] }; },
+  };
+  let r = await Pi.rodada({ agora: SP('2026-11-22', '06:00'), deps });
+  assert.deepStrictEqual(r.frases, { criadas: 5, barradas: 0 }, 'lote de até 5 frases por rodada');
+  assert.deepStrictEqual(criados[0], { url: 'https://exame.com/m1', titulo: 'Cacau Show abre 300 lojas', origem: 'piloto', formato: 'marca', marca: 'Cacau Show' }, 'marca conhecida vira "Por trás da marca"; Banco Central não');
+  r = await Pi.rodada({ agora: SP('2026-11-22', '06:05'), deps });
+  r = await Pi.rodada({ agora: SP('2026-11-22', '06:10'), deps });
+  assert.strictEqual(criados.length, 3, 'cria um por rodada até 3 em produção');
+  assert.ok(criados.slice(1).every((o) => o.formato !== 'marca'), 'Cacau Show não volta na mesma semana; sem outra marca, vai notícia');
+  r = await Pi.rodada({ agora: SP('2026-11-22', '06:15'), deps });
+  assert.strictEqual(criados.length, 3, 'com 3 em produção, espera');
+  const est = (await arm.armazem().config.obter(ACCOUNT.ig_id)).piloto_estado;
+  assert.strictEqual(est.criados.filter((x) => x.linha === 'frase' && x.estado === 'concluida').length, 20, 'as 20 frases do dia saem em 4 rodadas');
+  assert.strictEqual(lotes, 4);
 });
