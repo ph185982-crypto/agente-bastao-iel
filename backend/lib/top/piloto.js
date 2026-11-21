@@ -163,7 +163,10 @@ async function proximaPauta(est, { agora, deps, restante }) {
   const velha = !est.fila_em || agora - Date.parse(est.fila_em) > 2 * 3600000;
   est.fila_diag = null;
   if ((!fila.length || velha) && restante() > 32000) {
-    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 2 });
+    // Fim de semana: os feeds de 2 dias trazem poucas notícias e quase todas já foram usadas. Sem pauta nova, olha 5 dias.
+    const descobrir = deps.descobrir || require('../descoberta').descobrir;
+    let r = await descobrir({ dias: 2 });
+    if (!(r.pautas || []).some((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo))) r = await descobrir({ dias: 5 });
     const todas = r.pautas || [];
     const sem = todas.filter((p) => !melhorLink(p)).length; const servico = todas.filter((p) => deServico(p.titulo)).length; const ja = todas.filter((p) => usadas.has(p.id)).length;
     fila = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: (p.prioridade ?? 0) + (paraEmpreendedor(p.titulo) ? 25 : 0) }))
