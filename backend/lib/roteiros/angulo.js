@@ -21,7 +21,8 @@ const semAcento = (t) => String(t || '').toLowerCase().normalize('NFD').replace(
 const chave = (s) => semAcento(s).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 const radicais = (s) => new Set(chave(s).split(' ').filter((w) => w.length >= 5).map((w) => w.slice(0, 5)));
 
-function promptAngulo({ pauta, formato, formatoNome, estrutura, evitar = [] }) {
+function promptAngulo({ pauta, formato, formatoNome, estrutura, evitar = [], dna = null }) {
+  const bloco = dna ? `\n${require('../dnaEditorial').blocoParaPrompt(dna)}\n` : '';
   return `Você é o ESTRATEGISTA DE ÂNGULO e o LABORATÓRIO DE GANCHOS dos Reels do @pedro_destrava (público: dono de pequena empresa, MEI, vendedor de marketplace no Brasil; voz: liberdade econômica, direto, firme, sem palanque).
 Você NÃO escreve o roteiro. Decide o ângulo e escreve ganchos. FORMATO que será usado: ${formato} · ${formatoNome} (${estrutura}).
 O ÂNGULO responde, em frases curtas e concretas:
@@ -32,7 +33,7 @@ O ÂNGULO responde, em frases curtas e concretas:
 - emocao: uma de ${EMOCOES.join(', ')}.
 - consciencia: uma de ${CONSCIENCIAS.join(', ')}.
 - objecao: o que o dono pensa para resistir ("se eu não fizer X, perco Y"), nas palavras dele.
-OS GANCHOS: até 8, de tipos DIFERENTES entre ${TIPOS.join(', ')}. Cada um é a primeira frase falada: no máximo ${MAX_PALAVRAS_GANCHO} palavras, assunto e promessa claros, entende-se sem som, anuncia a CONSEQUÊNCIA da virada sem explicar o mecanismo. Proibido: saudação, "hoje eu vou falar", "você sabia que", nome de político ou partido, emoji, hashtag.
+${bloco}OS GANCHOS: até 8, de tipos DIFERENTES entre ${TIPOS.join(', ')}. Cada um é a primeira frase falada: no máximo ${MAX_PALAVRAS_GANCHO} palavras, assunto e promessa claros, entende-se sem som, anuncia a CONSEQUÊNCIA da virada sem explicar o mecanismo. Proibido: saudação, "hoje eu vou falar", "você sabia que", nome de político ou partido, emoji, hashtag.
 Regras de fato: tipo "numero" e "confissao" SÓ se o fato está escrito na PAUTA; sem isso, não escreva esse tipo. Tipo "cena" sempre em "você", no presente ("o fornecedor liga às 7 da manhã e você já sabe o assunto"), nunca como caso real inventado.
 Todos os ganchos prometem o MESMO payoff (a virada). Ordene do que mais deixa uma dúvida que só o vídeo responde para o que menos deixa.
 Nível de consciência decide a abertura: ${CONSCIENCIAS.map((c) => `${c} → ${ABERTURA[c]}`).join('; ')}.

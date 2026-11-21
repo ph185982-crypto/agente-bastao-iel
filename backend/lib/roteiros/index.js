@@ -18,6 +18,7 @@ const { ACCOUNT } = require('../account');
 const S = require('./skill');
 const Angulo = require('./angulo');
 const Escada = require('./escada');
+const Dna = require('../dnaEditorial');
 
 const conta = () => ACCOUNT.ig_id;
 const META_DIA = 5;
@@ -78,7 +79,7 @@ function escolherFormato(pauta, usadosHoje = {}, sortear = Math.random) {
 }
 
 // ── Roteirista ────────────────────────────────────────────────────────────────
-function promptRoteirista({ formato, feedback = '', angulo = null }) {
+function promptRoteirista({ formato, feedback = '', angulo = null, dna = null }) {
   const f = S.FORMATOS[formato];
   return `Você é o roteirista de Reels do @pedro_destrava. Escreva UM roteiro falado, gravado por ele olhando para a câmera, lido no teleprompter.
 ${S.SKILL}
@@ -90,7 +91,7 @@ ${f.estrutura}
 CTA preferido deste formato: ${f.cta === 'envio' ? 'envio com destinatário específico' : f.cta === 'salvar' ? 'salvar (lista, conta ou passo a passo)' : 'pergunta binária para comentar'}.
 
 ${Mentes.AI.REGRAS}
-${Angulo.blocoParaRoteirista(angulo) ? `\n${Angulo.blocoParaRoteirista(angulo)}\n` : ''}${feedback ? `\nREESCREVA DO ZERO. Os fiscais reprovaram a versão anterior por:\n${feedback}\n` : ''}
+${dna ? `\n${Dna.blocoParaPrompt(dna)}\n` : ''}${Angulo.blocoParaRoteirista(angulo) ? `\n${Angulo.blocoParaRoteirista(angulo)}\n` : ''}${feedback ? `\nREESCREVA DO ZERO. Os fiscais reprovaram a versão anterior por:\n${feedback}\n` : ''}
 Responda APENAS JSON:
 {"titulo":"até 8 palavras","publico":"quem o gancho nomeia","gancho":"1ª frase falada, até 15 palavras","tela_gancho":"3 a 5 palavras na tela","visual":"o que aparece nos 3 primeiros segundos (gesto, objeto, cenário)","foreshadow":"1 ou 2 frases que abrem o loop","blocos":[{"fala":"2 a 4 frases curtas","tela":"3 a 5 palavras"}],"payoff":"a frase que entrega a promessa","cta":"1 frase","cta_tipo":"envio|salvar|comentar"}
 Use de 3 a 6 blocos. Total falado entre ${S.PALAVRAS.min} e ${S.PALAVRAS.max} palavras.`;
@@ -124,7 +125,7 @@ function numerosSemFonte(r, pauta) {
   return [...new Set((falado.match(/\d+(?:[.,]\d+)*/g) || []))].filter((n) => { const k = n.replace(/[.,]/g, ''); return !permitidos.has(k) && !(Number(k) >= 1 && Number(k) <= 10 && k.length <= 2); });
 }
 
-function fiscalCodigo(r, pauta, { laco = false } = {}) {
+function fiscalCodigo(r, pauta, { laco = false, dna = null } = {}) {
   const p = [];
   const falado = textoFalado(r); const total = palavras(falado);
   if (!r.gancho) p.push({ criterio: 1, motivo: 'sem gancho' });
@@ -148,6 +149,8 @@ function fiscalCodigo(r, pauta, { laco = false } = {}) {
   const vic = Mentes.AI.vicios([falado]); const m = falado.match(VICIOS_ROTEIRO);
   if (vic.length + (m ? 1 : 0) >= 2) p.push({ criterio: 15, motivo: `vícios de IA: ${[...vic.slice(0, 3).map((v) => v.nome), m ? `"${m[0]}"` : null].filter(Boolean).join(', ')}` });
   if (/[\u{1F300}-\u{1FAFF}]|#\w/u.test(falado)) p.push({ criterio: 15, motivo: 'emoji ou hashtag no roteiro falado' });
+  const proib = Dna.regexProibidas(dna); const mp = proib && `${falado}\n${r.tela_gancho}`.match(proib);
+  if (mp) p.push({ criterio: 15, motivo: `expressão que o DNA Editorial proíbe: "${mp[2]}"`, trecho: mp[2] });
   // A pauta veio de um post de outra conta: o roteiro não cita nem promove essa conta, marca ou produto.
   const autores = (pauta.autor || []).map((a) => a.toLowerCase()).filter((a) => a.length >= 4);
   const normal = (t) => ` ${String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()} `;
@@ -320,6 +323,7 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
   R.pausa_ate = null;
   if (R.ultimo_arquivamento !== dia && !deps.salvar) { R.ultimo_arquivamento = dia; try { out.arquivados = await arquivarVelhos({ agora }); } catch { /* cortesia */ } }
 
+  const dna = await (deps.dna ? deps.dna() : Dna.ler()).catch(() => null);   // DNA Editorial editável; sem banco, vale o padrão
   while (restante() > 14000 && pendente(R, meta)) {
     try {
       if (!R.rascunho) {
@@ -336,7 +340,7 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
         // Motor Magnético: ângulo + laboratório de ganchos numa chamada. Falha avulsa não trava: o roteirista segue sem ângulo.
         try {
           const f = S.FORMATOS[x.formato];
-          const { dados, llm } = await chamarIA({ sistema: Angulo.promptAngulo({ pauta: x.pauta, formato: x.formato, formatoNome: f.nome, estrutura: f.estrutura, evitar: x.evitar || [] }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 2500)}`, maxTokens: 1100, temperatura: 0.85, etapa: 'angulo_roteiro', deps, restanteMs: restante() });
+          const { dados, llm } = await chamarIA({ sistema: Angulo.promptAngulo({ pauta: x.pauta, formato: x.formato, formatoNome: f.nome, estrutura: f.estrutura, evitar: x.evitar || [], dna }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 2500)}`, maxTokens: 1100, temperatura: 0.85, etapa: 'angulo_roteiro', deps, restanteMs: restante() });
           x.ia.push(llm?.provider || '?');
           const ang = Angulo.normalizarAngulo(dados);
           if (Angulo.repetido(ang, R.angulos) && !x.evitar) { x.evitar = (R.angulos || []).slice(-Angulo.JANELA_ANGULOS).map((a) => `${a.inimigo} (${a.emocao})`); out.fases.push(`${x.id}:angulo-repetido`); continue; }
@@ -347,11 +351,11 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
         continue;
       }
       if (x.fase === 'escrever') {
-        const { dados, llm } = await chamarIA({ sistema: promptRoteirista({ formato: x.formato, feedback: x.feedback, angulo: x.angulo }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 3000)}`, maxTokens: 1400, temperatura: x.tentativa === 1 ? 0.75 : 0.85, etapa: 'roteiro_video', deps, restanteMs: restante() });
+        const { dados, llm } = await chamarIA({ sistema: promptRoteirista({ formato: x.formato, feedback: x.feedback, angulo: x.angulo, dna }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 3000)}`, maxTokens: 1400, temperatura: x.tentativa === 1 ? 0.75 : 0.85, etapa: 'roteiro_video', deps, restanteMs: restante() });
         x.ia.push(llm?.provider || '?');
         x.roteiro = normalizar(dados);
         if (x.angulo?.gancho) { const g = x.angulo.gancho.texto; if (x.roteiro.gancho !== g) x.roteiro.gancho = g; }   // o gancho escolhido vale palavra por palavra
-        x.codigo = fiscalCodigo(x.roteiro, x.pauta, { laco: !!x.angulo?.gancho });
+        x.codigo = fiscalCodigo(x.roteiro, x.pauta, { laco: !!x.angulo?.gancho, dna });
         out.fases.push(`${x.id}:escreveu`);
         // O código já reprovou: nem gasta os fiscais de IA.
         const grave = x.codigo.problemas.some((p) => p.eliminar) || x.codigo.problemas.length >= 3 || !x.roteiro.blocos.length;

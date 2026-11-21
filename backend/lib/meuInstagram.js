@@ -98,7 +98,7 @@ async function atualizar({ grafo = meta.graph, igId = meta.config().igId, agora 
   const midias = [];
   let depois = null;
   for (let pag = 0; pag < 6 && midias.length < limite; pag++) {
-    const r = await grafo('GET', `${igId}/media`, { fields: 'id,caption,media_type,media_product_type,permalink,timestamp', limit: 50, ...(depois ? { after: depois } : {}) });
+    const r = await grafo('GET', `${igId}/media`, { fields: 'id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count', limit: 50, ...(depois ? { after: depois } : {}) });
     let fim = false;
     for (const m of r.data || []) {
       if (Date.parse(m.timestamp) < desde) { fim = true; break; }
@@ -121,6 +121,7 @@ async function atualizar({ grafo = meta.graph, igId = meta.config().igId, agora 
       legenda: String(m.caption || '').replace(/\s+/g, ' ').trim().slice(0, 160),
       idade_h: Math.round(idadeH), maduro: idadeH >= JANELA_MADURA_H,
       alcance: v.reach ?? null, visualizacoes: v.views ?? null, salvamentos: v.saved ?? null, compartilhamentos: v.shares ?? null,
+      curtidas: Number.isFinite(m.like_count) ? m.like_count : null, comentarios: Number.isFinite(m.comments_count) ? m.comments_count : null,   // da própria mídia; curtida oculta vem vazia (null, nunca 0)
       interacoes: v.total_interactions ?? null, seguidores_ganhos: v.follows ?? null, visitas_ao_perfil: v.profile_visits ?? null,
       // retenção do Reel: tempo médio assistido e, nos vídeos editados aqui (duração conhecida), quanto do vídeo isso é
       ...retencao(v.ig_reels_avg_watch_time, duracoes.get(String(m.id))),

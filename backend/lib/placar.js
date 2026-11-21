@@ -149,6 +149,25 @@ async function guardarSerie(posts, a, agora) {
   return n;
 }
 
+// Arquivo de posts: a foto diária só cobre os últimos 90 dias e é sobrescrita. Aqui cada post maduro fica guardado (compacto) para o
+// diagnóstico e o painel de crescimento enxergarem além de 90 dias com o tempo. Um documento só, no máximo 600 posts.
+const ARQ_TIPO = 'arquivo_posts'; const ARQ_MAX = 600;
+const compacto = (p) => ({ id: p.id, tipo: p.tipo, publicado_em: p.publicado_em, legenda: String(p.legenda || '').slice(0, 160), permalink: p.permalink || null, alcance: p.alcance ?? null, visualizacoes: p.visualizacoes ?? null, salvamentos: p.salvamentos ?? null, compartilhamentos: p.compartilhamentos ?? null, curtidas: p.curtidas ?? null, comentarios: p.comentarios ?? null, seguidores_ganhos: p.seguidores_ganhos ?? null, visitas_ao_perfil: p.visitas_ao_perfil ?? null, tempo_medio_s: p.tempo_medio_s ?? null, duracao_s: p.duracao_s ?? null, da_ferramenta: !!p.da_ferramenta, content_id: p.content_id || null });
+async function arquivarPosts(posts, a) {
+  if (!a?.radar) return 0;
+  try {
+    const atual = (await a.radar.obter(conta(), ARQ_TIPO, 'todos'))?.doc?.posts || [];
+    const por = new Map(atual.map((p) => [String(p.id), p]));
+    for (const p of posts.filter((x) => x.maduro && x.alcance)) por.set(String(p.id), compacto(p));   // post maduro atualiza o registro; imaturo nunca grava
+    const lista = [...por.values()].sort((x, y) => Date.parse(y.publicado_em) - Date.parse(x.publicado_em)).slice(0, ARQ_MAX);
+    await a.radar.salvar(conta(), ARQ_TIPO, 'todos', { posts: lista, atualizado_em: new Date().toISOString() });
+    return lista.length;
+  } catch { return 0; /* o arquivo é um extra: falhar aqui não derruba a coleta */ }
+}
+async function lerArquivo(a = armazem()) {
+  try { return a?.radar ? ((await a.radar.obter(conta(), ARQ_TIPO, 'todos'))?.doc?.posts || []) : []; } catch { return []; }
+}
+
 // Lê os insights, guarda a foto, a série e o placar. Usada pelo botão "Atualizar" e pela coleta diária do piloto.
 async function coletar({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = {}) {
   const a = deps.armazem || armazem();
@@ -168,6 +187,7 @@ async function coletar({ agora = Date.now(), orcamentoMs = 45000, deps = {} } = 
     // Leitura parcial (tempo esgotado) não substitui um placar completo de hoje.
     await a.config.salvar(conta(), { meu_instagram: snapshot, ...(snapshot.parcial ? {} : { meu_placar: placar }) });
     pontos = await guardarSerie(snapshot.posts, a, agora);
+    await arquivarPosts(snapshot.posts, a);
   }
   return { snapshot, placar, pontos_gravados: pontos };
 }
@@ -177,4 +197,4 @@ async function ler() {
   return (await a.config.obter(conta())).meu_placar || null;
 }
 
-module.exports = { fichaDe, calcular, calibrar, pesos, sortear, coletar, ler, spearman, guardarSerie, TIPO_SERIE, MIN_GRUPO, MIN_CALIBRAR, EXPLORACAO };
+module.exports = { arquivarPosts, lerArquivo, fichaDe, calcular, calibrar, pesos, sortear, coletar, ler, spearman, guardarSerie, TIPO_SERIE, MIN_GRUPO, MIN_CALIBRAR, EXPLORACAO };
