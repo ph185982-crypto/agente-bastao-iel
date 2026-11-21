@@ -232,8 +232,8 @@ ESTRUTURA:
 - "capas": 10 versões da frase da 1ª aposta (vai embaixo do logo da empresa na 1ª tela), até 12 palavras, sem o nome de quem é, com o número dos fatos (ex.: "Ele botou US$ 1 milhão no Skype."). Diferentes entre si.
 - "telas", nesta ordem:
   1. papel "aposta" (2 a 4 telas, a mais impressionante primeiro): "empresa" (nome da empresa onde a decisão aconteceu, como se escreve no logo), "cor_empresa" (cor principal da marca da empresa em hex, ex. "#1DB954"), "titulo" = a decisão em até 10 palavras ("Botou US$ 2,5 milhões no Airbnb."), "texto" = o resultado em até 6 palavras ("Virou US$ 90 milhões."). Use "Ele"/"Ela" sem nome. Número SÓ dos fatos.
-  2. papel "revelacao" (1 tela): "titulo" revela quem é, com o nome em **asteriscos** ("O investidor é o **Ashton Kutcher**, o ator."); "texto" 2 parágrafos curtos (separados por linha em branco) com o contexto que os fatos dão.
-  3. papel "estrategia" (1 a 2 telas): "titulo" (até 8 palavras) e "texto" (até 40 palavras): o raciocínio por trás das decisões, como se explicasse para um amigo.
+  2. papel "revelacao" (1 tela): "titulo" revela quem é, com o nome em **asteriscos** ("O investidor é o **Ashton Kutcher**, o ator."); "texto" 2 parágrafos curtos (separados por linha em branco), no máximo 60 palavras no total, com o contexto que os fatos dão.
+  3. papel "estrategia" (1 a 2 telas): "titulo" (até 8 palavras) e "texto" (até 38 palavras): o raciocínio por trás das decisões, como se explicasse para um amigo.
   4. papel "licao" (1 tela, a última): "texto" até 40 palavras com o que isso ensina para o bolso de quem trabalha e vende (leitura do Pedro, marcada como leitura quando for interpretação). Sem pedir para seguir.
   Em toda tela: "fatos" = ids dos FATOS VERIFICADOS usados.
 - NÚMEROS e DATAS só dos FATOS, escritos do mesmo jeito. Sem fato com número, a aposta não entra.
