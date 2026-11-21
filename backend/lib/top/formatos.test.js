@@ -205,16 +205,17 @@ test('checagem por formato: estático exige legenda longa com pedido de envio e 
   assert.strictEqual(n.telas.length, 0); assert.strictEqual(K.paragrafosDe(n.legenda).length, 5); assert.ok(n.capas.every((k) => K.palavras(k.texto) <= 10));
 });
 
-test('piloto: formato_padrao aceita estatico, ensaio e alterna; alterna roda tweet → ensaio → estatico', async () => {
+test('piloto: formato_padrao aceita estatico, ensaio e alterna (tweet saiu da produção); alterna roda ensaio → estatico', async () => {
   novo();
   for (const f of ['estatico', 'ensaio', 'alterna']) assert.deepStrictEqual(Pi.validar({ formato_padrao: f }), { formato_padrao: f });
   assert.throws(() => Pi.validar({ formato_padrao: 'carta' }), /formato_padrao deve ser/);
-  assert.deepStrictEqual([undefined, 'tweet', 'ensaio', 'estatico', 'reportagem'].map(Pi.proximoDoRodizio), ['tweet', 'ensaio', 'estatico', 'tweet', 'tweet']);
+  assert.throws(() => Pi.validar({ formato_padrao: 'tweet' }), /formato_padrao deve ser/);
+  assert.deepStrictEqual([undefined, 'tweet', 'ensaio', 'estatico', 'reportagem'].map(Pi.proximoDoRodizio), ['ensaio', 'ensaio', 'estatico', 'ensaio', 'ensaio']);
   await Pi.salvarConfig({ formato_padrao: 'alterna', meta_dia: 8, reserva: 2 });
   const criados = []; const SP = (dia, hhmm) => Date.parse(`${dia}T${hhmm}:00-03:00`);
   const d = { descobrir: async () => ({ pautas: [{ id: `p${criados.length}`, titulo: `Pauta ${criados.length}`, prioridade: 90, fontes: [{ url: `https://agenciabrasil.ebc.com.br/${criados.length}` }] }] }), criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; } };
   await Pi.rodada({ agora: SP('2026-10-29', '06:00'), deps: d });
   // marca o anterior como pronto para o piloto abrir a próxima pauta
   for (let i = 0; i < 3; i++) { const est = (await arm.armazem().config.obter(ACCOUNT.ig_id)).piloto_estado; est.criados.forEach((x) => { x.estado = 'concluida'; }); est.fila = []; est.fila_em = null; await arm.armazem().config.salvar(ACCOUNT.ig_id, { piloto_estado: est }); await Pi.rodada({ agora: SP('2026-10-29', `0${7 + i}:00`), deps: d }); }
-  assert.deepStrictEqual(criados.map((x) => x.formato), ['tweet', 'ensaio', 'estatico', 'tweet']);
+  assert.deepStrictEqual(criados.map((x) => x.formato), ['ensaio', 'estatico', 'ensaio', 'estatico']);
 });

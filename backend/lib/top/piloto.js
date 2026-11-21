@@ -23,19 +23,20 @@ const PADRAO = Object.freeze({
   janelas_aprovacao: ['08:00', '14:00'],
   // 'auto' reparte as vagas pelo placar real (envios por mil de cada formato, com 20% de teste); sem dado suficiente, faz o rodízio dos quatro.
   roteiros_dia: 1, // roteiros de Reels aprovados pelos fiscais por dia (aba Vídeos); 0 desliga
-  formato_padrao: 'auto', // 'auto' | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
+  formato_padrao: 'auto', // 'auto' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna' (tweet saiu da produção em 21/11)
 });
 // Formatos que o piloto pode pedir ao pipeline; 'alterna' roda tweet → ensaio → estatico para o feed variar.
-const FORMATOS_PILOTO = ['tweet', 'estatico', 'ensaio', 'alterna', 'auto'];
-const FORMATOS_AUTO = ['tweet', 'estatico', 'ensaio'];
-const RODIZIO = ['tweet', 'ensaio', 'estatico'];
+// 21/11: o Pedro tirou o formato "tweet" (manchete + foto de banco) da produção. Continua existindo para criar à mão.
+const FORMATOS_PILOTO = ['estatico', 'ensaio', 'alterna', 'auto'];
+const FORMATOS_AUTO = ['estatico', 'ensaio'];
+const RODIZIO = ['ensaio', 'estatico'];
 const TIPOS = ['frase', 'noticia', 'marca', 'revelacao'];
 // Tempo de cada rodada: 240 s (a função tem 300 s no plano Pro); PILOTO_ORCAMENTO_MS muda.
 const ORCAMENTO_MS = () => Number(process.env.PILOTO_ORCAMENTO_MS) || 240000;
 // Tipo de cada peça criada pelo piloto (as linhas próprias do Pedro contam como notícia: ocupam a vaga do feed).
 const tipoDe = (x) => (x.linha === 'frase' ? 'frase' : x.linha === 'revelacao' ? 'revelacao' : x.linha === 'marca' || x.formato === 'marca' ? 'marca' : 'noticia');
 const mixDe = (cfg) => ({ ...PADRAO.mix, ...(cfg.mix || {}) });
-const proximoDoRodizio = (ultimo) => RODIZIO[(RODIZIO.indexOf(ultimo) + 1) % RODIZIO.length]; // desconhecido (-1) → tweet
+const proximoDoRodizio = (ultimo) => RODIZIO[(RODIZIO.indexOf(ultimo) + 1) % RODIZIO.length]; // desconhecido (-1) → ensaio
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 const erro = (msg, status = 400) => Object.assign(new Error(msg), { status, code: 'PILOTO' });
 
@@ -406,7 +407,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
       let historia = null;
       if (pm || !querNoticia) { /* a vaga desta rodada foi para a marca (ou notícia já está cheia) */ } else if (!deps.semHistorias && proprias * 3 <= doDia.length) { try { historia = await (deps.proximaHistoria || (() => require('../historias').proximaNaoUsada()))(); } catch { historia = null; } }
       if (historia) {
-        const g = await (deps.gerarHistoria || ((id) => require('../historias').gerar(id, { origem: 'piloto' })))(historia.id);
+        const g = await (deps.gerarHistoria || ((id) => require('../historias').gerar(id, { origem: 'piloto', formato: 'ensaio' })))(historia.id);
         est.criados.push({ id: g.id, dia, em: new Date(agora).toISOString(), titulo: g.titulo, estado: 'em_andamento', formato: g.formato, linha: historia.tipo, historia_id: historia.id });
         est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: g.id, titulo: g.titulo, linha: historia.tipo };
         if (restante() > 20000 && !deps.gerarHistoria) {
@@ -417,7 +418,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
       if (historia || pm || !querNoticia) { /* a vaga desta rodada foi para a linha própria */ } else if (pauta) {
         // Formato padrão do feed: "reportagem" (o visual da marca). Dá para mudar em config.piloto (formato_padrao);
         // "alterna" faz o rodízio tweet → ensaio → estatico a cada pauta.
-        const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto'; // 'reportagem' salvo antes vira 'auto'
+        const formato = FORMATOS_PILOTO.includes(cfg.formato_padrao) ? cfg.formato_padrao : 'auto'; // 'reportagem' ou 'tweet' salvo antes vira 'auto'
         const ultimoFmt = [...est.criados].reverse().find((x) => x.formato)?.formato;
         let fmt = formato === 'alterna' ? proximoDoRodizio(ultimoFmt) : formato;
         if (formato === 'auto') {
