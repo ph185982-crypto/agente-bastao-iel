@@ -210,7 +210,7 @@ test('piloto: formato_padrao aceita estatico, ensaio e alterna; alterna roda twe
   for (const f of ['estatico', 'ensaio', 'alterna']) assert.deepStrictEqual(Pi.validar({ formato_padrao: f }), { formato_padrao: f });
   assert.throws(() => Pi.validar({ formato_padrao: 'carta' }), /formato_padrao deve ser/);
   assert.deepStrictEqual([undefined, 'tweet', 'ensaio', 'estatico', 'reportagem'].map(Pi.proximoDoRodizio), ['tweet', 'ensaio', 'estatico', 'tweet', 'tweet']);
-  await Pi.salvarConfig({ formato_padrao: 'alterna' });
+  await Pi.salvarConfig({ formato_padrao: 'alterna', meta_dia: 8, reserva: 2 });
   const criados = []; const SP = (dia, hhmm) => Date.parse(`${dia}T${hhmm}:00-03:00`);
   const d = { descobrir: async () => ({ pautas: [{ id: `p${criados.length}`, titulo: `Pauta ${criados.length}`, prioridade: 90, fontes: [{ url: `https://agenciabrasil.ebc.com.br/${criados.length}` }] }] }), criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; } };
   await Pi.rodada({ agora: SP('2026-10-29', '06:00'), deps: d });

@@ -51,34 +51,53 @@ Nada foi recriado. O painel de crescimento usa os posts do `meuInstagram.js` e d
 Trabalho em branch própria com PR e testes. Mudanças só aditivas no banco. Backup do banco não foi possível: a Neon está
 bloqueada. Nenhum token foi lido ou exposto.
 
-## 5. O que foi implementado nesta entrega (fase P0 e parte da P1)
+## 5. Status de cada item do pedido (atualizado em 21/11/2026)
 
-| Item do pedido | Status |
-|---|---|
-| Growth Dashboard (7/30/90 dias, período anterior, indicadores, o que funciona/não funciona, aprendizado, oportunidade, próxima ação) | **Implementado e testado** (aba Resultados). Personalizado por datas: só na API. |
-| Métricas reais e rastreáveis | **Implementado**: curtidas e comentários agora coletados; arquivo de posts maduros além de 90 dias. |
-| Diagnóstico de crescimento (períodos A/B/C, relatório) | **Implementado e testado**; precisa das datas da transição, que o Pedro define no DNA. |
-| DNA Editorial (posicionamento, promessa, personalidade, linguagem, pilares, séries, banco) | **Implementado**; integrado ao roteirista e ao ângulo; expressões proibidas viram regra do fiscal. |
-| Creative Intelligence (ângulos e ganchos) | **Parcial**: roteiros de Reel têm ângulo, 8 ganchos e escolha; falta contexto/audiência, 5 ângulos, score 0-100 e tela de escolha. |
-| Revisor criativo | **Parcial**: banca de 3 papéis com frase mais fraca e reescrita; faltam as 10 perguntas obrigatórias. |
-| Audience Intelligence, Growth Lab, Community, Distribution, Conversion, reformulação do piloto, reciclagem por mecanismo | **Não implementado** (ver seção 7). |
+Tudo fica em **Resultados → Crescimento** (abas Painel, Diagnóstico, Criativo, Audiência, Comunidade, Lab, Funil, Fila, Séries)
+e em **Ajustes → DNA Editorial**. Rotas em `backend/routes/crescimento.js`; regras em `backend/lib/`.
 
-KPIs que a Meta não entrega e aparecem como indisponíveis com o motivo: seguidores perdidos, taxa de conclusão, cliques. Leads,
-diagnósticos e conversões dependem do funil (P4); DMs por palavra-chave vêm do que o Pedro digita.
+| Item | Status | Onde | Depende de |
+|---|---|---|---|
+| Growth Dashboard (7/30/90 dias e datas, período anterior, indicadores, decisões) | Implementado, testado | `crescimento.js` | Leitura da Meta (Atualizar números) |
+| Diagnóstico A/B/C e relatório | Implementado, testado | `crescimento.js` | Datas da transição no DNA |
+| DNA Editorial + banco de personalidade, integrado ao roteirista | Implementado, testado | `dnaEditorial.js` | — |
+| Inteligência de Audiência (categorias, radar, oportunidades com score comparativo) | Implementado, testado | `audiencia.js` | Comentários lidos (permissão `instagram_manage_comments`) |
+| Demografia da audiência | Implementado | rota `/audiencia/demografia` | Meta (`follower_demographics`, conta com 100+ seguidores) |
+| Comentários de concorrentes, DMs, respostas a Stories | **Não implementado** | — | A Graph API não entrega; exigem webhooks e permissões de mensagens |
+| Creative Intelligence (contexto, audiência, 5 ângulos, formatos, 10+ ganchos, score 0–100, 3 opções, aprovar/editar/novas/combinar/descartar) | Implementado, testado | `criativo.js` | IA gratuita |
+| Revisor criativo (10 perguntas, alertas) | Implementado, testado | `roteiros/index.js` | IA gratuita (mesma chamada da banca) |
+| Growth Lab (experimentos, grupos A/B com posts reais, amostra mínima, veredito sem "vencedor", decisões) | Implementado, testado | `growthLab.js` | Posts lidos da Meta |
+| Community Intelligence (classificação, sugestão de resposta, aprovar/editar/descartar, virar pauta, enviar com confirmação) | Implementado, testado | `comunidade.js` | Permissão `instagram_manage_comments` para ler e responder |
+| Distribution Intelligence (desempenho na mesma idade, comentários, Stories, reaproveitamento, nova pauta) | Implementado, testado | `distribuicao.js` | Série por post do placar |
+| Conversion Intelligence (objetivo por conteúdo, funil lead → cliente, taxas, sequência editorial, CTA por objetivo) | Implementado, testado | `funil.js` | Registro manual dos leads (sem CRM) |
+| Séries (gerenciamento, episódios, desempenho, próximos) | Implementado | `/series`, DNA | Marcar a série ao aprovar |
+| Piloto por qualidade (meta menor, fila ordenada por prioridade estratégica, frequência recomendada) | Implementado | `prioridade.js`, `top/piloto.js` | Quem já salvou meta própria mantém a dele |
+| Reciclagem por mecanismo (gancho, estrutura, emoção, público, motivo, ângulo Pedro, formato; anti-cópia) | Implementado | `reciclagem/coletar.js` | IA gratuita |
+| Cliques, taxa de conclusão, seguidores perdidos | **Indisponível** | — | A Meta não entrega por esta conexão |
+| Stories (publicação e métricas) | **Não implementado** | — | Fora do escopo da API atual do app |
+
+Custos: tudo novo é regra (sem IA) ou IA gratuita (`pago: 'nunca'`). A estratégia criativa e a sugestão de resposta são chamadas
+sob demanda (um toque do Pedro). Nenhum serviço novo.
+
+Testes: `npm test` (874 testes, incluindo `backend/lib/crescimento.test.js` e `backend/lib/estrategiaCamadas.test.js`) e
+conferência no servidor local com dados de teste, em tela de celular. Nada foi testado contra o banco de produção (Neon bloqueada).
 
 ## 6. Riscos
-1. Neon bloqueada: nada novo foi testado contra produção; os testes usam banco em memória e o servidor local com dados de teste.
-2. Tema vem da legenda (palavras-chave): é aproximação, e o painel avisa.
-3. Reels não informam seguidores por post (limite da Meta): o efeito de um Reel no crescimento só aparece na série diária da conta.
-4. A série diária de seguidores cobre 30 dias; períodos maiores aparecem como indisponíveis, sem inventar.
-5. Amostra pequena (cerca de 3 Reels por semana): o painel exige 5 posts por grupo e diz quantos faltam.
+1. Neon bloqueada: nada novo foi testado contra produção.
+2. Leitura e resposta de comentários dependem da permissão `instagram_manage_comments` no token da Meta; sem ela, a aba avisa.
+3. Tema vem das palavras da legenda/comentário: aproximação, sinalizada.
+4. Reels não informam seguidores por post (limite da Meta).
+5. Amostra pequena: todas as telas exigem mínimo e dizem quantos posts faltam.
 
-## 7. Plano e ordem do que falta
-1. **P1 (restante):** Inteligência de Audiência (comentários próprios e de concorrentes, perguntas recorrentes; exige permissão de
-   comentários na API da Meta), tela de Creative Intelligence com 5 ângulos, 10 ganchos, score e escolha das 3 melhores, 10
-   perguntas obrigatórias no revisor.
-2. **P2:** Growth Lab (experimentos com hipótese, grupos A/B, amostra mínima, conclusão), marcação por post (rosto, capa, duração).
-3. **P3:** Comunidade (classificar comentários, sugerir resposta, virar pauta). Requer leitura de comentários pela API.
-4. **P4:** Distribuição pós-publicação e funil de conversão (leads, diagnósticos, propostas, clientes), com registro manual.
-5. **Piloto:** trocar meta de quantidade por prioridade estratégica e frequência recomendada pelos dados.
-6. **Reciclagem:** extrair mecanismo (tese, gancho, estrutura, emoção) e gerar interpretação original.
+## 7. Como o Pedro usa
+1. Ajustes → DNA Editorial: revisar posicionamento, pilares e datas da transição; escrever opiniões e frases no banco.
+2. Resultados → Atualizar números (ou espere a leitura diária) → Crescimento → Painel e Diagnóstico.
+3. Comunidade → Ler comentários → sugerir resposta → aprovar → enviar (com confirmação) ou virar pauta.
+4. Audiência → oportunidades → "Levar para a Estratégia criativa" → aprovar a melhor opção (Reel vai para os roteiros; carrossel sai pelo Criar).
+5. Lab → criar experimento marcando posts A e B; registrar decisões.
+6. Funil → registrar leads e mover de estágio; Fila → ver por que cada conteúdo deve ser aprovado antes.
+
+## 8. Próximas melhorias
+- Ler DMs e respostas a Stories por webhook (exige app da Meta revisado e permissões de mensagens).
+- Marcação automática de rosto nos primeiros segundos e duração pelos vídeos editados aqui, para o Lab montar grupos sozinho.
+- Recomendação de frequência quando houver 8 semanas de dado.

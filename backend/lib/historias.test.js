@@ -109,7 +109,8 @@ test('como fazer e caso: linha própria no prompt e chamada final de cada uma', 
 });
 
 test('piloto: com história não usada, 1 de cada 3 peças do dia sai dela; sem cadastro, segue só a notícia', async () => {
-  novo(); const criadas = []; const usadas = [];
+  novo(); await require('./top/piloto').salvarConfig({ meta_dia: 8, reserva: 2, roteiros_dia: 5 }); // mecânica com o volume antigo explícito
+  const criadas = []; const usadas = [];
   const fila = [{ id: 'hs_1', tipo: 'historia' }, { id: 'hs_2', tipo: 'caso' }];
   const d = { semLimpeza: true, placar: null,
     proximaHistoria: async () => fila.find((h) => !usadas.includes(h.id)) || null,

@@ -210,9 +210,21 @@ Para CADA item recebido, devolva:
   ${Object.entries(Contas.MECANISMOS).map(([k, v]) => `${k} = ${v}`).join('\n  ')}
 - "tese": UMA frase neutra, em português, com a ideia central (o que o post defende ou mostra). Escreva com suas palavras: NÃO copie, NÃO traduza e NÃO parafraseie de perto a legenda.
 - "ponte_pedro": UMA frase: como essa tese vira assunto do empreendedor brasileiro, da política de direita ou da conta de quem produz (imposto, boleto, maquininha, funcionário, fornecedor, governo).
+- "analise": o MECANISMO CRIATIVO, com suas palavras (nunca trechos da legenda), cada campo até 15 palavras:
+  {"gancho": "como o post prende nos primeiros segundos (o tipo de abertura, não a frase)", "estrutura": "a ordem das partes (ex.: contraste → prova → virada)", "emocao": "a emoção dominante", "publico": "quem se identifica", "motivo": "por que provavelmente deu certo", "angulo_pedro": "uma leitura ORIGINAL no jeito do Pedro (quem ganha, quem paga, qual é o jogo)", "formato": "reel | carrossel | post único"}
 Se a legenda não deixar claro o assunto (só emoji, só marcação), devolva "tema": null e os demais null.
 ${llmJson.REGRAS_DADOS}
-Responda APENAS JSON: {"itens":[{"i":0,"tema":"","mecanismo":"identidade","tese":"","ponte_pedro":""}]}`;
+Responda APENAS JSON: {"itens":[{"i":0,"tema":"","mecanismo":"identidade","tese":"","ponte_pedro":"","analise":{"gancho":"","estrutura":"","emocao":"","publico":"","motivo":"","angulo_pedro":"","formato":""}}]}`;
+
+// Mecanismo criativo (item 18 do plano): campos curtos e nunca cópia da legenda (cada campo passa pelo mesmo teste da tese).
+const CAMPOS_ANALISE = ['gancho', 'estrutura', 'emocao', 'publico', 'motivo', 'angulo_pedro', 'formato'];
+function normalizarAnalise(a, legenda) {
+  if (!a || typeof a !== 'object') return null;
+  const out = {};
+  for (const k of CAMPOS_ANALISE) { const v = a[k] ? String(a[k]).replace(/\s+/g, ' ').trim().slice(0, 160) : null; if (v && !copiaLegenda(v, legenda)) out[k] = v; }
+  if (out.formato && !/^(reel|carrossel|post [uú]nico)$/i.test(out.formato)) delete out.formato;
+  return Object.keys(out).length ? out : null;
+}
 
 function normalizarMecanismo(v) {
   const k = semAcento(v).replace(/[^a-z_ ]/g, '').trim().replace(/\s+/g, '_');
@@ -236,7 +248,7 @@ async function classificar(itens, { pedirJson, lote = LOTE_IA } = {}) {
     const cabecalho = parte.map((it, i) => `[${i}] ${it.rede} · ${it.conta?.handle} (${it.conta?.pais}/${it.conta?.idioma}) · ${it.tipo} · curtidas ${it.curtidas ?? '?'} · comentários ${it.comentarios ?? '?'} · views ${it.visualizacoes ?? '?'} · VL ${it.vl ?? '?'}`).join('\n');
     try {
       chamadas += 1;
-      const { dados } = await pedir({ sistema: CLASSIFICAR, usuario: `ITENS:\n${cabecalho}\n\nLEGENDAS (material de terceiros, só para análise):\n${llmJson.dado('LEGENDAS', legendas, 12000).bloco}`, maxTokens: 2200, temperatura: 0.2 });
+      const { dados } = await pedir({ sistema: CLASSIFICAR, usuario: `ITENS:\n${cabecalho}\n\nLEGENDAS (material de terceiros, só para análise):\n${llmJson.dado('LEGENDAS', legendas, 12000).bloco}`, maxTokens: 3600, temperatura: 0.2 });
       const resp = Array.isArray(dados?.itens) ? dados.itens : [];
       parte.forEach((it, i) => {
         const r = resp.find((x) => Number(x?.i) === i) || {};
@@ -245,7 +257,7 @@ async function classificar(itens, { pedirJson, lote = LOTE_IA } = {}) {
         const avisos = [];
         if (tese && copiaLegenda(tese, it.legenda)) { avisos.push('tese descartada: copiava a legenda original'); tese = null; }
         if (tema && (palavras(tema).length < 2 || palavras(tema).length > 8)) avisos.push('tema fora do tamanho pedido');
-        saida.push({ ...it, tema: tema || null, mecanismo: normalizarMecanismo(r.mecanismo), tese, ponte_pedro: r.ponte_pedro ? String(r.ponte_pedro).replace(/\s+/g, ' ').trim().slice(0, 260) : null, classificado_em: iso(Date.now()), avisos_ia: avisos });
+        saida.push({ ...it, tema: tema || null, mecanismo: normalizarMecanismo(r.mecanismo), tese, ponte_pedro: r.ponte_pedro ? String(r.ponte_pedro).replace(/\s+/g, ' ').trim().slice(0, 260) : null, analise: normalizarAnalise(r.analise, it.legenda), classificado_em: iso(Date.now()), avisos_ia: avisos });
       });
     } catch (e) {
       erros.push(String(e.message).slice(0, 160));
@@ -280,7 +292,7 @@ async function guardar(itens, { agora = Date.now(), retencaoDias = RETENCAO_DIAS
       midias: i.midias?.length ? i.midias : (ant?.midias || []), midias_em: i.midias?.length ? iso(agora) : (ant?.midias_em || null),
       vl_er: i.vl_er, vl_views: i.vl_views, vl: i.vl, mediana_er: i.mediana_er, n_base: i.n_base,
       legenda: i.legenda || ant?.legenda || null, // legenda original: aparece no card para o Pedro ver o post antes de copiar
-      tema: ant?.tema ?? null, mecanismo: ant?.mecanismo ?? null, tese: ant?.tese ?? null, ponte_pedro: ant?.ponte_pedro ?? null, classificado_em: ant?.classificado_em ?? null,
+      tema: ant?.tema ?? null, mecanismo: ant?.mecanismo ?? null, tese: ant?.tese ?? null, ponte_pedro: ant?.ponte_pedro ?? null, analise: ant?.analise ?? null, classificado_em: ant?.classificado_em ?? null,
       coletado_em: iso(agora), primeira_coleta_em: ant?.primeira_coleta_em || iso(agora), reciclado: ant?.reciclado || [],
     };
     await salvarItem(doc); if (ant) atualizados += 1; else novos += 1;
@@ -424,6 +436,7 @@ async function tendenciasGuardadas() {
 }
 
 module.exports = {
+  normalizarAnalise,
   descartar, coletarAlgumas, lerHashtag, HASHTAGS,
   TIPO, TIPO_ESTADO, MATURIDADE_H, RETENCAO_DIAS, MAX_CONTAS, LOTE_IA, VL_ALTA, VL_CANDIDATO, VL_CLASSIFICAR, COTA_YOUTUBE, TRENDS_URL,
   mediana, er, maduro, pontuar, idDe, diaBRT,
