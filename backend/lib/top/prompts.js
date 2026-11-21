@@ -25,7 +25,8 @@ Leia os fatos com honestidade: se a notícia é neutra ou positiva, NÃO invente
 "imagem": a foto da CAPA. "pessoa_central": true só se a notícia gira em torno de UMA pessoa pública (aí a capa usa a foto dela). "lugar_brasil": se o assunto é uma instituição ou lugar brasileiro, o PRÉDIO por fora para buscar no Wikimedia Commons (ex.: "Congresso Nacional Brasília", "Prédio do Supremo Tribunal Federal", "Palácio do Planalto", "Banco Central do Brasil sede", "Porto de Santos"); senão null. "busca": a foto da CAPA em INGLÊS, 3 a 7 palavras: UMA PESSOA com emoção visível reagindo à consequência da notícia, rosto aparecendo, numa cena concreta do assunto (ex.: "worried woman looking at receipt", "shocked shop owner reading bill", "angry truck driver gas station", "stressed man calculator invoices", "smiling seller packing boxes"). Nunca prédio, paisagem, gráfico ou objeto sozinho: a capa precisa de gente.
 Responda APENAS JSON: {"gatilhos":{"contradicao":0,"bolso":0,"numero":0,"personagem":0,"empreendedor":0},"enviar_para":"seu sócio","tese":"","por_que_mandaria":"","risco":"o que pode soar injusto ou exagerado, se houver","formato":"tweet","imagem":{"pessoa_central":false,"lugar_brasil":null,"busca":""}}`;
 
-function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem', mente = '', enviarPara = 'seu sócio' }) {
+function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem', mente = '', enviarPara = 'seu sócio', marca = '', foco = '' }) {
+  if (formato === 'marca') return roteiroMarca({ voz, tese, porQue, feedback, mente, enviarPara, marca, foco });
   if (formato === 'tweet') return roteiroTweet({ voz, tese, porQue, feedback, mente });
   if (formato === 'estatico') return roteiroEstatico({ voz, tese, porQue, feedback, mente, enviarPara });
   if (formato === 'ensaio') return roteiroEnsaio({ voz, tese, porQue, feedback, mente, enviarPara });
@@ -168,8 +169,55 @@ ${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele mais compa
 Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"gap","paragrafos":["",""],"fatos":[]}],"fechamento":{"titulo":"","texto":""},"cta_motivo":"","legenda":"","hashtags":["#","#","#"]}`;
 }
 
+// ── "Por trás da marca" ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Topo de funil (degrau 1–2 da escada): destrinchar a estratégia escondida por trás de uma empresa famosa — como ganha
+// dinheiro, o truque de preço/loja/marketing, a virada. Mesmo mecanismo dos posts de negócios de revista (foto do negócio,
+// manchete forte), com a voz e a identidade do Pedro. Público geral: quem compra da marca e quem vende alguma coisa.
+const ANGULO_MARCA = `Você é o editor-chefe do @pedro_destrava, perfil que mostra "a estratégia escondida por trás" das coisas. Nesta série, "POR TRÁS DA MARCA", o Pedro destrincha a estratégia de uma empresa famosa a partir de UMA matéria: como ela ganha dinheiro, o truque de preço, de loja ou de marketing, a decisão que virou o jogo. O público é GERAL (quem consome a marca) e quem vende alguma coisa; não é pauta política.
+Avalie a pauta SÓ com os FATOS VERIFICADOS. Dê 0 a 3 para cada gatilho:
+- "curiosidade": 3 = a pessoa não sabia e vai querer contar pra alguém ("eu não fazia ideia que…"); 0 = óbvio.
+- "mecanismo": 3 = os fatos mostram uma DECISÃO de negócio concreta e explicável (preço, cardápio, ponto, franquia, canal, marketing, custo, produto de entrada); 0 = os fatos só falam de resultado, sem a decisão por trás.
+- "marca_conhecida": 3 = marca que quase todo brasileiro conhece ou já viu na rua; 0 = desconhecida.
+- "numero": 3 = número grande e fácil de entender nos fatos (faturamento, lojas, clientes); 0 = sem número.
+"tese": em UMA frase, a estratégia escondida que o carrossel vai mostrar (não a notícia). Nada além dos fatos; o que é interpretação, o Pedro diz como leitura dele.
+"por_que_mandaria": a frase de quem encaminha. "enviar_para": quem lembra ao ler (2 a 5 palavras, começando por "seu/sua/quem": "quem tem loja", "seu sócio", "quem ama milkshake").
+"marca": o nome da marca como o público escreve. "fundador": nome completo do fundador/CEO citado nos fatos, ou null.
+"cor_marca": a cor principal da identidade da marca em hex (#RRGGBB), ou null se não souber.
+"imagem": "busca": a foto ILUSTRATIVA da capa em INGLÊS, 3 a 6 palavras, do que a marca vende ou do tipo de loja (ex.: "milkshake shop counter", "fast food burger close up"), nunca logotipo.
+Responda APENAS JSON: {"marca":"","fundador":null,"gatilhos":{"curiosidade":0,"mecanismo":0,"marca_conhecida":0,"numero":0},"tese":"","por_que_mandaria":"","enviar_para":"quem tem loja","cor_marca":null,"risco":"","imagem":{"busca":""}}`;
+
+function roteiroMarca({ voz = [], tese, porQue, feedback = '', mente = '', enviarPara = 'quem tem loja', marca = '', foco = '' }) {
+  return `Você escreve carrosséis da série "POR TRÁS DA MARCA" do @pedro_destrava: o Pedro destrincha a ESTRATÉGIA ESCONDIDA por trás de uma empresa famosa${marca ? ` (${marca})` : ''}. Cada slide tem uma FOTO do negócio e pouco texto, letra grande. Quem lê é o público GERAL (consome a marca) e quem vende alguma coisa: fale simples, sem jargão (nada de "funil", "CAC", "LTV", "market share" sem explicar em português de conversa).
+A ESTRATÉGIA QUE ESTE CARROSSEL MOSTRA: ${tese}
+POR QUE ALGUÉM MANDARIA: ${porQue}
+COM QUEM FALAR: ${enviarPara}${foco ? `
+O PEDRO PEDIU FOCO EM: ${foco}` : ''}
+${mente ? `
+${mente}
+` : ''}
+${AI.REGRAS}
+
+${AI.GANCHOS}
+
+ESTRUTURA (6 a 8 slides contando a capa e o slide final, que é fixo e do sistema):
+- "capas": 10 opções de MANCHETE da capa (vai em letra branca enorme sobre a foto da marca): até 14 palavras, de preferência 7 a 11, DIFERENTES entre si. A manchete promete a curiosidade ou a estratégia ("O truque da X para você pagar mais sem perceber"; "Por que a X nunca abre loja em shopping"; "X mira R$ 1 bilhão com uma decisão que parece errada"), sem entregar tudo. Nome da marca na manchete. Número só se estiver nos fatos. Citação entre aspas SÓ se for cópia palavra por palavra de um trecho dos fatos. Marque com **asteriscos** UMA expressão de destaque.
+- "telas": 4 a 6, nesta ordem:
+  1. papel "contexto" (1 tela): o que é a marca e o tamanho dela HOJE, só com os fatos (quem não conhece entende).
+  2. papel "estrategia" (2 a 4 telas): CADA UMA explica UM mecanismo — a decisão, por que funciona e o efeito no bolso de quem compra ou no caixa da empresa — como se explicasse para um amigo. "titulo" com o nome do truque (até 8 palavras); "texto" com a explicação (até 32 palavras).
+  3. papel "licao" (1 tela, a última): o que isso ENSINA para o dia a dia de quem compra ou para quem vende qualquer coisa. Posição do Pedro, marcada como leitura dele quando for interpretação ("na minha leitura", "pra mim").
+  Em toda tela: "titulo" até 8 palavras, "texto" até 32 palavras, "imagem_busca" (foto ILUSTRATIVA desta tela em INGLÊS, 2 a 5 palavras concretas do produto/loja/cena, nunca logotipo) e "fatos": ids dos FATOS VERIFICADOS usados.
+- NÚMEROS: só os que estão nos FATOS VERIFICADOS, escritos do mesmo jeito (mesma unidade). Se os fatos não têm o número, a tela fica SEM número (nunca estime, nunca arredonde, nunca "cerca de"). SEM DATAS soltas.
+- HONESTIDADE: não invente decisão, intenção ou bastidor que os fatos não contam. O que for dedução do Pedro, diga como leitura ("na minha leitura, é por isso que…"). Nada de denúncia; não é post político.
+- NÃO escreva o slide final nem peça para seguir, mandar ou marcar nas telas: o sistema coloca o slide do Pedro ("Eu mostro a estratégia por trás das marcas que você usa todo dia. Segue @pedro_destrava pra ver a próxima.").
+- "legenda": 2 a 4 frases curtas que complementam (não repetem as telas); a última pergunta qual marca o leitor quer ver destrinchada ou pede para mandar a ${enviarPara}. Sem fonte nem data (o sistema acrescenta). "hashtags": 3 do assunto (ex.: #Negocios #Marketing #Varejo).
+- "cta_motivo": complete "Segue o @pedro_destrava …" com 4 a 8 palavras, começando por "pra" (ex.: "pra ver a estratégia da próxima marca").
+${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele mais compartilhados — imite RITMO e ATITUDE, nunca copie frases):\n${voz.map((v, i) => `${i + 1}. ${v}`).join('\n')}\n` : ''}${feedback ? `\nCORRIJA ESTES PROBLEMAS DA VERSÃO ANTERIOR:\n${feedback}\n` : ''}
+Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"contexto","titulo":"","texto":"","imagem_busca":"","fatos":[]}],"legenda":"","hashtags":["#","#","#"],"cta_motivo":""}`;
+}
+
 // Nota para o júri saber o que está avaliando quando o formato não é carrossel de telas.
 function notaJuri(formato) {
+  if (formato === 'marca') return 'FORMATO: POR TRÁS DA MARCA (topo de funil, público geral; NÃO é pauta política). A "capa" é a manchete sobre a foto da marca. Em "leitura", avalie se cada tela de estratégia explica UM mecanismo de negócio com clareza (decisão → por que funciona → efeito) e se a lição final serve para quem compra ou vende. Em "prova", avalie se o que é afirmado sobre a empresa está nos fatos (número só dos fatos; sem número também vale). Em "honestidade", reprove (abaixo de 7) intenção, bastidor ou número que os fatos não trazem. Em "envio": a pessoa mandaria "olha o truque da X"?';
   if (formato === 'estatico') return 'FORMATO: POST ESTÁTICO. A "capa" é a headline da imagem e a LEGENDA é o post inteiro (o leitor lê a legenda com o dedo parado). Avalie "tela2" e "prova" pela legenda: ela entrega o que a headline prometeu, traz o número com clareza e a leitura do Pedro? Pode haver uma única tela (o 2º slide) ou nenhuma.';
   if (formato === 'ensaio') return 'FORMATO: ENSAIO (texto corrido em slides escuros, sem foto). A "capa" é a frase de abertura e cada tela é um bloco de 2 a 3 parágrafos. Avalie o fluxo do texto como uma crônica curta: a abertura puxa, os fatos aparecem no meio, a frase de ouro fecha.';
   return '';
@@ -227,4 +275,4 @@ ${REGRA_PROPRIA}`,
 };
 
 const AI = require('../mentes/antiIA');
-module.exports = { LINHAS,  FATOS, ANGULO, roteiro, roteiroTweet, roteiroEstatico, roteiroEnsaio, notaJuri, VOZ_PEDRO, JURI, REVISOR_CAPA };
+module.exports = { LINHAS,  FATOS, ANGULO, ANGULO_MARCA, roteiroMarca, roteiro, roteiroTweet, roteiroEstatico, roteiroEnsaio, notaJuri, VOZ_PEDRO, JURI, REVISOR_CAPA };
