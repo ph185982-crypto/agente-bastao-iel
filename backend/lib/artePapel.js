@@ -90,7 +90,7 @@ async function renderizarCapa(slide, ctx, imagem) {
 }
 
 async function renderizar(slide, ctx, imagem) {
-  if (slide.layout === 'papel_capa' || slide.funcao === 'capa') return renderizarCapa(slide, ctx, imagem);
+  if (slide.layout === 'papel_capa' || (slide.funcao === 'capa' && slide.layout !== 'papel_frase')) return renderizarCapa(slide, ctx, imagem);
   return renderizarFrase(slide, ctx, imagem);
 }
 
