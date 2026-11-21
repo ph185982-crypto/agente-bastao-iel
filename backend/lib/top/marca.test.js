@@ -507,3 +507,57 @@ test('Meta no limite: a etapa de fotos espera a cota voltar (sem banco de imagen
   t += 10 * 60000; assert.strictEqual((await FC.etapa(c, ctx, io)).concluida, false, 'antes da hora: nem tenta');
   assert.strictEqual(lidas, 0);
 });
+
+// ── "Quem é ele?" (estilo revelacao do formato marca) ─────────────────────────────────────────────────────────────────
+// Matéria FICTÍCIA (pessoa e números inventados para o teste).
+const MAT_REV = 'O ator Fulano Exemplo pôs US$ 500 mil na Rodaki em 2011 e a fatia passou a valer US$ 60 milhões. Na Casinha, ele investiu US$ 2,5 milhões, que viraram US$ 90 milhões. Ele montou um fundo com dois sócios e espalhou o dinheiro em mais de 70 apostas.';
+const FATOS_REV = { protagonista: 'Fulano Exemplo', fatos: [
+  { id: 'a', texto: 'Fulano Exemplo pôs US$ 500 mil na Rodaki e a fatia passou a valer US$ 60 milhões.', trecho: 'pôs US$ 500 mil na Rodaki em 2011 e a fatia passou a valer US$ 60 milhões', tipo: 'fato' },
+  { id: 'b', texto: 'Na Casinha, ele investiu US$ 2,5 milhões, que viraram US$ 90 milhões.', trecho: 'Na Casinha, ele investiu US$ 2,5 milhões, que viraram US$ 90 milhões.', tipo: 'fato' },
+  { id: 'c', texto: 'Ele espalhou o dinheiro em mais de 70 apostas.', trecho: 'espalhou o dinheiro em mais de 70 apostas', tipo: 'fato' },
+] };
+const ROT_REV = {
+  quem: 'Fulano Exemplo',
+  capas: [{ texto: 'Ele botou US$ 2,5 milhões na Casinha.', mecanismo: 'numero' }, { texto: 'Ele pôs US$ 2,5 milhões numa empresa de casas.', mecanismo: 'curiosidade' }],
+  telas: [
+    { papel: 'aposta', empresa: 'Casinha', cor_empresa: '#FF5A5F', titulo: 'Botou US$ 2,5 milhões na Casinha.', texto: 'Virou US$ 90 milhões.', fatos: ['b'] },
+    { papel: 'aposta', empresa: 'Rodaki', cor_empresa: '#000000', titulo: 'Na Rodaki ele botou US$ 500 mil.', texto: 'Virou US$ 60 milhões.', fatos: ['a'] },
+    { papel: 'revelacao', titulo: 'O investidor é o **Fulano Exemplo**, o ator.', texto: 'Ele montou um fundo com dois sócios.\n\nE espalhou o dinheiro em mais de 70 apostas.', fatos: ['c'] },
+    { papel: 'estrategia', titulo: 'Foram mais de 70 apostas', texto: 'As que deram certo pagaram as que viraram pó. Quem copia só o acerto copia sorte.', fatos: ['c'] },
+    { papel: 'licao', texto: 'Na minha leitura, a lição é tirar parte do que você ganha trabalhando e pôr pra render sem você.', fatos: [] },
+  ],
+  legenda: 'Ganhar bem e ficar rico são coisas diferentes. De quem você quer ver as apostas?', hashtags: ['negocios', 'investimento', 'dinheiro'], cta_motivo: 'pra ver onde o próximo famoso pôs dinheiro',
+};
+
+test('Quem é ele?: apostas sem o nome, revelação, explicação e lição; logo da empresa no painel; última tela do Pedro', async () => {
+  novo();
+  const chamadas = [];
+  const pedirJson = async ({ sistema, usuario }) => {
+    const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : /revisor de honestidade/.test(sistema) ? 'revisor' : /editor de fotografia/.test(sistema) ? 'casar' : /perfil OFICIAL no Instagram/.test(sistema) ? 'handles' : /sala de redação/i.test(sistema) ? 'sala' : 'roteiro';
+    chamadas.push({ tipo, sistema, usuario });
+    const dados = tipo === 'fatos' ? FATOS_REV : tipo === 'angulo' ? { marca: 'Fulano Exemplo', gatilhos: { curiosidade: 3, mecanismo: 3, marca_conhecida: 3, numero: 3 }, tese: 'O ator ficou rico pondo o cachê pra render em empresas.', por_que_mandaria: 'Olha onde esse cara pôs dinheiro.', enviar_para: 'quem quer investir', cor_marca: null } : tipo === 'juri' ? JURI : tipo === 'revisor' ? { capas: [] } : tipo === 'casar' ? { slides: [] } : tipo === 'handles' ? { handles: [] } : tipo === 'sala' ? SALA : ROT_REV;
+    return { dados: JSON.parse(JSON.stringify(dados)), llm: { provider: 'simulado' } };
+  };
+  const logos = [];
+  const { d } = deps({ pedirJson }, {
+    lerFonte: async () => ({ tipo: 'artigo', url: 'https://exemplo.test/ator', url_final: 'https://exemplo.test/ator', titulo: 'As apostas do ator', veiculo: 'Revista Exemplo', publicada_em: '2026-11-10T12:00:00Z', texto: MAT_REV, legivel: true }),
+    logoDe: async (empresa) => { logos.push(empresa); return empresa === 'Casinha' ? { dados: await sharp({ create: { width: 400, height: 120, channels: 4, background: { r: 255, g: 90, b: 95, alpha: 1 } } }).png().toBuffer() } : null; },
+  });
+  const c = await T.criar({ url: 'https://exemplo.test/ator', formato: 'marca', estilo: 'revelacao' });
+  assert.strictEqual(c.top.entrada.estilo, 'revelacao');
+  const r = await T.executarTudo(c.id, { deps: d });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify([r.conteudo.top.motivo, r.conteudo.top.erros, r.conteudo.top.versoes?.map((v) => v.checagem)]));
+  const doc = await ler(c.id); const v = M.versaoAtiva(doc);
+  assert.deepStrictEqual(v.slides.map((s) => s.layout), ['rev_aposta', 'rev_aposta', 'rev_foto_texto', 'rev_texto_foto', 'rev_escuro', 'marca_final']);
+  assert.strictEqual(v.slides[0].funcao, 'capa'); assert.strictEqual(v.estrutura, 'quem_e_ele');
+  assert.deepStrictEqual([v.slides[0].dados.empresa, v.slides[0].dados.cor, v.slides[0].dados.resultado], ['Casinha', '#FF5A5F', 'Virou US$ 90 milhões.']);
+  assert.ok(!/Fulano/.test(`${v.slides[0].titulo} ${v.slides[1].titulo} ${v.slides[0].texto} ${v.slides[1].texto}`), 'as apostas não dizem quem é');
+  assert.deepStrictEqual(logos.sort(), ['Casinha', 'Rodaki']);
+  assert.ok(v.slides[0].dados.logo_id && !v.slides[1].dados.logo_id, 'Casinha tem logo; Rodaki sai com o nome');
+  assert.ok(!chamadas.some((x) => x.tipo === 'sala'), 'sem sala de manchetes: a capa é a 1ª aposta');
+  assert.ok(chamadas.some((x) => x.tipo === 'roteiro' && /QUEM É ELE/.test(x.sistema)) && chamadas.some((x) => x.tipo === 'juri' && /QUEM É ELE/.test(`${x.sistema} ${x.usuario}`)));
+  const els = doc.arte.renders.filter((x) => x.versao === v.id).sort((a, b) => a.indice - b.indice).map((x) => x.elementos);
+  assert.ok(els[0].includes('rev_aposta') && els[0].includes('logo_silhueta'), JSON.stringify(els[0]));
+  assert.ok(els[1].includes('logo_texto'));
+  assert.ok(doc.arte.renders.filter((x) => x.versao === v.id).every((x) => x.metrics.cabe !== false), 'tudo cabe');
+});

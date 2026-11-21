@@ -31,10 +31,11 @@
       <div class="pl-hoje"><div><b>${h.prontos}</b><span>para aprovar</span></div><div><b>${h.em_producao}</b><span>em produção</span></div><div><b>${h.aprovados}</b><span>aprovados hoje</span></div><div><b>${d.agenda.length}</b><span>agendados</span></div></div>
       <div class="es-text rc-mudo">Hoje: ${h.criados} pauta(s) testada(s), ${h.descartados_regua} barrada(s) pela régua. ${d.proximo_horario ? `Próximo horário livre: ${esc(hora(d.proximo_horario))}.` : ''}</div>
       <div class="es-label">Peças por dia (total ${esc(c.meta_dia)})</div>
-      <div class="es-days" style="grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div class="es-days" style="grid-template-columns:1fr 1fr;gap:8px">
         <label class="es-text" for="pl-mix-frase">Frases<input id="pl-mix-frase" class="es-input" type="number" min="0" max="40" value="${esc((c.mix || {}).frase ?? 0)}"></label>
         <label class="es-text" for="pl-mix-noticia">Notícias<input id="pl-mix-noticia" class="es-input" type="number" min="0" max="40" value="${esc((c.mix || {}).noticia ?? 0)}"></label>
-        <label class="es-text" for="pl-mix-marca">Marcas<input id="pl-mix-marca" class="es-input" type="number" min="0" max="40" value="${esc((c.mix || {}).marca ?? 0)}"></label></div>
+        <label class="es-text" for="pl-mix-marca">Marcas<input id="pl-mix-marca" class="es-input" type="number" min="0" max="40" value="${esc((c.mix || {}).marca ?? 0)}"></label>
+        <label class="es-text" for="pl-mix-revelacao">Quem é ele?<input id="pl-mix-revelacao" class="es-input" type="number" min="0" max="40" value="${esc((c.mix || {}).revelacao ?? 0)}"></label></div>
       <label class="es-label" for="pl-horarios">Horários de publicação</label><input id="pl-horarios" class="es-input" value="${esc(c.horarios.join(', '))}">
       <label class="es-label" for="pl-janelas">Avisos para aprovar</label><input id="pl-janelas" class="es-input" value="${esc(c.janelas_aprovacao.join(', '))}">
       <button class="es-btn ghost" style="margin-top:10px" data-action="pl-salvar" ${st.salvando ? 'disabled' : ''}>Salvar piloto</button>
@@ -48,7 +49,7 @@
     if (a === 'pl-ativo') { await salvar(ctx, { ativo: el.dataset.v === 'true' }); return true; }
     if (a === 'pl-salvar') {
       const n = (id) => Number(document.getElementById(id)?.value) || 0;
-      await salvar(ctx, { mix: { frase: n('pl-mix-frase'), noticia: n('pl-mix-noticia'), marca: n('pl-mix-marca') }, horarios: lista(document.getElementById('pl-horarios')?.value), janelas_aprovacao: lista(document.getElementById('pl-janelas')?.value) });
+      await salvar(ctx, { mix: { frase: n('pl-mix-frase'), noticia: n('pl-mix-noticia'), marca: n('pl-mix-marca'), revelacao: n('pl-mix-revelacao') }, horarios: lista(document.getElementById('pl-horarios')?.value), janelas_aprovacao: lista(document.getElementById('pl-janelas')?.value) });
       return true;
     }
     if (a === 'pl-rodar') {

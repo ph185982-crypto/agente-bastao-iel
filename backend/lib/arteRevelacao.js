@@ -74,17 +74,17 @@ function blocoTexto({ titulo, texto, x, ytop, larg, alt, cor = '#FFFFFF', titulo
 
 async function foto(imagem, w, h) {
   if (!imagem) return sharp({ create: { width: w, height: h, channels: 3, background: '#1B1C20' } }).png().toBuffer();
-  // retrato (mais alto que largo): o rosto fica no terço de cima, então o corte prioriza o topo
+  // Pedido do Pedro (21/11): nunca cortar o rosto. Quando a proporção da foto é muito diferente da janela (retrato numa faixa
+  // larga, ou o contrário), a foto entra INTEIRA na altura (ou largura) e o resto da janela é a mesma foto desfocada e escura;
+  // cortar para preencher arrancava testa e queixo. Proporção parecida: preenche com o recorte por atenção.
   const m = await sharp(imagem).rotate().metadata().catch(() => ({}));
-  const iw = m.width || 1; const ih = m.height || 1;
-  // a foto é mais alta que a janela (proporcionalmente): corta na altura com o centro a 36% do topo (onde costuma estar o
-  // rosto); mais larga: deixa o recorte por atenção decidir na horizontal.
-  if (ih / iw > h / w) {
-    const sh = Math.round((ih * w) / iw);
-    const topo = Math.max(0, Math.min(sh - h, Math.round(sh * 0.36 - h / 2)));
-    return sharp(imagem).rotate().resize({ width: w }).extract({ left: 0, top: topo, width: w, height: h }).png().toBuffer();
-  }
-  return sharp(imagem).rotate().resize(w, h, { fit: 'cover', position: 'attention' }).png().toBuffer();
+  const iw = m.width || 1; const ih = m.height || 1; const r = (iw / ih) / (w / h);
+  // (testado: até cortar só as laterais por atenção tirou metade do rosto numa janela estreita)
+  if (r > 0.8 && r < 1.25) return sharp(imagem).rotate().resize(w, h, { fit: 'cover', position: 'attention' }).png().toBuffer();
+  const fundo = await sharp(imagem).rotate().resize(w, h, { fit: 'cover' }).blur(28).modulate({ brightness: 0.55 }).png().toBuffer();
+  const frente = await sharp(imagem).rotate().resize(w, h, { fit: 'inside' }).png().toBuffer();
+  const fm = await sharp(frente).metadata();
+  return sharp(fundo).composite([{ input: frente, left: Math.round((w - fm.width) / 2), top: Math.round((h - fm.height) / 2) }]).png().toBuffer();
 }
 
 // Logo: com transparência vira silhueta na cor do texto sobre o painel; sem transparência vai num cartão branco.
@@ -110,6 +110,9 @@ async function aposta(slide, ctx, imagem) {
   const fundo = await foto(imagem, W, hBaixo);
   comp.push({ input: fundo, left: 0, top: hTopo + faixa });
   let logo = null;
+  if (!ctx?.logo && d.logo_id) {
+    try { const x = (await require('./armazem').armazem().arquivos.obter(ACCOUNT.ig_id, `img:${d.logo_id}`))?.dados; if (x) ctx = { ...ctx, logo: Buffer.from(x) }; } catch { /* sem logo: nome da empresa */ }
+  }
   if (ctx?.logo) { try { logo = await logoPng(ctx.logo, ct, 640, 200); comp.push({ input: logo.png, left: Math.round((W - logo.w) / 2), top: Math.round(130 + (230 - logo.h) / 2) }); } catch { logo = null; } }
   let svg = `<rect width="${W}" height="${hTopo}" fill="${cor}"/><rect y="${hTopo}" width="${W}" height="${faixa}" fill="${AMARELO}"/>`;
   svg += `<defs><linearGradient id="v" x1="0" y1="0" x2="0" y2="1"><stop offset="0.45" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.78"/></linearGradient></defs><rect y="${hTopo + faixa}" width="${W}" height="${hBaixo}" fill="url(#v)"/>`;

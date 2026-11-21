@@ -1,7 +1,7 @@
 // Formatos de carrossel de topo de funil (ver docs/CARROSSEIS_DIALOGO_E_PAPEL.md):
 //   POST /api/carrosseis/dialogo          diálogo ilustrado (uma cena, balões mudando)
 //   POST /api/carrosseis/papel-de-parede  capa + uma frase por tela sobre foto
-//   POST /api/carrosseis/marca            "Por trás da marca": link da matéria → carrossel do pipeline top (assíncrono)
+//   POST /api/carrosseis/marca            "Por trás da marca" (ou "Quem é ele?" com estilo: 'revelacao'): link da matéria → carrossel do pipeline top (assíncrono)
 // Montadas DEPOIS do porteiro de acesso (server.js: app.use('/api', access.exigeAcesso)): exigem o mesmo login das
 // outras rotas. Criam o conteúdo, desenham as telas e guardam; o carrossel aparece em "Carrosséis para validar".
 const express = require('express');
@@ -29,7 +29,7 @@ router.post('/papel-de-parede', limite, responder((b) => F.criarPapelDeParede(b)
 router.post('/marca', limite, responder(async (b) => {
   const T = require('../lib/top/pipeline');
   if (!b.link && !b.url && !b.texto) throw Object.assign(new Error('Envie o link da matéria sobre a marca.'), { status: 400, code: 'ENTRADA' });
-  const c = await T.criar({ url: b.link || b.url || null, texto: b.texto || null, titulo: b.titulo, origem: 'manual', formato: 'marca', marca: b.marca, fotos: b.fotos, foco: b.foco, instagram: b.instagram });
+  const c = await T.criar({ url: b.link || b.url || null, texto: b.texto || null, titulo: b.titulo, origem: 'manual', formato: 'marca', marca: b.marca, fotos: b.fotos, foco: b.foco, instagram: b.instagram, estilo: b.estilo === 'revelacao' ? 'revelacao' : null });
   try { await require('../lib/top/piloto').registrar(c.id, { titulo: c.titulo }); } catch { /* sem banco: o app conduz os passos */ }
   return { ...T.resumo(c), formato: 'marca', passo: `/api/top/carrosseis/${encodeURIComponent(c.id)}/passo` };
 }));

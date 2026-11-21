@@ -17,7 +17,7 @@ const PADRAO = Object.freeze({
   // "mix" diz quantas de cada; meta_dia é a soma. frase = post de 1 imagem para repostar nos stories; noticia = carrossel/
   // estático/ensaio topo de funil; marca = "Por trás da marca". A fila de aprovação segue ordenada pela prioridade estratégica.
   ativo: true, meta_dia: 40, reserva: 1, candidatos_max_dia: 90, paralelo: 3,
-  mix: { frase: 20, noticia: 12, marca: 8 },
+  mix: { frase: 10, noticia: 10, marca: 10, revelacao: 10 }, // 21/11: 10 de cada para ver qual modelo performa melhor
   inicio_producao: '03:00', fim_producao: '20:30', // começa de madrugada: às 8h já há carrosséis prontos
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
@@ -29,11 +29,11 @@ const PADRAO = Object.freeze({
 const FORMATOS_PILOTO = ['tweet', 'estatico', 'ensaio', 'alterna', 'auto'];
 const FORMATOS_AUTO = ['tweet', 'estatico', 'ensaio'];
 const RODIZIO = ['tweet', 'ensaio', 'estatico'];
-const TIPOS = ['frase', 'noticia', 'marca'];
+const TIPOS = ['frase', 'noticia', 'marca', 'revelacao'];
 // Tempo de cada rodada: 240 s (a função tem 300 s no plano Pro); PILOTO_ORCAMENTO_MS muda.
 const ORCAMENTO_MS = () => Number(process.env.PILOTO_ORCAMENTO_MS) || 240000;
 // Tipo de cada peça criada pelo piloto (as linhas próprias do Pedro contam como notícia: ocupam a vaga do feed).
-const tipoDe = (x) => (x.linha === 'frase' ? 'frase' : x.linha === 'marca' || x.formato === 'marca' ? 'marca' : 'noticia');
+const tipoDe = (x) => (x.linha === 'frase' ? 'frase' : x.linha === 'revelacao' ? 'revelacao' : x.linha === 'marca' || x.formato === 'marca' ? 'marca' : 'noticia');
 const mixDe = (cfg) => ({ ...PADRAO.mix, ...(cfg.mix || {}) });
 const proximoDoRodizio = (ultimo) => RODIZIO[(RODIZIO.indexOf(ultimo) + 1) % RODIZIO.length]; // desconhecido (-1) → tweet
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -179,17 +179,26 @@ const PILARES_MARCAS = [
   { id: 'marcas_marketing', nome: 'Marketing e estratégia de marca', palavras: ['marca', 'marcas', 'campanha', 'estratégia', 'consumidor', 'lançamento', 'produto'] },
 ];
 const SIS_MARCAS = `Para cada notícia, diga se ela conta a estratégia ou um movimento de negócio de UMA marca/empresa que o público brasileiro comum conhece (ex.: Havaianas, Cacau Show, Coco Bambu, Magalu, iFood, Natura, O Boticário, McDonald's, Nubank). Marca de nicho, órgão público, banco central, governo, pessoa ou setor inteiro não contam. Responda só JSON: {"itens":[{"i":0,"marca":"Nome da marca ou vazio","conhecida":0}]} com "conhecida" de 0 a 10 (quanto o público geral reconhece a marca).`;
-async function proximaMarca(est, { agora, deps, restante }) {
+// "Quem é ele?": notícias de dinheiro de UMA pessoa famosa (onde investiu, quanto rendeu, empresa que criou ou vendeu).
+const PILARES_PESSOAS = [
+  { id: 'pessoas_invest', nome: 'Investimentos de famosos', palavras: ['investiu', 'investimento', 'investidor', 'investidora', 'aporte', 'sócio', 'sócia', 'participação', 'startup', 'fundo'] },
+  { id: 'pessoas_fortuna', nome: 'Fortuna e negócios de famosos', palavras: ['fortuna', 'bilionário', 'bilionária', 'milionário', 'patrimônio', 'empresário', 'empresária', 'vendeu', 'comprou', 'herdeiro'] },
+];
+const SIS_PESSOAS = `Para cada notícia, diga se ela conta decisões de DINHEIRO de UMA pessoa que o público brasileiro comum conhece (artista, atleta, apresentador, influenciador, empresário famoso: ex. Ashton Kutcher, Neymar, Anitta, Luciano Huck, Elon Musk, Silvio Santos): onde investiu, quanto pôs e quanto virou, empresa que criou, comprou ou vendeu, com valores. Político, governo, empresa sem rosto e notícia sem valor não contam. Responda só JSON: {"itens":[{"i":0,"marca":"Nome da pessoa ou vazio","conhecida":0}]} com "conhecida" de 0 a 10 (quanto o público geral reconhece a pessoa).`;
+const FONTES_PAUTA = { marca: { pilares: () => PILARES_MARCAS, sistema: () => SIS_MARCAS }, revelacao: { pilares: () => PILARES_PESSOAS, sistema: () => SIS_PESSOAS } };
+async function proximaMarca(est, o) { return proximaEspecial('marca', est, o); }
+async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   const usadas = new Set((est.usadas || []).map((u) => u.id));
-  let fila = (est.fila_marca || []).filter((p) => !usadas.has(p.id));
-  const velha = !est.fila_marca_em || agora - Date.parse(est.fila_marca_em) > 3 * 3600000;
+  const kf = tipo === 'marca' ? 'fila_marca' : `fila_${tipo}`; const ke = `${kf}_em`;
+  let fila = (est[kf] || []).filter((p) => !usadas.has(p.id));
+  const velha = !est[ke] || agora - Date.parse(est[ke]) > 3 * 3600000;
   if ((!fila.length || velha) && restante() > 40000) {
-    est.fila_marca_em = new Date(agora).toISOString();
-    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 4, pilares: PILARES_MARCAS });
+    est[ke] = new Date(agora).toISOString();
+    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 4, pilares: FONTES_PAUTA[tipo].pilares() });
     const cands = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).slice(0, 14);
     if (cands.length) {
       const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));
-      const x = await pedir({ sistema: SIS_MARCAS, usuario: cands.map((p, i) => `${i}. ${p.titulo}`).join('\n'), maxTokens: 900, temperatura: 0.1, etapa: 'pauta_marca' });
+      const x = await pedir({ sistema: FONTES_PAUTA[tipo].sistema(), usuario: cands.map((p, i) => `${i}. ${p.titulo}`).join('\n'), maxTokens: 900, temperatura: 0.1, etapa: `pauta_${tipo}` });
       fila = (x?.dados?.itens || []).filter((it) => cands[it.i] && String(it.marca || '').trim().length >= 2 && Number(it.conhecida) >= 7)
         .map((it) => ({ id: cands[it.i].id, titulo: cands[it.i].titulo, url: melhorLink(cands[it.i]), marca: String(it.marca).trim().slice(0, 60), conhecida: Number(it.conhecida) }))
         .filter((p, k, l) => l.findIndex((q) => q.marca.toLowerCase() === p.marca.toLowerCase()) === k)
@@ -199,7 +208,7 @@ async function proximaMarca(est, { agora, deps, restante }) {
   // a mesma marca não volta na mesma semana
   const recentes = new Set((est.criados || []).filter((x) => x.marca && Date.parse(x.em) > agora - 7 * 86400000).map((x) => x.marca.toLowerCase()));
   fila = fila.filter((p) => !recentes.has(p.marca.toLowerCase()));
-  est.fila_marca = fila;
+  est[kf] = fila;
   return fila.shift() || null;
 }
 
@@ -372,19 +381,25 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
   const iaPausada = est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora;
   if (iaPausada) r.avisos.push(`IA gratuita sem cota até ${horaSP(Date.parse(est.ia_pausa_ate))}: nenhuma pauta nova até lá.`);
   if (naJanela && !iaPausada) await passoFrases(cfg, est, r, { agora, dia, deps, restante });
-  const querMarca = ocupadas('marca') < mix.marca; const querNoticia = ocupadas('noticia') < mix.noticia + cfg.reserva + folga;
-  if (naJanela && !iaPausada && emAndamento < paralelo && (querMarca || querNoticia) && prontosHoje < cfg.meta_dia + cfg.reserva + folga && (est.criados_hoje || 0) < cfg.candidatos_max_dia + folga && restante() > 12000) {
+  const querMarca = ocupadas('marca') < mix.marca; const querRevelacao = ocupadas('revelacao') < (mix.revelacao || 0); const querNoticia = ocupadas('noticia') < mix.noticia + cfg.reserva + folga;
+  if (naJanela && !iaPausada && emAndamento < paralelo && (querMarca || querNoticia || querRevelacao) && prontosHoje < cfg.meta_dia + cfg.reserva + folga && (est.criados_hoje || 0) < cfg.candidatos_max_dia + folga && restante() > 12000) {
     try {
       // "Por trás da marca": vaga de marca aberta e uma pauta de marca conhecida na fila.
-      const pm = querMarca ? await proximaMarca(est, { agora, deps, restante }).catch((e) => { r.avisos.push(`Pauta de marca falhou: ${String(e.message).slice(0, 100)}`); return null; }) : null;
+      // Formatos com pauta própria: "Quem é ele?" e "Por trás da marca" se revezam (o que está mais atrasado no dia vai primeiro).
+      const especiais = [['revelacao', querRevelacao], ['marca', querMarca]].filter(([, q]) => q).sort((a, b) => ocupadas(a[0]) / (mix[a[0]] || 1) - ocupadas(b[0]) / (mix[b[0]] || 1));
+      let pm = null; let tipoPm = null;
+      for (const [tipo] of especiais) {
+        pm = await proximaEspecial(tipo, est, { agora, deps, restante }).catch((e) => { r.avisos.push(`Pauta de ${tipo} falhou: ${String(e.message).slice(0, 100)}`); return null; });
+        if (pm) { tipoPm = tipo; break; }
+      }
       if (pm) {
-        const c = await (deps.criar || T.criar)({ url: pm.url, titulo: pm.titulo, origem: 'piloto', formato: 'marca', marca: pm.marca });
-        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pm.id, titulo: pm.titulo, estado: 'em_andamento', formato: 'marca', linha: 'marca', marca: pm.marca });
+        const c = await (deps.criar || T.criar)({ url: pm.url, titulo: pm.titulo, origem: 'piloto', formato: 'marca', marca: pm.marca, ...(tipoPm === 'revelacao' ? { estilo: 'revelacao' } : {}) });
+        est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), pauta_id: pm.id, titulo: pm.titulo, estado: 'em_andamento', formato: 'marca', linha: tipoPm, marca: pm.marca });
         est.usadas.push({ id: pm.id, em: new Date(agora).toISOString() });
-        est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: c.id, titulo: pm.titulo, linha: 'marca', marca: pm.marca };
+        est.criados_hoje = (est.criados_hoje || 0) + 1; r.criado = { id: c.id, titulo: pm.titulo, linha: tipoPm, marca: pm.marca };
       }
       // Linhas próprias do Pedro: havendo história, caso ou passo a passo ainda não usado, 1 de cada 3 peças do dia sai dele.
-      const doDia = est.criados.filter((x) => x.dia === dia && x.linha !== 'frase'); const proprias = doDia.filter((x) => x.linha && !['noticia', 'marca'].includes(x.linha)).length;
+      const doDia = est.criados.filter((x) => x.dia === dia && x.linha !== 'frase'); const proprias = doDia.filter((x) => x.linha && !['noticia', 'marca', 'revelacao'].includes(x.linha)).length;
       let historia = null;
       if (pm || !querNoticia) { /* a vaga desta rodada foi para a marca (ou notícia já está cheia) */ } else if (!deps.semHistorias && proprias * 3 <= doDia.length) { try { historia = await (deps.proximaHistoria || (() => require('../historias').proximaNaoUsada()))(); } catch { historia = null; } }
       if (historia) {
@@ -486,4 +501,4 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   };
 }
 
-module.exports = { ORCAMENTO_MS, tipoDe, proximaMarca, passoFrases, avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
+module.exports = { ORCAMENTO_MS, tipoDe, proximaMarca, proximaEspecial, passoFrases, avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
