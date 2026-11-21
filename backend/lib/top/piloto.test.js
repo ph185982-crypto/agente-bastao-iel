@@ -283,7 +283,7 @@ test('40 por dia: frases em lote, pauta de marca conhecida e até 3 carrosséis 
     { id: 'm1', titulo: 'Cacau Show abre 300 lojas', fontes: [{ url: 'https://exame.com/m1' }] },
     { id: 'm2', titulo: 'Banco Central muda regra', fontes: [{ url: 'https://exame.com/m2' }] }];
   const deps = {
-    descobrir: async (o) => ({ pautas: o?.pilares?.[0]?.id === 'marcas' ? marcas : pautas }),
+    descobrir: async (o) => ({ pautas: /^marcas/.test(o?.pilares?.[0]?.id || '') ? marcas : pautas }),
     iaMarcas: async ({ usuario }) => ({ dados: { itens: [{ i: 0, marca: 'Cacau Show', conhecida: 9 }, { i: 1, marca: 'Banco Central', conhecida: 3 }] }, usuario }),
     criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
     passo: async (id) => ({ conteudo: { top: { estado: 'em_andamento' } } }), // continuam em produção

@@ -172,7 +172,12 @@ async function proximaPauta(est, { agora, deps, restante }) {
 
 // Pautas de "Por trás da marca": notícias de negócio (faturamento, expansão, franquia…) em que a IA reconhece UMA marca
 // conhecida do público brasileiro. Fila própria, renovada a cada 3 h.
-const PILAR_MARCAS = { id: 'marcas', nome: 'Estratégia de marcas conhecidas', palavras: ['faturamento', 'franquia', 'franquias', 'rede', 'lojas', 'marca', 'fundador', 'expansão', 'vendas', 'lucro', 'varejo', 'aquisição', 'unidades', 'investimento', 'receita', 'IPO'] };
+// Três recortes (a descoberta traz até 3 acontecimentos por recorte): varejo e lojas, expansão e franquia, marketing e marca.
+const PILARES_MARCAS = [
+  { id: 'marcas', nome: 'Varejo e lojas de marcas conhecidas', palavras: ['lojas', 'loja', 'varejo', 'unidade', 'unidades', 'rede', 'vendas', 'faturamento', 'receita', 'lucro'] },
+  { id: 'marcas_expansao', nome: 'Expansão, franquia e fundador', palavras: ['franquia', 'franquias', 'expansão', 'fundador', 'aquisição', 'investimento', 'abre', 'inaugura', 'IPO'] },
+  { id: 'marcas_marketing', nome: 'Marketing e estratégia de marca', palavras: ['marca', 'marcas', 'campanha', 'estratégia', 'consumidor', 'lançamento', 'produto'] },
+];
 const SIS_MARCAS = `Para cada notícia, diga se ela conta a estratégia ou um movimento de negócio de UMA marca/empresa que o público brasileiro comum conhece (ex.: Havaianas, Cacau Show, Coco Bambu, Magalu, iFood, Natura, O Boticário, McDonald's, Nubank). Marca de nicho, órgão público, banco central, governo, pessoa ou setor inteiro não contam. Responda só JSON: {"itens":[{"i":0,"marca":"Nome da marca ou vazio","conhecida":0}]} com "conhecida" de 0 a 10 (quanto o público geral reconhece a marca).`;
 async function proximaMarca(est, { agora, deps, restante }) {
   const usadas = new Set((est.usadas || []).map((u) => u.id));
@@ -180,7 +185,7 @@ async function proximaMarca(est, { agora, deps, restante }) {
   const velha = !est.fila_marca_em || agora - Date.parse(est.fila_marca_em) > 3 * 3600000;
   if ((!fila.length || velha) && restante() > 40000) {
     est.fila_marca_em = new Date(agora).toISOString();
-    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 4, pilares: [PILAR_MARCAS] });
+    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 4, pilares: PILARES_MARCAS });
     const cands = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).slice(0, 14);
     if (cands.length) {
       const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));

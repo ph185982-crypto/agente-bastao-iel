@@ -18,6 +18,16 @@ const FEEDS = [
   { id: 'infomoney', nome: 'InfoMoney', url: 'https://www.infomoney.com.br/feed/', tipo: 'jornal' },
   { id: 'exame', nome: 'Exame', url: 'https://exame.com/feed/', tipo: 'jornal' },
   { id: 'poder360', nome: 'Poder360', url: 'https://www.poder360.com.br/feed/', tipo: 'jornal' },
+  // Negócios, varejo e marcas (21/11: 40 peças por dia pedem mais pautas, e "Por trás da marca" precisa de notícia de empresa).
+  // Testados em 21/11/2026: respondem 200 com itens.
+  { id: 'mercadoeconsumo', nome: 'Mercado & Consumo', url: 'https://mercadoeconsumo.com.br/feed/', tipo: 'jornal' },
+  { id: 'neofeed', nome: 'NeoFeed', url: 'https://neofeed.com.br/feed/', tipo: 'jornal' },
+  { id: 'movimentoeconomico', nome: 'Movimento Econômico', url: 'https://movimentoeconomico.com.br/feed/', tipo: 'jornal' },
+  { id: 'startups', nome: 'Startups', url: 'https://startups.com.br/feed/', tipo: 'jornal' },
+  { id: 'meioemensagem', nome: 'Meio & Mensagem', url: 'https://www.meioemensagem.com.br/feed', tipo: 'jornal' },
+  { id: 'seudinheiro', nome: 'Seu Dinheiro', url: 'https://www.seudinheiro.com/feed/', tipo: 'jornal' },
+  { id: 'moneytimes', nome: 'Money Times', url: 'https://www.moneytimes.com.br/feed/', tipo: 'jornal' },
+  { id: 'estadao_economia', nome: 'Estadão Economia', url: 'https://www.estadao.com.br/arc/outboundfeeds/feeds/rss/sections/economia/', tipo: 'jornal' },
 ];
 
 const ENTIDADES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', ldquo: '“', rdquo: '”', lsquo: '‘', rsquo: '’', aacute: 'á', eacute: 'é', iacute: 'í', oacute: 'ó', uacute: 'ú', acirc: 'â', ecirc: 'ê', ocirc: 'ô', atilde: 'ã', otilde: 'õ', ccedil: 'ç', agrave: 'à', Aacute: 'Á', Eacute: 'É', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú', Ccedil: 'Ç', Atilde: 'Ã', Otilde: 'Õ', Acirc: 'Â', Ecirc: 'Ê', Ocirc: 'Ô' };
