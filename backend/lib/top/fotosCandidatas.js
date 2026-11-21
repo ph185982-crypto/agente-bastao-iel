@@ -86,9 +86,11 @@ function imagensDaMateria(html, base) {
   if (og) {
     const fig = figuras.find((x) => arquivo(x.url) && arquivo(x.url) === arquivo(og));
     const credito = fig ? fig.credito : 'desconhecido';
-    if (credito !== 'terceiro') out.push({ url: og, legenda: fig?.legenda || '', credito, og: true });
+    if (credito !== 'terceiro' || process.env.FOTOS_SO_LIVRE !== '1') out.push({ url: og, legenda: fig?.legenda || '', credito, og: true });
   }
-  for (const f of figuras) if (f.credito === 'divulgacao' && !out.some((x) => arquivo(x.url) === arquivo(f.url))) out.push(f);
+  // sem filtro de direito de uso (decisão do Pedro, 21/11): toda foto da matéria é candidata; as "Divulgação" vêm primeiro
+  const ordem = process.env.FOTOS_SO_LIVRE === '1' ? figuras.filter((f) => f.credito === 'divulgacao') : [...figuras.filter((f) => f.credito === 'divulgacao'), ...figuras.filter((f) => f.credito !== 'divulgacao')];
+  for (const f of ordem) if (!out.some((x) => arquivo(x.url) === arquivo(f.url))) out.push(f);
   return out.slice(0, MAX_MATERIA);
 }
 

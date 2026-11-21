@@ -1,9 +1,9 @@
 // Fotos REAIS pelo Google Imagens (pedido do Pedro, 21/11: "busque as fotos no Google"). Usa a API "Real-Time Image Search"
-// do RapidAPI (resultados do Google Imagens) com a RAPIDAPI_KEY do servidor. Só entram fotos grandes, de sites de notícia,
-// da própria marca ou de imprensa; banco de imagem pago (Getty, Shutterstock…) e rede social ficam de fora (marca d'água,
-// licença). O texto gravado na foto continua barrado pela visão/OCR da etapa de fotos.
+// do RapidAPI (resultados do Google Imagens) com a RAPIDAPI_KEY do servidor. Só entram fotos grandes; bancos com marca d'água
+// ficam de fora. O texto gravado na foto continua barrado pela visão/OCR da etapa de fotos.
 const HOST = process.env.GOOGLE_IMAGENS_HOST || 'real-time-image-search.p.rapidapi.com';
-const BLOQUEADOS = /(gettyimages|shutterstock|istockphoto|alamy|dreamstime|depositphotos|123rf|adobe\.com|stock\.adobe|bigstock|pond5|agefotostock|vecteezy|freepik|pinterest|pinimg|facebook|fbcdn|instagram|cdninstagram|tiktok|x\.com|twitter|twimg|youtube|ytimg|reddit|wikipedia|wikimedia|lookaside|encrypted-tbn|gstatic)/i;
+// Sem filtro de direito de uso (21/11). Ficam de fora só bancos com marca d'água estampada na foto e miniaturas do próprio Google.
+const BLOQUEADOS = /(gettyimages|shutterstock|istockphoto|alamy|dreamstime|depositphotos|123rf|stock\.adobe|bigstock|pond5|agefotostock|vecteezy|encrypted-tbn|gstatic)/i;
 const chave = () => process.env.RAPIDAPI_KEY_GOOGLE || process.env.RAPIDAPI_KEY || '';
 const disponivel = () => !!chave() && process.env.GOOGLE_IMAGENS !== '0';
 
