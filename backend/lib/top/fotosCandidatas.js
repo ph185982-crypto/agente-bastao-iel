@@ -113,6 +113,7 @@ function midiasDe(bd) {
 async function lerInstagram({ marca, handles, forcado = false, graph, igId, freio, paginas = 2 }) {
   const f0 = freio();
   if (f0.pausar) return { pausado: true, itens: [], erro: `cota da Meta em ${f0.pct}%: fonte pulada` };
+  let ultimo = null;
   for (const h of handles.slice(0, 3)) {
     try {
       const d = await graph('GET', igId, { fields: camposIg(h) });
@@ -126,10 +127,11 @@ async function lerInstagram({ marca, handles, forcado = false, graph, igId, frei
       return { handle: bd.username, seguidores: Number(bd.followers_count) || null, itens };
     } catch (e) {
       if (e?.meta?.tipo === 'limite' || e?.meta?.tipo === 'token') return { pausado: e.meta.tipo === 'limite', itens: [], erro: String(e.message).slice(0, 160) };
-      // @ inexistente ou que não é conta profissional: tenta o próximo
+      // @ inexistente ou que não é conta profissional: tenta o próximo (guarda o motivo para o diagnóstico)
+      ultimo = `@${h}: ${String(e?.meta?.amigavel || e?.message || 'falhou').slice(0, 120)}`;
     }
   }
-  return { itens: [], erro: `nenhum perfil oficial confirmado (${handles.slice(0, 3).map((h) => `@${h}`).join(', ') || 'sem sugestão'})` };
+  return { itens: [], erro: ultimo || `nenhum perfil oficial confirmado (${handles.slice(0, 3).map((h) => `@${h}`).join(', ') || 'sem sugestão'})` };
 }
 const HANDLE = /^[a-z0-9._]{2,30}$/;
 async function sugerirHandles(c, ctx, marca) {
