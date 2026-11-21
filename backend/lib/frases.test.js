@@ -16,8 +16,9 @@ const BANCO = [
 ];
 
 test('marcar: só insere ** em volta do trecho existente; recusa pedaço de palavra e trecho inexistente', () => {
-  assert.strictEqual(F.marcar('A melhor maneira de começar é parar de falar e começar a fazer.', 'fazer'), 'A melhor maneira de começar é parar de falar e começar a **fazer**.');
+  assert.strictEqual(F.marcar('A melhor maneira de começar é parar de falar e começar a fazer.', 'fazer'), 'A melhor maneira de começar é parar de falar e começar a **fazer.**');
   assert.strictEqual(F.marcar('Faça o que puder', 'aça'), null);
+  assert.strictEqual(F.marcar('parar de falar e começar a fazer', 'parar de falar e começar'), null, 'no máximo 3 palavras');
   assert.strictEqual(F.marcar('Faça o que puder', 'sonhar'), null);
   assert.strictEqual(F.destaquePadrao('Pessoas sem vícios têm poucas virtudes.'), 'virtudes');
   assert.ok(F.FORA.test('A guerra é a continuação da política'));
@@ -50,5 +51,5 @@ test('produzir sem IA: sorteia e destaca a palavra mais longa', async () => {
   const r = await F.produzir(1, { deps: { ia: async () => { throw new Error('fora do ar'); }, banco: BANCO.slice(0, 1) } });
   assert.strictEqual(r.criados.length, 1);
   const c = (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, r.criados[0].id)).doc;
-  assert.match(M.versaoAtiva(c).slides[0].texto, /\*\*estiver\*\*/);
+  assert.match(M.versaoAtiva(c).slides[0].texto, /\*\*estiver\.\*\*/);
 });
