@@ -678,7 +678,10 @@ function legendaComFonte(c, texto, fonte, { paragrafos = false, fotos = [] } = {
   const corpo = paragrafos ? K.paragrafosDe(texto).map(limpa).filter(Boolean).join('\n\n') : limpa(texto);
   // foto do Wikimedia Commons com licença que exige crédito: o crédito vai na legenda
   const creditos = (c.imagens || []).filter((i) => fotos.includes(i.id) && i.exige_credito).map((i) => `Foto: ${i.autor} (${i.licenca}), via Wikimedia Commons.`);
-  return [corpo, (semMateria(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`), ...creditos].filter(Boolean).join('\n\n').slice(0, 2000);
+  // Fotos oficiais enviadas pelo Pedro (decisão de 21/11: fotos de divulgação das marcas, com crédito): "Fotos: Divulgação/<marca>".
+  const dadas = (c.imagens || []).some((i) => fotos.includes(i.id) && i.tipo === 'foto_fornecida');
+  const credDada = dadas ? `Fotos: ${String(c.top?.entrada?.credito_fotos || (c.top?.entrada?.marca || c.top?.angulo?.marca ? `Divulgação/${c.top?.entrada?.marca || c.top?.angulo?.marca}` : 'Divulgação')).slice(0, 80)}.` : '';
+  return [corpo, (semMateria(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`), ...creditos, credDada].filter(Boolean).join('\n\n').slice(0, 2000);
 }
 
 // Post estático: 1 slide (capa do tema tweet: headline + foto de gente) ou 2 (capa + "virar" com a prova/leitura e a chamada).
