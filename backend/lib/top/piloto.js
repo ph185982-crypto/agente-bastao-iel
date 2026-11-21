@@ -18,7 +18,7 @@ const PADRAO = Object.freeze({
   // estático/ensaio topo de funil; marca = "Por trás da marca". A fila de aprovação segue ordenada pela prioridade estratégica.
   ativo: true, meta_dia: 40, reserva: 1, candidatos_max_dia: 90, paralelo: 3,
   mix: { frase: 10, noticia: 10, marca: 10, revelacao: 10 }, // 21/11: 10 de cada para ver qual modelo performa melhor
-  inicio_producao: '03:00', fim_producao: '20:30', // começa de madrugada: às 8h já há carrosséis prontos
+  inicio_producao: '03:00', fim_producao: '23:30', // começa de madrugada (às 8h já há peças prontas) e vai até 23:30 (21/11)
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
   // 'auto' reparte as vagas pelo placar real (envios por mil de cada formato, com 20% de teste); sem dado suficiente, faz o rodízio dos quatro.
@@ -218,7 +218,7 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   const velha = !est[ke] || agora - Date.parse(est[ke]) > 3 * 3600000;
   if ((!fila.length || velha) && restante() > 40000) {
     est[ke] = new Date(agora).toISOString();
-    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 4, pilares: FONTES_PAUTA[tipo].pilares() });
+    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 7, pilares: FONTES_PAUTA[tipo].pilares() });
     const cands = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).slice(0, 14);
     if (cands.length) {
       const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));
@@ -241,7 +241,7 @@ async function passoFrases(cfg, est, r, { agora, dia, deps, restante }) {
   const meta = mixDe(cfg).frase || 0;
   const feitas = est.criados.filter((x) => x.dia === dia && x.linha === 'frase' && x.decidido !== 'descartado').length;
   const tentativas = (est.frases_dia?.dia === dia ? est.frases_dia.n : 0);
-  if (feitas >= meta || tentativas >= Math.ceil(meta / 2) + 4 || restante() < 25000) return;
+  if (feitas >= meta || tentativas >= meta * 3 || restante() < 25000) return; // descartadas liberam vaga; até 3 lotes por frase da meta
   est.frases_dia = { dia, n: tentativas + 1 };
   try {
     const f = await (deps.frases || ((n, o) => require('../frases').produzir(n, o)))(Math.min(5, meta - feitas), { agora });
