@@ -171,7 +171,7 @@ async function proximaPauta(est, { agora, deps, restante }) {
     const sem = todas.filter((p) => !melhorLink(p)).length; const servico = todas.filter((p) => deServico(p.titulo)).length; const ja = todas.filter((p) => usadas.has(p.id)).length;
     fila = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: (p.prioridade ?? 0) + (paraEmpreendedor(p.titulo) ? 25 : 0) }))
       .sort((x, y) => (y.prioridade ?? 0) - (x.prioridade ?? 0)).slice(0, 12);
-    est.fila_diag = { veio: todas.length, ja_usadas: ja, sem_link: sem, de_servico: servico, viraram_fila: fila.length };
+    const fs = r.feeds || []; est.fila_diag = { veio: todas.length, ja_usadas: ja, sem_link: sem, de_servico: servico, viraram_fila: fila.length, feeds_ok: fs.filter((f) => f.ok).length, feeds_total: fs.length, feeds_falhas: fs.filter((f) => !f.ok).map((f) => `${f.id}:${String(f.erro || '').slice(0, 30)}`).slice(0, 6) };
     est.fila_em = new Date(agora).toISOString();
   } else est.fila_diag = { motivo: fila.length ? 'fila ainda válida' : 'sem tempo para descobrir', restante_ms: Math.round(restante()), fila: fila.length };
   est.fila = fila;
