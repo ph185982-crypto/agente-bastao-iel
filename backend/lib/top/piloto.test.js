@@ -341,3 +341,15 @@ test('assunto repetido: a mesma notícia por outro veículo não vira outro post
   assert.strictEqual(Pi.assuntoRepetido('Dólar fecha em alta com Fed', est, agora), null);
   assert.strictEqual(Pi.assuntoRepetido('GTA VI vira marca de entretenimento e atrai Netflix e NBA', { criados: [{ ...est.criados[0], em: new Date(agora - 8 * 86400e3).toISOString() }] }, agora), null, 'depois de 7 dias pode voltar');
 });
+
+test('repetição contra TODO conteúdo recente (também o criado à mão): nome da marca/pessoa e assunto', async () => {
+  const agora = SP('2026-11-22', '10:00');
+  await Pi.carregarRecentes(agora, { recentes: async () => [
+    { id: 'c1', atualizado_em: new Date(agora - 86400e3).toISOString(), resumo: { titulo: 'Como Ashton Kutcher, que já investiu em Airbnb, Uber e Spotify, escolhe startups', formato: 'carrossel' } },
+    { id: 'c2', atualizado_em: new Date(agora - 10 * 86400e3).toISOString(), resumo: { titulo: 'Roger Federer investiu US$ 50 milhões na On', formato: 'carrossel' } },
+  ] });
+  assert.ok(Pi.nomeJaUsado('Ashton Kutcher'));
+  assert.ok(!Pi.nomeJaUsado('Roger Federer'), 'mais de 7 dias: pode voltar');
+  assert.ok(Pi.assuntoRepetido('Ashton Kutcher investiu em Airbnb, Uber e Spotify cedo', { criados: [] }, agora));
+  await Pi.carregarRecentes(agora, { recentes: async () => [] });
+});

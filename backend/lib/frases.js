@@ -44,7 +44,8 @@ async function produzir(n, { deps = {}, agora = Date.now() } = {}) {
   // o banco cresce aos poucos: com poucas frases livres, lê mais autores do Wikiquote nesta rodada
   let todas = deps.banco || await require('./citacoes').todas();
   const livres = () => todas.filter((q) => !usadas.has(norm(q.texto))).length;
-  if (!deps.banco && livres() < 80 && (process.env.VERCEL || process.env.K_SERVICE)) { try { await require('./citacoes').crescer({ max: 6 }); todas = await require('./citacoes').todas(); } catch { /* segue com o que tem */ } }
+  // banco cresce até ter folga (21/11: 85 livres, quase todas literárias)
+  if (!deps.banco && livres() < 200 && (process.env.VERCEL || process.env.K_SERVICE)) { try { await require('./citacoes').crescer({ max: 6 }); todas = await require('./citacoes').todas(); } catch { /* segue com o que tem */ } }
   const lista = todas.filter((q) => !usadas.has(norm(q.texto)) && !FORA.test(q.texto) && q.texto.length <= 150);
   const cands = [...lista].sort(() => sortear() - 0.5).slice(0, 40);
   const barradas = []; let escolhidas = [];
@@ -52,7 +53,7 @@ async function produzir(n, { deps = {}, agora = Date.now() } = {}) {
   try {
     const pedir = deps.ia || ((args) => require('./llmJson').pedirJson(args));
     const r = await pedir({ sistema: SISTEMA, usuario: cands.map((q, i) => `${i}. ${q.texto} (${q.autor})`).join('\n'), maxTokens: 1800, temperatura: 0.2, etapa: 'frases' });
-    escolhidas = (r?.dados?.itens || []).filter((it) => cands[it.i] && Number(it.nota) >= 8).sort((x, y) => y.nota - x.nota)
+    escolhidas = (r?.dados?.itens || []).filter((it) => cands[it.i] && Number(it.nota) >= 7).sort((x, y) => y.nota - x.nota)
       .map((it) => ({ ...cands[it.i], marcado: marcar(cands[it.i].texto, it.destaque) || marcar(cands[it.i].texto, destaquePadrao(cands[it.i].texto)) }));
   } catch (e) {
     barradas.push({ motivo: `IA indisponível (${String(e.message).slice(0, 60)}): escolha por sorteio` });
