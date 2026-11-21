@@ -23,12 +23,15 @@ const sharp = require('sharp');
 const llmJson = require('../llmJson');
 
 const MAX_CANDIDATAS = 30; const MAX_IG = 22; const MAX_MATERIA = 6; const POR_PAGINA = 30;
-const LADO_MIN = 900; const PALAVRAS_TEXTO = 12; const DIST_REPETIDA = 6; const SEGUIDORES_MIN = 50000;
+const LADO_MIN = 900; const PALAVRAS_TEXTO = 5; const DIST_REPETIDA = 6; const SEGUIDORES_MIN = 50000;
+// PALAVRAS_TEXTO 5: arte de promoção com letra estilizada, o OCR lê só 6 a 12 palavras (teste Coco Bambu, 21/11).
 const sha = (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 12);
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const compacto = (s) => norm(s).replace(/[^a-z0-9]/g, '');
 const umaLinha = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
 const OFICIAIS = ['pedro', 'instagram', 'materia'];
+// Post de promoção no Instagram da marca é arte com texto (preço, "Black", "últimos dias"), não foto do negócio.
+const PROMO = /(promo[çc][ãa]o|alerta|aten[çc][ãa]o|[úu]ltim[oa]s? (dias|semana|chance)|black (friday|november)|cupom|desconto|% ?off|imperd[íi]vel|sorteio|garant[ae] (j[áa]|o seu)|s[óo] (hoje|at[ée]))/i;
 const ESPERA_IG_MAX = 6 * 3600e3; // espera a cota da Meta voltar por até 6 h antes de seguir sem o Instagram oficial
 // Busca de banco de imagens que mostraria um LUGAR (fachada, prédio, salão, loja): no carrossel seria lida como a própria
 // marca ("prédio europeu como se fosse o Coco Bambu"). Nesses slides vale mais uma foto oficial que sobrou.
@@ -272,7 +275,7 @@ async function etapa(c, ctx, { salvarArquivo, lerArquivo, slots }) {
         delete st.ig_espera_ate;
         const vistos = new Set();
         st.fila = [...(st.fila || []), ...r.itens.filter((x) => !vistos.has(x.url) && vistos.add(x.url)).sort((a, b) => b.curtidas - a.curtidas).slice(0, MAX_IG)
-          .map((x) => ({ id: `ig_${sha(x.ig_id)}`, origem: 'instagram', url: x.url, permalink: x.permalink, legenda: x.legenda, curtidas: x.curtidas }))];
+          .filter((x) => !PROMO.test(x.legenda || '')).map((x) => ({ id: `ig_${sha(x.ig_id)}`, origem: 'instagram', url: x.url, permalink: x.permalink, legenda: x.legenda, curtidas: x.curtidas }))];
       } else st.ig = { handle: null, erro: graph ? 'sem nome da marca' : 'Instagram não configurado no servidor' };
     } else if (fase === 'materia') {
       const url = c.fonte_principal?.url_final || c.fonte_principal?.url;
@@ -413,4 +416,4 @@ function aplicar(c, pares) {
     ...C.filter((x) => usadas.has(x.id)).map((x) => ({ ...metaDe(c, x, ig), relevancia: 'alta', motivo: motivoDe(x.id) }))];
 }
 
-module.exports = { LUGAR, ESPERA_IG_MAX, etapa, aplicar, validarCasamento, imagensDaMateria, creditoDe, confereMarca, lerInstagram, midiasDe, dHash, distancia, preparar, baixar, slidesDoCarrossel, metaDe, tokens, FASES, MAX_CANDIDATAS, LADO_MIN, PALAVRAS_TEXTO, CASAR };
+module.exports = { PROMO, LUGAR, ESPERA_IG_MAX, etapa, aplicar, validarCasamento, imagensDaMateria, creditoDe, confereMarca, lerInstagram, midiasDe, dHash, distancia, preparar, baixar, slidesDoCarrossel, metaDe, tokens, FASES, MAX_CANDIDATAS, LADO_MIN, PALAVRAS_TEXTO, CASAR };
