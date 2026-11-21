@@ -93,11 +93,15 @@ async function logoPng(buf, corTexto, maxW, maxH) {
   const meta = await sharp(buf).metadata();
   if (meta.hasAlpha) {
     const { data, info } = await img.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    const [r, g, b] = corTexto === '#FFFFFF' ? [255, 255, 255] : [11, 11, 12];
-    for (let i = 0; i < data.length; i += 4) { data[i] = r; data[i + 1] = g; data[i + 2] = b; }
-    return { png: await sharp(data, { raw: info }).png().toBuffer(), w: info.width, h: info.height, silhueta: true };
+    // logo com fundo próprio (cartão, círculo cheio): a silhueta vira um borrão; aí vai em cores, num cartão branco
+    let cheios = 0; for (let i = 3; i < data.length; i += 4) if (data[i] > 128) cheios++;
+    if (cheios / (data.length / 4) <= 0.45) {
+      const [r, g, b] = corTexto === '#FFFFFF' ? [255, 255, 255] : [11, 11, 12];
+      for (let i = 0; i < data.length; i += 4) { data[i] = r; data[i + 1] = g; data[i + 2] = b; }
+      return { png: await sharp(data, { raw: info }).png().toBuffer(), w: info.width, h: info.height, silhueta: true };
+    }
   }
-  const p = await img.png().toBuffer(); const m = await sharp(p).metadata();
+  const p = await sharp(buf).trim().resize(maxW, maxH, { fit: 'inside' }).flatten({ background: '#FFFFFF' }).png().toBuffer(); const m = await sharp(p).metadata();
   const pad = 28; const card = await sharp({ create: { width: m.width + 2 * pad, height: m.height + 2 * pad, channels: 4, background: '#FFFFFF' } }).composite([{ input: p, left: pad, top: pad }]).png().toBuffer();
   return { png: card, w: m.width + 2 * pad, h: m.height + 2 * pad, silhueta: false };
 }

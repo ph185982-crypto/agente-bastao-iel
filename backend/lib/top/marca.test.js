@@ -541,7 +541,7 @@ test('Quem é ele?: apostas sem o nome, revelação, explicação e lição; log
   const logos = [];
   const { d } = deps({ pedirJson }, {
     lerFonte: async () => ({ tipo: 'artigo', url: 'https://exemplo.test/ator', url_final: 'https://exemplo.test/ator', titulo: 'As apostas do ator', veiculo: 'Revista Exemplo', publicada_em: '2026-11-10T12:00:00Z', texto: MAT_REV, legivel: true }),
-    logoDe: async (empresa) => { logos.push(empresa); return empresa === 'Casinha' ? { dados: await sharp({ create: { width: 400, height: 120, channels: 4, background: { r: 255, g: 90, b: 95, alpha: 1 } } }).png().toBuffer() } : null; },
+    logoDe: async (empresa) => { logos.push(empresa); return empresa === 'Casinha' ? { dados: await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><rect x="0" y="0" width="120" height="120" fill="#FF5A5F"/><rect x="160" y="40" width="240" height="40" fill="#FF5A5F"/></svg>')).png().toBuffer() } : null; },
   });
   const c = await T.criar({ url: 'https://exemplo.test/ator', formato: 'marca', estilo: 'revelacao' });
   assert.strictEqual(c.top.entrada.estilo, 'revelacao');
@@ -560,4 +560,7 @@ test('Quem é ele?: apostas sem o nome, revelação, explicação e lição; log
   assert.ok(els[0].includes('rev_aposta') && els[0].includes('logo_silhueta'), JSON.stringify(els[0]));
   assert.ok(els[1].includes('logo_texto'));
   assert.ok(doc.arte.renders.filter((x) => x.versao === v.id).every((x) => x.metrics.cabe !== false), 'tudo cabe');
+  // aposta sem valor não passa na checagem
+  const semNumero = K.checarRoteiro({ capa: 'Ele botou dinheiro no Uber.', telas: [{ papel: 'aposta', empresa: 'Uber', titulo: 'Ele botou dinheiro no Uber.', texto: 'Está no portfólio dele.' }, { papel: 'aposta', empresa: 'Rodaki', titulo: 'Botou US$ 500 mil na Rodaki.', texto: 'Virou US$ 60 milhões.' }, { papel: 'revelacao', titulo: 'É ele', texto: 'x' }, { papel: 'estrategia', titulo: 't', texto: 'x' }, { papel: 'leitura', texto: 'x' }], legenda: '' }, FATOS_REV.fatos, { formato: 'marca', estilo: 'revelacao' });
+  assert.ok(semNumero.problemas.some((p) => /tela 1: aposta sem valor/.test(p)) && !semNumero.problemas.some((p) => /tela 2: aposta sem valor/.test(p)));
 });
