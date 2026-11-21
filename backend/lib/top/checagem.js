@@ -90,7 +90,7 @@ const LEGENDA_ESTATICO = { min: 600, max: 1500, paragrafos_min: 4, paragrafos_ma
 const ENSAIO = { min: 700, max: 1100, folga: 150, telas_min: 4, telas_max: 6 }; // folga: a IA erra a contagem de caracteres para mais ou para menos
 const MARCA = { telas_min: 4, telas_max: 6, palavras_tela: 40 };
 // "Quem é ele?" (estilo revelacao): 2 a 4 apostas + revelação + 1 a 2 explicações + lição.
-const REVELACAO = { telas_min: 5, telas_max: 8, palavras_tela: 48 };
+const REVELACAO = { telas_min: 5, telas_max: 8, palavras_tela: 48, palavras_revelacao: 72 }; // a revelação tem 2 parágrafos (referência: ~60 palavras)
 const paragrafosDe = (txt) => String(txt || '').split(/\n{2,}|\n/).map((p) => p.trim()).filter(Boolean);
 
 // Checa um roteiro (capa + telas + legenda) contra os fatos verificados. Devolve { ok, problemas[] }.
@@ -142,7 +142,7 @@ function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false, esti
   if (segundo > 1) problemas.push(`“Segundo …” aparece em ${segundo} telas: cite a fonte só na tela de prova e na legenda.`);
   telas.forEach((t, i) => {
     const n = palavras(`${t.titulo || ''} ${t.texto || ''}`);
-    const maxPal = ensaio ? 70 : estatico ? 26 : marca ? (estilo === 'revelacao' ? REVELACAO.palavras_tela : MARCA.palavras_tela) : 45; // ensaio: 2–3 parágrafos curtos por bloco; estático: uma ideia no "virar"
+    const maxPal = ensaio ? 70 : estatico ? 26 : marca ? (estilo === 'revelacao' ? (t.papel === 'revelacao' ? REVELACAO.palavras_revelacao : REVELACAO.palavras_tela) : MARCA.palavras_tela) : 45; // ensaio: 2–3 parágrafos curtos por bloco; estático: uma ideia no "virar"
     if (n > maxPal) problemas.push(`tela ${i + 2}: ${n} palavras (máximo ${maxPal}). Corte.`);
     if (['rep_comparacao', 'rep_numero'].includes(t.layout) && !(t.fatos || []).length) problemas.push(`tela ${i + 2}: prova sem fato ligado (fatos: ["f1"…]).`);
     if (t.layout === 'rep_comparacao' && !(t.dados?.esquerda?.valor && t.dados?.direita?.valor)) problemas.push(`tela ${i + 2}: comparação sem os dois valores.`);
