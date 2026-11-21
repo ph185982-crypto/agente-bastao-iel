@@ -103,7 +103,7 @@ function achados(maduros) {
 
 const quantosFaltam = (n) => Math.max(0, MIN_AMOSTRA - n);
 
-function painel({ posts = [], serie = null, seguidores = null, agora = Date.now(), dias = 30, de = null, ate = null, dms = [], gerado_em = null } = {}) {
+function painel({ posts = [], serie = null, seguidores = null, agora = Date.now(), dias = 30, de = null, ate = null, dms = [], gerado_em = null, leads = null } = {}) {
   const fim = ate != null ? Number(ate) : agora; const ini = de != null ? Number(de) : fim - dias * DIA; const span = fim - ini;
   const atuais = noIntervalo(posts, ini, fim); const antes = noIntervalo(posts, ini - span, ini);
   const mad = (ps) => ps.filter((p) => p.maduro && p.alcance); const mAt = mad(atuais); const mAn = mad(antes);
@@ -136,8 +136,12 @@ function painel({ posts = [], serie = null, seguidores = null, agora = Date.now(
     kpi('conclusao', 'Taxa de conclusão', null, { indisponivel: 'A Meta não entrega esta métrica por esta conexão.' }),
     kpi('cliques', 'Cliques', null, { indisponivel: 'Ainda não há coleta de cliques (link na bio e botões de Stories).' }),
     kpi('leads_dms', 'DMs por palavra-chave (digitadas)', dm?.dms ?? null, { nota: 'Digitadas por você em Conta aberta → Porta de entrada; não há leitura automática de DMs.', indisponivel: dm ? null : 'Nenhuma DM registrada no período.' }),
-    kpi('diagnosticos', 'Diagnósticos', null, { indisponivel: 'Sem registro: o funil de conversão é a fase P4 e ainda não foi construído.' }),
-    kpi('conversoes', 'Conversões (clientes)', null, { indisponivel: 'Sem registro: o funil de conversão é a fase P4 e ainda não foi construído.' }),
+    ...(() => {
+      if (!leads) return [kpi('leads', 'Leads', null, { indisponivel: 'Sem banco de dados: o funil não é lido.' }), kpi('diagnosticos', 'Diagnósticos', null, { indisponivel: 'Sem banco de dados: o funil não é lido.' }), kpi('conversoes', 'Conversões (clientes)', null, { indisponivel: 'Sem banco de dados: o funil não é lido.' })];
+      const F = require('./funil'); const r = F.resumo(leads, { de: ini, ate: fim }); const ra = F.resumo(leads, { de: ini - span, ate: ini });
+      const nota = 'Registrados por você na aba Funil.';
+      return [kpi('leads', 'Leads', r.contagem.lead, { anterior: ra.contagem.lead, nota }), kpi('diagnosticos', 'Diagnósticos', r.contagem.diagnostico, { anterior: ra.contagem.diagnostico, nota }), kpi('conversoes', 'Conversões (clientes)', r.contagem.cliente, { anterior: ra.contagem.cliente, nota })];
+    })(),
   ];
   const { achados: ac, geral } = achados(mAt.length >= MIN_INDICIO ? mAt : []);
   const formatos = ['reel', 'carrossel', 'imagem', 'video'].map((f) => ({ formato: f, rotulo: ROTULO_FORMATO[f], ...resumoGrupo(mAt.filter((p) => p.tipo === f)) })).filter((x) => x.n);

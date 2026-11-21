@@ -13,12 +13,14 @@ const T = require('./pipeline');
 
 const conta = () => ACCOUNT.ig_id;
 const PADRAO = Object.freeze({
-  ativo: true, meta_dia: 8, reserva: 2, candidatos_max_dia: 30,
+  // Qualidade, não quantidade (pedido do Pedro, 21/11): hipótese de 2–3 carrosséis e 4–5 Reels por semana. A reserva existe para
+  // escolher; a fila de aprovação é ordenada pela prioridade estratégica (lib/prioridade.js). Quem já salvou outra meta mantém a dele.
+  ativo: true, meta_dia: 1, reserva: 1, candidatos_max_dia: 30,
   inicio_producao: '03:00', fim_producao: '20:30', // começa de madrugada: às 8h já há carrosséis prontos
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
   // 'auto' reparte as vagas pelo placar real (envios por mil de cada formato, com 20% de teste); sem dado suficiente, faz o rodízio dos quatro.
-  roteiros_dia: 5, // roteiros de Reels aprovados pelos fiscais por dia (aba Vídeos); 0 desliga
+  roteiros_dia: 1, // roteiros de Reels aprovados pelos fiscais por dia (aba Vídeos); 0 desliga
   formato_padrao: 'auto', // 'auto' | 'tweet' | 'estatico' (1 imagem + legenda longa) | 'ensaio' (texto corrido escuro) | 'alterna'
 });
 // Formatos que o piloto pode pedir ao pipeline; 'alterna' roda tweet → ensaio → estatico para o feed variar.

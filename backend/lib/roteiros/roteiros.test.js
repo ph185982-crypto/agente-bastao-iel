@@ -160,7 +160,7 @@ test('roteiro salvo aparece na lista de vídeos e sai dela ao gravar', async () 
 test('piloto: rodada chama a fábrica de roteiros e o resumo do dia mostra a meta', async () => {
   novo();
   let chamou = null;
-  await Pi.salvarConfig({ ativo: true });
+  await Pi.salvarConfig({ ativo: true, roteiros_dia: 5 });
   const r = await Pi.rodada({ agora: AGORA, orcamentoMs: 60000, deps: { semLimpeza: true, semHistorias: true, descobrir: async () => ({ pautas: [] }), roteiros: async (est, o) => { chamou = o; est.roteiros = { dia: o.dia, feitos: 1, descartados: 0, comecados: 1, formatos: {}, usadas: [], rascunho: null }; return { salvos: [{ id: 'vd_x' }], descartados: [], fases: ['x'] }; } } });
   assert.ok(chamou, 'a rodada avançou os roteiros'); assert.strictEqual(chamou.meta, 5);
   assert.strictEqual(r.roteiros.salvos, 1);

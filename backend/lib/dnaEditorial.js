@@ -64,7 +64,7 @@ function validar(e) {
     out.pilares = p;
   }
   if ('series' in e) {
-    const s = (Array.isArray(e.series) ? e.series : []).slice(0, 10).map((x) => ({ id: limpo(x?.id, 40).toLowerCase().replace(/[^a-z0-9_]/g, ''), nome: limpo(x?.nome, 60), objetivo: limpo(x?.objetivo, 200), publico: limpo(x?.publico, 100), formatos: lista(x?.formatos, 5, 20) }));
+    const s = (Array.isArray(e.series) ? e.series : []).slice(0, 10).map((x) => ({ id: limpo(x?.id, 40).toLowerCase().replace(/[^a-z0-9_]/g, ''), nome: limpo(x?.nome, 60), objetivo: limpo(x?.objetivo, 200), publico: limpo(x?.publico, 100), formatos: lista(x?.formatos, 5, 20), cor: /^#[0-9a-f]{6}$/i.test(String(x?.cor || '')) ? x.cor : null, proximos: lista(x?.proximos, 12, 120) }));
     if (s.some((x) => !x.id || !x.nome)) throw erro('Cada série precisa de id e nome.');
     out.series = s;
   }

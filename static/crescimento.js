@@ -1,7 +1,7 @@
 // Growth Dashboard + Diagnóstico (aba Resultados) e DNA Editorial (Ajustes). Só lê o que o servidor já guardou: nada aqui chama a Meta.
 // Regras: métrica ausente aparece como "—" com o motivo; amostra pequena vem avisada; nenhuma tela declara "vencedor".
 (function () {
-  const st = { painel: null, diag: null, dna: null, dias: 30, carregando: false, carregandoDiag: false, erro: null, erroDna: null, salvandoDna: false, jaDna: false, abrirDiag: false };
+  const st = { seg: 'painel', de: '', ate: '', painel: null, diag: null, dna: null, dias: 30, carregando: false, carregandoDiag: false, erro: null, erroDna: null, salvandoDna: false, jaDna: false, abrirDiag: false };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = (n, d = 0) => (n == null ? '—' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: d, minimumFractionDigits: d }));
   const link = (u) => (typeof u === 'string' && /^https:\/\/(www\.)?instagram\.com\//.test(u) ? u : null);
@@ -10,7 +10,7 @@
     if (st.carregando) return;
     if (dias) st.dias = dias;
     st.carregando = true; st.erro = null; ctx.render();
-    try { st.painel = await ctx.api(`/api/crescimento/painel?dias=${st.dias}`); } catch (e) { st.erro = e.message || 'Não consegui abrir o painel de crescimento.'; }
+    try { st.painel = await ctx.api(st.dias === 'custom' && st.de && st.ate ? `/api/crescimento/painel?de=${encodeURIComponent(st.de)}&ate=${encodeURIComponent(st.ate)}` : `/api/crescimento/painel?dias=${st.dias === 'custom' ? 30 : st.dias}`); } catch (e) { st.erro = e.message || 'Não consegui abrir o painel de crescimento.'; }
     st.carregando = false; ctx.render();
   }
   async function carregarDiag(ctx) {
@@ -32,9 +32,10 @@
 
   function blocoPainel() {
     const p = st.painel;
-    const per = [7, 30, 90].map((d) => `<button data-action="cr-periodo" data-v="${d}" aria-pressed="${st.dias === d}" ${st.carregando ? 'disabled' : ''}>${d} dias</button>`).join('');
+    const per = [7, 30, 90].map((d) => `<button data-action="cr-periodo" data-v="${d}" aria-pressed="${st.dias === d}" ${st.carregando ? 'disabled' : ''}>${d} dias</button>`).join('') + `<button data-action="cr-periodo" data-v="custom" aria-pressed="${st.dias === 'custom'}">Datas</button>`;
     let h = `<div class="es-card cr-painel"><div class="es-between"><div class="es-label">Growth Dashboard</div></div>
-      <div class="es-days" style="grid-template-columns:repeat(3,1fr);margin:8px 0">${per}</div>`;
+      <div class="es-days" style="grid-template-columns:repeat(4,1fr);margin:8px 0">${per}</div>
+      ${st.dias === 'custom' ? `<div class="cr-datas"><input id="cr-de" class="es-input" type="date" value="${esc(st.de)}" aria-label="De"><input id="cr-ate" class="es-input" type="date" value="${esc(st.ate)}" aria-label="Até"><button class="es-btn sm" data-action="cr-custom">Ver</button></div>` : ''}`;
     if (st.erro) h += `<div class="es-warn">${esc(st.erro)}</div>`;
     if (!p) return h + `<div class="es-text ig-mudo">${st.carregando ? 'Abrindo o painel…' : 'Carregando…'}</div></div>`;
     if (p.vazio) return h + '<div class="es-text">Ainda não há posts lidos. Toque em <b>Atualizar números</b> abaixo para trazer os últimos 90 dias da Meta (só leitura).</div></div>';
@@ -48,6 +49,8 @@
       <div class="es-label" style="margin-top:12px">Indicadores</div><div class="cr-grid">${p.kpis.map(cartaoKpi).join('')}</div>`;
     if (p.formatos?.length) h += `<div class="es-label" style="margin-top:12px">Por formato (medianas)</div><div class="ig-tabela-wrap"><table class="ig-tabela"><thead><tr><th></th><th>Posts</th><th>Alcance</th><th>Envios/mil</th><th>Salv./mil</th><th>Curt./mil</th></tr></thead><tbody>${p.formatos.map((f) => `<tr><th scope="row">${esc(f.rotulo)}${f.amostra !== 'suficiente' ? ` <span class="mz-chip warn">${f.amostra === 'indicio' ? 'indício' : 'amostra pequena'}</span>` : ''}</th><td>${num(f.n)}</td><td>${num(f.alcance)}</td><td>${num(f.envios_mil, 1)}</td><td>${num(f.salvos_mil, 1)}</td><td>${num(f.curtidas_mil, 1)}</td></tr>`).join('')}</tbody></table></div>`;
     if (p.melhores?.length) h += `<div class="es-label" style="margin-top:12px">Mais enviados e salvos</div><ul class="ig-obs">${p.melhores.map(linhaPost).join('')}</ul>`;
+    if (p.frequencia) h += `<div class="es-label" style="margin-top:12px">Frequência (últimas 4 semanas)</div><ul class="ig-obs">${p.frequencia.leitura.map((t) => `<li>${esc(t)}</li>`).join('')}</ul><div class="es-text ig-mudo">${esc(p.frequencia.nota)}</div>`;
+    if (p.posts_recentes?.length) h += `<div class="es-label" style="margin-top:12px">Distribuição pós-publicação</div><ul class="ig-obs">${p.posts_recentes.slice(0, 8).map((x) => `<li>${esc((x.legenda || 'Sem legenda').slice(0, 70))} <span class="ig-mudo">· ${esc(x.tipo)}</span> <button class="es-btn ghost sm" data-action="cr-dist" data-id="${esc(x.id)}">Plano</button>${window.CrescHub ? window.CrescHub.distDe(x.id) : ''}</li>`).join('')}</ul>`;
     h += `<details class="ig-limites"><summary>Como ler</summary><ul><li>${esc(p.regras.medida)}.</li><li>Destaque = ${esc(p.regras.destaque)}; amostra mínima ${p.regras.amostra_minima} posts por grupo.</li><li>${esc(p.regras.tema)}</li><li>Isto descreve o que aconteceu; não prova a causa nem prevê viralização.</li></ul></details>`;
     return h + '</div>';
   }
@@ -67,7 +70,12 @@
     return h + '</div>';
   }
 
-  function render() { return blocoPainel() + blocoDiag(); }
+  const SEGS = [['painel', 'Painel'], ['diag', 'Diagnóstico'], ['criativo', 'Criativo'], ['audiencia', 'Audiência'], ['comunidade', 'Comunidade'], ['lab', 'Lab'], ['funil', 'Funil'], ['fila', 'Fila'], ['series', 'Séries']];
+  function render() {
+    const nav = `<nav class="cr-segs" aria-label="Crescimento">${SEGS.map(([k, r]) => `<button data-action="cr-seg" data-v="${k}" aria-pressed="${st.seg === k}">${r}</button>`).join('')}</nav>`;
+    const corpo = st.seg === 'painel' ? blocoPainel() : st.seg === 'diag' ? blocoDiag() : window.CrescHub ? window.CrescHub.render(st.seg) : '';
+    return `<div class="cr-hub"><div class="es-h1" style="margin-bottom:6px">Crescimento</div>${nav}${corpo}</div>`;
+  }
 
   // ── DNA Editorial (Ajustes) ──
   async function carregarDna(ctx) {
@@ -110,7 +118,10 @@
   }
 
   async function acao(a, el, ctx) {
-    if (a === 'cr-periodo') { await carregarPainel(ctx, Number(el.dataset.v)); return true; }
+    if (a === 'cr-periodo') { if (el.dataset.v === 'custom') { st.dias = 'custom'; ctx.render(); return true; } await carregarPainel(ctx, Number(el.dataset.v)); return true; }
+    if (a === 'cr-custom') { st.de = document.getElementById('cr-de')?.value || ''; st.ate = document.getElementById('cr-ate')?.value || ''; if (!st.de || !st.ate) { ctx.toast('Escolha as duas datas.'); return true; } await carregarPainel(ctx); return true; }
+    if (a === 'cr-seg') { st.seg = el.dataset.v; ctx.render(); if (st.seg === 'diag' && !st.diag) await carregarDiag(ctx); else if (window.CrescHub) await window.CrescHub.carregar(st.seg, ctx); return true; }
+    if (window.CrescHub && await window.CrescHub.acao(a, el, ctx)) return true;
     if (a === 'cr-diag') { await carregarDiag(ctx); return true; }
     if (a === 'dna-salvar') {
       const v = (id) => document.getElementById(id)?.value ?? '';
