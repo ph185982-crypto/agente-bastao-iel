@@ -333,3 +333,11 @@ test('aviso no celular a cada conteúdo novo pronto; de madrugada acumula e avis
   const a = avisos.find((x) => /prontos para publicar/.test(x.corpo));
   assert.match(a.corpo, /^3 conteúdos novos prontos para publicar: Frase de Walt Disney · Frase de Steve Jobs…/);
 });
+
+test('assunto repetido: a mesma notícia por outro veículo não vira outro post (em nenhum formato)', async () => {
+  const agora = SP('2026-11-22', '10:00');
+  const est = { criados: [{ titulo: 'GTA VI: como o game virou marca de entretenimento', em: new Date(agora - 3600e3).toISOString(), linha: 'marca' }] };
+  assert.ok(Pi.assuntoRepetido('GTA VI vira marca de entretenimento e atrai Netflix e NBA', est, agora));
+  assert.strictEqual(Pi.assuntoRepetido('Dólar fecha em alta com Fed', est, agora), null);
+  assert.strictEqual(Pi.assuntoRepetido('GTA VI vira marca de entretenimento e atrai Netflix e NBA', { criados: [{ ...est.criados[0], em: new Date(agora - 8 * 86400e3).toISOString() }] }, agora), null, 'depois de 7 dias pode voltar');
+});

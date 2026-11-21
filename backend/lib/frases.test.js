@@ -63,3 +63,17 @@ test('post de frase passa nos portões de publicação (a citação da legenda t
   assert.deepStrictEqual(QG.avaliar(k, { conta: M.ACCOUNT_PIN }).bloqueios.map((b) => b.codigo || b.id), []);
   assert.strictEqual(c.fonte_principal.url, 'https://pt.wikiquote.org/wiki/Walt_Disney');
 });
+
+test('variedade: um autor por lote e nada de autor usado nas últimas frases', async () => {
+  novo();
+  const banco = [
+    { texto: 'A melhor maneira de começar é parar de falar e começar a fazer.', autor: 'Walt Disney', fonte: 'https://pt.wikiquote.org/wiki/Walt_Disney' },
+    { texto: 'Eu gosto do impossível porque lá a concorrência é menor.', autor: 'Walt Disney', fonte: 'https://pt.wikiquote.org/wiki/Walt_Disney' },
+    { texto: 'Faça o que puder, com o que tiver, onde estiver.', autor: 'Theodore Roosevelt', fonte: 'https://pt.wikiquote.org/wiki/Theodore_Roosevelt' },
+  ];
+  const ia = async ({ usuario }) => ({ dados: { itens: usuario.split('\n').map((l, i) => ({ i, nota: 9, destaque: /fazer/.test(l) ? 'fazer' : /impossível/.test(l) ? 'impossível' : 'puder' })) } });
+  const r = await F.produzir(5, { deps: { ia, banco } });
+  assert.deepStrictEqual(r.criados.map((x) => x.autor).sort(), ['Theodore Roosevelt', 'Walt Disney'], 'Walt Disney só uma vez no lote');
+  const r2 = await F.produzir(5, { deps: { ia, banco } });
+  assert.strictEqual(r2.criados.length, 0, 'a outra do Walt Disney espera: ele saiu agora há pouco');
+});

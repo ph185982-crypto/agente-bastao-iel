@@ -34,6 +34,7 @@ Para cada frase da lista dê:
 - "destaque": a palavra (ou até 3 palavras seguidas) que carrega a ideia, copiada EXATAMENTE como está na frase.
 Responda só JSON: {"itens":[{"i":0,"nota":0,"destaque":""}]}`;
 
+async function autoresRecentes(a) { return a?.duravel ? ((await a.config.obter(conta())).frases_autores || []).slice(-15) : []; }
 async function historico(a) { return a?.duravel ? ((await a.config.obter(conta())).frases_historico || []) : []; }
 
 async function produzir(n, { deps = {}, agora = Date.now() } = {}) {
@@ -60,6 +61,10 @@ async function produzir(n, { deps = {}, agora = Date.now() } = {}) {
   const criados = [];
   const criar = deps.criarFrase || require('./formatosCarrossel').criarFrase;
   let fundo = hist.length % 2 ? 'branco' : 'preto';
+  // Variedade (21/11: vieram 5 do Walt Disney no mesmo dia): um autor por lote e nenhum autor usado nas últimas 15 frases.
+  const recentes = new Set((deps.autoresRecentes || (await autoresRecentes(a))).map((x) => x.toLowerCase()));
+  const vistos = new Set();
+  escolhidas = escolhidas.filter((q) => { const k = String(q.autor || '').toLowerCase(); if (recentes.has(k) || vistos.has(k)) return false; vistos.add(k); return true; });
   for (const q of escolhidas.filter((x) => x.marcado).slice(0, n)) {
     try {
       const c = await criar({ frase: q.marcado, autor: q.autor, fonte: q.fonte, fundo }, { deps: deps.formato || {}, origem: 'piloto_frase' });
@@ -67,7 +72,10 @@ async function produzir(n, { deps = {}, agora = Date.now() } = {}) {
       fundo = fundo === 'preto' ? 'branco' : 'preto';
     } catch (e) { barradas.push({ frase: q.texto, motivo: `não gerou o post (${String(e.message).slice(0, 80)})` }); }
   }
-  if (criados.length && a?.duravel) await a.config.salvar(conta(), { frases_historico: [...hist, ...criados.map((x) => x.frase)].slice(-1000) });
+  if (criados.length && a?.duravel) {
+    const ant = (await a.config.obter(conta())).frases_autores || [];
+    await a.config.salvar(conta(), { frases_historico: [...hist, ...criados.map((x) => x.frase)].slice(-1000), frases_autores: [...ant, ...criados.map((x) => x.autor)].slice(-50) });
+  }
   return { criados, barradas, restantes: lista.length - criados.length, em: new Date(agora).toISOString() };
 }
 

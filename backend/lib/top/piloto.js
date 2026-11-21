@@ -157,6 +157,21 @@ function melhorLink(p) {
   const fs = (p.fontes || []).filter((f) => /^https?:\/\//.test(f.url || ''));
   return (fs.find((f) => LEGIVEIS.test(f.url)) || fs[0])?.url || null;
 }
+// Assunto repetido (21/11: "veio conteúdo repetido"): a mesma notícia chega por veículos diferentes, com id diferente, e
+// virava dois posts (ex.: GTA VI na marca e no tweet). Compara as palavras do título com tudo o que o piloto criou nos
+// últimos 7 dias, em qualquer formato.
+const PARADAS_T = new Set('a o e de da do das dos que um uma para pra com sem no na nos nas em se por como mais mas ao aos as os sua seu suas seus diz diz que apos após entre sobre ate até ja já vai faz tem ser sao são foi era'.split(' '));
+const palavrasT = (s) => [...new Set(String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((p) => p.length > 2 && !PARADAS_T.has(p)))];
+function assuntoRepetido(titulo, est, agora) {
+  const a = palavrasT(titulo); if (a.length < 3) return null;
+  for (const x of est.criados || []) {
+    if (!x.titulo || Date.parse(x.em) < agora - 7 * 86400000 || x.linha === 'frase') continue;
+    const b = new Set(palavrasT(x.titulo)); const comum = a.filter((p) => b.has(p)).length;
+    if (comum >= 3 && comum / Math.min(a.length, b.size) >= 0.5) return x;
+  }
+  return null;
+}
+
 async function proximaPauta(est, { agora, deps, restante }) {
   const usadas = new Set((est.usadas || []).map((u) => u.id));
   let fila = (est.fila || []).filter((p) => !usadas.has(p.id));
@@ -169,11 +184,12 @@ async function proximaPauta(est, { agora, deps, restante }) {
     if (!(r.pautas || []).some((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo))) r = await descobrir({ dias: 5 });
     const todas = r.pautas || [];
     const sem = todas.filter((p) => !melhorLink(p)).length; const servico = todas.filter((p) => deServico(p.titulo)).length; const ja = todas.filter((p) => usadas.has(p.id)).length;
-    fila = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: (p.prioridade ?? 0) + (paraEmpreendedor(p.titulo) ? 25 : 0) }))
+    fila = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo) && !assuntoRepetido(p.titulo, est, agora)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: (p.prioridade ?? 0) + (paraEmpreendedor(p.titulo) ? 25 : 0) }))
       .sort((x, y) => (y.prioridade ?? 0) - (x.prioridade ?? 0)).slice(0, 12);
     const fs = r.feeds || []; est.fila_diag = { veio: todas.length, ja_usadas: ja, sem_link: sem, de_servico: servico, viraram_fila: fila.length, feeds_ok: fs.filter((f) => f.ok).length, feeds_total: fs.length, feeds_falhas: fs.filter((f) => !f.ok).map((f) => `${f.id}:${String(f.erro || '').slice(0, 30)}`).slice(0, 6) };
     est.fila_em = new Date(agora).toISOString();
   } else est.fila_diag = { motivo: fila.length ? 'fila ainda válida' : 'sem tempo para descobrir', restante_ms: Math.round(restante()), fila: fila.length };
+  fila = fila.filter((p) => !assuntoRepetido(p.titulo, est, agora));
   est.fila = fila;
   return fila.shift() || null;
 }
@@ -215,7 +231,7 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   }
   // a mesma marca não volta na mesma semana
   const recentes = new Set((est.criados || []).filter((x) => x.marca && Date.parse(x.em) > agora - 7 * 86400000).map((x) => x.marca.toLowerCase()));
-  fila = fila.filter((p) => !recentes.has(p.marca.toLowerCase()));
+  fila = fila.filter((p) => !recentes.has(p.marca.toLowerCase()) && !assuntoRepetido(p.titulo, est, agora));
   est[kf] = fila;
   return fila.shift() || null;
 }
@@ -521,4 +537,4 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   };
 }
 
-module.exports = { ORCAMENTO_MS, tipoDe, proximaMarca, proximaEspecial, passoFrases, avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
+module.exports = { assuntoRepetido, ORCAMENTO_MS, tipoDe, proximaMarca, proximaEspecial, passoFrases, avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
