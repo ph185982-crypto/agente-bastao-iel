@@ -143,9 +143,10 @@ test('pipeline: formato marca vira 7 slides (capa, contexto, 3 estratégias, li�
   assert.deepStrictEqual(log.fotoDe, [{ nome: 'João Exemplo', soLivre: true }], 'tentou o fundador no Commons, só CC0/domínio público');
   assert.ok(log.commons.every((x) => x.soLivre === true) && (log.conceito || []).every((x) => x.soLivre === true));
   assert.deepStrictEqual(doc.top.foto_por_slide.s2.por, 'tags');
-  assert.ok(/^pexels_/.test(v.slides[2].imagem_id) && /^pexels_/.test(v.slides[3].imagem_id));
+  assert.ok(/^pexels_/.test(v.slides[2].imagem_id), 'conceito (copo) vem do banco de imagens');
+  assert.strictEqual(v.slides[3].imagem_id, undefined, 'lugar ("street shop") nunca vem do banco: sem foto oficial sobrando, cor da marca');
   assert.strictEqual(v.slides[4].imagem_id, undefined, 'calda sem foto: fundo na cor da marca');
-  assert.ok(/^pexels_/.test(v.slides[5].imagem_id)); assert.ok(log.pexels.includes('milkshake shop counter'), 'lição sem busca própria usa a busca do ângulo');
+  assert.strictEqual(v.slides[5].imagem_id, undefined); assert.ok(!log.pexels.some((q) => /shop/.test(q)), 'busca de loja não vai ao banco de imagens');
   assert.ok(!log.carregar.some((u) => /materia/.test(u)), 'nunca baixa a foto da matéria');
   // origem e licença de cada imagem
   const img = (id) => doc.imagens.find((i) => i.id === id);
@@ -382,7 +383,8 @@ test('fotos sem visão e com a Meta no limite: Instagram pulado, legenda da mat�
   Object.assign(d, {
     graph: graphFalso(log), igId: '1789', metaUso: () => ({ pct: 90 }), lerHtml: async () => html, fotosDaMarca: async () => [],
     carregar: async (url) => { log.carregar.push(url); return { status: 200, url_final: url, corpo: await foto(url, { claro: /cartaz/.test(url) }) }; },
-    visao: null,
+    visao: null, agora: (() => { let t = Date.parse('2026-11-21T12:00:00Z'); return () => (t += 2 * 3600e3); })(), // a cota não volta em 6 h
+
     ocr: async (png) => { const s = await sharp(png).stats(); return s.channels[0].mean > 190 ? Array.from({ length: 20 }, () => 'promoção').join(' ') : 'ok'; },
   });
   const c = await T.criar({ url: 'https://exemplo.test/materia', formato: 'marca', marca: 'Vaca Mimosa' });
@@ -391,6 +393,7 @@ test('fotos sem visão e com a Meta no limite: Instagram pulado, legenda da mat�
   const doc = await ler(c.id); const C = doc.top.fotos_candidatas; const st = doc.top.fotos_marca_estado;
   assert.deepStrictEqual(log.graph, [], 'cota da Meta acima de 85%: nenhuma chamada');
   assert.ok(st.ig.pausado && /cota da Meta/.test(st.ig.erro));
+  assert.ok(st.falhas.some((f) => /várias horas/.test(f)), 'esperou a cota e só então seguiu sem o Instagram');
   assert.ok(!ia.chamadas.some((x) => x.tipo === 'handles'));
   const caldaC = C.find((x) => x.id === matId('https://exemplo.test/img/calda.jpg'));
   assert.deepStrictEqual([caldaC.descrita_por, caldaC.descricao, caldaC.impacto], ['legenda', 'Fábrica de caldas da rede (Divulgação)', null]);
@@ -487,4 +490,20 @@ test('unidades: casamento pelo conteúdo (delivery listado por último), sem rep
   const fetcher = async (url) => (/api\.php/.test(url) ? { ok: true, json: async () => ({ query: { pages: { 1: pagina('File:Delivery courier bag 2020.jpg', 'CC BY 4.0'), 2: pagina('File:Delivery courier motorcycle.jpg', 'CC0') } } }) } : { ok: true, arrayBuffer: async () => Buffer.alloc(30000, 1) });
   const fc = await Fotos.fotosDoConceito('delivery courier', { fetcher });
   assert.deepStrictEqual(fc.map((x) => [x.meta.titulo, x.meta.exige_credito]), [['File:Delivery courier motorcycle.jpg', false]]);
+});
+
+test('Meta no limite: a etapa de fotos espera a cota voltar (sem banco de imagens) e busca de lugar usa foto oficial', async () => {
+  const FC = require('./fotosCandidatas');
+  assert.ok(FC.LUGAR.test('restaurant chain storefront') && FC.LUGAR.test('huge restaurant building') && FC.LUGAR.test('large restaurant interior'));
+  assert.ok(!FC.LUGAR.test('delivery courier bag') && !FC.LUGAR.test('smartphone photo food'));
+  const c = { top: { angulo: { marca: 'Coco Bambu' }, entrada: {}, fotos_marca_estado: { fase: 'instagram', tentadas: [], falhas: [] }, fotos_candidatas: [] } };
+  let t = Date.parse('2026-11-21T12:00:00Z'); let lidas = 0;
+  const ctx = { restante: () => 60000, deps: { graph: async () => { lidas++; return {}; }, igId: '1', metaUso: () => ({ pct: 90, regain_min: 30 }), agora: () => t } };
+  const io = { salvarArquivo: async () => {}, lerArquivo: async () => null, slots: 6 };
+  const r1 = await FC.etapa(c, ctx, io);
+  const st = c.top.fotos_marca_estado;
+  assert.deepStrictEqual([r1.concluida, st.fase], [false, 'instagram']);
+  assert.strictEqual(st.ig_espera_ate, t + 30 * 60000); assert.match(st.ig.aguardando, /nova tentativa/);
+  t += 10 * 60000; assert.strictEqual((await FC.etapa(c, ctx, io)).concluida, false, 'antes da hora: nem tenta');
+  assert.strictEqual(lidas, 0);
 });
