@@ -162,9 +162,19 @@ function melhorLink(p) {
 // últimos 7 dias, em qualquer formato.
 const PARADAS_T = new Set('a o e de da do das dos que um uma para pra com sem no na nos nas em se por como mais mas ao aos as os sua seu suas seus diz diz que apos após entre sobre ate até ja já vai faz tem ser sao são foi era'.split(' '));
 const palavrasT = (s) => [...new Set(String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((p) => p.length > 2 && !PARADAS_T.has(p)))];
+// Títulos de TODO conteúdo dos últimos 7 dias (piloto, criado à mão, testes), lidos no começo de cada rodada.
+let recentesRodada = [];
+async function carregarRecentes(agora, deps = {}) {
+  try {
+    const lista = await (deps.recentes ? deps.recentes() : armazem().conteudos.listar(conta()));
+    recentesRodada = (lista || []).filter((x) => Date.parse(x.atualizado_em) > agora - 7 * 86400000 && x.resumo?.formato !== 'reels' && x.resumo?.titulo)
+      .map((x) => ({ titulo: x.resumo.titulo, em: x.atualizado_em, id: x.id }));
+  } catch { recentesRodada = []; }
+}
+const nomeJaUsado = (nome) => { const n = String(nome || '').toLowerCase().trim(); return n.length >= 3 && recentesRodada.some((x) => x.titulo.toLowerCase().includes(n)); };
 function assuntoRepetido(titulo, est, agora) {
   const a = palavrasT(titulo); if (a.length < 3) return null;
-  for (const x of est.criados || []) {
+  for (const x of [...(est.criados || []), ...recentesRodada]) {
     if (!x.titulo || Date.parse(x.em) < agora - 7 * 86400000 || x.linha === 'frase') continue;
     const b = new Set(palavrasT(x.titulo)); const comum = a.filter((p) => b.has(p)).length;
     if (comum >= 3 && comum / Math.min(a.length, b.size) >= 0.5) return x;
@@ -231,7 +241,7 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   }
   // a mesma marca não volta na mesma semana
   const recentes = new Set((est.criados || []).filter((x) => x.marca && Date.parse(x.em) > agora - 7 * 86400000).map((x) => x.marca.toLowerCase()));
-  fila = fila.filter((p) => !recentes.has(p.marca.toLowerCase()) && !assuntoRepetido(p.titulo, est, agora));
+  fila = fila.filter((p) => !recentes.has(p.marca.toLowerCase()) && !nomeJaUsado(p.marca) && !assuntoRepetido(p.titulo, est, agora));
   est[kf] = fila;
   return fila.shift() || null;
 }
@@ -298,6 +308,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
   if (est.rodando_ate && Date.parse(est.rodando_ate) > Date.now()) return { executou: false, motivo: 'Outra rodada está em andamento.', avancados: [], publicados: [], avisos: [] };
   await gravarEstado({ ...est, rodando_ate: new Date(Date.now() + orcamentoMs + 15000).toISOString() });
   const removidos = new Set();
+  await carregarRecentes(agora, deps);
   const dia = diaSP(agora); const hora = horaSP(agora);
   if (est.dia !== dia) est = { ...est, dia, criados_hoje: 0, notificado: {} };
   // Pedido do Pedro de mais pautas hoje ("extra"): vale só para o dia atual, soma ao limite de candidatos e de prontos e ignora o horário.
@@ -537,4 +548,4 @@ async function resumoDoDia({ agora = Date.now() } = {}) {
   };
 }
 
-module.exports = { assuntoRepetido, ORCAMENTO_MS, tipoDe, proximaMarca, proximaEspecial, passoFrases, avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
+module.exports = { assuntoRepetido, carregarRecentes, nomeJaUsado, ORCAMENTO_MS, tipoDe, proximaMarca, proximaEspecial, passoFrases, avancarRoteiros, proximaAcao, paraEmpreendedor, marcarEstado, deServico, rodada, registrar, agendar, desagendar, publicarAgora, config, salvarConfig, validar, resumoDoDia, registrarDecisao, proximoHorario, melhorLink, diaSP, horaSP, instante, proximoDoRodizio, PADRAO, FORMATOS_PILOTO, FORMATOS_AUTO, RODIZIO };
