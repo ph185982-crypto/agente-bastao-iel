@@ -118,6 +118,7 @@ function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false, esti
     if (telas.length < REVELACAO.telas_min || telas.length > REVELACAO.telas_max) problemas.push(`O carrossel tem ${telas.length} telas; use de ${REVELACAO.telas_min} a ${REVELACAO.telas_max} (apostas, revelação, explicação e lição).`);
     if (nAp < 2 || nAp > 4) problemas.push(`Há ${nAp} tela(s) de aposta; use de 2 a 4 (cada uma: empresa, quanto pôs e quanto virou, com número dos fatos).`);
     telas.forEach((t, i) => { if (t.papel === 'aposta' && (!t.empresa || !t.titulo || !t.texto)) problemas.push(`tela ${i + 1}: aposta sem empresa, decisão ou resultado.`); });
+    telas.forEach((t, i) => { if (t.papel === 'aposta' && !/\d/.test(`${t.titulo || ''} ${t.texto || ''}`)) problemas.push(`tela ${i + 1}: aposta sem valor (quanto pôs ou quanto virou, dos fatos). Sem número a aposta não prende: tire a tela.`); });
     if (telas.slice(0, nAp).some((t) => t.papel !== 'aposta')) problemas.push('As apostas vêm primeiro, sem dizer quem é.');
     if (telas[nAp]?.papel !== 'revelacao') problemas.push('Depois das apostas vem a tela que revela quem é (papel "revelacao").');
     if (telas.slice(0, nAp).some((t) => r.quem && new RegExp(String(r.quem).split(/\s+/).pop(), 'i').test(`${t.titulo} ${t.texto}`))) problemas.push('As apostas não podem dizer o nome de quem é (a revelação vem depois).');

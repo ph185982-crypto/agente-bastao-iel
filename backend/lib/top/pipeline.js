@@ -716,7 +716,9 @@ function montarVersaoRevelacao(c, v, { capa, fatosComNumeros, mapa, fonte }) {
     const img = fm[i] ? { imagem_id: fm[i] } : {};
     const sid = `s${i + 1}`;
     if (t.papel === 'aposta') {
-      const decisao = i === 0 && capa ? capa.replace(/\*\*/g, '') : t.titulo;
+      // a capa escolhida pelo painel só entra se falar da MESMA empresa da 1ª aposta (senão o logo e a frase não batem)
+      const capaOk = i === 0 && capa && t.empresa && capa.toLowerCase().includes(t.empresa.toLowerCase());
+      const decisao = capaOk ? capa.replace(/\*\*/g, '') : t.titulo;
       if (i === 0) for (const id of fatosComNumeros(decisao)) if (!claim_ids.includes(id)) claim_ids.push(id);
       slides.push({ id: sid, funcao: i === 0 ? 'capa' : 'explicacao', layout: 'rev_aposta', tema_visual: 'revelacao', titulo: decisao, texto: t.texto || '', claim_ids, ...img, dados: { empresa: t.empresa || '', cor: t.cor || '#1B1C20', decisao, resultado: t.texto || '', ...(logos[t.empresa] ? { logo_id: logos[t.empresa] } : {}) } });
       return;
