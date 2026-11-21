@@ -41,17 +41,27 @@ const roteiro = (extra = {}) => ({
   hashtags: ['negocios', 'franquias', 'marketing'], cta_motivo: 'pra ver a estratégia da próxima marca', ...extra,
 });
 
-function iaFalsa({ roteiros, angulo = ANGULO, juri = JURI } = {}) {
+function iaFalsa({ roteiros, angulo = ANGULO, juri = JURI, casar = () => ({ slides: [] }), handles = ['vacamimosa'] } = {}) {
   let r = 0; const chamadas = [];
-  const pedirJson = async ({ sistema, usuario }) => {
-    const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : /sala de redação/i.test(sistema) ? 'sala' : /revisor de honestidade/.test(sistema) ? 'revisor' : 'roteiro';
-    chamadas.push({ tipo, sistema, usuario });
-    const dados = tipo === 'fatos' ? FATOS : tipo === 'angulo' ? angulo : tipo === 'juri' ? juri : tipo === 'sala' ? SALA : tipo === 'revisor' ? { capas: [] } : roteiros[Math.min(r++, roteiros.length - 1)];
+  const pedirJson = async (args) => {
+    const { sistema, usuario } = args;
+    const tipo = /extrai FATOS/.test(sistema) ? 'fatos' : /editor-chefe/.test(sistema) ? 'angulo' : /júri editorial/.test(sistema) ? 'juri' : /sala de redação/i.test(sistema) ? 'sala' : /revisor de honestidade/.test(sistema) ? 'revisor' : /editor de fotografia do carrossel/.test(sistema) ? 'casar' : /perfil OFICIAL no Instagram/.test(sistema) ? 'handles' : 'roteiro';
+    chamadas.push({ tipo, sistema, usuario, args });
+    const dados = tipo === 'fatos' ? FATOS : tipo === 'angulo' ? angulo : tipo === 'juri' ? juri : tipo === 'sala' ? SALA : tipo === 'revisor' ? { capas: [] } : tipo === 'casar' ? casar(usuario) : tipo === 'handles' ? { handles } : roteiros[Math.min(r++, roteiros.length - 1)];
     return { dados: JSON.parse(JSON.stringify(dados)), llm: { provider: 'simulado' } };
   };
   return { pedirJson, chamadas };
 }
 const jpeg = (cor, w = 1200, h = 1500) => sharp({ create: { width: w, height: h, channels: 3, background: cor } }).jpeg().toBuffer();
+// Foto "única" (padrão de blocos sorteado pela semente): fotos lisas teriam o mesmo dHash e virariam repetidas.
+function foto(semente, { w = 1200, h = 1500, claro = false } = {}) {
+  let x = 0; for (const ch of String(semente)) x = (x * 31 + ch.charCodeAt(0)) >>> 0;
+  const rnd = () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
+  const bw = 12; const bh = 15; const raw = Buffer.alloc(bw * bh * 3);
+  for (let i = 0; i < raw.length; i++) raw[i] = claro ? 200 + Math.floor(rnd() * 55) : Math.floor(rnd() * 200);
+  return sharp(raw, { raw: { width: bw, height: bh, channels: 3 } }).resize(w, h, { kernel: 'nearest' }).jpeg().toBuffer();
+}
+const sha12 = (s) => require('crypto').createHash('sha1').update(String(s)).digest('hex').slice(0, 12);
 const PEDRO = () => jpeg('#FF6A1F', 1200, 1500);
 function deps(ia, extra = {}) {
   const log = { carregar: [], commons: [], pexels: [], fotoDe: [] };
@@ -59,10 +69,13 @@ function deps(ia, extra = {}) {
     ...ia,
     lerFonte: async () => ({ tipo: 'artigo', url: 'https://exemplo.test/materia', url_final: 'https://exemplo.test/materia', titulo: 'Vaca Mimosa mira R$ 1 bilhão', veiculo: 'Revista Exemplo', publicada_em: '2026-11-10T12:00:00Z', texto: MATERIA, legivel: true }),
     fotoPedro: async () => ({ dados: await PEDRO(), meta: { id: 'fp_teste', tipo: 'foto_pedro', autor: null, licenca: 'Foto do próprio Pedro', exige_credito: false, origem: 'Acervo do Pedro' } }),
-    carregar: async (url) => { log.carregar.push(url); return { status: 200, url_final: url, corpo: await jpeg('#335577') }; },
-    fotosDaMarca: async (nome, o) => { log.commons.push({ nome, max: o.max }); return [{ dados: await jpeg('#AA7733'), meta: { id: 'commons_loja1', tipo: 'foto_real', titulo: 'File:Vaca Mimosa loja.jpg', origem: 'https://commons.wikimedia.org/wiki/File:Vaca_Mimosa_loja.jpg', autor: 'Fulano', licenca: 'CC BY 4.0', exige_credito: true } }]; },
-    fotoDe: async (nome) => { log.fotoDe.push(nome); return null; },
-    buscarFoto: async (q, o) => { log.pexels.push(q); if (/chocolate syrup/.test(q)) throw new Error('sem resultado'); const id = `pexels_${log.pexels.length}`; if ((o?.excluir || []).includes(id)) throw new Error('repetida'); return { dados: await jpeg('#557755'), meta: { id, tipo: 'ilustrativa', autor: `Fotógrafa ${log.pexels.length}`, licenca: 'Pexels License', origem: `https://www.pexels.com/photo/${log.pexels.length}` } }; },
+    carregar: async (url) => { log.carregar.push(url); return { status: 200, url_final: url, corpo: await foto(url) }; },
+    fotosDaMarca: async (nome, o) => { log.commons.push({ nome, max: o.max, soLivre: o.soLivre }); return [{ dados: await foto('commons-loja'), meta: { id: 'commons_loja1', tipo: 'foto_real', titulo: 'File:Vaca Mimosa loja.jpg', origem: 'https://commons.wikimedia.org/wiki/File:Vaca_Mimosa_loja.jpg', autor: 'Fulano', licenca: 'CC0', exige_credito: false, alt: 'Loja da Vaca Mimosa' } }]; },
+    fotoDe: async (nome, o) => { log.fotoDe.push({ nome, soLivre: o?.soLivre }); return null; },
+    fotosDoConceito: async (q, o) => { log.conceito = [...(log.conceito || []), { q, soLivre: o.soLivre }]; return []; },
+    buscarFoto: async (q, o) => { log.pexels.push(q); if (/chocolate syrup/.test(q)) throw new Error('sem resultado'); const id = `pexels_${log.pexels.length}`; if ((o?.excluir || []).includes(id)) throw new Error('repetida'); return { dados: await foto(`pexels-${q}`, { w: 1080, h: 1350 }), meta: { id, tipo: 'ilustrativa', autor: `Fotógrafa ${log.pexels.length}`, licenca: 'Pexels License', origem: `https://www.pexels.com/photo/${log.pexels.length}`, alt: `Foto de ${q}` } }; },
+    lerHtml: async () => '<html><head><title>x</title></head><body><p>sem fotos</p></body></html>',
+    graph: null, visao: null, ocr: async () => '',
     ...extra,
   };
   return { d, log };
@@ -107,7 +120,7 @@ test('arte: sem foto usa o fundo na cor da marca; sem a foto do Pedro, retrato p
   assert.strictEqual(semAt.metrics.cabe, false, 'último slide sem a chamada para seguir o @ não passa');
 });
 
-test('pipeline: formato marca vira 7 slides (capa, contexto, 3 estratégias, lição, final do Pedro), fotos na ordem enviadas → Commons → Pexels → cor; portões liberados', async () => {
+test('pipeline: formato marca vira 7 slides (capa, contexto, 3 estratégias, lição, final do Pedro); sem Instagram nem visão, fotos por palavras em comum → busca → cor; portões liberados', async () => {
   novo(); const ia = iaFalsa({ roteiros: [roteiro(), roteiro()] });
   const { d, log } = deps(ia);
   const c = await T.criar({ url: 'https://exemplo.test/materia', formato: 'marca', marca: 'Vaca Mimosa', fotos: ['https://exemplo.test/foto-capa.jpg'], foco: 'o lucro da calda' });
@@ -122,11 +135,14 @@ test('pipeline: formato marca vira 7 slides (capa, contexto, 3 estratégias, li�
   assert.deepStrictEqual(v.slides.slice(1, 6).map((s) => s.dados.rotulo), ['O contexto', 'A estratégia 1', 'A estratégia 2', 'A estratégia 3', 'O que isso ensina']);
   assert.ok(v.slides.every((s) => s.tema_visual === 'marca' && s.dados.marca === 'Vaca Mimosa' && s.dados.cor === '#7B3FA0'));
   assert.strictEqual(v.slides[0].dados.kicker, 'POR TRÁS DA MARCA');
-  // fotos: capa = enviada pelo Pedro; tela 1 = Commons; telas seguintes = Pexels; a da calda falhou → cor da marca; lição sem busca → Pexels com a busca do ângulo
+  // fotos: a enviada pelo Pedro entra (sem texto que combine, vai no 1º slide livre); a loja do Commons vai na tela que fala de lojas;
+  // as demais saem da busca de cada tela (Commons vazio → Pexels); a da calda falhou → cor da marca; lição sem busca → busca do ângulo
   assert.deepStrictEqual(log.carregar, ['https://exemplo.test/foto-capa.jpg']);
   assert.strictEqual(v.slides[0].imagem_id, `dada_${require('crypto').createHash('sha1').update('https://exemplo.test/foto-capa.jpg').digest('hex').slice(0, 12)}`);
   assert.strictEqual(v.slides[1].imagem_id, 'commons_loja1');
-  assert.deepStrictEqual(log.fotoDe, ['João Exemplo'], 'tentou o fundador no Commons');
+  assert.deepStrictEqual(log.fotoDe, [{ nome: 'João Exemplo', soLivre: true }], 'tentou o fundador no Commons, só CC0/domínio público');
+  assert.ok(log.commons.every((x) => x.soLivre === true) && (log.conceito || []).every((x) => x.soLivre === true));
+  assert.deepStrictEqual(doc.top.foto_por_slide.s2.por, 'tags');
   assert.ok(/^pexels_/.test(v.slides[2].imagem_id) && /^pexels_/.test(v.slides[3].imagem_id));
   assert.strictEqual(v.slides[4].imagem_id, undefined, 'calda sem foto: fundo na cor da marca');
   assert.ok(/^pexels_/.test(v.slides[5].imagem_id)); assert.ok(log.pexels.includes('milkshake shop counter'), 'lição sem busca própria usa a busca do ângulo');
@@ -135,14 +151,15 @@ test('pipeline: formato marca vira 7 slides (capa, contexto, 3 estratégias, li�
   const img = (id) => doc.imagens.find((i) => i.id === id);
   const dada = img(v.slides[0].imagem_id);
   assert.strictEqual(dada.tipo, 'foto_fornecida'); assert.strictEqual(dada.origem, 'https://exemplo.test/foto-capa.jpg'); assert.match(dada.licenca, /Fornecida pelo Pedro/); assert.strictEqual(dada.fornecida_por, 'pedro');
-  assert.strictEqual(img('commons_loja1').licenca, 'CC BY 4.0');
+  assert.strictEqual(img('commons_loja1').licenca, 'CC0');
   assert.ok(v.slides.filter((s) => s.imagem_id).every((s) => img(s.imagem_id)?.origem), 'toda imagem usada tem origem');
   // último slide: a foto do Pedro e a chamada para seguir
   const fim = v.slides.at(-1);
   assert.strictEqual(fim.imagem_id, 'fp_teste'); assert.strictEqual(fim.titulo, T.FINAL_MARCA.titulo); assert.match(fim.texto, /Segue @pedro_destrava pra ver a próxima/);
   assert.strictEqual(v.cta, 'Segue o @pedro_destrava pra ver a estratégia da próxima marca.');
-  // legenda: corpo + fonte + crédito do Commons + crédito do Pexels
-  assert.match(v.legenda, /Fonte: Revista Exemplo/); assert.match(v.legenda, /Foto: Fulano \(CC BY 4\.0\), via Wikimedia Commons\./); assert.match(v.legenda, /Fotos ilustrativas: .*\(Pexels\)\./);
+  // legenda: corpo + fonte, SEM linha de crédito de foto (decisão do Pedro); origem e licença ficam em c.imagens
+  assert.match(v.legenda, /Fonte: Revista Exemplo/); assert.ok(!/Fotos?:|Fotos ilustrativas|Pexels|Wikimedia|Divulgação/.test(v.legenda), v.legenda);
+  assert.ok(v.slides.filter((s) => s.imagem_id).every((s) => img(s.imagem_id)?.licenca));
   // usou o prompt e o júri do formato
   assert.ok(ia.chamadas.some((x) => x.tipo === 'angulo' && /POR TRÁS DA MARCA/.test(x.sistema) && /FOCO PEDIDO PELO PEDRO: o lucro da calda/.test(x.usuario)));
   assert.ok(ia.chamadas.some((x) => x.tipo === 'roteiro' && /série "POR TRÁS DA MARCA"/.test(x.sistema) && /\(Vaca Mimosa\)/.test(x.sistema)));
@@ -198,7 +215,7 @@ test('sem fotos de lugar nenhum: todos os slides saem na cor da marca; sem foto 
     const renders = doc.arte.renders.filter((x) => x.versao === v.id);
     assert.ok(renders.slice(0, -1).every((x) => x.elementos.includes('fundo_cor_marca')));
     assert.ok(renders.at(-1).elementos.includes('retrato_provisorio'));
-    assert.deepStrictEqual(doc.top.fotos_marca_resumo, { total: 6, com_foto: 0, cor_da_marca: 6, falhas: [] });
+    const rs = doc.top.fotos_marca_resumo; assert.deepStrictEqual([rs.total, rs.com_foto, rs.cor_da_marca, rs.candidatas, rs.falhas], [6, 0, 6, 0, []]);
     assert.deepStrictEqual(require('../studio').prepararRevisao(doc).bloqueios.map((b) => b.id), []);
   } finally { if (antes === undefined) delete process.env.PEXELS_API_KEY; else process.env.PEXELS_API_KEY = antes; }
 });
@@ -272,4 +289,202 @@ test('prompts do formato: roteiro pede 6–8 slides com contexto, 2–4 estraté
   assert.match(p, /Se os fatos não têm o número, a tela fica SEM número/); assert.match(p, /O PEDRO PEDIU FOCO EM: a calda/);
   assert.match(P.ANGULO_MARCA, /"mecanismo"/);
   assert.ok(T.FORMATOS.includes('marca'));
+});
+
+// ── Fotos escolhidas pelo conteúdo (fotosCandidatas.js) ──────────────────────
+const FC = require('./fotosCandidatas');
+const HTML_MATERIA = `<html><head><meta property="og:image" content="https://exemplo.test/img/og-fachada.jpg"></head><body>
+<figure><img src="https://exemplo.test/img/og-fachada.jpg" alt=""><figcaption>Fachada de uma loja da rede (Divulgação)</figcaption></figure>
+<figure><img data-src="https://exemplo.test/img/calda.jpg"><figcaption>Fábrica de caldas. Foto: Divulgação/Vaca Mimosa</figcaption></figure>
+<figure><img src="https://exemplo.test/img/reuters.jpg"><figcaption>Movimento na loja. Foto: Fulano/Reuters</figcaption></figure></body></html>`;
+function graphFalso(log, { seguidores = 250000 } = {}) {
+  return async (metodo, caminho, params) => {
+    log.graph.push(params.fields);
+    const h = params.fields.match(/username\(([^)]+)\)/)[1];
+    if (h !== 'vacamimosa') throw Object.assign(new Error('não existe'), { meta: { tipo: 'outro' } });
+    const p2 = /media\.after\(/.test(params.fields);
+    const data = p2 ? [{ id: 'm9', media_type: 'IMAGE', media_url: 'https://cdn.test/fundador.jpg', caption: 'Nosso fundador na fábrica', permalink: 'https://www.instagram.com/p/9/', like_count: 300 }] : [
+      { id: 'm1', media_type: 'IMAGE', media_url: 'https://cdn.test/balcao.jpg', caption: 'Nosso balcão', permalink: 'https://www.instagram.com/p/1/', like_count: 900 },
+      { id: 'm2', media_type: 'CAROUSEL_ALBUM', permalink: 'https://www.instagram.com/p/2/', caption: 'O copo', like_count: 800, children: { data: [{ id: 'm2a', media_type: 'IMAGE', media_url: 'https://cdn.test/copo.jpg' }, { id: 'm2b', media_type: 'VIDEO', media_url: 'https://cdn.test/video.mp4' }] } },
+      { id: 'm3', media_type: 'VIDEO', media_url: 'https://cdn.test/reel.mp4', permalink: 'https://www.instagram.com/p/3/' },
+      { id: 'm4', media_type: 'IMAGE', media_url: 'https://cdn.test/cartaz.jpg', caption: 'Promoção', permalink: 'https://www.instagram.com/p/4/', like_count: 700 },
+      { id: 'm5', media_type: 'IMAGE', media_url: 'https://cdn.test/balcao-copia.jpg', caption: 'repost', permalink: 'https://www.instagram.com/p/5/', like_count: 100 },
+      { id: 'm6', media_type: 'IMAGE', media_url: 'https://cdn.test/entrega.jpg', caption: 'Delivery', permalink: 'https://www.instagram.com/p/6/', like_count: 50 },
+    ];
+    return { business_discovery: { username: 'vacamimosa', name: 'Vaca Mimosa', biography: 'Milkshakes de verdade', followers_count: seguidores, media: { data, paging: p2 ? {} : { cursors: { after: 'CUR' } } } } };
+  };
+}
+const igId = (m) => `ig_${sha12(m)}`; const matId = (u) => `mat_${sha12(u)}`;
+const DESC = {
+  [igId('m1')]: { descricao: 'balcão de loja de rua com clientes', tags: ['balcão', 'loja', 'rua'], impacto: 7 },
+  [igId('m2a')]: { descricao: 'copo gigante de milkshake com cobertura', tags: ['copo', 'milkshake'], impacto: 9 },
+  [igId('m4')]: { descricao: 'cartaz de promoção', tags: ['cartaz'], impacto: 3, tem_texto: true },
+  [igId('m6')]: { descricao: 'entregador com bolsa de delivery na moto', tags: ['entrega', 'delivery'], impacto: 6 },
+  [igId('m9')]: { descricao: 'fundador na fábrica', tags: ['fundador'], impacto: 6 },
+  [matId('https://exemplo.test/img/og-fachada.jpg')]: { descricao: 'fachada de loja da rede', tags: ['fachada'], impacto: 8 },
+  [matId('https://exemplo.test/img/calda.jpg')]: { descricao: 'caldas de chocolate na fábrica', tags: ['calda', 'fábrica'], impacto: 7 },
+};
+
+test('fotos por conteúdo: Instagram oficial (vídeo fora, repetida e foto com texto descartadas) + Divulgação da matéria + visão + casamento validado; foto do Pedro sempre entra; lacuna pelo Commons CC0; legenda sem crédito', async () => {
+  novo();
+  const og = matId('https://exemplo.test/img/og-fachada.jpg'); const calda = matId('https://exemplo.test/img/calda.jpg');
+  const casar = () => ({ slides: [
+    { slide: 's1', foto: og, motivo: 'fachada marcante para a capa sobre a rede' }, { slide: 's2', foto: igId('m1'), motivo: 'loja de rua' },
+    { slide: 's3', foto: igId('m2a'), motivo: 'o copo que faz o marketing' }, { slide: 's4', foto: igId('m4'), motivo: 'inválida: tem texto' },
+    { slide: 's5', foto: 'c999', motivo: 'id inexistente' }, { slide: 's6', foto: null, busca: 'franchise owner' }] });
+  const ia = iaFalsa({ roteiros: [roteiro(), roteiro()], casar, handles: ['vacamimosa_oficial', 'vacamimosa'] });
+  const { d, log } = deps(ia); log.graph = []; log.visao = [];
+  const pedroUrl = 'https://exemplo.test/fundador-pedro.jpg';
+  Object.assign(d, {
+    graph: graphFalso(log), igId: '1789', metaUso: () => ({ pct: 10 }), lerHtml: async () => HTML_MATERIA, fotosDaMarca: async () => [],
+    carregar: async (url) => { log.carregar.push(url); return { status: 200, url_final: url, corpo: await foto(url === 'https://cdn.test/balcao-copia.jpg' ? 'https://cdn.test/balcao.jpg' : url) }; },
+    visao: async (imgs) => { log.visao.push(imgs.map((i) => i.id)); return { modelo: 'gemini-falso', itens: imgs.map((i) => ({ id: i.id, tem_texto: false, marca_dagua: false, ...(DESC[i.id] || { descricao: 'fundador sorrindo', tags: ['fundador'], impacto: 5 }) })) }; },
+    fotosDoConceito: async (q, o) => { log.conceito = [...(log.conceito || []), { q, soLivre: o.soLivre }]; return /franchise/.test(q) ? [{ dados: await foto('commons-franquia'), meta: { id: 'commons_franquia', tipo: 'foto_real', titulo: 'File:Franchise owner.jpg', origem: 'https://commons.wikimedia.org/wiki/File:Franchise_owner.jpg', autor: 'Fulana', licenca: 'CC0', exige_credito: false, alt: 'Dono de franquia no balcão' } }] : []; },
+  });
+  const c = await T.criar({ url: 'https://exemplo.test/materia', formato: 'marca', marca: 'Vaca Mimosa', fotos: [pedroUrl] });
+  const r = await T.executarTudo(c.id, { deps: d });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify([r.conteudo.top.motivo, r.conteudo.top.erros]));
+  const doc = await ler(c.id); const v = M.versaoAtiva(doc); const C = doc.top.fotos_candidatas;
+  // Instagram: @ sugerido pela IA conferido no business_discovery (o 1º não existe), 2 páginas, sem vídeo
+  assert.ok(/username\(vacamimosa_oficial\)/.test(log.graph[0]) && /username\(vacamimosa\)/.test(log.graph[1]) && /media\.after\(CUR\)/.test(log.graph[2]));
+  assert.strictEqual(doc.top.fotos_marca_estado.ig.handle, 'vacamimosa');
+  assert.ok(!log.carregar.some((u) => /\.mp4|reuters/.test(u)), 'nem vídeo nem foto de agência');
+  assert.ok(C.some((x) => x.id === igId('m9')), 'leu a 2ª página');
+  assert.match(C.find((x) => x.id === igId('m5')).descartada, /repetida/);
+  assert.match(C.find((x) => x.id === igId('m4')).descartada, /texto/);
+  assert.ok(!log.visao.flat().includes(igId('m5')), 'repetida nem vai para a visão');
+  // casamento: escolhas válidas da IA; inválidas trocadas; foto do Pedro entra; lacunas por palavras e pelo Commons
+  const fps = doc.top.foto_por_slide; const dada = `dada_${sha12(pedroUrl)}`;
+  assert.deepStrictEqual([fps.s1.id, fps.s2.id, fps.s3.id], [og, igId('m1'), igId('m2a')]); assert.strictEqual(fps.s1.por, 'ia'); assert.match(fps.s1.motivo, /fachada/);
+  assert.deepStrictEqual([fps.s4.id, fps.s4.por], [dada, 'pedro']);
+  assert.deepStrictEqual([fps.s5.id, fps.s5.por], [calda, 'tags']);
+  assert.deepStrictEqual([fps.s6.id, fps.s6.por], ['commons_franquia', 'busca']); assert.deepStrictEqual(log.conceito, [{ q: 'franchise owner', soLivre: true }]);
+  const ids = v.slides.slice(0, 6).map((s) => s.imagem_id); assert.deepStrictEqual(ids, [og, igId('m1'), igId('m2a'), dada, calda, 'commons_franquia']);
+  assert.strictEqual(new Set(ids).size, ids.length, 'sem repetir');
+  const casou = ia.chamadas.find((x) => x.tipo === 'casar'); assert.strictEqual(casou.args.pago, 'nunca'); assert.match(casou.usuario, /entregador com bolsa de delivery/);
+  // metadados de origem/licença em c.imagens; legenda sem crédito
+  const img = (id) => doc.imagens.find((i) => i.id === id);
+  assert.match(img(igId('m1')).licenca, /^Divulgação\/Vaca Mimosa \(perfil oficial @vacamimosa no Instagram\)$/); assert.strictEqual(img(igId('m1')).origem, 'https://www.instagram.com/p/1/');
+  assert.match(img(calda).licenca, /^Divulgação\/Vaca Mimosa/); assert.strictEqual(img(og).relevancia, 'alta');
+  assert.ok(!doc.imagens.some((i) => i.id === igId('m6')), 'candidata não usada fica só no acervo');
+  assert.ok(!/Fotos?:|Divulgação|Pexels|Commons/.test(v.legenda), v.legenda);
+  assert.deepStrictEqual(require('../studio').prepararRevisao(doc).bloqueios.map((b) => b.id), []);
+  const rs = doc.top.fotos_marca_resumo; assert.deepStrictEqual([rs.com_foto, rs.instagram, rs.visao], [6, '@vacamimosa', 'ok']);
+  assert.ok(await arm.armazem().arquivos.obter(ACCOUNT.ig_id, `mini:${igId('m6')}`), 'miniatura guardada para a troca manual');
+});
+
+test('fotos sem visão e com a Meta no limite: Instagram pulado, legenda da matéria vira descrição, OCR barra foto com texto, casamento por palavras sem IA', async () => {
+  novo();
+  const html = `<html><body><figure><img src="https://exemplo.test/img/calda.jpg"><figcaption>Fábrica de caldas da rede (Divulgação)</figcaption></figure>
+<figure><img src="https://exemplo.test/img/cartaz.jpg"><figcaption>Cartaz da promoção do copo (Divulgação)</figcaption></figure></body></html>`;
+  const ia = iaFalsa({ roteiros: [roteiro(), roteiro()], casar: () => { throw new Error('IA fora do ar'); } });
+  const { d, log } = deps(ia); log.graph = [];
+  Object.assign(d, {
+    graph: graphFalso(log), igId: '1789', metaUso: () => ({ pct: 90 }), lerHtml: async () => html, fotosDaMarca: async () => [],
+    carregar: async (url) => { log.carregar.push(url); return { status: 200, url_final: url, corpo: await foto(url, { claro: /cartaz/.test(url) }) }; },
+    visao: null,
+    ocr: async (png) => { const s = await sharp(png).stats(); return s.channels[0].mean > 190 ? Array.from({ length: 20 }, () => 'promoção').join(' ') : 'ok'; },
+  });
+  const c = await T.criar({ url: 'https://exemplo.test/materia', formato: 'marca', marca: 'Vaca Mimosa' });
+  const r = await T.executarTudo(c.id, { deps: d });
+  assert.strictEqual(r.conteudo.top.estado, 'concluida', JSON.stringify(r.conteudo.top.erros));
+  const doc = await ler(c.id); const C = doc.top.fotos_candidatas; const st = doc.top.fotos_marca_estado;
+  assert.deepStrictEqual(log.graph, [], 'cota da Meta acima de 85%: nenhuma chamada');
+  assert.ok(st.ig.pausado && /cota da Meta/.test(st.ig.erro));
+  assert.ok(!ia.chamadas.some((x) => x.tipo === 'handles'));
+  const caldaC = C.find((x) => x.id === matId('https://exemplo.test/img/calda.jpg'));
+  assert.deepStrictEqual([caldaC.descrita_por, caldaC.descricao, caldaC.impacto], ['legenda', 'Fábrica de caldas da rede (Divulgação)', null]);
+  assert.match(C.find((x) => x.id === matId('https://exemplo.test/img/cartaz.jpg')).descartada, /texto gravado na foto \(20 palavras\)/);
+  assert.strictEqual(st.visao, 'indisponivel'); assert.match(st.casou_por, /sem IA/);
+  // a tela da calda recebe a foto da calda (palavras em comum), mesmo sem IA
+  assert.deepStrictEqual([doc.top.foto_por_slide.s5.id, doc.top.foto_por_slide.s5.por], [caldaC.id, 'tags']);
+});
+
+test('troca manual: GET /fotos lista candidatas e motivos; POST /foto troca um slide e redesenha só ele; aprovado recusa', async () => {
+  novo(); const ia = iaFalsa({ roteiros: [roteiro(), roteiro()] });
+  const { d } = deps(ia);
+  const c = await T.criar({ url: 'https://exemplo.test/materia', formato: 'marca', marca: 'Vaca Mimosa', fotos: ['https://exemplo.test/foto-capa.jpg'] });
+  await T.executarTudo(c.id, { deps: d });
+  const envAntes = { ...process.env };
+  Object.assign(process.env, { VERCEL: '1', APP_ACCESS_CODE: 'codigo-de-teste-marca-2' }); delete process.env.APP_ACCESS_MODE;
+  const access = require('../access');
+  const app = express(); app.use(express.json()); app.use('/api', access.exigeAcesso); app.use('/api/top', require('../../routes/top'));
+  let srv; await new Promise((ok) => { srv = app.listen(0, ok); });
+  const base = `http://127.0.0.1:${srv.address().port}/api/top/carrosseis/${c.id}`;
+  const token = access.sign({ sub: 'pedro', exp: Math.floor(Date.now() / 1000) + 60 });
+  const pedir = async (rota, corpo, tk = token) => { const r = await fetch(`${base}${rota}`, { method: corpo ? 'POST' : 'GET', headers: { 'content-type': 'application/json', ...(tk ? { authorization: `Bearer ${tk}` } : {}) }, ...(corpo ? { body: JSON.stringify(corpo) } : {}) }); return { status: r.status, json: await r.json() }; };
+  try {
+    assert.strictEqual((await pedir('/fotos', null, null)).status, 401);
+    assert.strictEqual((await pedir('/foto', { slide_id: 's3', candidata_id: 'x' }, null)).status, 401);
+    const g = await pedir('/fotos');
+    assert.strictEqual(g.status, 200, JSON.stringify(g.json));
+    assert.strictEqual(g.json.slides.length, 6); assert.ok(g.json.candidatas.length >= 3 && g.json.candidatas.every((x) => !x.mini || x.mini.startsWith('/api/sync/arquivos/mini%3A')));
+    assert.strictEqual(g.json.slides[1].foto.id, 'commons_loja1'); assert.match(g.json.slides[1].foto.motivo, /palavras em comum/);
+    const antes = await ler(c.id); const vAntes = M.versaoAtiva(antes);
+    // a) link novo no slide 3: só ele é redesenhado
+    // (link novo pela função, com o download falso; a rota chama a mesma função)
+    const t = await T.trocarFoto(c.id, { slide_id: 's3', url: 'https://exemplo.test/nova.jpg' }, { deps: d });
+    assert.strictEqual(t.redesenhados, 1);
+    const doc = await ler(c.id); const v = M.versaoAtiva(doc);
+    assert.notStrictEqual(v.id, vAntes.id); assert.strictEqual(v.slides[2].imagem_id, `dada_${sha12('https://exemplo.test/nova.jpg')}`);
+    assert.deepStrictEqual(doc.top.foto_por_slide.s3, { id: v.slides[2].imagem_id, motivo: 'escolhida por você', por: 'manual', origem: 'pedro' });
+    const rs = doc.arte.renders.filter((x) => x.versao === v.id); assert.strictEqual(rs.length, 7);
+    const chaveAntes = (sid) => antes.arte.renders.find((x) => x.versao === vAntes.id && x.slide_id === sid).blob_key;
+    assert.ok(rs.filter((x) => x.blob_key !== chaveAntes(x.slide_id)).map((x) => x.slide_id).join() === 's3');
+    assert.strictEqual(doc.status, 'em_revisao'); assert.strictEqual(v.legenda, vAntes.legenda, 'legenda não muda (sem crédito de foto)');
+    assert.ok(doc.imagens.some((i) => i.id === v.slides[2].imagem_id && i.tipo === 'foto_fornecida'));
+    // b) candidata que já está em outro slide: sai de lá (sem repetir) e os dois slides são redesenhados
+    const t2 = await pedir('/foto', { slide_id: 's4', candidata_id: 'commons_loja1' });
+    assert.strictEqual(t2.status, 200, JSON.stringify(t2.json)); assert.strictEqual(t2.json.redesenhados, 2);
+    const v2 = M.versaoAtiva(await ler(c.id)); assert.strictEqual(v2.slides[3].imagem_id, 'commons_loja1'); assert.strictEqual(v2.slides[1].imagem_id, undefined);
+    assert.strictEqual((await pedir('/foto', { slide_id: 's7', candidata_id: 'commons_loja1' })).status, 400, 'último slide (Pedro) não troca');
+    assert.strictEqual((await pedir('/foto', { slide_id: 's2' })).status, 400);
+    const reg = await arm.armazem().conteudos.obter(ACCOUNT.ig_id, c.id); reg.doc.status = 'aprovado'; await arm.armazem().conteudos.salvar(ACCOUNT.ig_id, c.id, reg.doc, reg.rev);
+    assert.strictEqual((await pedir('/foto', { slide_id: 's2', candidata_id: 'commons_loja1' })).status, 409);
+  } finally {
+    await new Promise((ok) => srv.close(ok));
+    for (const k of Object.keys(process.env)) if (!(k in envAntes)) delete process.env[k];
+    Object.assign(process.env, envAntes);
+  }
+});
+
+test('unidades: casamento pelo conteúdo (delivery listado por último), sem repetir; Instagram respeita o freio e confere o perfil; matéria só Divulgação; dHash acha a repetida', async () => {
+  const slides = [{ sid: 's1', i: 0, texto: 'O quiosque que virou rede' }, { sid: 's2', i: 1, texto: 'O delivery paga a conta — o entregador leva o copo de bairro em bairro' }, { sid: 's3', i: 2, texto: 'O volume vem do celular' }];
+  const cands = [
+    { id: 'c1', origem: 'instagram', descricao: 'balcão do quiosque com clientes', tags: ['quiosque', 'balcão'], impacto: 8 },
+    { id: 'c2', origem: 'instagram', descricao: 'cliente feliz tirando foto com o celular', tags: ['celular', 'cliente'], impacto: 7 },
+    { id: 'c3', origem: 'materia', descricao: 'cartaz', tags: [], impacto: 9, descartada: 'texto gravado na foto' },
+    { id: 'c4', origem: 'commons', descricao: 'entregador com bolsa de delivery', tags: ['delivery', 'entregador'], impacto: 5 },
+  ];
+  // IA: escolhas certas (inclusive a última candidata), uma repetida e uma descartada viram lacuna preenchida pelo conteúdo
+  const a = FC.validarCasamento(slides, cands, { slides: [{ slide: 's1', foto: 'c1' }, { slide: 's2', foto: 'c4', motivo: 'entregador' }, { slide: 's3', foto: 'c1' }] }, { marca: 'Milky Moo' });
+  assert.deepStrictEqual(Object.fromEntries(Object.entries(a.atrib).map(([k, x]) => [k, x.id])), { s1: 'c1', s2: 'c4', s3: 'c2' });
+  assert.strictEqual(a.atrib.s3.por, 'tags');
+  // sem IA nenhuma: o conteúdo decide
+  const b = FC.validarCasamento(slides, cands, null, { marca: 'Milky Moo' });
+  assert.deepStrictEqual([b.atrib.s1.id, b.atrib.s2.id, b.atrib.s3.id], ['c1', 'c4', 'c2']);
+  const c = FC.validarCasamento(slides, cands, { slides: [{ slide: 's1', foto: 'c3' }] });
+  assert.notStrictEqual(c.atrib.s1?.id, 'c3', 'descartada nunca entra');
+  // Instagram: freio da cota (mesmo da Reciclagem) e conferência do perfil
+  const chamadas = []; const graph = async (m, cam, p) => { chamadas.push(p.fields); return { business_discovery: { username: 'milkymoo', name: 'Milky Moo', followers_count: 900000, media: { data: [{ id: '1', media_type: 'IMAGE', media_url: 'https://cdn.test/1.jpg' }], paging: { cursors: { after: 'X' } } } } }; };
+  const meta = require('../meta');
+  const pausado = await FC.lerInstagram({ marca: 'Milky Moo', handles: ['milkymoo'], graph, igId: '1', freio: () => meta.freio({ pct: 86 }) });
+  assert.ok(pausado.pausado && chamadas.length === 0);
+  const leve = await FC.lerInstagram({ marca: 'Milky Moo', handles: ['milkymoo'], graph, igId: '1', freio: () => meta.freio({ pct: 65 }) });
+  assert.strictEqual(chamadas.length, 1, 'acima de 60%: uma página só'); assert.strictEqual(leve.handle, 'milkymoo');
+  assert.strictEqual(FC.confereMarca({ username: 'milkymoo_fake', name: 'fã', followers_count: 1200 }, 'Milky Moo'), false, 'poucos seguidores');
+  assert.strictEqual(FC.confereMarca({ username: 'cacaushow', name: 'Cacau Show', followers_count: 5e6 }, 'Cacau Show'), true);
+  assert.strictEqual(FC.confereMarca({ username: 'chocolatesbr', name: 'Chocolates', biography: 'tudo de chocolate', followers_count: 5e6 }, 'Cacau Show'), false, 'nome da marca não aparece');
+  // matéria: og:image sem crédito de agência + figura "Divulgação"; foto de agência fica de fora
+  const m = FC.imagensDaMateria(HTML_MATERIA, 'https://exemplo.test/materia');
+  assert.deepStrictEqual(m.map((x) => [x.url, x.credito]), [['https://exemplo.test/img/og-fachada.jpg', 'divulgacao'], ['https://exemplo.test/img/calda.jpg', 'divulgacao']]);
+  assert.strictEqual(FC.imagensDaMateria('<meta property="og:image" content="https://x.test/a.jpg"><figure><img src="https://x.test/a.jpg"><figcaption>Foto: Fulano/Folhapress</figcaption></figure>', 'https://x.test/').length, 0);
+  // dHash: mesma foto reduzida = repetida; foto diferente = longe
+  const f1 = await foto('a'); const f1menor = await sharp(f1).resize(600, 750).jpeg({ quality: 60 }).toBuffer(); const f2 = await foto('b');
+  assert.ok(FC.distancia(await FC.dHash(f1), await FC.dHash(f1menor)) <= 6); assert.ok(FC.distancia(await FC.dHash(f1), await FC.dHash(f2)) > 6);
+  // Commons para o conceito: só CC0/domínio público
+  const pagina = (title, lic) => ({ title, imageinfo: [{ thumburl: `https://upload.wikimedia.org/x/${encodeURIComponent(title)}`, descriptionurl: 'https://commons.wikimedia.org/wiki/x', width: 2000, height: 1400, extmetadata: { LicenseShortName: { value: lic }, Artist: { value: 'A' } } }] });
+  const fetcher = async (url) => (/api\.php/.test(url) ? { ok: true, json: async () => ({ query: { pages: { 1: pagina('File:Delivery courier bag 2020.jpg', 'CC BY 4.0'), 2: pagina('File:Delivery courier motorcycle.jpg', 'CC0') } } }) } : { ok: true, arrayBuffer: async () => Buffer.alloc(30000, 1) });
+  const fc = await Fotos.fotosDoConceito('delivery courier', { fetcher });
+  assert.deepStrictEqual(fc.map((x) => [x.meta.titulo, x.meta.exige_credito]), [['File:Delivery courier motorcycle.jpg', false]]);
 });

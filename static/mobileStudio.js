@@ -62,7 +62,21 @@
       <div class="st-review-body">${c.studio?.erro?`<p class="st-inline-error" role="status">${esc(c.studio.erro)}</p>`:''}
       ${(c.top||pronto)?barraTop(c,pronto,g,pausado):`${!pronto?'<p class="st-preparing-note">Vou resolver as pendências e montar uma prévia completa. Você aprova uma única vez, no final.</p>':''}
       <div class="st-decisionbar"><button class="st-reject" data-action="st-rejeitar" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>↻ Refazer</button><button class="st-approve" data-action="${pronto?'st-aprovar':'st-preparar'}" data-id="${esc(c.id)}" ${ui.ocupado||pausado?'disabled':''}>${ui.ocupado===c.id?'<span class="es-spin"></span> Enviando…':pausado?'Publicações pausadas':pronto?(c.top?'✓ Aprovar e agendar':'✓ Aprovar e publicar'):'Preparar automaticamente'}</button></div>${c.top&&pronto?'<p class="st-agenda-nota">Aprovado, entra no próximo horário livre da grade. Nada sai antes.</p>':''}<button class="st-text-button" data-action="st-descartar-direto" data-id="${esc(c.id)}" ${ui.ocupado?'disabled':''}>✕ Descartar este conteúdo</button>`}
-      <details class="st-caption"><summary>Ver legenda e detalhes</summary><p>${esc([v.legenda,v.cta,(v.hashtags||[]).join(' ')].filter(Boolean).join('\n\n'))}</p>${creditos(c)}<button class="st-text-button" data-action="cn-revisar" data-id="${esc(c.id)}">Ajustar manualmente</button></details></div></article>`;
+      <details class="st-caption"${ui.fotos?.[c.id]?' open':''}><summary>Ver legenda e detalhes</summary><p>${esc([v.legenda,v.cta,(v.hashtags||[]).join(' ')].filter(Boolean).join('\n\n'))}</p>${creditos(c)}${painelFotos(c)}<button class="st-text-button" data-action="cn-revisar" data-id="${esc(c.id)}">Ajustar manualmente</button></details></div></article>`;
+  }
+  // "Por trás da marca": a foto de cada slide foi escolhida pelo conteúdo; aqui o Pedro vê o motivo e troca uma foto.
+  function painelFotos(c){
+    if(c.top?.formato!=='marca'||c.status!=='em_revisao'||c.agenda?.publicar_em)return '';
+    const f=(ui.fotos||{})[c.id];const oc=ui.ocupado?'disabled':'';
+    if(!f)return `<button class="st-text-button" data-action="st-fotos" data-id="${esc(c.id)}" ${oc}>🖼 Trocar foto de um slide</button>`;
+    if(!f.dados)return `<p class="st-preparing-note"><span class="es-spin"></span> Carregando as fotos…</p>`;
+    const sl=f.dados.slides.find(s=>s.slide_id===f.slide);
+    const cands=f.dados.candidatas.filter(x=>x.mini&&!/repetida/.test(x.descartada||''));
+    return `<div class="st-fotos" role="group" aria-label="Fotos dos slides"><p class="st-fotos-ajuda">Toque no slide e depois na foto nova. Só aquele slide é redesenhado.</p>
+      <div class="st-fotos-slides">${f.dados.slides.map(s=>`<button data-action="st-foto-slide" data-id="${esc(c.id)}" data-slide="${esc(s.slide_id)}" aria-pressed="${f.slide===s.slide_id}" title="${esc(s.foto?.motivo||'Sem foto: cor da marca')}">${s.foto?`<img src="${esc(s.foto.mini)}" alt="" loading="lazy">`:'<i>cor</i>'}<small>${s.indice}</small></button>`).join('')}</div>
+      ${sl?`<p class="st-fotos-motivo"><b>Slide ${sl.indice}:</b> ${esc(sl.texto)}${sl.foto?.motivo?`<br><i>Por que esta foto: ${esc(sl.foto.motivo)}</i>`:''}</p>
+      <div class="st-fotos-cands">${cands.map(x=>`<button data-action="st-foto-escolher" data-id="${esc(c.id)}" data-slide="${esc(sl.slide_id)}" data-cand="${esc(x.id)}" ${oc} aria-current="${sl.foto?.id===x.id}" title="${esc([x.descricao,x.origem,x.descartada].filter(Boolean).join(' · '))}"><img src="${esc(x.mini)}" alt="${esc(x.descricao||'Foto candidata')}" loading="lazy">${x.descartada?'<small>com texto</small>':''}</button>`).join('')||'<p class="st-fotos-ajuda">Nenhuma outra foto no acervo.</p>'}</div>`:''}
+      <button class="st-text-button" data-action="st-fotos-fechar" data-id="${esc(c.id)}">Fechar</button></div>`;
   }
   // Conteúdo pronto (piloto, cópia ou manual): publicar agora, agendar no próximo horário livre ou descartar.
   function barraTop(c,pronto,g,pausado){
@@ -230,6 +244,13 @@
           const acaoApi=a==='st-roteiro-aprovar'?'aprovar':a==='st-roteiro-refazer'?'refazer':'descartar';
           const reg=await ctx.api(`/api/studio/${encodeURIComponent(id)}/roteiro`,{method:'POST',body:{acao:acaoApi,hash:versao(c)?.hash,...(acaoApi==='refazer'?{motivos:['voz'],detalhe:'Outro roteiro para o mesmo assunto.'}:{})}});await adotar(reg);
           ctx.toast(acaoApi==='aprovar'?'Roteiro aprovado. Gerando o carrossel; aviso quando ficar pronto.':acaoApi==='refazer'?'Escrevendo outro roteiro.':'Assunto descartado.');break;
+        }
+        case 'st-fotos':{ui.fotos={...(ui.fotos||{}),[id]:{slide:null,dados:null}};ctx.render();try{ui.fotos[id].dados=await ctx.api(`/api/top/carrosseis/${encodeURIComponent(id)}/fotos`);}catch(e){delete ui.fotos[id];throw e;}finally{ctx.render();}return true;}
+        case 'st-fotos-fechar':if(ui.fotos)delete ui.fotos[id];ctx.render();return true;
+        case 'st-foto-slide':if(ui.fotos?.[id])ui.fotos[id].slide=el.dataset.slide;ctx.render();return true;
+        case 'st-foto-escolher':{
+          if(ui.ocupado)return true;ui.ocupado=id;ctx.render();
+          try{await ctx.api(`/api/top/carrosseis/${encodeURIComponent(id)}/foto`,{method:'POST',body:{slide_id:el.dataset.slide,candidata_id:el.dataset.cand}});ui.fotos[id].dados=await ctx.api(`/api/top/carrosseis/${encodeURIComponent(id)}/fotos`);await atualizar({silencioso:true});ctx.toast('Foto trocada. O slide foi redesenhado.');}finally{ui.ocupado=null;ctx.render();}return true;
         }
         case 'st-rejeitar':ui.reprovar=id;ui.motivos=[];ui.detalhe='';ui.erroFeedback=null;ctx.render();return true;
         case 'st-fechar':ui.reprovar=null;ctx.render();return true;

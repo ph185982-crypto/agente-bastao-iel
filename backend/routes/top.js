@@ -10,7 +10,7 @@ const { traduzir } = require('../lib/bancoErro');
 const erro = (res, e0) => { const e = traduzir(e0); return res.status(e.status || 500).json({ error: e.message || 'Erro no carrossel.', code: e.code || 'TOP' }); };
 
 router.post('/carrosseis', limita({ max: 12, janelaMs: 60000, nome: 'top-criar' }), async (req, res) => {
-  try { const b = req.body || {}; const c = await T.criar({ url: b.url || (b.formato === 'marca' ? b.link : null), texto: b.texto, titulo: b.titulo, origem: b.origem || 'manual', formato: b.formato || null, ...(b.formato === 'marca' ? { marca: b.marca, fotos: b.fotos, foco: b.foco } : {}) });
+  try { const b = req.body || {}; const c = await T.criar({ url: b.url || (b.formato === 'marca' ? b.link : null), texto: b.texto, titulo: b.titulo, origem: b.origem || 'manual', formato: b.formato || null, ...(b.formato === 'marca' ? { marca: b.marca, fotos: b.fotos, foco: b.foco, instagram: b.instagram } : {}) });
     // Criado pelo app ou pela reciclagem: entra no índice do piloto para ser avançado nas rodadas mesmo com o app fechado.
     try { await require('../lib/top/piloto').registrar(c.id, { titulo: c.titulo }); } catch { /* sem banco: o app conduz os passos */ }
     res.status(201).json(T.resumo(c)); } catch (e) { erro(res, e); }
@@ -45,5 +45,15 @@ router.post('/carrosseis/:id/revalidar', async (req, res) => {
 });
 router.post('/carrosseis/:id/previas', async (req, res) => { try { res.json(await T.refazerPrevias(String(req.params.id).slice(0, 80), { forcar: req.body?.forcar === true })); } catch (e) { erro(res, e); } });
 router.post('/carrosseis/:id/desagendar', async (req, res) => { try { const c = await Piloto.desagendar(String(req.params.id).slice(0, 80)); res.json({ id: c?.id, agenda: c?.agenda || null }); } catch (e) { erro(res, e); } });
+// "Por trás da marca": fotos candidatas de cada slide e troca manual de uma foto (redesenha só aquele slide).
+router.get('/carrosseis/:id/fotos', async (req, res) => { try { res.json(await T.fotosDoCarrossel(String(req.params.id).slice(0, 80))); } catch (e) { erro(res, e); } });
+router.post('/carrosseis/:id/foto', limita({ max: 20, janelaMs: 60000, nome: 'top-foto' }), async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.slide_id || (!b.candidata_id && !b.url)) return res.status(400).json({ error: 'Informe o slide e a foto (candidata_id ou url).', code: 'ENTRADA' });
+    const r = await T.trocarFoto(String(req.params.id).slice(0, 80), { slide_id: String(b.slide_id).slice(0, 10), candidata_id: b.candidata_id ? String(b.candidata_id).slice(0, 80) : null, url: b.url ? String(b.url).slice(0, 2000) : null });
+    res.json({ ...T.resumo(r.conteudo), slide_id: r.slide_id, foto: r.foto, redesenhados: r.redesenhados });
+  } catch (e) { erro(res, e); }
+});
 router.get('/regua', (req, res) => res.json({ ...T.regua(), etapas: T.ETAPAS.map((e) => ({ id: e, rotulo: T.ROTULO[e] })) }));
 module.exports = router;

@@ -83,6 +83,8 @@ function lerUso(h) {
   if (pcts.length) _uso = { pct: Math.max(...pcts), regain_min: regain, em: new Date().toISOString() };
 }
 const uso = () => ({ ..._uso });
+// Freio de leitura pela cota informada (o mesmo da Reciclagem): acima de 60% lê o mínimo, acima de 85% pausa.
+const freio = (u = uso()) => ({ pct: u.pct ?? null, leve: u.pct != null && u.pct >= 60, pausar: u.pct != null && u.pct >= 85, regain_min: u.regain_min || 0 });
 
 // ── URLs de mídia assinadas ─────────────────────────────────────────────────
 // A Meta baixa a mídia por URL pública. Em vez de guardar arquivos num serviço
@@ -108,4 +110,4 @@ function verificarMidia(token) {
   } catch { return null; }
 }
 
-module.exports = { uso, lerUso, graph, config, faltando, interpretarErro, assinarMidia, verificarMidia, proof, VERSAO, OBRIGATORIAS };
+module.exports = { uso, freio, lerUso, graph, config, faltando, interpretarErro, assinarMidia, verificarMidia, proof, VERSAO, OBRIGATORIAS };

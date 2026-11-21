@@ -25,11 +25,11 @@ router.post('/papel-de-parede', limite, responder((b) => F.criarPapelDeParede(b)
 
 // "Por trás da marca" (docs/CARROSSEL_TOP.md): cria pelo pipeline top com formato 'marca' e devolve o id na hora; os
 // passos (fatos, ângulo, roteiro, júri, fotos, arte) andam pelas rodadas do piloto ou por POST /api/top/carrosseis/:id/passo.
-// Corpo: { link: "https://…matéria", marca?: "Milky Moo", fotos?: ["https://…jpg", …] (uma por slide), foco?: "texto livre" }
+// Corpo: { link: "https://…matéria", marca?: "Milky Moo", fotos?: ["https://…jpg", …] (uma por slide), foco?: "texto livre", instagram?: "@perfil_oficial_da_marca" }
 router.post('/marca', limite, responder(async (b) => {
   const T = require('../lib/top/pipeline');
   if (!b.link && !b.url && !b.texto) throw Object.assign(new Error('Envie o link da matéria sobre a marca.'), { status: 400, code: 'ENTRADA' });
-  const c = await T.criar({ url: b.link || b.url || null, texto: b.texto || null, titulo: b.titulo, origem: 'manual', formato: 'marca', marca: b.marca, fotos: b.fotos, foco: b.foco });
+  const c = await T.criar({ url: b.link || b.url || null, texto: b.texto || null, titulo: b.titulo, origem: 'manual', formato: 'marca', marca: b.marca, fotos: b.fotos, foco: b.foco, instagram: b.instagram });
   try { await require('../lib/top/piloto').registrar(c.id, { titulo: c.titulo }); } catch { /* sem banco: o app conduz os passos */ }
   return { ...T.resumo(c), formato: 'marca', passo: `/api/top/carrosseis/${encodeURIComponent(c.id)}/passo` };
 }));
