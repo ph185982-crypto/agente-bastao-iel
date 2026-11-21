@@ -53,7 +53,7 @@ const MODOS = ['opiniao', ...PROPRIOS];
 // "Por trás da marca": fotos enviadas pelo Pedro (uma por slide, na ordem) — só links http(s) públicos; o download passa
 // pelo safeFetch na etapa de foto. Nome da marca e foco são opcionais (a IA descobre a marca pela matéria).
 const MAX_FOTOS_MARCA = 8;
-function entradaMarca({ marca = null, fotos = null, foco = null, instagram = null } = {}) {
+function entradaMarca({ marca = null, fotos = null, foco = null, instagram = null, estilo = null } = {}) {
   const lista = fotos == null ? [] : Array.isArray(fotos) ? fotos : [fotos];
   if (lista.length > MAX_FOTOS_MARCA) throw erro(`Envie no máximo ${MAX_FOTOS_MARCA} fotos (uma por slide).`, 'ENTRADA');
   const { validaUrl } = require('../safeFetch');
@@ -61,20 +61,20 @@ function entradaMarca({ marca = null, fotos = null, foco = null, instagram = nul
   // @ do perfil oficial da marca no Instagram (opcional; sem ele a IA sugere e o business_discovery confere)
   const ig = String(instagram || '').trim().replace(/^@/, '').toLowerCase();
   if (ig && !/^[a-z0-9._]{2,30}$/.test(ig)) throw erro('Perfil do Instagram inválido (use só o @ da marca).', 'ENTRADA');
-  return { marca: String(marca || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || null, fotos: ok, foco: String(foco || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 300) || null, ...(ig ? { instagram: ig } : {}) };
+  return { ...(estilo === 'revelacao' ? { estilo: 'revelacao' } : {}), marca: String(marca || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || null, fotos: ok, foco: String(foco || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 300) || null, ...(ig ? { instagram: ig } : {}) };
 }
 
-async function criar({ url = null, texto = null, titulo = '', origem = 'manual', formato = null, modo = null, marca = null, fotos = null, foco = null, instagram = null } = {}) {
+async function criar({ url = null, texto = null, titulo = '', origem = 'manual', formato = null, modo = null, marca = null, fotos = null, foco = null, instagram = null, estilo = null } = {}) {
   const a = armazem(); if (!a?.duravel) throw erro('O carrossel precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
   const u = url ? require('../radar/pauta').urlValida(url) : null;
   if (url && !u) throw erro('Link inválido.', 'LINK_INVALIDO');
-  const em = formato === 'marca' ? entradaMarca({ marca, fotos, foco, instagram }) : null;
+  const em = formato === 'marca' ? entradaMarca({ marca, fotos, foco, instagram, estilo }) : null;
   const modoOk = MODOS.includes(modo) && formato !== 'marca' ? modo : null;
   if (!u && String(texto || '').trim().length < (PROPRIOS.includes(modoOk) ? 200 : 300)) throw erro(PROPRIOS.includes(modoOk) ? 'Escreva pelo menos 200 caracteres: a ferramenta só usa o que você contar.' : 'Envie o link da matéria ou cole um texto com pelo menos 300 caracteres.', 'ENTRADA');
   const fmt = FORMATOS.includes(formato) ? formato : (RETIRADOS.includes(formato) ? 'tweet' : null);
   // Post estático é um conteúdo `formato: 'estatico'` (1 ou 2 imagens); os demais continuam carrossel.
   const c = M.novoConteudo({ titulo: String(titulo || '').slice(0, 140) || (fmt === 'estatico' ? 'Post em preparação' : 'Carrossel em preparação'), origem: u ? { tipo: 'link', url: u } : { tipo: 'texto' }, formato: fmt === 'estatico' ? 'estatico' : 'carrossel' });
-  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modoOk, ...(em ? { marca: em.marca, fotos: em.fotos, foco: em.foco, ...(em.instagram ? { instagram: em.instagram } : {}) } : {}) }, tentativas: {}, erros: [], criado_em: agoraISO() };
+  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modoOk, ...(em ? { marca: em.marca, fotos: em.fotos, foco: em.foco, ...(em.instagram ? { instagram: em.instagram } : {}), ...(em.estilo ? { estilo: em.estilo } : {}) } : {}) }, tentativas: {}, erros: [], criado_em: agoraISO() };
   await a.conteudos.salvar(conta(), c.id, c, 0);
   return c;
 }
@@ -126,12 +126,14 @@ E.fatos = async (c, ctx) => {
 };
 
 const ehMarca = (c) => (c.top?.formato || c.top?.entrada?.formato) === 'marca';
+// "Quem é ele?": variante do formato marca (mesma produção de fotos), com apostas escondendo quem é até a revelação.
+const ehRevelacao = (c) => ehMarca(c) && c.top?.entrada?.estilo === 'revelacao';
 const HEX = /^#[0-9a-f]{6}$/i;
 // Ângulo de "Por trás da marca": teste de curiosidade + mecanismo (não o teste do grupo político). Precisa de uma DECISÃO de
 // negócio nos fatos (mecanismo ≥ 2) e soma ≥ régua; senão a pauta é descartada.
 async function anguloMarca(c, ctx) {
   const ent = c.top.entrada || {};
-  const usuario = `${ent.marca ? `MARCA (informada pelo Pedro): ${ent.marca}\n` : ''}${ent.foco ? `FOCO PEDIDO PELO PEDRO: ${ent.foco}\n` : ''}TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`;
+  const usuario = `${ent.estilo === 'revelacao' ? 'ESTILO "QUEM É ELE?": o carrossel mostra as DECISÕES DE DINHEIRO de UMA pessoa famosa (ou empresa) sem dizer quem é até a revelação. Em "marca" ponha o NOME DA PESSOA (ou empresa) por trás das decisões. "mecanismo" 3 = os fatos trazem 3 ou mais decisões com quanto entrou e quanto virou; 2 = duas; 0 ou 1 = não serve. "marca_conhecida" = quanto o público geral reconhece a pessoa.\n' : ''}${ent.marca ? `MARCA (informada pelo Pedro): ${ent.marca}\n` : ''}${ent.foco ? `FOCO PEDIDO PELO PEDRO: ${ent.foco}\n` : ''}TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`;
   const { dados } = await ctx.ia({ sistema: P.ANGULO_MARCA, usuario, maxTokens: 700, temperatura: 0.3, preferirMelhor: true, pago: 'mini' });
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
   const enviarPara = String(dados?.enviar_para || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -172,8 +174,8 @@ E.roteiro = async (c, ctx) => {
     // Cada versão é escrita com o método de um copywriter (dupla em rodízio pelo id do carrossel).
     if (c.top.pesos_redator === undefined) { try { c.top.pesos_redator = ctx.deps.placar !== undefined ? (ctx.deps.placar?.pesos?.redator || null) : ((await armazem().config.obter(conta())).meu_placar?.pesos?.redator || null); } catch { c.top.pesos_redator = null; } }
     const mente = (ctx.deps.mentes || Mentes).parPara(c.id, c.top.pesos_redator)[c.top.versoes.length];
-    const { dados } = await ctx.ia({ sistema: (proprio(c) ? `${P.LINHAS[c.top.entrada.modo].roteiro}\n\n` : '') + P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para, marca: c.top.angulo.marca || '', foco: c.top.entrada?.foco || '' }), usuario: semMateria(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true, pago: c.top.versoes.length ? 'mini' : 'premium' });
-    const v = normalizarRoteiro(dados, c.top.formato);
+    const { dados } = await ctx.ia({ sistema: (proprio(c) ? `${P.LINHAS[c.top.entrada.modo].roteiro}\n\n` : '') + P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para, marca: c.top.angulo.marca || '', foco: c.top.entrada?.foco || '', estilo: c.top.entrada?.estilo || null }), usuario: semMateria(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true, pago: c.top.versoes.length ? 'mini' : 'premium' });
+    const v = normalizarRoteiro(dados, c.top.formato, c.top.entrada?.estilo || null);
     const estatico = c.top.formato === 'estatico';
     // Data também sai: o portão de publicação trata "27/10/2026" como número que precisa de fonte.
     const DATA = /\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b\d{1,2} de (?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/i;
@@ -182,7 +184,7 @@ E.roteiro = async (c, ctx) => {
     const limparParagrafos = (txt) => K.paragrafosDe(txt).map(limparFrases).filter(Boolean).join('\n\n');
     v.legenda = estatico ? limparParagrafos(v.legenda) : limparFrases(v.legenda); v.cta_motivo = K.numerosSemFonte(v.cta_motivo, c.top.fatos).length ? '' : v.cta_motivo;
     v.fechamento = { titulo: K.numerosSemFonte(v.fechamento.titulo, c.top.fatos).length ? '' : v.fechamento.titulo, texto: limparFrases(v.fechamento.texto).replace(/eu comecei o pedro destrava por isso\.?/i, '').trim() };
-    v.checagem = K.checarRoteiro({ ...v, capa: v.capas[0]?.texto || '', telas: [...v.telas], legenda: estatico ? v.legenda : `${v.legenda}\n${v.fechamento.titulo}\n${v.fechamento.texto}\n${v.cta_motivo}` }, c.top.fatos, { formato: c.top.formato, opiniao: semMateria(c) });
+    v.checagem = K.checarRoteiro({ ...v, capa: v.capas[0]?.texto || '', telas: [...v.telas], legenda: estatico ? v.legenda : `${v.legenda}\n${v.fechamento.titulo}\n${v.fechamento.texto}\n${v.cta_motivo}` }, c.top.fatos, { formato: c.top.formato, opiniao: semMateria(c), estilo: c.top.entrada?.estilo || null });
     // capas com número fora dos fatos ou com vício de texto de IA saem da lista (não derrubam a versão inteira)
     v.capas = v.capas.filter((k) => K.checarRoteiro({ capa: k.texto, telas: v.telas, legenda: '' }, c.top.fatos).problemas.every((p) => !p.startsWith('capa')) && !Mentes.AI.vicios(k.texto).length);
     // Texto com cara de IA (a mesma fórmula em todo post): 3 ou mais vícios reprovam a versão, com as frases apontadas.
@@ -252,11 +254,28 @@ function normalizarMarca(d, capas) {
   return { formato: 'marca', capas, telas, legenda: semIds(String(d?.legenda || '')).slice(0, 900), hashtags: hashtagsDe(d), cta_motivo: motivo, fechamento: { titulo: '', texto: '' } };
 }
 
-function normalizarRoteiro(d, formato = 'reportagem') {
+// "Quem é ele?": apostas (empresa, cor, decisão no título, resultado no texto) → revelação → explicação → lição.
+const PAPEL_REV = { aposta: 'aposta', revelacao: 'revelacao', 'revelação': 'revelacao', estrategia: 'estrategia', 'estratégia': 'estrategia', licao: 'leitura', 'lição': 'leitura', leitura: 'leitura' };
+function normalizarRevelacao(d, capas) {
+  const telas = (Array.isArray(d?.telas) ? d.telas : []).slice(0, 8).map((t) => {
+    const papel = PAPEL_REV[String(t?.papel || '').toLowerCase()] || 'estrategia';
+    return { papel, layout: papel === 'aposta' ? 'rev_aposta' : 'rev_texto',
+      titulo: t?.titulo ? umaLinha(t.titulo, 120) : null,
+      texto: t?.texto ? (papel === 'revelacao' ? K.paragrafosDe(t.texto).map((p) => umaLinha(p, 260)).slice(0, 3).join('\n\n') : umaLinha(t.texto, 300)) : null,
+      empresa: papel === 'aposta' ? umaLinha(t?.empresa, 40) || null : null,
+      cor: papel === 'aposta' && HEX.test(String(t?.cor_empresa || '')) ? String(t.cor_empresa).toUpperCase() : null,
+      destaque: null, apoio: null, dados: null, imagem_busca: null, fatos: Array.isArray(t?.fatos) ? t.fatos.map(String).slice(0, 6) : [] };
+  }).filter((t) => t.titulo || t.texto);
+  const motivo = semChamada(semIds(d?.cta_motivo)).replace(/^se você\b/i, 'pra ver').slice(0, 90);
+  return { formato: 'marca', estilo: 'revelacao', quem: umaLinha(d?.quem, 60) || null, capas, telas, legenda: semIds(String(d?.legenda || '')).slice(0, 900), hashtags: hashtagsDe(d), cta_motivo: motivo, fechamento: { titulo: '', texto: '' } };
+}
+
+function normalizarRoteiro(d, formato = 'reportagem', estilo = null) {
   const tweet = formato === 'tweet';
   const capas = (Array.isArray(d?.capas) ? d.capas : []).map((k) => ({ texto: String(k?.texto || k || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: String(k?.mecanismo || '').slice(0, 40) })).filter((k) => k.texto && K.palavras(k.texto) <= (tweet ? 14 : 14)).slice(0, 10);
   if (formato === 'estatico') return normalizarEstatico(d, capas);
   if (formato === 'ensaio') return normalizarEnsaio(d, capas);
+  if (formato === 'marca' && estilo === 'revelacao') return normalizarRevelacao(d, capas);
   if (formato === 'marca') return normalizarMarca(d, capas);
   const LAY = ['rep_manchete', 'rep_comparacao', 'rep_numero'];
   if (tweet) {
@@ -308,7 +327,7 @@ function limpaDados(d) {
 
 E.juri = async (c, ctx) => {
   const vs = c.top.versoes;
-  const notaFormato = [P.notaJuri(c.top.formato), proprio(c) ? P.LINHAS[c.top.entrada.modo].juri : opiniao(c) ? 'CONTEÚDO DE OPINIÃO (sem fatos verificados, por desenho): não exija prova numérica. Em "honestidade", reprove (abaixo de 7) quem afirma número, dado, pesquisa ou fato do mundo como verdade; opinião marcada como leitura do Pedro é honesta. Em "prova" avalie a força do argumento e da cena, não o número.' : ''].filter(Boolean).join('\n');
+  const notaFormato = [P.notaJuri(c.top.formato, c.top.entrada?.estilo || null), proprio(c) ? P.LINHAS[c.top.entrada.modo].juri : opiniao(c) ? 'CONTEÚDO DE OPINIÃO (sem fatos verificados, por desenho): não exija prova numérica. Em "honestidade", reprove (abaixo de 7) quem afirma número, dado, pesquisa ou fato do mundo como verdade; opinião marcada como leitura do Pedro é honesta. Em "prova" avalie a força do argumento e da cena, não o número.' : ''].filter(Boolean).join('\n');
   const usuario = `${notaFormato ? `${notaFormato}\n\n` : ''}FATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}\n\n` + vs.map((v, i) => `VERSÃO ${i}${v.checagem.ok ? '' : ' (reprovada na checagem: ' + v.checagem.problemas.slice(0, 2).join(' ') + ')'}\nCAPAS:\n${v.capas.map((k, j) => `  [${j}] ${k.texto}`).join('\n')}\nTELAS:\n${v.telas.map((t, j) => `  ${j + 2}. (${t.papel}) ${[t.titulo, t.texto, t.destaque, t.dados ? JSON.stringify(t.dados) : ''].filter(Boolean).join(' | ')}`).join('\n')}${v.fechamento?.titulo ? `\nFECHAMENTO: ${[v.fechamento.titulo, v.fechamento.texto].filter(Boolean).join(' ')}` : ''}\nLEGENDA: ${v.legenda}`).join('\n\n');
   const { dados } = await ctx.ia({ sistema: P.JURI, usuario, maxTokens: 900, temperatura: 0.1, preferirMelhor: true, pago: 'mini' });
   const notas = Array.isArray(dados?.versoes) ? dados.versoes : [];
@@ -343,6 +362,7 @@ E.juri = async (c, ctx) => {
 E.capas = async (c, ctx) => {
   const v = c.top.versoes[c.top.escolha.versao];
   if (v.sala_feita) return;
+  if (ehRevelacao(c)) { v.sala_feita = true; return; } // a "capa" é a frase da 1ª aposta (vem do roteiro); manchete não cabe
   const M = ctx.deps.mentes || Mentes;
   // Post estático: a legenda é o corpo do post; a sala precisa lê-la (não há telas). Ensaio/tweet/reportagem: as telas.
   const corpo = c.top.formato === 'estatico'
@@ -506,7 +526,7 @@ async function fotosMarca(c, ctx) {
   const v = c.top.versoes[c.top.escolha.versao];
   { const k = v?.capas?.[c.top.escolha.capas?.[0] ?? 0]; const m = String(k?.mecanismo || '');
     c.top.mentes = { ...(c.top.mentes || {}), roteiro: v?.mente || c.top.mentes?.roteiro || null, capa: m.startsWith('mente:') ? m.slice(6) : (v?.mente ? `${v.mente} (roteiro)` : null) }; }
-  const slots = 1 + v.telas.length;
+  const slots = ehRevelacao(c) ? v.telas.length : 1 + v.telas.length;
   c.top.fotos_marca ||= {};
   const st = (c.top.fotos_marca_estado ||= { tentadas: [], falhas: [] });
   const salvarArquivo = (k, dados) => armazem().arquivos.salvar(conta(), k, dados, 'image/jpeg');
@@ -522,6 +542,18 @@ async function fotosMarca(c, ctx) {
   }
   const r = await require('./fotosCandidatas').etapa(c, ctx, { salvarArquivo, lerArquivo, slots });
   if (r?.concluida === false) return r;
+  // "Quem é ele?": o logo de cada empresa das apostas (Commons; sem logo, o nome da empresa vira o título do painel)
+  if (ehRevelacao(c)) {
+    c.top.logos ||= {};
+    for (const t of v.telas.filter((x) => x.papel === 'aposta' && x.empresa && c.top.logos[x.empresa] === undefined)) {
+      if (ctx.restante() < 8000) return { concluida: false };
+      try {
+        const l = await (ctx.deps.logoDe || require('./fotos').logoDe)(t.empresa);
+        if (l) { const id = `logo_${crypto.createHash('sha1').update(t.empresa).digest('hex').slice(0, 10)}`; await armazem().arquivos.salvar(conta(), `img:${id}`, l.dados, 'image/png'); c.top.logos[t.empresa] = id; }
+        else c.top.logos[t.empresa] = null;
+      } catch { c.top.logos[t.empresa] = null; }
+    }
+  }
   const semFoto = [...Array(slots).keys()].filter((i) => !c.top.fotos_marca[i]).length;
   const C = c.top.fotos_candidatas || [];
   c.top.fotos_marca_resumo = { total: slots, com_foto: slots - semFoto, cor_da_marca: semFoto, candidatas: C.length, descartadas: C.filter((x) => x.descartada).length, instagram: st.ig?.handle ? `@${st.ig.handle}` : null, visao: st.visao || null, falhas: st.falhas.slice(0, 6) };
@@ -552,6 +584,7 @@ function montarVersao(c) {
   if (c.top.formato === 'tweet') return montarVersaoTweet(c, v, { capa, fatosComNumeros, mapa, fonte });
   if (c.top.formato === 'estatico') return montarVersaoEstatico(c, v, { capa, fatosComNumeros, mapa, fonte });
   if (c.top.formato === 'ensaio') return montarVersaoEnsaio(c, v, { capa, fatosComNumeros, mapa, fonte });
+  if (c.top.formato === 'marca' && ehRevelacao(c)) return montarVersaoRevelacao(c, v, { capa, fatosComNumeros, mapa, fonte });
   if (c.top.formato === 'marca') return montarVersaoMarca(c, v, { capa, fatosComNumeros, mapa, fonte });
   const cenas = c.top.fotos_cena || (c.top.foto_cena_id ? [c.top.foto_cena_id] : []);
   const foto = c.top.foto_id || c.top.foto_lugar_id || cenas[0] || null; // capa: pessoa > lugar > cena
@@ -669,6 +702,35 @@ function montarVersaoEnsaio(c, v, { capa, fatosComNumeros, mapa, fonte }) {
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
   slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'ensaio', tema_visual: 'ensaio', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: chamadaFinal(c), cta_apoio: cta, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
   return { formato: 'ensaio', capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'ensaio', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
+}
+
+
+// "Quem é ele?": apostas (logo da empresa sobre a cor dela + foto da pessoa) → revelação (foto em cima) → explicações
+// (texto e foto lado a lado) → lição (foto escurecida) → slide final do Pedro. A 1ª aposta usa a capa escolhida pelo painel.
+function montarVersaoRevelacao(c, v, { capa, fatosComNumeros, mapa, fonte }) {
+  const fm = c.top.fotos_marca || {}; const logos = c.top.logos || {}; const quem = c.top.angulo?.marca || v.quem || '';
+  const slides = []; const opinioes = []; let kTexto = 0;
+  v.telas.forEach((t, i) => {
+    const tudo = `${t.titulo || ''} ${t.texto || ''}`;
+    let claim_ids = mapa(t.fatos); for (const id of fatosComNumeros(tudo)) if (!claim_ids.includes(id)) claim_ids.push(id);
+    const img = fm[i] ? { imagem_id: fm[i] } : {};
+    const sid = `s${i + 1}`;
+    if (t.papel === 'aposta') {
+      const decisao = i === 0 && capa ? capa.replace(/\*\*/g, '') : t.titulo;
+      if (i === 0) for (const id of fatosComNumeros(decisao)) if (!claim_ids.includes(id)) claim_ids.push(id);
+      slides.push({ id: sid, funcao: i === 0 ? 'capa' : 'explicacao', layout: 'rev_aposta', tema_visual: 'revelacao', titulo: decisao, texto: t.texto || '', claim_ids, ...img, dados: { empresa: t.empresa || '', cor: t.cor || '#1B1C20', decisao, resultado: t.texto || '', ...(logos[t.empresa] ? { logo_id: logos[t.empresa] } : {}) } });
+      return;
+    }
+    if (t.papel === 'leitura') { const oid = `o${opinioes.length + 1}`; opinioes.push({ id: oid, texto: tudo.trim().slice(0, 400), tipo: 'opiniao', natureza: 'opiniao', central: false, estado: 'nao_verificada', premissas: claim_ids, evidencias: [], risco: 'baixo', origem: 'top', revisao: {} }); claim_ids = [oid]; }
+    const layout = t.papel === 'revelacao' ? 'rev_foto_texto' : t.papel === 'leitura' ? 'rev_escuro' : (kTexto++ % 2 ? 'rev_foto_texto' : 'rev_texto_foto');
+    slides.push({ id: sid, funcao: t.papel === 'leitura' ? 'opiniao' : t.papel === 'revelacao' ? 'contexto' : 'explicacao', layout, tema_visual: 'revelacao', titulo: t.titulo || null, texto: t.texto || '', claim_ids, ...img, dados: { quem } });
+  });
+  c.claims.push(...opinioes);
+  const motivo = (v.cta_motivo || 'pra ver onde o próximo famoso pôs dinheiro').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
+  const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
+  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'marca_final', tema_visual: 'marca', titulo: 'Eu mostro a estratégia por trás de quem ganha dinheiro de verdade.', texto: 'Segue @pedro_destrava pra ver a próxima.', cta: 'Segue o @pedro_destrava', cta_apoio: cta, claim_ids: [], ...(c.top.foto_pedro_id ? { imagem_id: c.top.foto_pedro_id } : {}), dados: { marca: quem } });
+  const legenda = legendaComFonte(c, v.legenda, fonte).slice(0, 2200);
+  return { formato: 'marca', capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'quem_e_ele', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
 }
 
 // "Por trás da marca": capa (foto + manchete) → contexto → 2 a 4 estratégias → lição → slide final fixo com o Pedro e a
@@ -988,4 +1050,4 @@ async function revalidar(id) {
   return { conteudo: c, bloqueios: bl };
 }
 
-module.exports = { fotosDoCarrossel, trocarFoto, FINAL_MARCA, MAX_FOTOS_MARCA, entradaMarca, PROPRIOS, MODOS, chamadaFinal, refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, FORMATOS, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };
+module.exports = { ehRevelacao, normalizarRevelacao, montarVersaoRevelacao, fotosDoCarrossel, trocarFoto, FINAL_MARCA, MAX_FOTOS_MARCA, entradaMarca, PROPRIOS, MODOS, chamadaFinal, refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, FORMATOS, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };

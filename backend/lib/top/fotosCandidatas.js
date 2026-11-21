@@ -174,6 +174,8 @@ Responda APENAS JSON: {"slides":[{"slide":"s1","foto":"c1","motivo":"","busca":"
 function slidesDoCarrossel(c) {
   const v = c.top.versoes[c.top.escolha.versao];
   const capa = v.capas?.[c.top.escolha.capas?.[0] ?? 0]?.texto || '';
+  // "Quem é ele?": não há capa à parte (a 1ª aposta é a capa); slide i = tela i
+  if (c.top.entrada?.estilo === 'revelacao') return v.telas.map((t, k) => ({ sid: `s${k + 1}`, i: k, papel: t.papel, texto: [t.empresa, t.titulo, t.texto].filter(Boolean).join(' — '), busca: '' }));
   return [{ sid: 's1', i: 0, papel: 'capa', texto: capa.replace(/\*\*/g, ''), busca: c.top.angulo?.imagem?.busca || '' },
     ...v.telas.map((t, k) => ({ sid: `s${k + 2}`, i: k + 1, papel: t.papel, texto: [t.titulo, t.texto].filter(Boolean).join(' — '), busca: t.imagem_busca || '' }))];
 }

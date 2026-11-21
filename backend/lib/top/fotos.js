@@ -144,4 +144,31 @@ async function fotosDoConceito(termo, { fetcher = fetch, max = 1, excluir = [], 
   return out;
 }
 
-module.exports = { fotoDe, fotosDaMarca, fotosDoConceito, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, pontuarConceito, LICENCA_OK, LICENCA_LIVRE };
+// Logo de empresa para o formato "Quem é ele?" (painel da aposta): arquivo vetorial do Commons com o nome da empresa e
+// "logo" no título; vem como PNG com transparência (miniatura de 960 px, tamanho padrão aceito pela Wikimedia).
+// Logo no Commons é marca nominativa (identifica a empresa citada na notícia) ou "PD-textlogo".
+async function logoDe(empresa, { fetcher = fetch } = {}) {
+  const nome = sem(empresa).replace(/[^a-z0-9\s]/g, ' ').trim(); if (nome.length < 2) return null;
+  const q = new URLSearchParams({ action: 'query', format: 'json', generator: 'search', gsrsearch: `${empresa} logo filetype:drawing`, gsrnamespace: '6', gsrlimit: '15', prop: 'imageinfo', iiprop: 'url|size', iiurlwidth: '960', origin: '*' });
+  const r = await fetcher(`${BASE}?${q}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
+  if (!r.ok) return null;
+  const itens = Object.values((await r.json())?.query?.pages || {});
+  const partes = nome.split(/\s+/).filter((p) => p.length >= 2);
+  const pont = (it) => {
+    const t = sem(it.title).replace(/[^a-z0-9\s]/g, ' ');
+    if (!partes.every((p) => t.includes(p)) || !/\blogo/.test(t)) return -1;
+    let p = 10 - (t.length / 20);
+    if (/\b(20[12]\d|present|atual|current)\b/.test(t)) p += 3;       // versão recente do logo
+    if (/\b(old|antigo|former|19\d\d|200\d)\b/.test(t)) p -= 4;
+    if (/\b(icon|icone|symbol|simbolo|favicon|app)\b/.test(t)) p -= 2; // preferimos o logo com o nome
+    return p;
+  };
+  const melhor = itens.map((it) => ({ it, p: pont(it) })).filter((x) => x.p >= 0).sort((a, b) => b.p - a.p)[0];
+  if (!melhor?.it?.imageinfo?.[0]?.thumburl) return null;
+  const img = await fetcher(melhor.it.imageinfo[0].thumburl, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
+  if (!img.ok) return null;
+  const dados = Buffer.from(await img.arrayBuffer());
+  return { dados, titulo: melhor.it.title, pagina: melhor.it.imageinfo[0].descriptionurl || null };
+}
+
+module.exports = { logoDe, fotoDe, fotosDaMarca, fotosDoConceito, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, pontuarConceito, LICENCA_OK, LICENCA_LIVRE };

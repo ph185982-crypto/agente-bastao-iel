@@ -25,7 +25,8 @@ Leia os fatos com honestidade: se a notícia é neutra ou positiva, NÃO invente
 "imagem": a foto da CAPA. "pessoa_central": true só se a notícia gira em torno de UMA pessoa pública (aí a capa usa a foto dela). "lugar_brasil": se o assunto é uma instituição ou lugar brasileiro, o PRÉDIO por fora para buscar no Wikimedia Commons (ex.: "Congresso Nacional Brasília", "Prédio do Supremo Tribunal Federal", "Palácio do Planalto", "Banco Central do Brasil sede", "Porto de Santos"); senão null. "busca": a foto da CAPA em INGLÊS, 3 a 7 palavras: UMA PESSOA com emoção visível reagindo à consequência da notícia, rosto aparecendo, numa cena concreta do assunto (ex.: "worried woman looking at receipt", "shocked shop owner reading bill", "angry truck driver gas station", "stressed man calculator invoices", "smiling seller packing boxes"). Nunca prédio, paisagem, gráfico ou objeto sozinho: a capa precisa de gente.
 Responda APENAS JSON: {"gatilhos":{"contradicao":0,"bolso":0,"numero":0,"personagem":0,"empreendedor":0},"enviar_para":"seu sócio","tese":"","por_que_mandaria":"","risco":"o que pode soar injusto ou exagerado, se houver","formato":"tweet","imagem":{"pessoa_central":false,"lugar_brasil":null,"busca":""}}`;
 
-function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem', mente = '', enviarPara = 'seu sócio', marca = '', foco = '' }) {
+function roteiro({ voz = [], tese, porQue, feedback = '', formato = 'reportagem', mente = '', enviarPara = 'seu sócio', marca = '', foco = '', estilo = null }) {
+  if (formato === 'marca' && estilo === 'revelacao') return roteiroRevelacao({ voz, tese, porQue, feedback, mente, enviarPara, quem: marca, foco });
   if (formato === 'marca') return roteiroMarca({ voz, tese, porQue, feedback, mente, enviarPara, marca, foco });
   if (formato === 'tweet') return roteiroTweet({ voz, tese, porQue, feedback, mente });
   if (formato === 'estatico') return roteiroEstatico({ voz, tese, porQue, feedback, mente, enviarPara });
@@ -215,8 +216,36 @@ ${voz.length ? `\nCOMO O PEDRO ESCREVE (legendas reais dos posts dele mais compa
 Responda APENAS JSON: {"capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"contexto","titulo":"","texto":"","imagem_busca":"","fatos":[]}],"legenda":"","hashtags":["#","#","#"],"cta_motivo":""}`;
 }
 
+// "Quem é ele?" (pedido do Pedro, 21/11; referência: carrossel de apostas de um famoso). As primeiras telas mostram só as
+// decisões de dinheiro (logo da empresa + "Ele botou US$ 1 milhão no Skype." + "Virou US$ 4 milhões."), sem dizer quem é;
+// depois revela a pessoa e explica a lição para o bolso de quem lê.
+function roteiroRevelacao({ voz = [], tese, porQue, feedback = '', mente = '', enviarPara = 'quem tem loja', quem = '', foco = '' }) {
+  return `Você escreve carrosséis da série "QUEM É ELE?" do @pedro_destrava: as primeiras telas mostram SÓ as decisões de dinheiro de alguém famoso (onde pôs dinheiro e quanto virou), sem dizer quem é; a curiosidade faz a pessoa deslizar até a tela que revela. Depois vem o que isso ensina para o bolso de quem lê. Público GERAL, linguagem de conversa, sem jargão.
+QUEM É (não aparece nas apostas): ${quem}
+O QUE O CARROSSEL MOSTRA: ${tese}
+POR QUE ALGUÉM MANDARIA: ${porQue}
+COM QUEM FALAR: ${enviarPara}${foco ? `\nO PEDRO PEDIU FOCO EM: ${foco}` : ''}
+${mente ? `\n${mente}\n` : ''}
+${AI.REGRAS}
+
+ESTRUTURA:
+- "capas": 10 versões da frase da 1ª aposta (vai embaixo do logo da empresa na 1ª tela), até 12 palavras, sem o nome de quem é, com o número dos fatos (ex.: "Ele botou US$ 1 milhão no Skype."). Diferentes entre si.
+- "telas", nesta ordem:
+  1. papel "aposta" (2 a 4 telas, a mais impressionante primeiro): "empresa" (nome da empresa onde a decisão aconteceu, como se escreve no logo), "cor_empresa" (cor principal da marca da empresa em hex, ex. "#1DB954"), "titulo" = a decisão em até 10 palavras ("Botou US$ 2,5 milhões no Airbnb."), "texto" = o resultado em até 6 palavras ("Virou US$ 90 milhões."). Use "Ele"/"Ela" sem nome. Número SÓ dos fatos.
+  2. papel "revelacao" (1 tela): "titulo" revela quem é, com o nome em **asteriscos** ("O investidor é o **Ashton Kutcher**, o ator."); "texto" 2 parágrafos curtos (separados por linha em branco) com o contexto que os fatos dão.
+  3. papel "estrategia" (1 a 2 telas): "titulo" (até 8 palavras) e "texto" (até 40 palavras): o raciocínio por trás das decisões, como se explicasse para um amigo.
+  4. papel "licao" (1 tela, a última): "texto" até 40 palavras com o que isso ensina para o bolso de quem trabalha e vende (leitura do Pedro, marcada como leitura quando for interpretação). Sem pedir para seguir.
+  Em toda tela: "fatos" = ids dos FATOS VERIFICADOS usados.
+- NÚMEROS e DATAS só dos FATOS, escritos do mesmo jeito. Sem fato com número, a aposta não entra.
+- HONESTIDADE: nada de intenção, bastidor ou valor que os fatos não trazem. Resultado de investimento é o que a matéria diz (ex.: "valia US$ 60 milhões"), nunca "lucro" se a matéria não diz.
+- "legenda": 2 a 4 frases curtas que complementam; a última pergunta de quem o leitor quer ver as apostas ou pede para mandar a ${enviarPara}. Sem fonte nem data (o sistema acrescenta). "hashtags": 3. "cta_motivo": complete "Segue o @pedro_destrava …" com 4 a 8 palavras começando por "pra". "quem": o nome de quem é.
+${voz.length ? `\nCOMO O PEDRO ESCREVE (imite RITMO e ATITUDE, nunca copie):\n${voz.map((v, i) => `${i + 1}. ${v}`).join('\n')}\n` : ''}${feedback ? `\nCORRIJA ESTES PROBLEMAS DA VERSÃO ANTERIOR:\n${feedback}\n` : ''}
+Responda APENAS JSON: {"quem":"","capas":[{"texto":"","mecanismo":""}],"telas":[{"papel":"aposta","empresa":"","cor_empresa":"#000000","titulo":"","texto":"","fatos":[]}],"legenda":"","hashtags":["#","#","#"],"cta_motivo":""}`;
+}
+
 // Nota para o júri saber o que está avaliando quando o formato não é carrossel de telas.
-function notaJuri(formato) {
+function notaJuri(formato, estilo = null) {
+  if (formato === 'marca' && estilo === 'revelacao') return 'FORMATO: QUEM É ELE? (topo de funil). As primeiras telas mostram só as apostas de dinheiro de alguém famoso (empresa, quanto pôs, quanto virou) sem dizer quem é; depois revela e explica. Em "capa", avalie se a 1ª aposta prende (número grande, empresa conhecida). Em "prova", todo valor precisa estar nos fatos. Em "honestidade", reprove (abaixo de 7) valor, resultado ou intenção que os fatos não trazem. Em "envio": a pessoa mandaria "olha onde esse cara pôs dinheiro"?';
   if (formato === 'marca') return 'FORMATO: POR TRÁS DA MARCA (topo de funil, público geral; NÃO é pauta política). A "capa" é a manchete sobre a foto da marca. Em "leitura", avalie se cada tela de estratégia explica UM mecanismo de negócio com clareza (decisão → por que funciona → efeito) e se a lição final serve para quem compra ou vende. Em "prova", avalie se o que é afirmado sobre a empresa está nos fatos (número só dos fatos; sem número também vale). Em "honestidade", reprove (abaixo de 7) intenção, bastidor ou número que os fatos não trazem. Em "envio": a pessoa mandaria "olha o truque da X"?';
   if (formato === 'estatico') return 'FORMATO: POST ESTÁTICO. A "capa" é a headline da imagem e a LEGENDA é o post inteiro (o leitor lê a legenda com o dedo parado). Avalie "tela2" e "prova" pela legenda: ela entrega o que a headline prometeu, traz o número com clareza e a leitura do Pedro? Pode haver uma única tela (o 2º slide) ou nenhuma.';
   if (formato === 'ensaio') return 'FORMATO: ENSAIO (texto corrido em slides escuros, sem foto). A "capa" é a frase de abertura e cada tela é um bloco de 2 a 3 parágrafos. Avalie o fluxo do texto como uma crônica curta: a abertura puxa, os fatos aparecem no meio, a frase de ouro fecha.';
@@ -275,4 +304,4 @@ ${REGRA_PROPRIA}`,
 };
 
 const AI = require('../mentes/antiIA');
-module.exports = { LINHAS,  FATOS, ANGULO, ANGULO_MARCA, roteiroMarca, roteiro, roteiroTweet, roteiroEstatico, roteiroEnsaio, notaJuri, VOZ_PEDRO, JURI, REVISOR_CAPA };
+module.exports = { roteiroRevelacao, LINHAS,  FATOS, ANGULO, ANGULO_MARCA, roteiroMarca, roteiro, roteiroTweet, roteiroEstatico, roteiroEnsaio, notaJuri, VOZ_PEDRO, JURI, REVISOR_CAPA };

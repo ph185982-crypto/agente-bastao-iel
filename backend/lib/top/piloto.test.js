@@ -30,7 +30,7 @@ test('configuração valida horários e limites', async () => {
   await assert.rejects(Pi.salvarConfig({ mix: { frase: 41 } }), /mix\.frase/);
   await assert.rejects(Pi.salvarConfig({ mix: { frase: 0, noticia: 0, marca: 0 } }), /pelo menos um/);
   const m = await Pi.salvarConfig({ mix: { frase: 10, noticia: 5, marca: 3 } });
-  assert.deepStrictEqual([m.mix, m.meta_dia], [{ frase: 10, noticia: 5, marca: 3 }, 18], 'meta do dia vira a soma do mix');
+  assert.deepStrictEqual([m.mix, m.meta_dia], [{ frase: 10, noticia: 5, marca: 3, revelacao: 0 }, 18], 'meta do dia vira a soma do mix');
   const c = await Pi.salvarConfig({ meta_dia: 6, horarios: ['18:00', '09:00'] });
   assert.deepStrictEqual([c.meta_dia, c.horarios], [6, ['09:00', '18:00']]);
 });
@@ -283,7 +283,7 @@ test('40 por dia: frases em lote, pauta de marca conhecida e até 3 carrosséis 
     { id: 'm1', titulo: 'Cacau Show abre 300 lojas', fontes: [{ url: 'https://exame.com/m1' }] },
     { id: 'm2', titulo: 'Banco Central muda regra', fontes: [{ url: 'https://exame.com/m2' }] }];
   const deps = {
-    descobrir: async (o) => ({ pautas: /^marcas/.test(o?.pilares?.[0]?.id || '') ? marcas : pautas }),
+    descobrir: async (o) => ({ pautas: /^marcas/.test(o?.pilares?.[0]?.id || '') ? marcas : /^pessoas/.test(o?.pilares?.[0]?.id || '') ? [] : pautas }),
     iaMarcas: async ({ usuario }) => ({ dados: { itens: [{ i: 0, marca: 'Cacau Show', conhecida: 9 }, { i: 1, marca: 'Banco Central', conhecida: 3 }] }, usuario }),
     criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
     passo: async (id) => ({ conteudo: { top: { estado: 'em_andamento' } } }), // continuam em produção
@@ -299,6 +299,21 @@ test('40 por dia: frases em lote, pauta de marca conhecida e até 3 carrosséis 
   r = await Pi.rodada({ agora: SP('2026-11-22', '06:15'), deps });
   assert.strictEqual(criados.length, 3, 'com 3 em produção, espera');
   const est = (await arm.armazem().config.obter(ACCOUNT.ig_id)).piloto_estado;
-  assert.strictEqual(est.criados.filter((x) => x.linha === 'frase' && x.estado === 'concluida').length, 20, 'as 20 frases do dia saem em 4 rodadas');
-  assert.strictEqual(lotes, 4);
+  assert.strictEqual(est.criados.filter((x) => x.linha === 'frase' && x.estado === 'concluida').length, 10, 'as 10 frases do dia saem em 2 rodadas');
+  assert.strictEqual(lotes, 2);
+});
+
+test('Quem é ele?: pauta de pessoa famosa com dinheiro vira formato marca com estilo revelacao', async () => {
+  novo(); const criados = [];
+  const deps = {
+    descobrir: async (o) => ({ pautas: /^pessoas/.test(o?.pilares?.[0]?.id || '') ? [{ id: 'q1', titulo: 'Ator investiu US$ 500 mil no Uber e viu virar US$ 60 milhões', fontes: [{ url: 'https://exame.com/q1' }] }] : [] }),
+    iaMarcas: async ({ sistema }) => ({ dados: { itens: /DINHEIRO de UMA pessoa/.test(sistema) ? [{ i: 0, marca: 'Ashton Kutcher', conhecida: 9 }] : [] } }),
+    criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
+    frases: async () => ({ criados: [], barradas: [] }),
+    passo: async () => ({ conteudo: { top: { estado: 'em_andamento' } } }),
+  };
+  const r = await Pi.rodada({ agora: SP('2026-11-22', '06:00'), deps });
+  assert.deepStrictEqual(criados[0], { url: 'https://exame.com/q1', titulo: 'Ator investiu US$ 500 mil no Uber e viu virar US$ 60 milhões', origem: 'piloto', formato: 'marca', marca: 'Ashton Kutcher', estilo: 'revelacao' });
+  assert.strictEqual(r.criado.linha, 'revelacao');
+  assert.strictEqual(Pi.tipoDe({ linha: 'revelacao', formato: 'marca' }), 'revelacao');
 });

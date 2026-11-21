@@ -21,7 +21,7 @@ const COR = {
 };
 const FONTE = { max: 116, min: 64, ent: 1.1 };
 let avatar = null;
-const fotoPedro = () => (avatar ||= fs.readFileSync(path.join(__dirname, '..', 'assets', 'pedro-perfil.png')));
+const fotoPedro = () => (avatar ||= fs.readFileSync(path.join(__dirname, '..', 'assets', 'pedro-frase.jpg')));
 
 async function renderizar(slide) {
   const d = slide.dados || {};
@@ -63,7 +63,7 @@ async function renderizar(slide) {
   svg += `<text x="${MARGEM + 2 * r + 28}" y="${yA + 8}" font-family="${ARQ.mDisplay.familia}" font-weight="800" font-size="44" fill="${c.nome}">Pedro Destrava</text>`;
   svg += `<text x="${MARGEM + 2 * r + 28}" y="${yA + 58}" font-family="${ARQ.iSemi.familia}" font-weight="600" font-size="34" fill="${c.handle}">${esc(ACCOUNT.handle || '@pedro_destrava')}</text>`;
   const circ = Buffer.from(`<svg width="${2 * r}" height="${2 * r}"><circle cx="${r}" cy="${r}" r="${r}" fill="#fff"/></svg>`);
-  const foto = await sharp(fotoPedro()).resize(2 * r, 2 * r, { fit: 'cover', position: 'attention' }).composite([{ input: circ, blend: 'dest-in' }]).png().toBuffer();
+  const foto = await sharp(fotoPedro()).resize(2 * r, 2 * r, { fit: 'cover', position: 'centre' }).composite([{ input: circ, blend: 'dest-in' }]).png().toBuffer();
   const camada = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">${svg}</svg>`);
   const png = await sharp(camada).composite([{ input: foto, left: MARGEM, top: yA - r - 4 }]).png().toBuffer();
   const blocos = [{ nome: 'frase', tam: b.tam, minimo: b.minimo, cabe: b.cabe, linhas: b.linhas.length, ...(b.cabe ? {} : { sobra_px: b.sobra, motivo: `A frase não cabe nem no tamanho mínimo legível (${b.minimo}px)` }), altura_disponivel: yFim - yIni }];

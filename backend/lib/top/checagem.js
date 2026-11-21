@@ -89,10 +89,12 @@ function numerosSemFonte(texto, fatos) {
 const LEGENDA_ESTATICO = { min: 600, max: 1500, paragrafos_min: 4, paragrafos_max: 7 };
 const ENSAIO = { min: 700, max: 1100, folga: 150, telas_min: 4, telas_max: 6 }; // folga: a IA erra a contagem de caracteres para mais ou para menos
 const MARCA = { telas_min: 4, telas_max: 6, palavras_tela: 40 };
+// "Quem é ele?" (estilo revelacao): 2 a 4 apostas + revelação + 1 a 2 explicações + lição.
+const REVELACAO = { telas_min: 5, telas_max: 8, palavras_tela: 48 };
 const paragrafosDe = (txt) => String(txt || '').split(/\n{2,}|\n/).map((p) => p.trim()).filter(Boolean);
 
 // Checa um roteiro (capa + telas + legenda) contra os fatos verificados. Devolve { ok, problemas[] }.
-function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false } = {}) {
+function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false, estilo = null } = {}) {
   const problemas = [];
   const permitidos = permitidosDe(fatos);
   const telas = Array.isArray(r?.telas) ? r.telas : [];
@@ -111,6 +113,15 @@ function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false } = {
     if (total < ENSAIO.min - ENSAIO.folga || total > ENSAIO.max + ENSAIO.folga) problemas.push(`O ensaio tem ${total} caracteres no total; escreva de ${ENSAIO.min} a ${ENSAIO.max}.`);
     telas.forEach((t, i) => { const ps = paragrafosDe(t.texto).length; if (ps < 1 || ps > 3) problemas.push(`bloco ${i + 2}: ${ps} parágrafos (use 2 a 3, curtos).`); });
     if (!r?.fechamento?.titulo) problemas.push('Falta a frase de ouro do fechamento ("fechamento.titulo").');
+  } else if (marca && estilo === 'revelacao') {
+    const nAp = telas.filter((t) => t.papel === 'aposta').length;
+    if (telas.length < REVELACAO.telas_min || telas.length > REVELACAO.telas_max) problemas.push(`O carrossel tem ${telas.length} telas; use de ${REVELACAO.telas_min} a ${REVELACAO.telas_max} (apostas, revelação, explicação e lição).`);
+    if (nAp < 2 || nAp > 4) problemas.push(`Há ${nAp} tela(s) de aposta; use de 2 a 4 (cada uma: empresa, quanto pôs e quanto virou, com número dos fatos).`);
+    telas.forEach((t, i) => { if (t.papel === 'aposta' && (!t.empresa || !t.titulo || !t.texto)) problemas.push(`tela ${i + 1}: aposta sem empresa, decisão ou resultado.`); });
+    if (telas.slice(0, nAp).some((t) => t.papel !== 'aposta')) problemas.push('As apostas vêm primeiro, sem dizer quem é.');
+    if (telas[nAp]?.papel !== 'revelacao') problemas.push('Depois das apostas vem a tela que revela quem é (papel "revelacao").');
+    if (telas.slice(0, nAp).some((t) => r.quem && new RegExp(String(r.quem).split(/\s+/).pop(), 'i').test(`${t.titulo} ${t.texto}`))) problemas.push('As apostas não podem dizer o nome de quem é (a revelação vem depois).');
+    if (telas.length && telas[telas.length - 1].papel !== 'leitura') problemas.push('A última tela deve ser a lição (papel "licao").');
   } else if (marca) {
     // "Por trás da marca": capa + 4 a 6 telas + slide final fixo = 6 a 8 slides.
     if (telas.length < MARCA.telas_min || telas.length > MARCA.telas_max) problemas.push(`O carrossel tem ${telas.length} telas de conteúdo; use de ${MARCA.telas_min} a ${MARCA.telas_max} (contexto, 2 a 4 estratégias e a lição; a capa e o slide final são à parte).`);
@@ -131,7 +142,7 @@ function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false } = {
   if (segundo > 1) problemas.push(`“Segundo …” aparece em ${segundo} telas: cite a fonte só na tela de prova e na legenda.`);
   telas.forEach((t, i) => {
     const n = palavras(`${t.titulo || ''} ${t.texto || ''}`);
-    const maxPal = ensaio ? 70 : estatico ? 26 : marca ? MARCA.palavras_tela : 45; // ensaio: 2–3 parágrafos curtos por bloco; estático: uma ideia no "virar"
+    const maxPal = ensaio ? 70 : estatico ? 26 : marca ? (estilo === 'revelacao' ? REVELACAO.palavras_tela : MARCA.palavras_tela) : 45; // ensaio: 2–3 parágrafos curtos por bloco; estático: uma ideia no "virar"
     if (n > maxPal) problemas.push(`tela ${i + 2}: ${n} palavras (máximo ${maxPal}). Corte.`);
     if (['rep_comparacao', 'rep_numero'].includes(t.layout) && !(t.fatos || []).length) problemas.push(`tela ${i + 2}: prova sem fato ligado (fatos: ["f1"…]).`);
     if (t.layout === 'rep_comparacao' && !(t.dados?.esquerda?.valor && t.dados?.direita?.valor)) problemas.push(`tela ${i + 2}: comparação sem os dois valores.`);
