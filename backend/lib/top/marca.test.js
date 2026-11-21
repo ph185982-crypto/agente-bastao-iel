@@ -564,3 +564,28 @@ test('Quem é ele?: apostas sem o nome, revelação, explicação e lição; log
   const semNumero = K.checarRoteiro({ capa: 'Ele botou dinheiro no Uber.', telas: [{ papel: 'aposta', empresa: 'Uber', titulo: 'Ele entrou no Uber em 2011.', texto: 'Está no portfólio dele.' }, { papel: 'aposta', empresa: 'Rodaki', titulo: 'Botou US$ 500 mil na Rodaki.', texto: 'Virou US$ 60 milhões.' }, { papel: 'revelacao', titulo: 'É ele', texto: 'x' }, { papel: 'estrategia', titulo: 't', texto: 'x' }, { papel: 'leitura', texto: 'x' }], legenda: '' }, FATOS_REV.fatos, { formato: 'marca', estilo: 'revelacao' });
   assert.ok(semNumero.problemas.some((p) => /tela 1: aposta sem valor/.test(p)) && !semNumero.problemas.some((p) => /tela 2: aposta sem valor/.test(p)));
 });
+
+test('Google Imagens: só foto grande de site de notícia/marca (banco pago e rede social fora); vira candidata "google" na etapa de fotos', async () => {
+  const G = require('./googleImagens');
+  const fetcher = async (url, o) => { assert.ok(/real-time-image-search/.test(url) && o.headers['x-rapidapi-key'] !== undefined); return { status: 200, ok: true, text: async () => JSON.stringify({ status: 'OK', data: [
+    { url: 'https://exame.com/img/loja-vaca.jpg', title: 'Loja da Vaca Mimosa', source: 'Exame', source_url: 'https://exame.com/x', width: 1600, height: 1000 },
+    { url: 'https://media.gettyimages.com/foto.jpg', title: 'Getty', width: 2000, height: 1300 },
+    { url: 'https://scontent.cdninstagram.com/a.jpg', title: 'Insta', width: 1080, height: 1350 },
+    { url: 'https://site.com/pequena.jpg', title: 'Pequena', width: 400, height: 300 },
+  ] }) }; };
+  const r = await G.buscar('Vaca Mimosa loja', { fetcher });
+  assert.deepStrictEqual(r.map((x) => x.url), ['https://exame.com/img/loja-vaca.jpg']);
+  await assert.rejects(G.buscar('x', { fetcher: async () => ({ status: 403, ok: false, text: async () => 'You are not subscribed to this API.' }) }), (e) => e.semAssinatura === true);
+  // na etapa de fotos
+  const FC = require('./fotosCandidatas');
+  novo();
+  const c = { id: 'c_g', top: { angulo: { marca: 'Vaca Mimosa' }, entrada: {}, fotos_marca_estado: { fase: 'google', tentadas: [], falhas: [] }, fotos_candidatas: [], versoes: [{ capas: [{ texto: 'Capa' }], telas: [] }], escolha: { versao: 0, capas: [0] } }, fonte_principal: {} };
+  const consultas = [];
+  const ctx = { restante: () => 60000, ia: async () => ({ dados: { slides: [] } }), deps: { google: { buscar: async (q) => { consultas.push(q); return q === 'Vaca Mimosa loja' ? [{ url: 'https://exame.com/img/loja-vaca.jpg', titulo: 'Loja da Vaca Mimosa', pagina: 'https://exame.com/x', fonte: 'Exame' }] : []; } }, carregar: async (url) => ({ status: 200, url_final: url, corpo: await foto(url) }), visao: null, ocr: async () => '', fotosDaMarca: async () => [], fotoDe: async () => null, fotosDoConceito: async () => [], buscarFoto: async () => { throw new Error('sem'); } } };
+  const io = { salvarArquivo: async () => {}, lerArquivo: async () => null, slots: 1 };
+  await FC.etapa(c, ctx, io);
+  assert.deepStrictEqual(consultas, ['Vaca Mimosa loja', 'Vaca Mimosa']);
+  const g = c.top.fotos_candidatas.find((x) => x.origem === 'google');
+  assert.ok(g && g.pagina === 'https://exame.com/x');
+  assert.match(FC.metaDe(c, g, null).licenca, /Google Imagens \(Exame\)/);
+});
