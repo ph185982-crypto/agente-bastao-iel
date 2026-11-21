@@ -29,7 +29,7 @@ const sha = (s) => crypto.createHash('sha1').update(String(s)).digest('hex').sli
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const compacto = (s) => norm(s).replace(/[^a-z0-9]/g, '');
 const umaLinha = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
-const OFICIAIS = ['pedro', 'instagram', 'materia'];
+const OFICIAIS = ['pedro', 'instagram', 'materia', 'google'];
 // Post de promoção no Instagram da marca é arte com texto (preço, "Black", "últimos dias"), não foto do negócio.
 const PROMO = /(promo[çc][ãa]o|alerta|aten[çc][ãa]o|[úu]ltim[oa]s? (dias|semana|chance)|black (friday|november)|cupom|desconto|% ?off|imperd[íi]vel|sorteio|garant[ae] (j[áa]|o seu)|s[óo] (hoje|at[ée]))/i;
 const ESPERA_IG_MAX = 6 * 3600e3; // espera a cota da Meta voltar por até 6 h antes de seguir sem o Instagram oficial
@@ -156,7 +156,7 @@ function emComum(slide, cand, fora) {
   const ts = tokens(slide.texto, fora); const tc = tokens(`${cand.descricao || ''} ${(cand.tags || []).join(' ')}`, fora);
   return ts.filter((a) => tc.some((b) => parecidas(a, b)));
 }
-const BONUS = { pedro: 3, instagram: 1, materia: 0.5, commons: 0, pexels: -0.5 };
+const BONUS = { pedro: 3, instagram: 1, materia: 0.5, google: 0.8, commons: 0, pexels: -0.5 };
 const nota = (slide, cand, fora) => emComum(slide, cand, fora).length * 2 + (cand.impacto ?? 5) / 5 + (BONUS[cand.origem] || 0) - (cand.baixa_resolucao ? 2 : 0);
 const usavel = (x) => !x.descartada;
 
@@ -216,11 +216,12 @@ function validarCasamento(slides, candidatas, resposta, { marca = '' } = {}) {
 }
 
 // ── Fases ──────────────────────────────────────────────────────────────────────
-const FASES = ['enviadas', 'instagram', 'materia', 'baixar', 'commons', 'descrever', 'casar', 'lacunas', 'aplicar', 'pronto'];
+const FASES = ['enviadas', 'instagram', 'materia', 'google', 'baixar', 'commons', 'descrever', 'casar', 'lacunas', 'aplicar', 'pronto'];
 
 function metaDe(c, cand, ig) {
   const marca = c.top.angulo?.marca || c.top.entrada?.marca || 'a marca'; const veiculo = c.fonte_principal?.veiculo || 'a matéria';
   if (cand.origem === 'instagram') return { id: cand.id, tipo: 'foto_divulgacao', origem: cand.permalink || `https://www.instagram.com/${ig?.handle || ''}/`, url_imagem: cand.url, autor: ig?.handle ? `@${ig.handle}` : null, licenca: `Divulgação/${marca} (perfil oficial${ig?.handle ? ` @${ig.handle}` : ''} no Instagram)`, exige_credito: false, alt: umaLinha(cand.descricao || cand.legenda || `Foto do perfil oficial de ${marca}`, 240) };
+  if (cand.origem === 'google') return { id: cand.id, tipo: 'foto_divulgacao', origem: cand.pagina || cand.url, url_imagem: cand.url, autor: null, licenca: `Foto de imprensa/divulgação encontrada no Google Imagens${cand.fonte ? ` (${cand.fonte})` : ''}`, exige_credito: false, alt: umaLinha(cand.descricao || cand.legenda || `Foto de ${marca}`, 240) };
   if (cand.origem === 'materia') return { id: cand.id, tipo: 'foto_divulgacao', origem: c.fonte_principal?.url_final || c.fonte_principal?.url || cand.url, url_imagem: cand.url, autor: null, licenca: cand.credito === 'divulgacao' ? `Divulgação/${marca} (publicada em ${veiculo})` : `Imagem de compartilhamento da matéria (${veiculo}); crédito não informado na página`, exige_credito: false, alt: umaLinha(cand.descricao || cand.legenda || `Foto de ${marca}`, 240) };
   return { ...(cand.meta || {}), id: cand.id };
 }
@@ -293,6 +294,22 @@ async function etapa(c, ctx, { salvarArquivo, lerArquivo, slots }) {
           st.materia = { achadas: achadas.length };
           st.fila = [...achadas.map((x) => ({ id: `mat_${sha(x.url)}`, origem: 'materia', url: x.url, legenda: x.legenda, credito: x.credito })), ...(st.fila || [])];
         } catch (e) { st.materia = { erro: String(e.message).slice(0, 120) }; }
+      }
+    } else if (fase === 'google') {
+      // Google Imagens: fotos reais da marca (ou da pessoa, no "Quem é ele?") em sites de notícia e da própria marca
+      const G = d.google || require('./googleImagens');
+      if (marca && (d.google || G.disponivel()) && !st.tentadas.includes('google')) {
+        if (!tempo(20000)) return { concluida: false };
+        st.tentadas.push('google');
+        const fundador = c.top.angulo?.fundador;
+        const consultas = c.top.entrada?.estilo === 'revelacao' ? [marca, `${marca} evento`] : [`${marca} loja`, marca, ...(fundador ? [fundador] : [])];
+        const achadas = [];
+        for (const q of consultas) {
+          try { achadas.push(...(await G.buscar(q)).slice(0, 8)); } catch (e) { st.falhas.push(String(e.message).slice(0, 160)); if (e.cota || e.semAssinatura) break; }
+        }
+        const vistos = new Set((st.fila || []).map((x) => x.url));
+        st.google = { achadas: achadas.length };
+        st.fila = [...(st.fila || []), ...achadas.filter((x) => !vistos.has(x.url) && vistos.add(x.url)).slice(0, 14).map((x) => ({ id: `gg_${sha(x.url)}`, origem: 'google', url: x.url, legenda: x.titulo, pagina: x.pagina, fonte: x.fonte }))];
       }
     } else if (fase === 'baixar') {
       while ((st.fila || []).length && C.length < MAX_CANDIDATAS) {

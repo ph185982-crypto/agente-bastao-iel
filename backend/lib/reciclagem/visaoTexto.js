@@ -10,6 +10,8 @@ const MODELOS = [
   { provedor: 'groq', env: 'GROQ_API_KEY', base: 'https://api.groq.com/openai/v1', modelos: [], descobrir: (m) => /llama-4|vision|scout|maverick|-vl/i.test(m.id) },
   { provedor: 'openrouter', env: 'OPENROUTER_API_KEY', base: 'https://openrouter.ai/api/v1', modelos: [], descobrir: (m) => (m.architecture?.input_modalities || []).includes('image') && /:free$/.test(m.id) },
   { provedor: 'gemini', env: 'GEMINI_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta/openai', modelos: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'], descobrir: (m) => /flash/i.test(m.id) && !/image|tts|audio|live|embed/i.test(m.id) },
+  // Mesma API do Gemini com a outra chave do Google (GOOGLE_API_KEY): reserva quando a GEMINI_API_KEY é recusada (403, 21/11).
+  { provedor: 'gemini_google', env: 'GOOGLE_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta/openai', modelos: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'], descobrir: (m) => /flash/i.test(m.id) && !/image|tts|audio|live|embed/i.test(m.id) },
   // Último recurso, PAGO (autorizado com teto mensal em gastoIa): só quando nenhum gratuito com visão responde.
   // Uma imagem custa frações de centavo; o gasto entra no registro e respeita o teto do mês.
   { provedor: 'openai', env: 'OPENAI_API_KEY', base: 'https://api.openai.com/v1', modelos: ['gpt-5.4-mini'], pago: true, descobrir: () => false },
