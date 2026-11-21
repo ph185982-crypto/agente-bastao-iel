@@ -3,8 +3,8 @@ const OpenAI = require('openai');
 // ── Provedores de IA ──────────────────────────────────────────────────────────
 // A ordem abaixo é a ordem de tentativa. Só entra na fila o provedor que tiver
 // chave configurada — então dá pra rodar só com o Groq e ir somando reforços.
-// Todos os provedores acima da OpenAI têm free tier; a OpenAI (única paga) fica
-// por último e só é usada se nenhum gratuito responder.
+// Groq, Gemini, Cerebras e OpenRouter têm free tier; depois vem o DeepSeek (barato, pago por token) e,
+// por último, a OpenAI (paga), usada só se nenhum outro responder.
 const PROVIDERS = [
   {
     name: 'groq',
@@ -43,6 +43,17 @@ const PROVIDERS = [
     discoverFilter: (id) => id.endsWith(':free'),
   },
   {
+    // DeepSeek (pedido do Pedro, 21/11): reserva BARATA depois das gratuitas. Pago por token (preço em gastoIa.js), entra no
+    // mesmo teto mensal da IA paga; sem raciocínio ("thinking" desligado) para responder rápido e gastar menos. IA_DEEPSEEK=0 desliga.
+    name: 'deepseek',
+    envKey: 'DEEPSEEK_API_KEY',
+    baseURL: 'https://api.deepseek.com',
+    large: ['deepseek-flash'],
+    small: ['deepseek-flash'],
+    barato: true,
+    discover: false,
+  },
+  {
     name: 'openai',
     envKey: 'OPENAI_API_KEY',
     baseURL: undefined, // default da SDK
@@ -76,7 +87,7 @@ function clientFor(provider) {
 // usam direto (transcrição, imagens), que têm controle próprio.
 const openaiLigada = () => process.env.IA_OPENAI === '1';
 function availableProviders() {
-  return PROVIDERS.filter(p => !!process.env[p.envKey] && (!p.paid || openaiLigada()));
+  return PROVIDERS.filter(p => !!process.env[p.envKey] && (!p.paid || openaiLigada()) && !(p.barato && process.env.IA_DEEPSEEK === '0'));
 }
 
 // Usado pelas rotas para checar se dá pra chamar a IA, sem amarrar em um
@@ -104,7 +115,7 @@ function errorScope(err, provider) {
     if (/image_url|image.*content|vision|multimodal/i.test(`${code} ${msg}`)) return 'model';
     return 'fatal'; // 400 de verdade (payload malformado) — não adianta insistir
   }
-  if (status === 401 || status === 403) return 'provider'; // chave inválida/sem acesso
+  if (status === 401 || status === 403 || status === 402) return 'provider'; // chave inválida/sem acesso/sem saldo (DeepSeek: 402)
   // Gemini devolve 503 "model is overloaded" por MODELO: o próximo modelo do mesmo provedor costuma responder.
   if (status === 503 && provider?.name === 'gemini') return 'model';
   // Groq reports quotas per model. A full quota on 120B does not mean the
@@ -193,7 +204,7 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
   // texto do raciocínio na resposta. Se o provedor recusar o parâmetro, repete sem.
   const { esforco, preferirMelhor, pago, etapa, ...base0 } = opts || {};
   let base = base0;
-  const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : /^gemini-3/i.test(model) ? { reasoning_effort: 'low' } : {};
+  const extra = /gpt-oss/i.test(model) ? { reasoning_effort: esforco || 'low', include_reasoning: false } : /^gemini-3/i.test(model) ? { reasoning_effort: 'low' } : provider.name === 'deepseek' ? (esforco === 'alto' ? { reasoning_effort: 'low' } : { thinking: { type: 'disabled' } }) : {};
   // Modelos de raciocínio da OpenAI (gpt-5.x, o*): sem temperature e com max_completion_tokens (o raciocínio também
   // consome tokens de saída, por isso a folga).
   if (provider.name === 'openai' && /^(gpt-5|o\d)/i.test(model)) {
@@ -207,7 +218,7 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
   try {
     res = await client.chat.completions.create({ ...base, ...extra, model }, requestOptions);
   } catch (err) {
-    if (Object.keys(extra).length && err?.status === 400 && /reasoning|prompt_cache_key/i.test(err?.message || '')) res = await client.chat.completions.create({ ...base, model }, requestOptions);
+    if (Object.keys(extra).length && err?.status === 400 && /reasoning|prompt_cache_key|thinking/i.test(err?.message || '')) res = await client.chat.completions.create({ ...base, model }, requestOptions);
     else throw err;
   }
   _lastGood[nivel(opts?.model)] = { provider: provider.name, model };
@@ -215,19 +226,20 @@ async function tryModel(provider, model, opts, requestOptions, cont) {
   // Quem usou a resposta pode registrar qual provedor/modelo a produziu.
   const u = res?.usage;
   // Toda chamada paga entra no registro de gasto (teto mensal em backend/lib/gastoIa.js).
-  if (provider.paid && u) { try { await require('./gastoIa').registrar(res?.model || model, u, { etapa: etapa || null }); } catch (e) { console.warn('[llm] gasto não registrado:', String(e.message).slice(0, 100)); } }
+  if ((provider.paid || provider.barato) && u) { try { await require('./gastoIa').registrar(res?.model || model, u, { etapa: etapa || null }); } catch (e) { console.warn('[llm] gasto não registrado:', String(e.message).slice(0, 100)); } }
   const tokens = u ? { entrada: u.prompt_tokens ?? null, saida: u.completion_tokens ?? null, total: u.total_tokens ?? null } : null;
-  try { Object.defineProperty(out, '__llm', { value: { provider: provider.name, model: res?.model || model, pago: !!provider.paid, tokens, tentativas_provedor: cont ? cont.n : 1 }, enumerable: false }); } catch { /* resposta congelada */ }
+  try { Object.defineProperty(out, '__llm', { value: { provider: provider.name, model: res?.model || model, pago: !!(provider.paid || provider.barato), tokens, tentativas_provedor: cont ? cont.n : 1 }, enumerable: false }); } catch { /* resposta congelada */ }
   return out;
 }
 
 // Percorre provedores × modelos até um responder.
 async function cascade(opts, requestOptions) {
   // OpenAI (paga) só entra se houver orçamento no mês e a etapa não for das que nunca pagam (pago: 'nunca').
+  // DeepSeek (barato) entra mesmo nas etapas 'nunca' (o Pedro pediu para usá-lo), mas também para no teto do mês.
   let providers = availableProviders();
-  if (providers.some((p) => p.paid)) {
+  if (providers.some((p) => p.paid || p.barato)) {
     let orcamento = true; try { orcamento = await require('./gastoIa').podeGastar(); } catch { orcamento = false; }
-    if (!orcamento || opts.pago === 'nunca') providers = providers.filter((p) => !p.paid);
+    providers = providers.filter((p) => (p.paid ? orcamento && opts.pago !== 'nunca' : p.barato ? orcamento : true));
   }
   const cont = { n: 0 };
   if (!providers.length) throw new Error('Nenhuma chave de IA configurada (GROQ_API_KEY, GEMINI_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY ou OPENAI_API_KEY)');
@@ -367,7 +379,7 @@ function friendlyErrorMessage(err) {
 
 // Modelos FORTES o bastante para escrever o carrossel (ângulo, roteiro, júri). Os demais (qwen 27B, llama 8B, gemma 12B…)
 // servem para tarefas simples; para texto do Pedro, melhor esperar a cota voltar do que publicar texto raso.
-const FORTES = [/^gpt-5/, /^gpt-4\.1$/, /^gpt-4o$/, /^o\d/, /gemini-2\.5-(pro|flash)$/, /^gemini-3\.\d+-(flash|pro)(-preview)?$/, /gpt-oss-120b/, /llama-3\.3-70b/, /llama-4-(maverick|scout)/, /deepseek-(chat|r1)/, /qwen3-235b/, /kimi-k2/];
+const FORTES = [/^gpt-5/, /^gpt-4\.1$/, /^gpt-4o$/, /^o\d/, /gemini-2\.5-(pro|flash)$/, /^gemini-3\.\d+-(flash|pro)(-preview)?$/, /gpt-oss-120b/, /llama-3\.3-70b/, /llama-4-(maverick|scout)/, /deepseek-(chat|r1|flash|v4)/, /qwen3-235b/, /kimi-k2/];
 const modeloForte = (model) => FORTES.some((r) => r.test(String(model || '')));
 // "Premium ligada" = existe algum provedor com modelo forte configurado (OpenAI com crédito, Gemini, Groq, Cerebras…).
 // IA_PREMIUM=0 desliga a exigência e aceita qualquer modelo.
