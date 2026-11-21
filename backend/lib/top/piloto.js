@@ -221,6 +221,7 @@ async function passoFrases(cfg, est, r, { agora, dia, deps, restante }) {
   est.frases_dia = { dia, n: tentativas + 1 };
   try {
     const f = await (deps.frases || ((n, o) => require('../frases').produzir(n, o)))(Math.min(5, meta - feitas), { agora });
+    for (const c of f.criados) (r.novos_prontos ||= []).push(`Frase de ${c.autor || 'autor famoso'}`);
     for (const c of f.criados) est.criados.push({ id: c.id, dia, em: new Date(agora).toISOString(), titulo: c.frase.slice(0, 120), estado: 'concluida', formato: 'frase', linha: 'frase' });
     r.frases = { criadas: f.criados.length, barradas: f.barradas.length };
   } catch (e) { r.avisos.push(`Frases falharam: ${String(e.message).slice(0, 120)}`); }
@@ -341,8 +342,10 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
   for (const x of est.criados.filter((y) => y.estado === 'em_andamento')) {
     if (restante() < 16000) break;
     try {
+      const antes = x.estado;
       const p = await (deps.passo || T.passo)(x.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) });
       x.estado = p.conteudo.top.estado; x.nota = p.conteudo.top.escolha?.nota ?? null; r.avancados.push({ id: x.id, estado: x.estado });
+      if (antes !== 'concluida' && x.estado === 'concluida') (r.novos_prontos ||= []).push(String(p.conteudo.titulo || x.titulo || '').slice(0, 90));
       if (p.conteudo.top.cota_dia && p.conteudo.top.adiar_ate) est.ia_pausa_ate = p.conteudo.top.adiar_ate;
       // IA gratuita sem cota por pelo menos 1 h: avisa uma vez por dia, de dia.
       if (p.conteudo.top.cota_dia && p.conteudo.top.adiar_ate && est.aviso_cota_dia !== dia && hora >= '08:00' && hora <= '21:30' && Date.parse(p.conteudo.top.adiar_ate) - agora >= 50 * 60000) {
@@ -435,6 +438,15 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
   }
   // 5) Roteiros de Reels: roteirista + fiscal avançam com o tempo que sobrou (IA gratuita; nada é publicado).
   if (!iaPausada) await passoRoteiros(cfg, est, r, { agora, dia, hora, deps, restante });
+  // Aviso no celular a cada conteúdo novo pronto (pedido do Pedro, 21/11). De madrugada (antes das 07:00 e depois das 22:30)
+  // acumula e avisa de uma vez na primeira rodada do dia.
+  const novos = [...(est.aviso_novos || []), ...(r.novos_prontos || [])];
+  if (novos.length && hora >= '07:00' && hora <= '22:30') {
+    est.aviso_novos = [];
+    const corpo = novos.length === 1 ? `Novo conteúdo pronto para publicar: ${novos[0]}` : `${novos.length} conteúdos novos prontos para publicar: ${novos.slice(0, 2).join(' · ')}${novos.length > 2 ? '…' : ''}`;
+    await (deps.notificar || ((o) => require('../push').notificar(o)))({ corpo: corpo.slice(0, 180), tag: `piloto-novo-${agora}`, n: novos.length }).catch(() => {});
+    r.avisou_novos = novos.length;
+  } else if (novos.length) est.aviso_novos = novos.slice(-40);
   r.proxima_em = proximaAcao(cfg, est, { agora, dia, hora, removidos, semPauta: !!r.sem_pauta });
   est.ultima_rodada = { ...r, avisos: r.avisos.slice(0, 6) };
   await gravarRodada(est, removidos);

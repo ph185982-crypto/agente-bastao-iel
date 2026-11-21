@@ -317,3 +317,19 @@ test('Quem é ele?: pauta de pessoa famosa com dinheiro vira formato marca com e
   assert.strictEqual(r.criado.linha, 'revelacao');
   assert.strictEqual(Pi.tipoDe({ linha: 'revelacao', formato: 'marca' }), 'revelacao');
 });
+
+test('aviso no celular a cada conteúdo novo pronto; de madrugada acumula e avisa às 7h', async () => {
+  novo(); const avisos = [];
+  const base = { descobrir: async () => ({ pautas: [] }), iaMarcas: async () => ({ dados: { itens: [] } }), notificar: async (o) => { avisos.push(o); } };
+  // madrugada: 2 frases prontas, sem aviso
+  await Pi.rodada({ agora: SP('2026-11-23', '05:00'), deps: { ...base, frases: async () => ({ criados: [{ id: 'f1', frase: 'x', autor: 'Walt Disney' }, { id: 'f2', frase: 'y', autor: 'Steve Jobs' }], barradas: [] }) } });
+  assert.ok(!avisos.some((a) => /pronto/.test(a.corpo)));
+  // 7h: um carrossel em produção fica pronto → um aviso com os 3
+  const est = (await arm.armazem().config.obter(ACCOUNT.ig_id)).piloto_estado;
+  est.criados.push({ id: 'c9', dia: '2026-11-23', em: new Date(SP('2026-11-23', '06:00')).toISOString(), titulo: 'Carrossel X', estado: 'em_andamento', linha: 'noticia' });
+  await arm.armazem().config.salvar(ACCOUNT.ig_id, { piloto_estado: { ...est, rodando_ate: null } });
+  const r = await Pi.rodada({ agora: SP('2026-11-23', '07:05'), deps: { ...base, frases: async () => ({ criados: [], barradas: [] }), passo: async () => ({ conteudo: { titulo: 'Carrossel X', top: { estado: 'concluida' } } }) } });
+  assert.strictEqual(r.avisou_novos, 3);
+  const a = avisos.find((x) => /prontos para publicar/.test(x.corpo));
+  assert.match(a.corpo, /^3 conteúdos novos prontos para publicar: Frase de Walt Disney · Frase de Steve Jobs…/);
+});
