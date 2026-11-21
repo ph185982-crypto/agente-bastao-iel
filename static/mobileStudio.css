@@ -25,3 +25,4 @@
 .st-review-card{overflow:clip!important}/* overflow:hidden desligava o "sticky" da barra de decisão */
 @media(max-width:760px){.st-carousel-toolbar{padding-top:4px}.st-carousel-toolbar button{height:32px!important;width:38px!important}.st-dots{padding:2px 10px}}
 @media(max-width:760px){.st-carousel-toolbar{display:none!important}.st-decisao .st-agenda-nota{display:none}.st-decisao .st-decisionbar{padding:8px 0 6px}.st-decisao .st-approve,.st-decisao .st-reject,.st-decisao .st-agendar{min-height:46px!important}}
+@media(max-width:760px){.st-carousel img{max-height:44vh}.st-decisao .st-decisionbar.st-decisionbar-top{grid-template-columns:1.25fr 1fr 1fr!important;gap:6px}.st-decisao .st-decisionbar-top .st-approve{grid-column:auto!important;order:0!important}.st-decisao .st-decisionbar-top button{font-size:12px!important;padding:8px 6px!important;min-height:44px!important}.st-decisao .st-inline-error{font-size:11px;padding:4px 0;line-height:1.4}}
