@@ -20,7 +20,7 @@ function parecida(a, b) {
 }
 
 // Fiscal em código: devolve { ok: [...], barradas: [{ frase, motivo }] }.
-function fiscal(lote, historico = [], { notaMin = 8 } = {}) {
+function fiscal(lote, historico = [], { notaMin = 8.5 } = {}) {
   const AI = require('./mentes/antiIA');
   const ok = []; const barradas = [];
   for (const it of lote || []) {
@@ -30,6 +30,8 @@ function fiscal(lote, historico = [], { notaMin = 8 } = {}) {
       : f.length < 25 || n < 5 ? 'curta demais'
       : f.length > 140 || n > 24 ? 'longa demais para ler num story'
       : /#|@|https?:|\p{Extended_Pictographic}/u.test(f) ? 'tem hashtag, @, link ou emoji'
+      : /["“”«»]/.test(f) ? 'tem aspas'
+      : /\b\d+\s?h\b|\b(acordei|acordar|hoje eu|ontem)\b/i.test(f) ? 'relato do dia, não verdade geral'
       : CLICHES.some((re) => re.test(f)) ? 'clichê de coach'
       : AI.vicios(f).length ? `cara de IA (${AI.vicios(f)[0].nome})`
       : Number(it?.nota) < notaMin ? `nota ${it?.nota} abaixo de ${notaMin}`
@@ -45,7 +47,9 @@ Regras:
 - Uma ideia por frase, de 8 a 22 palavras. Português do Brasil falado, direto, sem rima e sem palavra difícil.
 - Verdade dura e específica sobre dinheiro, trabalho, vender, disciplina e começar do zero. Cena concreta do dia a dia (boleto, cliente, segunda-feira, primeiro emprego, loja vazia, família) vale mais que abstração.
 - Proibido: clichê de coach (zona de conforto, acredite nos seus sonhos, nunca desista, melhor versão, mindset, universo, gratidão), a fórmula "não é X, é Y", travessão, emoji, hashtag e aspas.
-- Varie o formato: afirmação curta, contraste do antes e depois, conselho em segunda pessoa, confissão em primeira pessoa.
+- A frase precisa valer para QUALQUER pessoa que trabalha: uma verdade que ela lê e pensa "é isso". Relato do dia do Pedro ("acordei às 5h e fechei a planilha"), lista de tarefas e frase com número solto não servem.
+- Padrão bom: "Cliente some quando você some." / "Preço baixo atrai quem vai embora pelo próximo centavo." / "Ninguém vê o seu esforço até o dia em que o resultado aparece na conta." / "Quem não anota o que vende trabalha no escuro."
+- Varie o formato: afirmação curta, contraste do antes e depois, conselho em segunda pessoa.
 - "nota" de 0 a 10: quanto alguém comum mandaria para um amigo ou repostaria. Seja duro.
 - "fundo": 2 a 4 palavras em INGLÊS para uma foto de fundo calma e bonita que combine (ex.: "city night lights", "empty road sunrise", "coffee desk morning"). Sem pessoas em close.
 Responda só JSON: {"frases":[{"frase":"","tema":"","nota":0,"fundo":""}]}`;
@@ -58,7 +62,7 @@ async function produzir(n, { deps = {}, agora = Date.now() } = {}) {
   const hist = await historico(a);
   const temas = [...TEMAS].sort(() => (deps.sortear || Math.random)() - 0.5).slice(0, 4);
   const pedir = deps.ia || ((args) => require('./llmJson').pedirJson(args));
-  const r = await pedir({ sistema: SISTEMA, usuario: `Escreva ${Math.min(12, n * 2)} frases novas. Temas de hoje: ${temas.join(', ')}.\nNÃO repita nem parafraseie estas já usadas:\n${hist.slice(-60).map((h) => `- ${h}`).join('\n') || '(nenhuma)'}`, maxTokens: 2200, temperatura: 0.9, etapa: 'frases' });
+  const r = await pedir({ sistema: SISTEMA, usuario: `Escreva ${Math.min(12, n * 2)} frases novas. Temas de hoje: ${temas.join(', ')}.\nNÃO repita nem parafraseie estas já usadas:\n${hist.slice(-60).map((h) => `- ${h}`).join('\n') || '(nenhuma)'}`, maxTokens: 2200, temperatura: 0.85, etapa: 'frases' });
   const { ok, barradas } = fiscal(r?.dados?.frases, hist);
   const criados = []; const fotos = [];
   const criar = deps.criarFrase || require('./formatosCarrossel').criarFrase;

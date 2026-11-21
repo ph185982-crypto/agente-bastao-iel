@@ -16,12 +16,14 @@ test('fiscal: barra clichê de coach, cara de IA, tamanho, emoji/hashtag, nota b
     { frase: 'Vende.', nota: 9 },
     { frase: 'Cliente novo chega quando você aparece todo dia #foco', nota: 9 },
     { frase: 'Loja vazia na segunda ensina mais que curso caro.', nota: 6 },
+    { frase: 'Troquei a desculpa de “não tem cliente” por trabalho de rua.', nota: 9 },
+    { frase: 'Acordar às 5h e fechar a planilha mudou meu caixa.', nota: 9 },
     { frase: 'O boleto não espera você ficar motivado.', nota: 9 },
     { frase: 'Quem cobra barato pra fechar vai trabalhar o dobro pra pagar as contas.', nota: 8.5 },
   ], ['Quem cobra barato pra fechar trabalha o dobro pra pagar as contas.']);
   assert.deepStrictEqual(r.ok.map((x) => x.frase), ['O boleto não espera você ficar motivado pra vencer.']);
   assert.deepStrictEqual(r.ok[0].fundo, 'city night lights');
-  assert.deepStrictEqual(r.barradas.map((x) => x.motivo.split(' (')[0]), ['clichê de coach', 'cara de IA', 'curta demais', 'tem hashtag, @, link ou emoji', 'nota 6 abaixo de 8', 'parecida com uma frase já feita', 'parecida com uma frase já feita']);
+  assert.deepStrictEqual(r.barradas.map((x) => x.motivo.split(' (')[0]), ['clichê de coach', 'cara de IA', 'curta demais', 'tem hashtag, @, link ou emoji', 'nota 6 abaixo de 8.5', 'tem aspas', 'relato do dia, não verdade geral', 'parecida com uma frase já feita', 'parecida com uma frase já feita']);
 });
 
 test('produzir: cada frase aprovada vira um post de 1 imagem na fila de aprovação, com legenda para repostar e sem crédito', async () => {
