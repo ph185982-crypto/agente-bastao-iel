@@ -369,8 +369,9 @@ async function coletarAlgumas({ deps = {}, n = null, agora = Date.now() } = {}) 
     // Freio pela cota que a Meta informa nos cabeçalhos.
     const u = (deps.uso || meta.uso || (() => ({})))(); const pct = u.pct;
     const limite = r.contas.some((c) => c.tipo === 'limite');
-    const proxN = limite || (pct != null && pct >= 60) ? 1 : pct != null && pct < 30 ? Math.min(5, qtd + 1) : qtd;
-    const pausa = limite || (pct != null && pct >= 85) ? new Date(agora + Math.max(10, u.regain_min || 0) * 60000).toISOString() : null;
+    const fr = require('../meta').freio(u);
+    const proxN = limite || fr.leve ? 1 : pct != null && pct < 30 ? Math.min(5, qtd + 1) : qtd;
+    const pausa = limite || fr.pausar ? new Date(agora + Math.max(10, u.regain_min || 0) * 60000).toISOString() : null;
     await salvarEstado({ lidas_em: lidas, leve_ate: null, leve_n: proxN, leve_rodadas: rodada, leve_pausa_ate: pausa, hashtag_ids: ids, hashtags_em: tagsEm,
       ...(erroTag ? { hashtag_bloqueio_ate: new Date(agora + 86400000).toISOString(), hashtag_erro: erroTag } : tag ? { hashtag_erro: null } : {}),
       ultima_leve: { em: iso(agora), contas: r.contas.map((c) => ({ handle: c.handle, ok: c.ok })), hashtag: tag, erro_hashtag: erroTag, uso_meta_pct: pct, proximas: proxN, novos: g.novos } });

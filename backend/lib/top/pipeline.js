@@ -53,25 +53,28 @@ const MODOS = ['opiniao', ...PROPRIOS];
 // "Por trás da marca": fotos enviadas pelo Pedro (uma por slide, na ordem) — só links http(s) públicos; o download passa
 // pelo safeFetch na etapa de foto. Nome da marca e foco são opcionais (a IA descobre a marca pela matéria).
 const MAX_FOTOS_MARCA = 8;
-function entradaMarca({ marca = null, fotos = null, foco = null } = {}) {
+function entradaMarca({ marca = null, fotos = null, foco = null, instagram = null } = {}) {
   const lista = fotos == null ? [] : Array.isArray(fotos) ? fotos : [fotos];
   if (lista.length > MAX_FOTOS_MARCA) throw erro(`Envie no máximo ${MAX_FOTOS_MARCA} fotos (uma por slide).`, 'ENTRADA');
   const { validaUrl } = require('../safeFetch');
   const ok = lista.map((f) => { try { return validaUrl(String(f || '')).toString(); } catch { throw erro(`Foto com link inválido: ${String(f || '').slice(0, 80)}`, 'ENTRADA'); } });
-  return { marca: String(marca || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || null, fotos: ok, foco: String(foco || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 300) || null };
+  // @ do perfil oficial da marca no Instagram (opcional; sem ele a IA sugere e o business_discovery confere)
+  const ig = String(instagram || '').trim().replace(/^@/, '').toLowerCase();
+  if (ig && !/^[a-z0-9._]{2,30}$/.test(ig)) throw erro('Perfil do Instagram inválido (use só o @ da marca).', 'ENTRADA');
+  return { marca: String(marca || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || null, fotos: ok, foco: String(foco || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 300) || null, ...(ig ? { instagram: ig } : {}) };
 }
 
-async function criar({ url = null, texto = null, titulo = '', origem = 'manual', formato = null, modo = null, marca = null, fotos = null, foco = null } = {}) {
+async function criar({ url = null, texto = null, titulo = '', origem = 'manual', formato = null, modo = null, marca = null, fotos = null, foco = null, instagram = null } = {}) {
   const a = armazem(); if (!a?.duravel) throw erro('O carrossel precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
   const u = url ? require('../radar/pauta').urlValida(url) : null;
   if (url && !u) throw erro('Link inválido.', 'LINK_INVALIDO');
-  const em = formato === 'marca' ? entradaMarca({ marca, fotos, foco }) : null;
+  const em = formato === 'marca' ? entradaMarca({ marca, fotos, foco, instagram }) : null;
   const modoOk = MODOS.includes(modo) && formato !== 'marca' ? modo : null;
   if (!u && String(texto || '').trim().length < (PROPRIOS.includes(modoOk) ? 200 : 300)) throw erro(PROPRIOS.includes(modoOk) ? 'Escreva pelo menos 200 caracteres: a ferramenta só usa o que você contar.' : 'Envie o link da matéria ou cole um texto com pelo menos 300 caracteres.', 'ENTRADA');
   const fmt = FORMATOS.includes(formato) ? formato : (RETIRADOS.includes(formato) ? 'tweet' : null);
   // Post estático é um conteúdo `formato: 'estatico'` (1 ou 2 imagens); os demais continuam carrossel.
   const c = M.novoConteudo({ titulo: String(titulo || '').slice(0, 140) || (fmt === 'estatico' ? 'Post em preparação' : 'Carrossel em preparação'), origem: u ? { tipo: 'link', url: u } : { tipo: 'texto' }, formato: fmt === 'estatico' ? 'estatico' : 'carrossel' });
-  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modoOk, ...(em ? { marca: em.marca, fotos: em.fotos, foco: em.foco } : {}) }, tentativas: {}, erros: [], criado_em: agoraISO() };
+  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modoOk, ...(em ? { marca: em.marca, fotos: em.fotos, foco: em.foco, ...(em.instagram ? { instagram: em.instagram } : {}) } : {}) }, tentativas: {}, erros: [], criado_em: agoraISO() };
   await a.conteudos.salvar(conta(), c.id, c, 0);
   return c;
 }
@@ -493,15 +496,12 @@ E.foto = async (c, ctx) => {
   } catch (e) { c.top.aviso_foto = `A busca de foto falhou (${String(e.message).slice(0, 80)}): o carrossel sai só com as formas.`; }
 };
 
-// "Por trás da marca": uma foto por slide (capa + telas), nesta ordem de preferência:
-//  1) as fotos que o Pedro mandou (links, na ordem dos slides), baixadas pelo safeFetch; origem registrada como
-//     "fornecida pelo Pedro" (ele responde pelo direito de uso);
-//  2) fotos da marca e do fundador no Wikimedia Commons (só CC BY, CC0 ou domínio público; crédito na legenda);
-//  3) foto ilustrativa do Pexels (busca sugerida para cada tela);
-//  4) nenhuma: o slide sai com o fundo na cor da marca, desenhado pelo código.
-// A foto da própria matéria NUNCA entra sozinha (direito autoral do veículo): só se o Pedro mandar o link dela.
+// "Por trás da marca": uma foto por slide (capa + telas), escolhida pelo CONTEÚDO de cada slide (fotosCandidatas.js):
+// acervo de candidatas (fotos enviadas pelo Pedro, Instagram oficial da marca, fotos "Divulgação" da matéria, Commons
+// CC0/domínio público), descrição por IA com visão, casamento slide → foto por IA validado em código, lacunas pelo
+// Commons/Pexels e, sem nada, o fundo na cor da marca. As fotos do Pedro têm prioridade, mas vão no slide que combina.
 // O último slide leva a foto do Pedro (Perfil → Minhas histórias e casos), sem nenhuma alteração do rosto.
-// Retomável: com pouco tempo de função, grava o que já baixou e continua no próximo passo.
+// Retomável: com pouco tempo de função, grava a fase e continua no próximo passo.
 async function fotosMarca(c, ctx) {
   const v = c.top.versoes[c.top.escolha.versao];
   { const k = v?.capas?.[c.top.escolha.capas?.[0] ?? 0]; const m = String(k?.mecanismo || '');
@@ -509,76 +509,22 @@ async function fotosMarca(c, ctx) {
   const slots = 1 + v.telas.length;
   c.top.fotos_marca ||= {};
   const st = (c.top.fotos_marca_estado ||= { tentadas: [], falhas: [] });
-  const feito = (k) => st.tentadas.includes(k); const marcar = (k) => { if (!feito(k)) st.tentadas.push(k); };
-  const livres = () => [...Array(slots).keys()].filter((i) => !c.top.fotos_marca[i]);
-  const usadas = () => Object.values(c.top.fotos_marca).filter(Boolean);
-  const guardar = async (i, f) => {
-    await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg');
-    c.imagens = [...(c.imagens || []).filter((x) => x.id !== f.meta.id), f.meta];
-    if (i != null) c.top.fotos_marca[i] = f.meta.id;
-  };
-  const tempo = () => ctx.restante() > 12000;
+  const salvarArquivo = (k, dados) => armazem().arquivos.salvar(conta(), k, dados, 'image/jpeg');
+  const lerArquivo = async (k) => (await armazem().arquivos.obter(conta(), k))?.dados || null;
   // último slide: a foto do Pedro
-  if (!feito('pedro')) {
+  if (!st.tentadas.includes('pedro')) {
     try {
       const f = await (ctx.deps.fotoPedro || (() => require('../fotosPedro').proxima()))();
-      if (f) { await guardar(null, f); c.top.foto_pedro_id = f.meta.id; c.top.foto_do_pedro = true; }
+      if (f) { await salvarArquivo(`img:${f.meta.id}`, f.dados); c.imagens = [...(c.imagens || []).filter((x) => x.id !== f.meta.id), f.meta]; c.top.foto_pedro_id = f.meta.id; c.top.foto_do_pedro = true; }
     } catch { /* sem foto dele: retrato provisório */ }
     if (!c.top.foto_pedro_id) c.top.aviso_foto = 'Sem foto sua em Perfil → Minhas histórias e casos: o último slide sai com um retrato provisório. Envie uma foto e refaça as prévias.';
-    marcar('pedro');
+    st.tentadas.push('pedro');
   }
-  // 1) fotos enviadas pelo Pedro
-  const links = (c.top.entrada?.fotos || []).slice(0, slots);
-  for (const [i, url] of links.entries()) {
-    if (feito(`link:${i}`)) continue;
-    if (!tempo()) return { concluida: false };
-    marcar(`link:${i}`);
-    try {
-      const carregar = ctx.deps.carregar || require('../safeFetch').safeFetch;
-      const img = await carregar(url, { maxBytes: 8 * 1024 * 1024, timeoutMs: 12000, tipos: [/^image\//], binario: true, accept: 'image/jpeg,image/png,image/webp' });
-      if (img.status !== 200) throw new Error(`o site respondeu ${img.status}`);
-      const dados = await require('sharp')(img.corpo, { limitInputPixels: 40e6 }).rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
-      const id = `dada_${crypto.createHash('sha1').update(url).digest('hex').slice(0, 12)}`;
-      await guardar(i, { dados, meta: { id, tipo: 'foto_fornecida', origem: img.url_final || url, url_enviada: url, autor: null, licenca: 'Fornecida pelo Pedro (ele responde pelo direito de uso)', exige_credito: false, fornecida_por: 'pedro', alt: `Foto ${i + 1} enviada pelo Pedro` } });
-    } catch (e) { st.falhas.push(`Foto ${i + 1} enviada não abriu (${String(e.message).slice(0, 80)}).`); }
-  }
-  // 2) Wikimedia Commons: fotos da marca e, se couber, do fundador
-  const marca = c.top.angulo?.marca || c.top.entrada?.marca || '';
-  if (livres().length && marca && !feito('commons')) {
-    if (!tempo()) return { concluida: false };
-    marcar('commons');
-    try {
-      const lista = await (ctx.deps.fotosDaMarca || require('./fotos').fotosDaMarca)(marca, { max: livres().length, excluir: usadas() });
-      for (const f of lista || []) { const i = livres()[0]; if (i == null) break; if (usadas().includes(f.meta.id)) continue; await guardar(i, f); }
-    } catch (e) { st.falhas.push(`Busca no Wikimedia Commons falhou (${String(e.message).slice(0, 60)}).`); }
-  }
-  const fundador = c.top.angulo?.fundador;
-  if (livres().length && fundador && !feito('fundador')) {
-    if (!tempo()) return { concluida: false };
-    marcar('fundador');
-    try {
-      const f = await (ctx.deps.fotoDe || require('./fotos').fotoDe)(fundador);
-      if (f && !usadas().includes(f.meta.id)) await guardar(livres().find((i) => i > 0) ?? livres()[0], f);
-    } catch { /* segue para o Pexels */ }
-  }
-  // 3) Pexels: foto ilustrativa da busca de cada slide
-  if (livres().length && (ctx.deps.buscarFoto || process.env.PEXELS_API_KEY)) {
-    const FS = require('../fotosStudio');
-    for (const i of livres()) {
-      if (feito(`pexels:${i}`)) continue;
-      const q = (i > 0 && v.telas[i - 1]?.imagem_busca) || c.top.angulo?.imagem?.busca || '';
-      if (!q) { marcar(`pexels:${i}`); continue; }
-      if (!tempo()) return { concluida: false };
-      marcar(`pexels:${i}`);
-      try {
-        const f = await (ctx.deps.buscarFoto || FS.buscarFoto)(q, { excluir: usadas() });
-        if (f && !usadas().includes(f.meta.id)) await guardar(i, { ...f, meta: { ...f.meta, exige_credito: false } });
-      } catch { /* este slide fica com a cor da marca */ }
-    }
-  }
-  // 4) o que sobrou sai com o fundo na cor da marca (código)
-  const semFoto = livres().length;
-  c.top.fotos_marca_resumo = { total: slots, com_foto: slots - semFoto, cor_da_marca: semFoto, falhas: st.falhas.slice(0, 6) };
+  const r = await require('./fotosCandidatas').etapa(c, ctx, { salvarArquivo, lerArquivo, slots });
+  if (r?.concluida === false) return r;
+  const semFoto = [...Array(slots).keys()].filter((i) => !c.top.fotos_marca[i]).length;
+  const C = c.top.fotos_candidatas || [];
+  c.top.fotos_marca_resumo = { total: slots, com_foto: slots - semFoto, cor_da_marca: semFoto, candidatas: C.length, descartadas: C.filter((x) => x.descartada).length, instagram: st.ig?.handle ? `@${st.ig.handle}` : null, visao: st.visao || null, falhas: st.falhas.slice(0, 6) };
   if (st.falhas.length) c.top.aviso_foto = [c.top.aviso_foto, ...st.falhas.slice(0, 3)].filter(Boolean).join(' ').slice(0, 400);
 }
 
@@ -678,10 +624,7 @@ function legendaComFonte(c, texto, fonte, { paragrafos = false, fotos = [] } = {
   const corpo = paragrafos ? K.paragrafosDe(texto).map(limpa).filter(Boolean).join('\n\n') : limpa(texto);
   // foto do Wikimedia Commons com licença que exige crédito: o crédito vai na legenda
   const creditos = (c.imagens || []).filter((i) => fotos.includes(i.id) && i.exige_credito).map((i) => `Foto: ${i.autor} (${i.licenca}), via Wikimedia Commons.`);
-  // Fotos oficiais enviadas pelo Pedro (decisão de 21/11: fotos de divulgação das marcas, com crédito): "Fotos: Divulgação/<marca>".
-  const dadas = (c.imagens || []).some((i) => fotos.includes(i.id) && i.tipo === 'foto_fornecida');
-  const credDada = dadas ? `Fotos: ${String(c.top?.entrada?.credito_fotos || (c.top?.entrada?.marca || c.top?.angulo?.marca ? `Divulgação/${c.top?.entrada?.marca || c.top?.angulo?.marca}` : 'Divulgação')).slice(0, 80)}.` : '';
-  return [corpo, (semMateria(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`), ...creditos, credDada].filter(Boolean).join('\n\n').slice(0, 2000);
+  return [corpo, (semMateria(c) ? '' : `Fonte: ${fonte.veiculo || 'matéria'} (informações segundo a reportagem).`), ...creditos].filter(Boolean).join('\n\n').slice(0, 2000);
 }
 
 // Post estático: 1 slide (capa do tema tweet: headline + foto de gente) ou 2 (capa + "virar" com a prova/leitura e a chamada).
@@ -752,10 +695,9 @@ function montarVersaoMarca(c, v, { capa, fatosComNumeros, mapa, fonte }) {
   const motivo = (v.cta_motivo || 'pra ver a estratégia da próxima marca').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
   slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'marca_final', tema_visual: 'marca', titulo: FINAL_MARCA.titulo, texto: FINAL_MARCA.texto, cta: 'Segue o @pedro_destrava', cta_apoio: cta, claim_ids: [], ...(c.top.foto_pedro_id ? { imagem_id: c.top.foto_pedro_id } : {}), dados: { ...base } });
-  // créditos: Commons (licença que exige crédito) e Pexels; foto enviada pelo Pedro e a dele não levam crédito
-  const usadas = slides.map((s) => s.imagem_id).filter(Boolean);
-  const pexels = (c.imagens || []).filter((i) => usadas.includes(i.id) && i.tipo === 'ilustrativa' && i.autor).map((i) => i.autor);
-  const legenda = [legendaComFonte(c, v.legenda, fonte, { fotos: usadas }), pexels.length ? `Fotos ilustrativas: ${[...new Set(pexels)].join(', ')} (Pexels).` : ''].filter(Boolean).join('\n\n').slice(0, 2200);
+  // Sem linha de crédito de foto na legenda (decisão do Pedro, 21/11): só fotos que dispensam crédito entram (oficiais da
+  // marca, Commons CC0/domínio público, Pexels); origem e licença de cada uma ficam em c.imagens.
+  const legenda = legendaComFonte(c, v.legenda, fonte).slice(0, 2200);
   return { formato: 'marca', capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'por_tras_da_marca', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
 }
 
@@ -955,6 +897,85 @@ async function refazerPrevias(id, { deps = {}, forcar = false } = {}) {
   return { id, refeitas };
 }
 
+// ── "Por trás da marca": fotos candidatas e troca manual ─────────────────────────
+// Lista as candidatas (com miniatura) e a foto atual de cada slide, com o motivo da escolha.
+async function fotosDoCarrossel(id) {
+  const reg = await armazem().conteudos.obter(conta(), id);
+  if (!reg?.doc?.top) throw erro('Carrossel não encontrado.', 'NAO_ENCONTRADO', 404);
+  const c = reg.doc; if (!ehMarca(c)) throw erro('Só o formato "Por trás da marca" tem troca de foto por slide.', 'FORMATO', 409);
+  const FC = require('./fotosCandidatas'); const mini = (x) => `/api/sync/arquivos/${encodeURIComponent(`mini:${x}`)}`;
+  const slides = c.top.versoes?.[c.top.escolha?.versao] ? FC.slidesDoCarrossel(c) : [];
+  return {
+    id: c.id, marca: c.top.angulo?.marca || c.top.entrada?.marca || null, instagram: c.top.fotos_marca_estado?.ig || null, resumo: c.top.fotos_marca_resumo || null,
+    slides: slides.map((s) => { const a = c.top.foto_por_slide?.[s.sid]; const img = c.top.fotos_marca?.[s.i]; return { slide_id: s.sid, indice: s.i + 1, papel: s.papel, texto: s.texto, foto: img ? { id: img, mini: mini(img), motivo: a?.motivo || null, por: a?.por || null, origem: a?.origem || null } : null }; }),
+    candidatas: (c.top.fotos_candidatas || []).map((x) => ({ id: x.id, origem: x.origem, mini: x.descartada && /repetida/.test(x.descartada) ? null : mini(x.id), descricao: x.descricao || x.legenda || null, tags: x.tags || [], impacto: x.impacto, baixa_resolucao: !!x.baixa_resolucao, descartada: x.descartada || null, link: x.permalink || x.url || null })),
+  };
+}
+
+// Troca a foto de UM slide (candidata do acervo ou link novo) e redesenha só esse slide. Pronto (em revisão): nasce uma
+// versão nova (a aprovação reabre). Ainda produzindo antes da arte: só muda a escolha. Aprovado/publicado: recusa.
+async function trocarFoto(id, { slide_id, candidata_id = null, url = null } = {}, { deps = {} } = {}) {
+  const a = armazem(); const reg = await a.conteudos.obter(conta(), id);
+  if (!reg?.doc?.top) throw erro('Carrossel não encontrado.', 'NAO_ENCONTRADO', 404);
+  const c = reg.doc; if (!ehMarca(c)) throw erro('Só o formato "Por trás da marca" tem troca de foto por slide.', 'FORMATO', 409);
+  if (['aprovado', 'publicado'].includes(c.status) || c.agenda?.publicar_em) throw erro('Este carrossel já foi aprovado. Desagende antes de trocar a foto.', 'APROVADO', 409);
+  if (!c.top.versoes?.[c.top.escolha?.versao] || (c.top.estado === 'em_andamento' && c.top.fotos_marca_estado?.fase !== 'pronto')) throw erro('As fotos ainda não foram escolhidas. Espere a produção chegar nas fotos.', 'CEDO', 409);
+  if (c.top.estado === 'em_andamento' && c.top.versao_montada) throw erro('O carrossel está sendo desenhado agora. Tente de novo em um minuto.', 'OCUPADO', 409);
+  if (!['em_andamento', 'concluida'].includes(c.top.estado)) throw erro('Este carrossel foi descartado.', 'DESCARTADO', 409);
+  const FC = require('./fotosCandidatas');
+  const s = FC.slidesDoCarrossel(c).find((x) => x.sid === String(slide_id || ''));
+  if (!s) throw erro('Slide inválido (o último slide leva a sua foto e não muda aqui).', 'ENTRADA');
+  c.top.fotos_candidatas ||= [];
+  let cand;
+  if (url) {
+    const { validaUrl } = require('../safeFetch'); let u;
+    try { u = validaUrl(String(url)).toString(); } catch { throw erro('Link de foto inválido.', 'ENTRADA'); }
+    let img; try { img = await FC.baixar(u, deps.carregar || require('../safeFetch').safeFetch); } catch (e) { throw erro(`A foto do link não abriu (${String(e.message).slice(0, 80)}).`, 'FOTO', 422); }
+    const fid = `dada_${crypto.createHash('sha1').update(u).digest('hex').slice(0, 12)}`;
+    await a.arquivos.salvar(conta(), `img:${fid}`, img.dados, 'image/jpeg'); await a.arquivos.salvar(conta(), `mini:${fid}`, img.mini, 'image/jpeg');
+    cand = c.top.fotos_candidatas.find((x) => x.id === fid);
+    if (!cand) { cand = { id: fid, origem: 'pedro', url: u, legenda: '', largura: img.largura, altura: img.altura, dhash: img.dhash, baixa_resolucao: Math.max(img.largura, img.altura) < FC.LADO_MIN, descricao: 'Foto enviada pelo Pedro', tags: [], impacto: null, descrita_por: 'pedro', descartada: null, meta: { id: fid, tipo: 'foto_fornecida', origem: img.url_final || u, url_enviada: u, autor: null, licenca: 'Fornecida pelo Pedro (ele responde pelo direito de uso)', exige_credito: false, fornecida_por: 'pedro', alt: 'Foto enviada pelo Pedro' } }; c.top.fotos_candidatas.push(cand); }
+  } else {
+    cand = c.top.fotos_candidatas.find((x) => x.id === String(candidata_id || ''));
+    if (!cand) throw erro('Foto candidata não encontrada.', 'ENTRADA');
+    if (cand.descartada && /repetida/.test(cand.descartada)) throw erro('Essa foto é repetida de outra do acervo: escolha a outra.', 'ENTRADA');
+  }
+  // a foto sai do slide em que estava (sem repetir) e entra no escolhido
+  const pares = FC.slidesDoCarrossel(c).map((x) => { const atual = c.top.foto_por_slide?.[x.sid]; const idAtual = c.top.fotos_marca?.[x.i];
+    if (x.sid === s.sid) return [x, { id: cand.id, motivo: 'escolhida por você', por: 'manual' }];
+    if (idAtual === cand.id) return [x, null];
+    return [x, idAtual ? { id: idAtual, motivo: atual?.motivo || '', por: atual?.por || 'ia' } : null]; });
+  FC.aplicar(c, pares);
+  M.registrar(c, 'pedro', 'foto_trocada', `Foto do slide ${s.i + 1} trocada (${cand.origem}).`);
+  let redesenhados = 0;
+  if (c.top.estado === 'concluida' && c.top.versao_montada) {
+    const v = M.versaoAtiva(c); const dados = JSON.parse(JSON.stringify(v));
+    const mexidos = new Set();
+    for (const [k, sl] of dados.slides.entries()) {
+      if (sl.layout === 'marca_final' || k > FC.slidesDoCarrossel(c).length - 1) continue;
+      const novo = c.top.fotos_marca[k] || null;
+      if ((sl.imagem_id || null) !== novo) { if (novo) sl.imagem_id = novo; else delete sl.imagem_id; mexidos.add(sl.id); }
+    }
+    M.criarVersao(c, dados, { quem: 'pedro', rotulo: 'foto trocada' });
+    auditar(c); const nova = M.versaoAtiva(c); c.top.versao_montada = nova.id;
+    c.arte.renders = [...c.arte.renders, ...c.arte.renders.filter((r) => r.versao === v.id && !mexidos.has(r.slide_id)).map((r) => ({ ...r, versao: nova.id }))];
+    const arte = deps.arte || require('../arte');
+    for (const [k, sl] of nova.slides.entries()) {
+      if (!mexidos.has(sl.id)) continue;
+      const imagem = sl.imagem_id ? (await a.arquivos.obter(conta(), `img:${sl.imagem_id}`))?.dados : null;
+      const r = await arte.renderizarSlide(sl, { indice: k + 1, total: nova.slides.length, imagem: imagem ? Buffer.from(imagem) : null });
+      const key = `render:${c.id}:${nova.id}:${sl.id}:${M.hashRender(sl)}`;
+      const previa = await require('sharp')(r.png).flatten({ background: '#FAF7F0' }).jpeg({ quality: 84 }).toBuffer().catch(() => null);
+      await a.arquivos.salvar(conta(), key, previa || r.png, previa ? 'image/jpeg' : 'image/png');
+      c.arte.renders = [...c.arte.renders.filter((q) => !(q.versao === nova.id && q.slide_id === sl.id)), { slide_id: sl.id, versao: nova.id, texto_hash: M.hashRender(sl), blob_key: key, indice: k + 1, total: nova.slides.length, metrics: r.metrics, elementos: r.metrics.elementos || [] }];
+      redesenhados++;
+    }
+  }
+  c.updated_at = agoraISO();
+  await a.conteudos.salvar(conta(), id, c, reg.rev);
+  return { conteudo: c, slide_id: s.sid, foto: cand.id, redesenhados };
+}
+
 // Confere de novo um carrossel já pronto: se não passa nos portões, sai de "Para aprovar" (arquivado, abaixo da régua).
 async function revalidar(id) {
   const a = armazem(); const reg = await a.conteudos.obter(conta(), id);
@@ -967,4 +988,4 @@ async function revalidar(id) {
   return { conteudo: c, bloqueios: bl };
 }
 
-module.exports = { FINAL_MARCA, MAX_FOTOS_MARCA, entradaMarca, PROPRIOS, MODOS, chamadaFinal, refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, FORMATOS, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };
+module.exports = { fotosDoCarrossel, trocarFoto, FINAL_MARCA, MAX_FOTOS_MARCA, entradaMarca, PROPRIOS, MODOS, chamadaFinal, refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, FORMATOS, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };

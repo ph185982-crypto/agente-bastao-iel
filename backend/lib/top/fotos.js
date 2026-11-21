@@ -8,9 +8,11 @@ const LICENCA_OK = /^(cc[ -]by(?![ -]?sa)(?![ -]?nd)(?![ -]?nc)[ -]?\d(\.\d)?( [
 const sem = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const limpaHtml = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/\s+/g, ' ').trim();
 
-function licencaAceita(meta) {
+// Só CC0 / domínio público (licenças que não exigem crédito): usado no "Por trás da marca", que não leva crédito na legenda.
+const LICENCA_LIVRE = /^(cc0( 1\.0)?|public domain|domínio público|pd(-[a-z]+)?)$/i;
+function licencaAceita(meta, { soLivre = false } = {}) {
   const nome = limpaHtml(meta?.LicenseShortName?.value || meta?.License?.value || '');
-  return LICENCA_OK.test(nome.trim()) ? nome : null;
+  return (soLivre ? LICENCA_LIVRE : LICENCA_OK).test(nome.trim()) ? nome : null;
 }
 
 // Pontua: nome no título do arquivo, foto recente, formato retrato, tamanho bom.
@@ -48,14 +50,14 @@ function pontuarLugar(item, nome) {
   return p;
 }
 
-async function buscar(nome, { fetcher = fetch, limite = 25, modo = 'pessoa' } = {}) {
+async function buscar(nome, { fetcher = fetch, limite = 25, modo = 'pessoa', soLivre = false } = {}) {
   const q = new URLSearchParams({ action: 'query', format: 'json', generator: 'search', gsrsearch: `${nome} filetype:bitmap`, gsrnamespace: '6', gsrlimit: String(limite), prop: 'imageinfo', iiprop: 'url|size|extmetadata', iiurlwidth: '1400', origin: '*' });
   const r = await fetcher(`${BASE}?${q}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
   if (!r.ok) throw new Error(`Commons respondeu ${r.status}`);
   const d = await r.json();
   const itens = Object.values(d?.query?.pages || {});
   return itens
-    .map((it) => ({ it, lic: licencaAceita(it.imageinfo?.[0]?.extmetadata), p: modo === 'lugar' ? pontuarLugar(it, nome) : modo === 'marca' ? pontuarMarca(it, nome) : pontuar(it, nome) }))
+    .map((it) => ({ it, lic: licencaAceita(it.imageinfo?.[0]?.extmetadata, { soLivre }), p: modo === 'lugar' ? pontuarLugar(it, nome) : modo === 'marca' ? pontuarMarca(it, nome) : modo === 'conceito' ? pontuarConceito(it, nome) : pontuar(it, nome) }))
     .filter((x) => x.lic && x.p >= 0)
     .sort((a, b) => b.p - a.p)
     .map(({ it, lic }) => {
@@ -78,9 +80,9 @@ async function baixar(f, nome, fetcher) {
 }
 
 // Baixa a melhor foto. Devolve { dados: Buffer, meta } ou null (sem foto com licença aceita).
-async function fotoDe(nome, { fetcher = fetch, modo = 'pessoa' } = {}) {
+async function fotoDe(nome, { fetcher = fetch, modo = 'pessoa', soLivre = false } = {}) {
   if (!nome || sem(nome).length < 4) return null;
-  const lista = await buscar(nome, { fetcher, modo });
+  const lista = await buscar(nome, { fetcher, modo, soLivre });
   for (const f of lista.slice(0, 3)) { const x = await baixar(f, nome, fetcher); if (x) return x; }
   return null;
 }
@@ -102,9 +104,9 @@ function pontuarMarca(item, nome) {
 }
 
 // Várias fotos da MARCA (uma por slide), cada uma com licença aceita e crédito. Devolve [{ dados, meta }] (pode vir vazia).
-async function fotosDaMarca(nome, { fetcher = fetch, max = 4, excluir = [] } = {}) {
+async function fotosDaMarca(nome, { fetcher = fetch, max = 4, excluir = [], soLivre = false } = {}) {
   if (!nome || sem(nome).replace(/\s+/g, '').length < 2) return [];
-  const lista = await buscar(nome, { fetcher, modo: 'marca', limite: 40 });
+  const lista = await buscar(nome, { fetcher, modo: 'marca', limite: 40, soLivre });
   const out = [];
   for (const f of lista) {
     if (out.length >= max) break;
@@ -114,4 +116,32 @@ async function fotosDaMarca(nome, { fetcher = fetch, max = 4, excluir = [] } = {
   return out;
 }
 
-module.exports = { fotoDe, fotosDaMarca, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, LICENCA_OK };
+// Conceito genérico (entrega, celular, fábrica…) para o slide que ficou sem foto da marca: pelo menos uma palavra da busca
+// no título do arquivo, sem logotipo, foto grande (lado maior ≥ 900 px).
+function pontuarConceito(item, termo) {
+  const titulo = sem(item.title);
+  const partes = sem(termo).split(/\s+/).filter((p) => p.length >= 4);
+  const acertos = partes.filter((p) => titulo.includes(p)).length;
+  if (!acertos) return -1;
+  if (/\b(logo|logotipo|logomarca|wordmark|icon|icone|simbolo|symbol|map|mapa|diagram|chart|grafico|flag|bandeira)\b/.test(titulo)) return -1;
+  const ii = item.imageinfo?.[0] || {};
+  if (!/\.(jpe?g)$/i.test(item.title) || Math.max(ii.width || 0, ii.height || 0) < 900) return -1;
+  const ano = Number((titulo.match(/\b(1[89]\d\d|20[0-2]\d)\b/) || [])[1] || 0);
+  if (ano && ano < 1980) return -1;
+  return 10 + acertos * 3;
+}
+
+// Uma foto do Commons para um CONCEITO (termos da tela). Por padrão só CC0/domínio público (sem crédito obrigatório).
+async function fotosDoConceito(termo, { fetcher = fetch, max = 1, excluir = [], soLivre = true } = {}) {
+  if (!termo || sem(termo).replace(/\s+/g, '').length < 4) return [];
+  const lista = await buscar(termo, { fetcher, modo: 'conceito', limite: 30, soLivre });
+  const out = [];
+  for (const f of lista) {
+    if (out.length >= max) break;
+    const x = await baixar(f, termo, fetcher);
+    if (x && !excluir.includes(x.meta.id)) out.push({ ...x, meta: { ...x.meta, alt: f.titulo.replace(/^File:/, '').replace(/\.[a-z]+$/i, '') } });
+  }
+  return out;
+}
+
+module.exports = { fotoDe, fotosDaMarca, fotosDoConceito, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, pontuarConceito, LICENCA_OK, LICENCA_LIVRE };

@@ -140,4 +140,4 @@ function blocosDaVisao(dados, { trechos = [], ...opcoes } = {}) {
   return { blocos, faltando };
 }
 
-module.exports = { disponivel, chamar, blocosDaVisao, semelhanca, POSICOES, SISTEMA, MODELOS };
+module.exports = { disponivel, chamar, blocosDaVisao, semelhanca, POSICOES, SISTEMA, MODELOS, modelosDe };
