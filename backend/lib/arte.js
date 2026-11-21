@@ -451,6 +451,8 @@ async function renderizarSlide(slide, { indice = 1, total = 1, imagem = null, ar
   // diálogo ilustrado (uma cena, balões desenhados pelo código) e papel de parede (frase sobre foto): arteDialogo.js / artePapel.js
   if (slide.tema_visual === 'dialogo' || ['dialogo', 'dialogo_fecho'].includes(layout)) return require('./arteDialogo').renderizar(slide, ctx, imagem);
   if (slide.tema_visual === 'papel_de_parede' || ['papel_capa', 'papel_frase'].includes(layout)) return require('./artePapel').renderizar(slide, ctx, imagem);
+  // "Por trás da marca" (foto do negócio de ponta a ponta, manchete branca; último slide com o Pedro): arteMarca.js
+  if (slide.tema_visual === 'marca' || ['marca_capa', 'marca_tela', 'marca_final'].includes(layout)) return require('./arteMarca').renderizar(slide, ctx, imagem);
   // tema tweet e a variante ensaio (texto corrido, fundo escuro) vivem em arteTweet.js
   if (['tweet', 'ensaio'].includes(layout) || ['tweet', 'ensaio'].includes(slide.tema_visual)) return require('./arteTweet').renderizar(slide, ctx, imagem);
   if (String(layout || '').startsWith('rep_') || slide.tema_visual === 'reportagem') return require('./arteReportagem').renderizar(slide, ctx, imagem, arquivoEncerramento, fundo);

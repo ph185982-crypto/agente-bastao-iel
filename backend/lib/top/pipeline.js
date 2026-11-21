@@ -23,7 +23,8 @@ const REGUA = { gatilhos_min: 5, nota_min: 7.5, nucleo_min: 2 };
 // Formatos que o pipeline produz: carrossel reportagem, carrossel tweet, post estático (1–2 imagens + legenda longa) e
 // ensaio (texto corrido em slides escuros, variante do tweet).
 // 'reportagem' (fundo azul-marinho) foi retirado da produção a pedido do Pedro: ainda renderiza conteúdo antigo, mas não é mais criado.
-const FORMATOS = ['tweet', 'estatico', 'ensaio'];
+// 'marca' ("Por trás da marca"): a estratégia escondida por trás de uma empresa famosa, com fotos do negócio e o Pedro no fim.
+const FORMATOS = ['tweet', 'estatico', 'ensaio', 'marca'];
 const RETIRADOS = ['reportagem'];
 const LEASE_MS = 70000; const MAX_TENTATIVAS = 3;
 
@@ -49,16 +50,28 @@ async function vozDoPedro() {
 // ── Criação ─────────────────────────────────────────────────────────────────────
 const PROPRIOS = ['historia', 'como_fazer', 'caso'];
 const MODOS = ['opiniao', ...PROPRIOS];
-async function criar({ url = null, texto = null, titulo = '', origem = 'manual', formato = null, modo = null } = {}) {
+// "Por trás da marca": fotos enviadas pelo Pedro (uma por slide, na ordem) — só links http(s) públicos; o download passa
+// pelo safeFetch na etapa de foto. Nome da marca e foco são opcionais (a IA descobre a marca pela matéria).
+const MAX_FOTOS_MARCA = 8;
+function entradaMarca({ marca = null, fotos = null, foco = null } = {}) {
+  const lista = fotos == null ? [] : Array.isArray(fotos) ? fotos : [fotos];
+  if (lista.length > MAX_FOTOS_MARCA) throw erro(`Envie no máximo ${MAX_FOTOS_MARCA} fotos (uma por slide).`, 'ENTRADA');
+  const { validaUrl } = require('../safeFetch');
+  const ok = lista.map((f) => { try { return validaUrl(String(f || '')).toString(); } catch { throw erro(`Foto com link inválido: ${String(f || '').slice(0, 80)}`, 'ENTRADA'); } });
+  return { marca: String(marca || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60) || null, fotos: ok, foco: String(foco || '').replace(/<[^>]*>/g, ' ').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 300) || null };
+}
+
+async function criar({ url = null, texto = null, titulo = '', origem = 'manual', formato = null, modo = null, marca = null, fotos = null, foco = null } = {}) {
   const a = armazem(); if (!a?.duravel) throw erro('O carrossel precisa do banco de dados no servidor.', 'SEM_BANCO', 503);
   const u = url ? require('../radar/pauta').urlValida(url) : null;
   if (url && !u) throw erro('Link inválido.', 'LINK_INVALIDO');
-  const modoOk = MODOS.includes(modo) ? modo : null;
+  const em = formato === 'marca' ? entradaMarca({ marca, fotos, foco }) : null;
+  const modoOk = MODOS.includes(modo) && formato !== 'marca' ? modo : null;
   if (!u && String(texto || '').trim().length < (PROPRIOS.includes(modoOk) ? 200 : 300)) throw erro(PROPRIOS.includes(modoOk) ? 'Escreva pelo menos 200 caracteres: a ferramenta só usa o que você contar.' : 'Envie o link da matéria ou cole um texto com pelo menos 300 caracteres.', 'ENTRADA');
   const fmt = FORMATOS.includes(formato) ? formato : (RETIRADOS.includes(formato) ? 'tweet' : null);
   // Post estático é um conteúdo `formato: 'estatico'` (1 ou 2 imagens); os demais continuam carrossel.
   const c = M.novoConteudo({ titulo: String(titulo || '').slice(0, 140) || (fmt === 'estatico' ? 'Post em preparação' : 'Carrossel em preparação'), origem: u ? { tipo: 'link', url: u } : { tipo: 'texto' }, formato: fmt === 'estatico' ? 'estatico' : 'carrossel' });
-  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modoOk }, tentativas: {}, erros: [], criado_em: agoraISO() };
+  c.top = { versao_motor: 1, estado: 'em_andamento', etapa: 'ler', origem, entrada: { url: u, texto: u ? null : String(texto).slice(0, 30000), formato: fmt, modo: modoOk, ...(em ? { marca: em.marca, fotos: em.fotos, foco: em.foco } : {}) }, tentativas: {}, erros: [], criado_em: agoraISO() };
   await a.conteudos.salvar(conta(), c.id, c, 0);
   return c;
 }
@@ -109,7 +122,28 @@ E.fatos = async (c, ctx) => {
   if (r.fatos.length < 2) throw Object.assign(erro('A matéria não tem fatos suficientes que deu para conferir palavra por palavra.', 'SEM_FATOS', 422), { terminal: true, fim: 'descartada' });
 };
 
+const ehMarca = (c) => (c.top?.formato || c.top?.entrada?.formato) === 'marca';
+const HEX = /^#[0-9a-f]{6}$/i;
+// Ângulo de "Por trás da marca": teste de curiosidade + mecanismo (não o teste do grupo político). Precisa de uma DECISÃO de
+// negócio nos fatos (mecanismo ≥ 2) e soma ≥ régua; senão a pauta é descartada.
+async function anguloMarca(c, ctx) {
+  const ent = c.top.entrada || {};
+  const usuario = `${ent.marca ? `MARCA (informada pelo Pedro): ${ent.marca}\n` : ''}${ent.foco ? `FOCO PEDIDO PELO PEDRO: ${ent.foco}\n` : ''}TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`;
+  const { dados } = await ctx.ia({ sistema: P.ANGULO_MARCA, usuario, maxTokens: 700, temperatura: 0.3, preferirMelhor: true, pago: 'mini' });
+  const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
+  const enviarPara = String(dados?.enviar_para || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const nomeMarca = (ent.marca || String(dados?.marca || '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim()).slice(0, 60) || null;
+  const fundador = dados?.fundador ? String(dados.fundador).replace(/[<>]/g, '').trim().slice(0, 80) : null;
+  c.top.angulo = { enviar_para: /^(seu|sua|seus|suas|quem)\b/i.test(enviarPara) ? enviarPara : 'quem tem loja', gatilhos: { curiosidade: n('curiosidade'), mecanismo: n('mecanismo'), marca_conhecida: n('marca_conhecida'), numero: n('numero') }, tese: String(dados?.tese || '').slice(0, 260), por_que_mandaria: String(dados?.por_que_mandaria || '').slice(0, 240), risco: String(dados?.risco || '').slice(0, 240), marca: nomeMarca, fundador, cor_marca: HEX.test(String(dados?.cor_marca || '')) ? String(dados.cor_marca).toUpperCase() : null, imagem: { busca: String(dados?.imagem?.busca || '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 80), pessoa_central: false, lugar_brasil: null } };
+  c.top.angulo.soma = Object.values(c.top.angulo.gatilhos).reduce((x, y) => x + y, 0);
+  c.top.formato = 'marca';
+  if (!nomeMarca) throw Object.assign(erro('Não deu para saber de qual marca a matéria fala. Informe o nome da marca.', 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
+  if (c.top.angulo.gatilhos.mecanismo < 2) throw Object.assign(erro(`A matéria não mostra uma decisão de negócio da ${nomeMarca} que dê para explicar (mecanismo ${c.top.angulo.gatilhos.mecanismo}/3; mínimo 2).`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
+  if (c.top.angulo.soma < regua().gatilhos_min || !c.top.angulo.tese) throw Object.assign(erro(`A pauta não tem curiosidade suficiente (${c.top.angulo.soma}/12; mínimo ${regua().gatilhos_min}).`, 'PAUTA_FRACA', 422), { terminal: true, fim: 'descartada' });
+}
+
 E.angulo = async (c, ctx) => {
+  if (ehMarca(c)) return anguloMarca(c, ctx);
   const { dados } = await ctx.ia({ sistema: P.ANGULO, usuario: proprio(c) ? `${P.LINHAS[c.top.entrada.modo].angulo}\n\nTEXTO DO PEDRO (fonte única):\n${c.fonte_principal.texto.slice(0, 6000)}` : opiniao(c) ? `${AVISO_OPINIAO}\n\nBRIEFING (tese e ponte para o Pedro):\n${c.fonte_principal.texto.slice(0, 3000)}\n\nNo "numero" dê 0 (não há número). Avalie bolso, contradição e personagem pela tese e pela ponte.` : `TÍTULO: ${c.fonte_principal.titulo}\nVEÍCULO: ${c.fonte_principal.veiculo}\nFATOS VERIFICADOS:\n${c.top.fatos.map((f) => `${f.id}: ${f.texto}`).join('\n')}`, maxTokens: 700, temperatura: 0.3, preferirMelhor: true, pago: 'mini' });
   const g = dados?.gatilhos || {}; const n = (k) => Math.max(0, Math.min(3, Number(g[k]) || 0));
   const empreendedor = g.empreendedor === undefined ? null : n('empreendedor'); // fora da soma: é filtro de público, não de viralidade
@@ -135,7 +169,7 @@ E.roteiro = async (c, ctx) => {
     // Cada versão é escrita com o método de um copywriter (dupla em rodízio pelo id do carrossel).
     if (c.top.pesos_redator === undefined) { try { c.top.pesos_redator = ctx.deps.placar !== undefined ? (ctx.deps.placar?.pesos?.redator || null) : ((await armazem().config.obter(conta())).meu_placar?.pesos?.redator || null); } catch { c.top.pesos_redator = null; } }
     const mente = (ctx.deps.mentes || Mentes).parPara(c.id, c.top.pesos_redator)[c.top.versoes.length];
-    const { dados } = await ctx.ia({ sistema: (proprio(c) ? `${P.LINHAS[c.top.entrada.modo].roteiro}\n\n` : '') + P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para }), usuario: semMateria(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true, pago: c.top.versoes.length ? 'mini' : 'premium' });
+    const { dados } = await ctx.ia({ sistema: (proprio(c) ? `${P.LINHAS[c.top.entrada.modo].roteiro}\n\n` : '') + P.roteiro({ voz, tese: c.top.angulo.tese, porQue: c.top.angulo.por_que_mandaria, feedback, formato: c.top.formato, mente: Mentes.paraRoteiro(mente), enviarPara: c.top.angulo.enviar_para, marca: c.top.angulo.marca || '', foco: c.top.entrada?.foco || '' }), usuario: semMateria(c) ? fatos : `${fatos}\n\nTÍTULO DA MATÉRIA: ${c.fonte_principal.titulo}`, maxTokens: 3800, temperatura: c.top.versoes.length ? 0.85 : 0.6, preferirMelhor: true, pago: c.top.versoes.length ? 'mini' : 'premium' });
     const v = normalizarRoteiro(dados, c.top.formato);
     const estatico = c.top.formato === 'estatico';
     // Data também sai: o portão de publicação trata "27/10/2026" como número que precisa de fonte.
@@ -202,11 +236,25 @@ function normalizarEnsaio(d, capas) {
   return { formato: 'ensaio', capas, telas, legenda: semIds(String(d?.legenda || '')).slice(0, 900), hashtags: hashtagsDe(d), cta_motivo: semChamada(semIds(d?.cta_motivo)).slice(0, 90), fechamento: { titulo: umaLinha(d?.fechamento?.titulo, 110), texto: semChamadaFinal(semIds(String(d?.fechamento?.texto || ''))).slice(0, 200) } };
 }
 
+// "Por trás da marca": contexto (papel gap) → 2 a 4 estratégias → lição (papel leitura). O slide final é fixo (do sistema).
+const PAPEL_MARCA = { contexto: 'gap', gap: 'gap', estrategia: 'estrategia', estratégia: 'estrategia', licao: 'leitura', lição: 'leitura', leitura: 'leitura' };
+function normalizarMarca(d, capas) {
+  const telas = (Array.isArray(d?.telas) ? d.telas : []).slice(0, 6).map((t) => ({
+    papel: PAPEL_MARCA[String(t?.papel || '').toLowerCase()] || 'estrategia', layout: 'marca_tela',
+    titulo: t?.titulo ? umaLinha(t.titulo, 90) : null, texto: t?.texto ? umaLinha(t.texto, 280) : null, destaque: null, apoio: null, dados: null,
+    imagem_busca: t?.imagem_busca ? String(t.imagem_busca).replace(/[^\p{L}\p{N}\s-]/gu, ' ').trim().slice(0, 60) : null,
+    fatos: Array.isArray(t?.fatos) ? t.fatos.map(String).slice(0, 6) : [],
+  })).filter((t) => t.titulo || t.texto);
+  const motivo = semChamada(semIds(d?.cta_motivo)).replace(/^se você\b/i, 'pra ver').slice(0, 90);
+  return { formato: 'marca', capas, telas, legenda: semIds(String(d?.legenda || '')).slice(0, 900), hashtags: hashtagsDe(d), cta_motivo: motivo, fechamento: { titulo: '', texto: '' } };
+}
+
 function normalizarRoteiro(d, formato = 'reportagem') {
   const tweet = formato === 'tweet';
   const capas = (Array.isArray(d?.capas) ? d.capas : []).map((k) => ({ texto: String(k?.texto || k || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: String(k?.mecanismo || '').slice(0, 40) })).filter((k) => k.texto && K.palavras(k.texto) <= (tweet ? 14 : 14)).slice(0, 10);
   if (formato === 'estatico') return normalizarEstatico(d, capas);
   if (formato === 'ensaio') return normalizarEnsaio(d, capas);
+  if (formato === 'marca') return normalizarMarca(d, capas);
   const LAY = ['rep_manchete', 'rep_comparacao', 'rep_numero'];
   if (tweet) {
     // tweet: só texto, uma frase por tela; a foto do tweet vem da busca sugerida (ilustrativa, Pexels)
@@ -303,7 +351,7 @@ E.capas = async (c, ctx) => {
     if (e.status === 429 || /\b429\b|rate.?limit|tokens per (day|minute)|\bTP[DM]\b/i.test(String(e.message)) || (c.top.tentativas.capas || 0) < 1) throw e;
     v.sala_feita = true; c.top.mentes = { ...(c.top.mentes || {}), roteiro: v.mente || null, sala: 0, falhou: String(e.message).slice(0, 120) }; return;
   }
-  const maxPal = c.top.formato === 'tweet' || c.top.formato === 'ensaio' ? 14 : c.top.formato === 'estatico' ? 10 : 12;
+  const maxPal = ['tweet', 'ensaio', 'marca'].includes(c.top.formato) ? 14 : c.top.formato === 'estatico' ? 10 : 12;
   const ja = new Set(v.capas.map((k) => k.texto.toLowerCase()));
   const novas = (Array.isArray(dados?.capas) ? dados.capas : []).map((k) => ({ texto: String(k?.texto || '').replace(/\s+/g, ' ').trim().slice(0, 160), mecanismo: `mente:${M.porId.has(String(k?.mente)) ? String(k.mente) : 'sala'}` }))
     .filter((k) => k.texto && K.palavras(k.texto) <= maxPal && !ja.has(k.texto.toLowerCase()) && !/\b\d{1,2}\/\d{1,2}\b/.test(k.texto))
@@ -375,6 +423,7 @@ E.painel = async (c, ctx) => {
 // Foto da CAPA, nesta ordem: a PESSOA central (Wikimedia Commons, licença aberta); o LUGAR/instituição brasileira
 // (Commons, foto real: plenário do Senado, STF…); a CENA ilustrativa ligada ao assunto (Pexels). Uma foto só, na capa.
 E.foto = async (c, ctx) => {
+  if (ehMarca(c)) return fotosMarca(c, ctx);
   // Registra qual mente escreveu a capa escolhida e o roteiro (para comparar com o resultado real depois).
   { const v = c.top.versoes[c.top.escolha.versao]; const k = v?.capas?.[c.top.escolha.capas?.[0] ?? 0]; const m = String(k?.mecanismo || '');
     c.top.mentes = { ...(c.top.mentes || {}), roteiro: v?.mente || c.top.mentes?.roteiro || null, capa: m.startsWith('mente:') ? m.slice(6) : (v?.mente ? `${v.mente} (roteiro)` : null) }; }
@@ -444,6 +493,95 @@ E.foto = async (c, ctx) => {
   } catch (e) { c.top.aviso_foto = `A busca de foto falhou (${String(e.message).slice(0, 80)}): o carrossel sai só com as formas.`; }
 };
 
+// "Por trás da marca": uma foto por slide (capa + telas), nesta ordem de preferência:
+//  1) as fotos que o Pedro mandou (links, na ordem dos slides), baixadas pelo safeFetch; origem registrada como
+//     "fornecida pelo Pedro" (ele responde pelo direito de uso);
+//  2) fotos da marca e do fundador no Wikimedia Commons (só CC BY, CC0 ou domínio público; crédito na legenda);
+//  3) foto ilustrativa do Pexels (busca sugerida para cada tela);
+//  4) nenhuma: o slide sai com o fundo na cor da marca, desenhado pelo código.
+// A foto da própria matéria NUNCA entra sozinha (direito autoral do veículo): só se o Pedro mandar o link dela.
+// O último slide leva a foto do Pedro (Perfil → Minhas histórias e casos), sem nenhuma alteração do rosto.
+// Retomável: com pouco tempo de função, grava o que já baixou e continua no próximo passo.
+async function fotosMarca(c, ctx) {
+  const v = c.top.versoes[c.top.escolha.versao];
+  { const k = v?.capas?.[c.top.escolha.capas?.[0] ?? 0]; const m = String(k?.mecanismo || '');
+    c.top.mentes = { ...(c.top.mentes || {}), roteiro: v?.mente || c.top.mentes?.roteiro || null, capa: m.startsWith('mente:') ? m.slice(6) : (v?.mente ? `${v.mente} (roteiro)` : null) }; }
+  const slots = 1 + v.telas.length;
+  c.top.fotos_marca ||= {};
+  const st = (c.top.fotos_marca_estado ||= { tentadas: [], falhas: [] });
+  const feito = (k) => st.tentadas.includes(k); const marcar = (k) => { if (!feito(k)) st.tentadas.push(k); };
+  const livres = () => [...Array(slots).keys()].filter((i) => !c.top.fotos_marca[i]);
+  const usadas = () => Object.values(c.top.fotos_marca).filter(Boolean);
+  const guardar = async (i, f) => {
+    await armazem().arquivos.salvar(conta(), `img:${f.meta.id}`, f.dados, 'image/jpeg');
+    c.imagens = [...(c.imagens || []).filter((x) => x.id !== f.meta.id), f.meta];
+    if (i != null) c.top.fotos_marca[i] = f.meta.id;
+  };
+  const tempo = () => ctx.restante() > 12000;
+  // último slide: a foto do Pedro
+  if (!feito('pedro')) {
+    try {
+      const f = await (ctx.deps.fotoPedro || (() => require('../fotosPedro').proxima()))();
+      if (f) { await guardar(null, f); c.top.foto_pedro_id = f.meta.id; c.top.foto_do_pedro = true; }
+    } catch { /* sem foto dele: retrato provisório */ }
+    if (!c.top.foto_pedro_id) c.top.aviso_foto = 'Sem foto sua em Perfil → Minhas histórias e casos: o último slide sai com um retrato provisório. Envie uma foto e refaça as prévias.';
+    marcar('pedro');
+  }
+  // 1) fotos enviadas pelo Pedro
+  const links = (c.top.entrada?.fotos || []).slice(0, slots);
+  for (const [i, url] of links.entries()) {
+    if (feito(`link:${i}`)) continue;
+    if (!tempo()) return { concluida: false };
+    marcar(`link:${i}`);
+    try {
+      const carregar = ctx.deps.carregar || require('../safeFetch').safeFetch;
+      const img = await carregar(url, { maxBytes: 8 * 1024 * 1024, timeoutMs: 12000, tipos: [/^image\//], binario: true, accept: 'image/jpeg,image/png,image/webp' });
+      if (img.status !== 200) throw new Error(`o site respondeu ${img.status}`);
+      const dados = await require('sharp')(img.corpo, { limitInputPixels: 40e6 }).rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer();
+      const id = `dada_${crypto.createHash('sha1').update(url).digest('hex').slice(0, 12)}`;
+      await guardar(i, { dados, meta: { id, tipo: 'foto_fornecida', origem: img.url_final || url, url_enviada: url, autor: null, licenca: 'Fornecida pelo Pedro (ele responde pelo direito de uso)', exige_credito: false, fornecida_por: 'pedro', alt: `Foto ${i + 1} enviada pelo Pedro` } });
+    } catch (e) { st.falhas.push(`Foto ${i + 1} enviada não abriu (${String(e.message).slice(0, 80)}).`); }
+  }
+  // 2) Wikimedia Commons: fotos da marca e, se couber, do fundador
+  const marca = c.top.angulo?.marca || c.top.entrada?.marca || '';
+  if (livres().length && marca && !feito('commons')) {
+    if (!tempo()) return { concluida: false };
+    marcar('commons');
+    try {
+      const lista = await (ctx.deps.fotosDaMarca || require('./fotos').fotosDaMarca)(marca, { max: livres().length, excluir: usadas() });
+      for (const f of lista || []) { const i = livres()[0]; if (i == null) break; if (usadas().includes(f.meta.id)) continue; await guardar(i, f); }
+    } catch (e) { st.falhas.push(`Busca no Wikimedia Commons falhou (${String(e.message).slice(0, 60)}).`); }
+  }
+  const fundador = c.top.angulo?.fundador;
+  if (livres().length && fundador && !feito('fundador')) {
+    if (!tempo()) return { concluida: false };
+    marcar('fundador');
+    try {
+      const f = await (ctx.deps.fotoDe || require('./fotos').fotoDe)(fundador);
+      if (f && !usadas().includes(f.meta.id)) await guardar(livres().find((i) => i > 0) ?? livres()[0], f);
+    } catch { /* segue para o Pexels */ }
+  }
+  // 3) Pexels: foto ilustrativa da busca de cada slide
+  if (livres().length && (ctx.deps.buscarFoto || process.env.PEXELS_API_KEY)) {
+    const FS = require('../fotosStudio');
+    for (const i of livres()) {
+      if (feito(`pexels:${i}`)) continue;
+      const q = (i > 0 && v.telas[i - 1]?.imagem_busca) || c.top.angulo?.imagem?.busca || '';
+      if (!q) { marcar(`pexels:${i}`); continue; }
+      if (!tempo()) return { concluida: false };
+      marcar(`pexels:${i}`);
+      try {
+        const f = await (ctx.deps.buscarFoto || FS.buscarFoto)(q, { excluir: usadas() });
+        if (f && !usadas().includes(f.meta.id)) await guardar(i, { ...f, meta: { ...f.meta, exige_credito: false } });
+      } catch { /* este slide fica com a cor da marca */ }
+    }
+  }
+  // 4) o que sobrou sai com o fundo na cor da marca (código)
+  const semFoto = livres().length;
+  c.top.fotos_marca_resumo = { total: slots, com_foto: slots - semFoto, cor_da_marca: semFoto, falhas: st.falhas.slice(0, 6) };
+  if (st.falhas.length) c.top.aviso_foto = [c.top.aviso_foto, ...st.falhas.slice(0, 3)].filter(Boolean).join(' ').slice(0, 400);
+}
+
 const MARCA_ATRIBUICAO = /(?<!\p{L})(segundo|de acordo com|conforme|diz|dizem|disse|disseram|afirma|afirmou|declarou|anuncia|anunciou|prev[êe]|estima|promete|prometeu|deve|pode|poder[áa]|aponta|apontam|apontou|avalia|avaliam|alerta|alertam|alertou|calcula|calculam|projeta|projetam|recomenda|recomendam|v[êe]|veem|criticou|critica|criticam|lembrou|lembra|defendeu|defende|defendem|cobrou|cobra|cobram|classificou|classifica|chamou|falou|ressaltou|destacou|explicou|reconheceu|reconhece|argumenta|argumentou|avaliou)(?!\p{L})/iu;
 // Monta a versão no modelo de conteúdo (claims, evidências, auditoria) a partir da versão vencedora.
 function montarVersao(c) {
@@ -468,6 +606,7 @@ function montarVersao(c) {
   if (c.top.formato === 'tweet') return montarVersaoTweet(c, v, { capa, fatosComNumeros, mapa, fonte });
   if (c.top.formato === 'estatico') return montarVersaoEstatico(c, v, { capa, fatosComNumeros, mapa, fonte });
   if (c.top.formato === 'ensaio') return montarVersaoEnsaio(c, v, { capa, fatosComNumeros, mapa, fonte });
+  if (c.top.formato === 'marca') return montarVersaoMarca(c, v, { capa, fatosComNumeros, mapa, fonte });
   const cenas = c.top.fotos_cena || (c.top.foto_cena_id ? [c.top.foto_cena_id] : []);
   const foto = c.top.foto_id || c.top.foto_lugar_id || cenas[0] || null; // capa: pessoa > lugar > cena
   const internas = []; // telas internas sem foto: o layout de texto fica limpo (foto espremida piorava a leitura)
@@ -584,6 +723,37 @@ function montarVersaoEnsaio(c, v, { capa, fatosComNumeros, mapa, fonte }) {
   const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
   slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'ensaio', tema_visual: 'ensaio', titulo: v.fechamento?.titulo || '', texto: v.fechamento?.texto || '', cta: chamadaFinal(c), cta_apoio: cta, claim_ids: fatosComNumeros(`${v.fechamento?.titulo || ''} ${v.fechamento?.texto || ''}`), dados: null });
   return { formato: 'ensaio', capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'ensaio', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
+}
+
+// "Por trás da marca": capa (foto + manchete) → contexto → 2 a 4 estratégias → lição → slide final fixo com o Pedro e a
+// chamada para seguir (uma ação só). Número só dos fatos (a checagem do roteiro já barrou o resto); crédito das fotos na legenda.
+const FINAL_MARCA = { titulo: 'Eu mostro a estratégia por trás das marcas que você usa todo dia.', texto: 'Segue @pedro_destrava pra ver a próxima.' };
+function montarVersaoMarca(c, v, { capa, fatosComNumeros, mapa, fonte }) {
+  const fm = c.top.fotos_marca || {}; const marca = c.top.angulo?.marca || c.top.entrada?.marca || '';
+  const base = { marca, ...(c.top.angulo?.cor_marca ? { cor: c.top.angulo.cor_marca } : {}) };
+  const slides = [{ id: 's1', funcao: 'capa', layout: 'marca_capa', tema_visual: 'marca', texto: capa, titulo: null, claim_ids: fatosComNumeros(capa), ...(fm[0] ? { imagem_id: fm[0] } : {}), dados: { ...base, kicker: 'POR TRÁS DA MARCA' } }];
+  const opinioes = []; const nEst = v.telas.filter((t) => t.papel === 'estrategia').length; let kEst = 0;
+  v.telas.forEach((t, i) => {
+    const funcao = { gap: 'contexto', estrategia: 'explicacao', leitura: 'opiniao' }[t.papel] || 'explicacao';
+    const rotulo = t.papel === 'gap' ? 'O contexto' : t.papel === 'leitura' ? 'O que isso ensina' : (nEst > 1 ? `A estratégia ${++kEst}` : 'A estratégia');
+    const tudo = `${t.titulo || ''} ${t.texto || ''}`;
+    let claim_ids = mapa(t.fatos); for (const id of fatosComNumeros(tudo)) if (!claim_ids.includes(id)) claim_ids.push(id);
+    if (t.papel === 'leitura') { const oid = `o${opinioes.length + 1}`; opinioes.push({ id: oid, texto: tudo.trim().slice(0, 400), tipo: 'opiniao', natureza: 'opiniao', central: false, estado: 'nao_verificada', premissas: claim_ids, evidencias: [], risco: 'baixo', origem: 'top', revisao: {} }); claim_ids = [oid]; }
+    const cita = (f) => fatosComNumeros(tudo).includes(f.id);
+    claim_ids = claim_ids.filter((id) => { const f = c.top.fatos.find((x) => x.id === id); return !f || !['declaracao', 'previsao'].includes(f.tipo) || cita(f) || MARCA_ATRIBUICAO.test(tudo); });
+    const aAtribuir = c.top.fatos.find((f) => claim_ids.includes(f.id) && ['declaracao', 'previsao'].includes(f.tipo));
+    if (aAtribuir && !MARCA_ATRIBUICAO.test(tudo)) t.texto = `${aAtribuir.quem || fonte.veiculo || 'A reportagem'} disse que ${String(t.texto || '').replace(/^\p{Lu}/u, (m) => m.toLowerCase())}`;
+    slides.push({ id: `s${i + 2}`, funcao, layout: 'marca_tela', tema_visual: 'marca', titulo: t.titulo || null, texto: t.texto || '', claim_ids, ...(fm[i + 1] ? { imagem_id: fm[i + 1] } : {}), dados: { ...base, rotulo } });
+  });
+  c.claims.push(...opinioes);
+  const motivo = (v.cta_motivo || 'pra ver a estratégia da próxima marca').replace(/^[,:\s]+/, '').replace(/[.!]+$/, '');
+  const cta = `Segue o @pedro_destrava ${motivo}.`.slice(0, 160);
+  slides.push({ id: `s${slides.length + 1}`, funcao: 'encerramento', layout: 'marca_final', tema_visual: 'marca', titulo: FINAL_MARCA.titulo, texto: FINAL_MARCA.texto, cta: 'Segue o @pedro_destrava', cta_apoio: cta, claim_ids: [], ...(c.top.foto_pedro_id ? { imagem_id: c.top.foto_pedro_id } : {}), dados: { ...base } });
+  // créditos: Commons (licença que exige crédito) e Pexels; foto enviada pelo Pedro e a dele não levam crédito
+  const usadas = slides.map((s) => s.imagem_id).filter(Boolean);
+  const pexels = (c.imagens || []).filter((i) => usadas.includes(i.id) && i.tipo === 'ilustrativa' && i.autor).map((i) => i.autor);
+  const legenda = [legendaComFonte(c, v.legenda, fonte, { fotos: usadas }), pexels.length ? `Fotos ilustrativas: ${[...new Set(pexels)].join(', ')} (Pexels).` : ''].filter(Boolean).join('\n\n').slice(0, 2200);
+  return { formato: 'marca', capas: v.capas.map((k, j) => ({ id: `k${j + 1}`, foco: k.mecanismo || 'gancho', texto: k.texto, claim_ids: fatosComNumeros(k.texto) })), capa_escolhida: 'k' + ((c.top.escolha.capas[0] ?? 0) + 1), estrutura: 'por_tras_da_marca', slides, legenda, legenda_claim_ids: fatosComNumeros(legenda), cta, hashtags: v.hashtags };
 }
 
 function auditar(c) {
@@ -745,7 +915,7 @@ async function executarTudo(id, { deps = {}, maxMs = 10 * 60000 } = {}) {
 
 function resumo(c) {
   const t = c.top || {};
-  return { id: c.id, titulo: c.titulo, formato: t.formato || null, estado: t.estado, etapa: t.etapa, rotulo: ROTULO[t.etapa] || t.etapa, motivo: t.motivo || null, nota: t.escolha?.nota ?? null, gatilhos: t.angulo?.gatilhos || null, tese: t.angulo?.tese || null, fatos: (t.fatos || []).length, fatos_descartados: (t.fatos_descartados || []).length, protagonista: t.protagonista || null, aviso_foto: t.aviso_foto || null, aviso_arte: t.aviso_arte || null, chamadas_ia: t.chamadas_ia || 0, erros: (t.erros || []).slice(-3) };
+  return { id: c.id, titulo: c.titulo, formato: t.formato || null, estado: t.estado, etapa: t.etapa, rotulo: ROTULO[t.etapa] || t.etapa, motivo: t.motivo || null, nota: t.escolha?.nota ?? null, gatilhos: t.angulo?.gatilhos || null, tese: t.angulo?.tese || null, fatos: (t.fatos || []).length, fatos_descartados: (t.fatos_descartados || []).length, protagonista: t.protagonista || null, aviso_foto: t.aviso_foto || null, ...(t.formato === 'marca' || t.entrada?.formato === 'marca' ? { marca: t.angulo?.marca || t.entrada?.marca || null, fotos: t.fotos_marca ? Object.values(t.fotos_marca).filter(Boolean).length : 0, foto_do_pedro: !!t.foto_do_pedro } : {}), aviso_arte: t.aviso_arte || null, chamadas_ia: t.chamadas_ia || 0, erros: (t.erros || []).slice(-3) };
 }
 
 // Conserta um carrossel pronto cujas afirmações foram trocadas por fora (ex.: a preparação antiga rodou nele): recompõe
@@ -794,4 +964,4 @@ async function revalidar(id) {
   return { conteudo: c, bloqueios: bl };
 }
 
-module.exports = { PROPRIOS, MODOS, chamadaFinal, refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, FORMATOS, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };
+module.exports = { FINAL_MARCA, MAX_FOTOS_MARCA, entradaMarca, PROPRIOS, MODOS, chamadaFinal, refazerPrevias, revalidar, portoes, reparar, criar, passo, executarTudo, resumo, montarVersao, auditar, normalizarRoteiro, ETAPAS, ROTULO, REGUA, FORMATOS, regua, hashEntrada: (s) => crypto.createHash('sha1').update(String(s)).digest('hex').slice(0, 10) };

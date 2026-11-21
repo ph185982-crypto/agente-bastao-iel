@@ -10,7 +10,7 @@ const { traduzir } = require('../lib/bancoErro');
 const erro = (res, e0) => { const e = traduzir(e0); return res.status(e.status || 500).json({ error: e.message || 'Erro no carrossel.', code: e.code || 'TOP' }); };
 
 router.post('/carrosseis', limita({ max: 12, janelaMs: 60000, nome: 'top-criar' }), async (req, res) => {
-  try { const c = await T.criar({ url: req.body?.url, texto: req.body?.texto, titulo: req.body?.titulo, origem: req.body?.origem || 'manual', formato: req.body?.formato || null });
+  try { const b = req.body || {}; const c = await T.criar({ url: b.url || (b.formato === 'marca' ? b.link : null), texto: b.texto, titulo: b.titulo, origem: b.origem || 'manual', formato: b.formato || null, ...(b.formato === 'marca' ? { marca: b.marca, fotos: b.fotos, foco: b.foco } : {}) });
     // Criado pelo app ou pela reciclagem: entra no índice do piloto para ser avançado nas rodadas mesmo com o app fechado.
     try { await require('../lib/top/piloto').registrar(c.id, { titulo: c.titulo }); } catch { /* sem banco: o app conduz os passos */ }
     res.status(201).json(T.resumo(c)); } catch (e) { erro(res, e); }

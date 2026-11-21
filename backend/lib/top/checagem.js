@@ -88,6 +88,7 @@ function numerosSemFonte(texto, fatos) {
 // Régua de forma por formato. estatico: 1 slide (ou 2) e a legenda é o post; ensaio: blocos de texto corrido, sem foto.
 const LEGENDA_ESTATICO = { min: 600, max: 1500, paragrafos_min: 4, paragrafos_max: 7 };
 const ENSAIO = { min: 700, max: 1100, folga: 150, telas_min: 4, telas_max: 6 }; // folga: a IA erra a contagem de caracteres para mais ou para menos
+const MARCA = { telas_min: 4, telas_max: 6, palavras_tela: 40 };
 const paragrafosDe = (txt) => String(txt || '').split(/\n{2,}|\n/).map((p) => p.trim()).filter(Boolean);
 
 // Checa um roteiro (capa + telas + legenda) contra os fatos verificados. Devolve { ok, problemas[] }.
@@ -95,7 +96,7 @@ function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false } = {
   const problemas = [];
   const permitidos = permitidosDe(fatos);
   const telas = Array.isArray(r?.telas) ? r.telas : [];
-  const estatico = formato === 'estatico'; const ensaio = formato === 'ensaio';
+  const estatico = formato === 'estatico'; const ensaio = formato === 'ensaio'; const marca = formato === 'marca';
   const maxCapa = estatico ? 10 : 14;
   if (!r?.capa || palavras(r.capa) > maxCapa) problemas.push(`Capa ausente ou longa demais (${palavras(r?.capa)} palavras; máximo ${maxCapa}).`);
   if (estatico) {
@@ -110,6 +111,13 @@ function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false } = {
     if (total < ENSAIO.min - ENSAIO.folga || total > ENSAIO.max + ENSAIO.folga) problemas.push(`O ensaio tem ${total} caracteres no total; escreva de ${ENSAIO.min} a ${ENSAIO.max}.`);
     telas.forEach((t, i) => { const ps = paragrafosDe(t.texto).length; if (ps < 1 || ps > 3) problemas.push(`bloco ${i + 2}: ${ps} parágrafos (use 2 a 3, curtos).`); });
     if (!r?.fechamento?.titulo) problemas.push('Falta a frase de ouro do fechamento ("fechamento.titulo").');
+  } else if (marca) {
+    // "Por trás da marca": capa + 4 a 6 telas + slide final fixo = 6 a 8 slides.
+    if (telas.length < MARCA.telas_min || telas.length > MARCA.telas_max) problemas.push(`O carrossel tem ${telas.length} telas de conteúdo; use de ${MARCA.telas_min} a ${MARCA.telas_max} (contexto, 2 a 4 estratégias e a lição; a capa e o slide final são à parte).`);
+    const nEst = telas.filter((t) => t.papel === 'estrategia').length;
+    if (nEst < 2 || nEst > 4) problemas.push(`Há ${nEst} tela(s) de estratégia; use de 2 a 4, um mecanismo por tela.`);
+    if (telas[0] && telas[0].papel !== 'gap') problemas.push('A 1ª tela deve ser o contexto da marca (papel "contexto").');
+    if (telas.length && telas[telas.length - 1].papel !== 'leitura') problemas.push('A última tela deve ser a lição (papel "licao").');
   } else if (telas.length < 4 || telas.length > 8) problemas.push(`O carrossel tem ${telas.length} telas de conteúdo; use de 4 a 8 (a capa e o fechamento são à parte).`);
   const todos = [{ onde: 'capa', texto: r?.capa || '' }, ...telas.map((t, i) => ({ onde: `tela ${i + 2}`, texto: textosDaTela(t), t })), { onde: 'legenda', texto: r?.legenda || '' }];
   for (const x of todos) {
@@ -123,7 +131,7 @@ function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false } = {
   if (segundo > 1) problemas.push(`“Segundo …” aparece em ${segundo} telas: cite a fonte só na tela de prova e na legenda.`);
   telas.forEach((t, i) => {
     const n = palavras(`${t.titulo || ''} ${t.texto || ''}`);
-    const maxPal = ensaio ? 70 : estatico ? 26 : 45; // ensaio: 2–3 parágrafos curtos por bloco; estático: uma ideia no "virar"
+    const maxPal = ensaio ? 70 : estatico ? 26 : marca ? MARCA.palavras_tela : 45; // ensaio: 2–3 parágrafos curtos por bloco; estático: uma ideia no "virar"
     if (n > maxPal) problemas.push(`tela ${i + 2}: ${n} palavras (máximo ${maxPal}). Corte.`);
     if (['rep_comparacao', 'rep_numero'].includes(t.layout) && !(t.fatos || []).length) problemas.push(`tela ${i + 2}: prova sem fato ligado (fatos: ["f1"…]).`);
     if (t.layout === 'rep_comparacao' && !(t.dados?.esquerda?.valor && t.dados?.direita?.valor)) problemas.push(`tela ${i + 2}: comparação sem os dois valores.`);
@@ -131,11 +139,12 @@ function checarRoteiro(r, fatos, { formato = 'reportagem', opiniao = false } = {
   });
   if (!estatico) {
     if (!telas.some((t) => t.papel === 'leitura')) problemas.push(ensaio ? 'Falta o bloco com a leitura do Pedro (papel "leitura").' : 'Falta a tela com a leitura do Pedro (papel "leitura").');
-    if (!opiniao && !telas.some((t) => ['rep_comparacao', 'rep_numero'].includes(t.layout) || t.papel === 'prova')) problemas.push(ensaio ? 'Falta um bloco de prova com número dos fatos.' : 'Falta uma tela de prova com número ou dado.');
+    // "Por trás da marca" não exige tela de prova com número: sem número verificado, a tela fica sem número.
+    if (!opiniao && !marca && !telas.some((t) => ['rep_comparacao', 'rep_numero'].includes(t.layout) || t.papel === 'prova')) problemas.push(ensaio ? 'Falta um bloco de prova com número dos fatos.' : 'Falta uma tela de prova com número ou dado.');
   }
   const cop = HG.verificar(r?.capa || '', { contra: [] });
   if (!cop.ok) problemas.push(`Capa: ${cop.motivo}`);
   return { ok: problemas.length === 0, problemas: [...new Set(problemas)] };
 }
 
-module.exports = { verificarFatos, checarRoteiro, textosDaTela, variacao, norm, palavras, semDatas, numerosSemFonte, paragrafosDe, LEGENDA_ESTATICO, ENSAIO };
+module.exports = { verificarFatos, checarRoteiro, textosDaTela, variacao, norm, palavras, semDatas, numerosSemFonte, paragrafosDe, LEGENDA_ESTATICO, ENSAIO, MARCA };

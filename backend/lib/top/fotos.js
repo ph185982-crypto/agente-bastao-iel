@@ -55,7 +55,7 @@ async function buscar(nome, { fetcher = fetch, limite = 25, modo = 'pessoa' } = 
   const d = await r.json();
   const itens = Object.values(d?.query?.pages || {});
   return itens
-    .map((it) => ({ it, lic: licencaAceita(it.imageinfo?.[0]?.extmetadata), p: modo === 'lugar' ? pontuarLugar(it, nome) : pontuar(it, nome) }))
+    .map((it) => ({ it, lic: licencaAceita(it.imageinfo?.[0]?.extmetadata), p: modo === 'lugar' ? pontuarLugar(it, nome) : modo === 'marca' ? pontuarMarca(it, nome) : pontuar(it, nome) }))
     .filter((x) => x.lic && x.p >= 0)
     .sort((a, b) => b.p - a.p)
     .map(({ it, lic }) => {
@@ -64,22 +64,54 @@ async function buscar(nome, { fetcher = fetch, limite = 25, modo = 'pessoa' } = 
     });
 }
 
+// Baixa um item da busca. Devolve { dados, meta } ou null (host fora do Commons, tamanho estranho, falha).
+async function baixar(f, nome, fetcher) {
+  try {
+    const u = new URL(f.url);
+    if (!['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(u.hostname)) return null; // o Commons passou a servir miniaturas por thumb.
+    const r = await fetcher(f.url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return null;
+    const dados = Buffer.from(await r.arrayBuffer());
+    if (dados.length < 20000 || dados.length > 8 * 1024 * 1024) return null;
+    return { dados, meta: { id: `commons_${require('crypto').createHash('sha1').update(f.titulo).digest('hex').slice(0, 12)}`, tipo: 'foto_real', titulo: f.titulo, origem: f.pagina, autor: f.autor, licenca: f.licenca, exige_credito: !/cc0|public domain|domínio público|^pd/i.test(f.licenca), alt: `Foto de ${nome}` } };
+  } catch { return null; }
+}
+
 // Baixa a melhor foto. Devolve { dados: Buffer, meta } ou null (sem foto com licença aceita).
 async function fotoDe(nome, { fetcher = fetch, modo = 'pessoa' } = {}) {
   if (!nome || sem(nome).length < 4) return null;
   const lista = await buscar(nome, { fetcher, modo });
-  for (const f of lista.slice(0, 3)) {
-    try {
-      const u = new URL(f.url);
-      if (!['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(u.hostname)) continue; // o Commons passou a servir miniaturas por thumb.
-      const r = await fetcher(f.url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
-      if (!r.ok) continue;
-      const dados = Buffer.from(await r.arrayBuffer());
-      if (dados.length < 20000 || dados.length > 8 * 1024 * 1024) continue;
-      return { dados, meta: { id: `commons_${require('crypto').createHash('sha1').update(f.titulo).digest('hex').slice(0, 12)}`, tipo: 'foto_real', titulo: f.titulo, origem: f.pagina, autor: f.autor, licenca: f.licenca, exige_credito: !/cc0|public domain|domínio público|^pd/i.test(f.licenca), alt: `Foto de ${nome}` } };
-    } catch { /* tenta a próxima */ }
-  }
+  for (const f of lista.slice(0, 3)) { const x = await baixar(f, nome, fetcher); if (x) return x; }
   return null;
 }
 
-module.exports = { fotoDe, buscar, licencaAceita, pontuar, pontuarLugar, LICENCA_OK };
+// Marca (loja, produto, fachada, fundador): o nome da marca tem de estar no título do arquivo; logotipo fica de fora
+// (vira fundo ruim e costuma ter regra de marca registrada). Foto recente e boa resolução pesam a favor.
+function pontuarMarca(item, nome) {
+  const titulo = sem(item.title);
+  const partes = sem(nome).split(/\s+/).filter((p) => p.length >= 2);
+  if (!partes.length || !partes.every((p) => titulo.includes(p))) return -1;
+  if (/\b(logo|logotipo|logomarca|wordmark|icon|icone|simbolo|symbol)\b/.test(titulo)) return -1;
+  const ii = item.imageinfo?.[0] || {};
+  if (!/\.(jpe?g|png)$/i.test(item.title) || (ii.width || 0) < 700 || (ii.height || 0) < 600) return -1;
+  let p = 10;
+  if (/(loja|store|shop|fachada|facade|restaurante|restaurant|unidade|quiosque|kiosk|produto|product|sede|headquarters|fabrica|factory)/.test(titulo)) p += 4;
+  const ano = Number((titulo.match(/\b(20[0-2]\d)\b/) || [])[1] || 0);
+  if (ano) p += Math.max(0, 6 - Math.floor((2026 - ano) / 2));
+  return p;
+}
+
+// Várias fotos da MARCA (uma por slide), cada uma com licença aceita e crédito. Devolve [{ dados, meta }] (pode vir vazia).
+async function fotosDaMarca(nome, { fetcher = fetch, max = 4, excluir = [] } = {}) {
+  if (!nome || sem(nome).replace(/\s+/g, '').length < 2) return [];
+  const lista = await buscar(nome, { fetcher, modo: 'marca', limite: 40 });
+  const out = [];
+  for (const f of lista) {
+    if (out.length >= max) break;
+    const x = await baixar(f, nome, fetcher);
+    if (x && !excluir.includes(x.meta.id) && !out.some((y) => y.meta.id === x.meta.id)) out.push({ ...x, meta: { ...x.meta, alt: `Foto ligada à marca ${nome}` } });
+  }
+  return out;
+}
+
+module.exports = { fotoDe, fotosDaMarca, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, LICENCA_OK };
