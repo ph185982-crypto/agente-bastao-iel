@@ -1,4 +1,4 @@
-// Gasto com IA paga (OpenAI): preço por modelo, registro por chamada e teto mensal. Ao chegar no teto (ou passar do ritmo do
+// Gasto com IA paga (OpenAI e DeepSeek): preço por modelo, registro por chamada e teto mensal. Ao chegar no teto (ou passar do ritmo do
 // dia), a ferramenta deixa de chamar a OpenAI e segue com as IAs gratuitas até o mês virar. Nada é cobrado sem estar aqui.
 // Teto: IA_TETO_MENSAL_USD (padrão 5, pedido do Pedro em 15/11 para gastar menos). Ritmo do dia: até o dobro da cota diária (teto ÷ 30 × 2), para um dia cheio não
 // queimar o mês. Registro em config.gasto_ia = { mes, usd, chamadas, por_dia: { 'AAAA-MM-DD': usd }, por_modelo }.
@@ -12,6 +12,9 @@ const PRECOS = {
   'gpt-5.4-mini': { entrada: 0.75, cache: 0.075, saida: 4.5 },
   'gpt-5.4-nano': { entrada: 0.2, cache: 0.02, saida: 1.25 },
   'gpt-4o-mini': { entrada: 0.15, cache: 0.075, saida: 0.6 },
+  // DeepSeek (api-docs.deepseek.com, 21/11/2026): preço do horário de PICO (fora dele é a metade); conta pelo maior.
+  'deepseek-flash': { entrada: 0.3, cache: 0.006, saida: 1.2 },
+  'deepseek-v4-pro': { entrada: 1.32, cache: 0.044, saida: 3.96 },
 };
 const teto = () => (Number(process.env.IA_TETO_MENSAL_USD) > 0 ? Number(process.env.IA_TETO_MENSAL_USD) : 5);
 const conta = () => ACCOUNT.ig_id;
@@ -22,7 +25,7 @@ const precoDe = (model) => PRECOS[String(model || '').replace(/-\d{4}-\d{2}-\d{2
 // Custo de uma resposta, pelo uso que a OpenAI devolve (o raciocínio já vem somado em completion_tokens).
 function custo(model, usage) {
   const p = precoDe(model); if (!p || !usage) return null;
-  const cache = Number(usage.prompt_tokens_details?.cached_tokens) || 0;
+  const cache = Number(usage.prompt_tokens_details?.cached_tokens ?? usage.prompt_cache_hit_tokens) || 0;   // OpenAI | DeepSeek
   const entrada = Math.max(0, (Number(usage.prompt_tokens) || 0) - cache);
   const saida = Number(usage.completion_tokens) || 0;
   return { usd: (entrada * p.entrada + cache * p.cache + saida * p.saida) / 1e6, entrada, cache, saida };
