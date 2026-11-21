@@ -161,12 +161,16 @@ async function proximaPauta(est, { agora, deps, restante }) {
   const usadas = new Set((est.usadas || []).map((u) => u.id));
   let fila = (est.fila || []).filter((p) => !usadas.has(p.id));
   const velha = !est.fila_em || agora - Date.parse(est.fila_em) > 2 * 3600000;
+  est.fila_diag = null;
   if ((!fila.length || velha) && restante() > 32000) {
     const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 2 });
-    fila = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: (p.prioridade ?? 0) + (paraEmpreendedor(p.titulo) ? 25 : 0) }))
+    const todas = r.pautas || [];
+    const sem = todas.filter((p) => !melhorLink(p)).length; const servico = todas.filter((p) => deServico(p.titulo)).length; const ja = todas.filter((p) => usadas.has(p.id)).length;
+    fila = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).map((p) => ({ id: p.id, titulo: p.titulo, url: melhorLink(p), prioridade: (p.prioridade ?? 0) + (paraEmpreendedor(p.titulo) ? 25 : 0) }))
       .sort((x, y) => (y.prioridade ?? 0) - (x.prioridade ?? 0)).slice(0, 12);
+    est.fila_diag = { veio: todas.length, ja_usadas: ja, sem_link: sem, de_servico: servico, viraram_fila: fila.length };
     est.fila_em = new Date(agora).toISOString();
-  }
+  } else est.fila_diag = { motivo: fila.length ? 'fila ainda válida' : 'sem tempo para descobrir', restante_ms: Math.round(restante()), fila: fila.length };
   est.fila = fila;
   return fila.shift() || null;
 }
@@ -434,7 +438,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
         if (restante() > 20000 && !deps.criar) {
           try { const p2 = await T.passo(c.id, { deps: deps.pipeline || {}, orcamentoMs: Math.min(44000, restante() - 4000) }); const x = est.criados[est.criados.length - 1]; x.estado = p2.conteudo.top.estado; r.avancados.push({ id: c.id, estado: x.estado }); } catch (e) { r.avisos.push(`${c.id}: ${String(e.message).slice(0, 120)}`); }
         }
-      } else { r.sem_pauta = true; r.avisos.push('Sem pauta nova agora (fila vazia ou descoberta adiada).'); }
+      } else { r.sem_pauta = true; r.avisos.push(`Sem pauta nova agora (${JSON.stringify(est.fila_diag || {})}).`.slice(0, 300)); }
     } catch (e) { r.avisos.push(`Criação falhou: ${String(e.message).slice(0, 160)}`); }
   }
   // 5) Roteiros de Reels: roteirista + fiscal avançam com o tempo que sobrou (IA gratuita; nada é publicado).
