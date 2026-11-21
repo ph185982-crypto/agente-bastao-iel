@@ -14,11 +14,13 @@ const FORA = /\b(deus|jesus|igreja|reza|ora[çc][aã]o|pecado|guerra|soldad|ex[e
 
 // Marca a palavra-chave no texto original sem mudar nada (só insere **…**). Devolve null se o trecho não existe.
 function marcar(texto, destaque) {
-  const d = String(destaque || '').trim(); if (!d || d.length > 40) return null;
+  const d = String(destaque || '').trim(); if (!d || d.length > 40 || d.split(/\s+/).length > 3) return null;
   const i = texto.toLowerCase().indexOf(d.toLowerCase()); if (i < 0) return null;
   const antes = texto[i - 1]; const depois = texto[i + d.length];
   if ((antes && /\p{L}/u.test(antes)) || (depois && /\p{L}/u.test(depois))) return null; // pedaço de palavra
-  return `${texto.slice(0, i)}**${texto.slice(i, i + d.length)}**${texto.slice(i + d.length)}`;
+  // pontuação colada vai junto (senão o ponto cai sozinho na linha de baixo)
+  const fim = i + d.length + ((/^[.,;:!?…]+/.exec(texto.slice(i + d.length)) || [''])[0].length);
+  return `${texto.slice(0, i)}**${texto.slice(i, fim)}**${texto.slice(fim)}`;
 }
 // Sem IA: destaca a palavra mais longa (substantivo ou verbo forte, quase sempre).
 function destaquePadrao(texto) {
