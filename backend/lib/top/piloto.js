@@ -206,7 +206,7 @@ async function proximaMarca(est, { agora, deps, restante }) {
 // Frases: lote barato (1 chamada de IA, arte por código). Cada rodada faz até 5; vão direto para a fila de aprovação.
 async function passoFrases(cfg, est, r, { agora, dia, deps, restante }) {
   const meta = mixDe(cfg).frase || 0;
-  const feitas = est.criados.filter((x) => x.dia === dia && x.linha === 'frase').length;
+  const feitas = est.criados.filter((x) => x.dia === dia && x.linha === 'frase' && x.decidido !== 'descartado').length;
   const tentativas = (est.frases_dia?.dia === dia ? est.frases_dia.n : 0);
   if (feitas >= meta || tentativas >= Math.ceil(meta / 2) + 4 || restante() < 25000) return;
   est.frases_dia = { dia, n: tentativas + 1 };
