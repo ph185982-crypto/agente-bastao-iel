@@ -29,6 +29,10 @@ const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 const compacto = (s) => norm(s).replace(/[^a-z0-9]/g, '');
 const umaLinha = (s, n) => String(s || '').replace(/\s+/g, ' ').trim().slice(0, n);
 const OFICIAIS = ['pedro', 'instagram', 'materia'];
+const ESPERA_IG_MAX = 6 * 3600e3; // espera a cota da Meta voltar por até 6 h antes de seguir sem o Instagram oficial
+// Busca de banco de imagens que mostraria um LUGAR (fachada, prédio, salão, loja): no carrossel seria lida como a própria
+// marca ("prédio europeu como se fosse o Coco Bambu"). Nesses slides vale mais uma foto oficial que sobrou.
+const LUGAR = /\b(storefront|store|shop|building|facade|fa[cç]ade|interior|restaurant|restaurante|dining|mall|headquarters|office|factory|warehouse|branch|outlet|location|exterior|loja|fachada|pr[eé]dio|sede|f[aá]brica|unidade)\b/i;
 
 // ── Imagem: hash perceptual, download, miniatura ──────────────────────────────
 async function dHash(buf) {
@@ -158,6 +162,7 @@ Regras:
 3. Fotos de origem "pedro" foram escolhidas pelo dono do perfil: use TODAS, cada uma no slide que mais combina com ela.
 4. Prefira foto oficial (pedro, instagram, materia) a banco de imagens; nunca escolha foto com texto gravado.
 5. Se nenhuma foto mostra o assunto do slide, devolva "foto": null e em "busca" 2 a 4 palavras em INGLÊS para procurar uma foto do conceito (ex.: "delivery courier bag", "smartphone photo food").
+6. A "busca" é só para CONCEITO (objeto, gesto, pessoa genérica). Nunca peça lugar (fachada, prédio, salão, interior, loja, restaurante): uma foto de banco seria lida como a própria marca. Se o slide fala da loja/unidade/sede da marca, use uma foto oficial da marca, mesmo que menos exata.
 "motivo": uma frase curta em português dizendo por que a foto combina com o texto.
 Responda APENAS JSON: {"slides":[{"slide":"s1","foto":"c1","motivo":"","busca":""}]}`;
 
@@ -247,8 +252,22 @@ async function etapa(c, ctx, { salvarArquivo, lerArquivo, slots }) {
         const freio = () => meta.freio((d.metaUso || meta.uso)());
         // cota da Meta no limite: nem pede o @ à IA
         const handles = freio().pausar ? [] : HANDLE.test(forcado) ? [forcado] : await sugerirHandles(c, ctx, marca);
+        const agoraMs = (d.agora || Date.now)();
+        if (st.ig_espera_ate && agoraMs < st.ig_espera_ate) return { concluida: false, aguardando: 'cota da Meta' };
         const r = await lerInstagram({ marca, handles, forcado: HANDLE.test(forcado), graph, igId: d.igId || meta.config().igId, freio });
         st.ig = { handle: r.handle || null, seguidores: r.seguidores || null, lidas: r.itens.length, pausado: !!r.pausado, erro: r.erro || null };
+        // Meta no limite: as fotos oficiais são o que dá o padrão aprovado. Espera a cota voltar (até ESPERA_IG_MAX) em vez de
+        // completar o post com banco de imagens que não mostra a marca.
+        if (r.pausado) {
+          st.ig_desde ||= agoraMs;
+          if (agoraMs - st.ig_desde < ESPERA_IG_MAX) {
+            st.ig_espera_ate = agoraMs + Math.max(15, Number(freio().regain_min) || 0) * 60000;
+            st.ig.aguardando = `Instagram oficial: cota da Meta no limite, nova tentativa às ${new Date(st.ig_espera_ate).toISOString().slice(11, 16)} UTC`;
+            return { concluida: false, aguardando: 'cota da Meta' };
+          }
+          st.falhas.push('A Meta limitou a leitura do Instagram oficial da marca por várias horas: o post saiu sem as fotos do perfil.');
+        }
+        delete st.ig_espera_ate;
         const vistos = new Set();
         st.fila = [...(st.fila || []), ...r.itens.filter((x) => !vistos.has(x.url) && vistos.add(x.url)).sort((a, b) => b.curtidas - a.curtidas).slice(0, MAX_IG)
           .map((x) => ({ id: `ig_${sha(x.ig_id)}`, origem: 'instagram', url: x.url, permalink: x.permalink, legenda: x.legenda, curtidas: x.curtidas }))];
@@ -344,6 +363,12 @@ async function etapa(c, ctx, { salvarArquivo, lerArquivo, slots }) {
         st.tentadas.push(`lacuna:${s.sid}`);
         const q = st.buscas?.[s.sid] || s.busca || c.top.angulo?.imagem?.busca || '';
         if (!q) continue;
+        if (LUGAR.test(q)) {
+          const usadosAgora = new Set(Object.values(st.atrib).map((a) => a.id));
+          const r = C.filter((x) => usavel(x) && OFICIAIS.includes(x.origem) && !usadosAgora.has(x.id)).sort((a, b) => nota(s, b, fora) - nota(s, a, fora))[0];
+          if (r) st.atrib[s.sid] = { id: r.id, motivo: 'foto oficial da marca (lugar não se busca em banco de imagens)', por: 'reserva' };
+          continue; // sem oficial: fica a cor da marca, nunca um lugar qualquer
+        }
         let f = null; let origem = 'commons';
         try { f = (await (d.fotosDoConceito || require('./fotos').fotosDoConceito)(q, { max: 1, excluir: C.map((x) => x.id), soLivre: true }) || [])[0] || null; } catch { /* segue para o Pexels */ }
         if (!f && (d.buscarFoto || process.env.PEXELS_API_KEY)) {
@@ -386,4 +411,4 @@ function aplicar(c, pares) {
     ...C.filter((x) => usadas.has(x.id)).map((x) => ({ ...metaDe(c, x, ig), relevancia: 'alta', motivo: motivoDe(x.id) }))];
 }
 
-module.exports = { etapa, aplicar, validarCasamento, imagensDaMateria, creditoDe, confereMarca, lerInstagram, midiasDe, dHash, distancia, preparar, baixar, slidesDoCarrossel, metaDe, tokens, FASES, MAX_CANDIDATAS, LADO_MIN, PALAVRAS_TEXTO, CASAR };
+module.exports = { LUGAR, ESPERA_IG_MAX, etapa, aplicar, validarCasamento, imagensDaMateria, creditoDe, confereMarca, lerInstagram, midiasDe, dHash, distancia, preparar, baixar, slidesDoCarrossel, metaDe, tokens, FASES, MAX_CANDIDATAS, LADO_MIN, PALAVRAS_TEXTO, CASAR };
