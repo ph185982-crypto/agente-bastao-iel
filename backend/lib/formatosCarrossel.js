@@ -264,38 +264,26 @@ async function criarPapelDeParede(entrada, { deps = {} } = {}) {
 
 
 // ── Frase (post de 1 imagem) ───────────────────────────────────────────────────
-// Uma frase do Pedro sobre foto bonita (ou degradê), feita para curtir e repostar nos stories. Mesmo desenho da tela de
-// frase do papel de parede, numa imagem só. Sem crédito de foto na legenda (Pexels não exige; pedido do Pedro).
+// Frase famosa (pedido do Pedro, 21/11): fundo preto ou branco, letra grande, palavra-chave em laranja, texto em F, o autor
+// e o Pedro Destrava embaixo (arteFrase.js). A frase vem como está na fonte, com a palavra-chave marcada em **…**.
 function validarFrase(e = {}) {
-  const frase = texto(e.frase, LIMITE.frase, 'a frase');
-  let fundo = { tipo: 'gradiente' };
-  const f = String(e.fundo || '').trim();
-  if (/^pexels:/i.test(f)) fundo = { tipo: 'pexels', consulta: f.slice(7).replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || PEXELS_PADRAO };
-  return { frase, fundo, tema: linha(e.tema, 40), titulo: texto(e.titulo, LIMITE.titulo, 'o título', { obrigatorio: false }) || `Frase: ${frase.slice(0, 90)}`, legenda: texto(e.legenda, LIMITE.legenda, 'a legenda', { obrigatorio: false }), hashtags: hashtags(e.hashtags) };
+  const frase = texto(e.frase, 170, 'a frase');
+  if (!/\*\*[^*]+\*\*/.test(frase)) throw falha('Marque a palavra-chave da frase com **asteriscos**.');
+  return { frase, autor: texto(e.autor, 60, 'o autor'), fonte: /^https:\/\/\S+$/.test(String(e.fonte || '')) ? String(e.fonte).slice(0, 300) : null, fundo: e.fundo === 'branco' ? 'branco' : 'preto', titulo: texto(e.titulo, LIMITE.titulo, 'o título', { obrigatorio: false }) || `Frase: ${e.autor || ''}`.slice(0, LIMITE.titulo), legenda: texto(e.legenda, LIMITE.legenda, 'a legenda', { obrigatorio: false }), hashtags: hashtags(e.hashtags) };
 }
 
 async function criarFrase(entrada, { deps = {}, origem = 'frase' } = {}) {
   const e = validarFrase(entrada);
   const a = exigirBanco(deps);
   const c = M.novoConteudo({ titulo: e.titulo, formato: 'carrossel', origem: { tipo: 'formato', formato: 'frase' } });
-  c.formato_visual = 'papel_de_parede';
-  const avisos = []; let imagem_id = null; const fundo = { ...e.fundo };
-  if (e.fundo.tipo === 'pexels' && (deps.pexelsKey !== undefined ? deps.pexelsKey : process.env.PEXELS_API_KEY)) {
-    try {
-      const f = await (deps.buscarFoto || require('./fotosStudio').buscarFoto)(e.fundo.consulta, { excluir: deps.excluirFotos || [] });
-      const { id: foto_id, ...registro } = f.meta;
-      imagem_id = `fr_${c.id}`;
-      await a.arquivos.salvar(conta(), `img:${imagem_id}`, f.dados, 'image/jpeg');
-      c.imagens.push({ id: imagem_id, ...registro, foto_id, exige_credito: false });
-      fundo.foto_id = foto_id;
-    } catch (err) { avisos.push(`Sem foto para "${e.fundo.consulta}" (${String(err.message).slice(0, 60)}): fundo em degradê.`); fundo.tipo = 'gradiente'; }
-  } else fundo.tipo = 'gradiente';
-  const slides = [{ id: 's1', funcao: 'capa', layout: 'papel_frase', tema_visual: 'papel_de_parede', titulo: null, texto: e.frase, imagem_id, dados: { paleta: paletaDe(e.frase) % 6 }, claim_ids: [] }];
-  const legenda = (e.legenda || [e.frase, 'Manda pra quem precisa ler isso hoje. Se fez sentido, reposta nos seus stories.'].join('\n\n')).slice(0, LIMITE.legenda);
-  c.frase = { texto: e.frase, tema: e.tema || null, fundo };
-  M.registrar(c, 'sistema', 'post_frase', `Frase criada (fundo: ${fundo.tipo === 'gradiente' ? 'degradê feito pelo código' : 'foto do Pexels'}).`);
-  const { versao, avisos: av } = await salvarCarrossel(a, c, { slides, legenda, cta: '', hashtags: e.hashtags, rotulo: 'post frase', origem, deps });
-  return { id: c.id, titulo: c.titulo, formato: 'frase', slides: versao.slides.length, fundo: fundo.tipo, foto_id: fundo.foto_id || null, avisos: [...avisos, ...av] };
+  c.formato_visual = 'frase';
+  const limpa = e.frase.replace(/\*\*/g, '');
+  const slides = [{ id: 's1', funcao: 'capa', layout: 'frase_classica', tema_visual: 'frase', titulo: null, texto: e.frase, imagem_id: null, dados: { fundo: e.fundo, autor: e.autor }, claim_ids: [] }];
+  const legenda = (e.legenda || [`“${limpa}” — ${e.autor}`, 'Salva e manda pra quem precisa ler isso hoje. Se fez sentido, reposta nos seus stories.'].join('\n\n')).slice(0, LIMITE.legenda);
+  c.frase = { texto: limpa, autor: e.autor, fonte: e.fonte, fundo: e.fundo };
+  M.registrar(c, 'sistema', 'post_frase', `Frase de ${e.autor} (fundo ${e.fundo}).`);
+  const { versao, avisos } = await salvarCarrossel(a, c, { slides, legenda, cta: '', hashtags: e.hashtags, rotulo: 'post frase', origem, deps });
+  return { id: c.id, titulo: c.titulo, formato: 'frase', slides: versao.slides.length, fundo: e.fundo, avisos };
 }
 
 module.exports = { criarFrase, validarFrase, criarDialogo, criarPapelDeParede, validarDialogo, validarPapel, montarSlidesDialogo, montarSlidesPapel, chamadaDaPalavra, carregarImagem, LIMITE, PEXELS_PADRAO };

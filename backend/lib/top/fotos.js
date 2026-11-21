@@ -51,7 +51,7 @@ function pontuarLugar(item, nome) {
 }
 
 async function buscar(nome, { fetcher = fetch, limite = 25, modo = 'pessoa', soLivre = false } = {}) {
-  const q = new URLSearchParams({ action: 'query', format: 'json', generator: 'search', gsrsearch: `${nome} filetype:bitmap`, gsrnamespace: '6', gsrlimit: String(limite), prop: 'imageinfo', iiprop: 'url|size|extmetadata', iiurlwidth: '1400', origin: '*' });
+  const q = new URLSearchParams({ action: 'query', format: 'json', generator: 'search', gsrsearch: `${nome} filetype:bitmap`, gsrnamespace: '6', gsrlimit: String(limite), prop: 'imageinfo', iiprop: 'url|size|extmetadata', iiurlwidth: '1280', origin: '*' });
   const r = await fetcher(`${BASE}?${q}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
   if (!r.ok) throw new Error(`Commons respondeu ${r.status}`);
   const d = await r.json();

@@ -115,7 +115,7 @@ async function capturasDaLoja(op, { deps = {}, agora = Date.now(), max = 2 } = {
 const semHtml = (s) => feeds.decodifica(String(s || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
 async function commons(consulta, { exigirNome = null, deps = {}, agora = Date.now(), max = 3, relacao = 'negocio', descricaoBase = '' } = {}) {
   const fetcher = deps.fetcher || safeFetch; const avisos = [];
-  const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrsearch=${encodeURIComponent(consulta)}&gsrlimit=20&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1600`;
+  const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrsearch=${encodeURIComponent(consulta)}&gsrlimit=20&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1280`;
   let j = null;
   for (let t = 0; t < 3 && !j; t++) {
     try { const r = await fetcher(url, { timeoutMs: 12000, maxBytes: 1.5 * 1024 * 1024, accept: 'application/json', headers: { 'User-Agent': UA_API } }); if (r.status === 429 || /too many requests/i.test(String(r.corpo).slice(0, 80))) { await new Promise((x) => setTimeout(x, 1500 * (t + 1))); continue; } if (r.status >= 400) throw new Error(`HTTP ${r.status}`); j = JSON.parse(r.corpo); }
