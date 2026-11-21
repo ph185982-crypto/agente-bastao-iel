@@ -20,7 +20,8 @@
 
 /* 21/11: botões logo abaixo da prévia e prévia com altura limitada, para ver o conteúdo e as decisões juntos na tela */
 .st-carousel img{max-height:56vh}.st-decisao{border-bottom:1px solid var(--avz-glass-border)}.st-decisao .st-decisionbar{padding-top:12px}
-.st-decisao{position:sticky;bottom:calc(env(safe-area-inset-bottom,0px) + 98px);z-index:6;background:var(--cz-surface);box-shadow:0 -8px 18px rgba(11,27,51,.08)}
+.st-decisao{background:var(--cz-surface)}
 @media(max-width:760px){.st-carousel img{max-height:48vh}.st-review-card .st-card-heading{padding:12px 16px 10px}.st-review-card .st-card-heading h2{font-size:15px!important;line-height:1.35!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 .st-review-card{overflow:clip!important}/* overflow:hidden desligava o "sticky" da barra de decisão */
 @media(max-width:760px){.st-carousel-toolbar{padding-top:4px}.st-carousel-toolbar button{height:32px!important;width:38px!important}.st-dots{padding:2px 10px}}
+@media(max-width:760px){.st-carousel-toolbar{display:none!important}.st-decisao .st-agenda-nota{display:none}.st-decisao .st-decisionbar{padding:8px 0 6px}.st-decisao .st-approve,.st-decisao .st-reject,.st-decisao .st-agendar{min-height:46px!important}}
