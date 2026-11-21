@@ -7,7 +7,8 @@ const sharp = require('sharp');
 // Provedores gratuitos com visão. Os nomes de modelo mudam: além da lista fixa, cada um descobre na hora os modelos que
 // aceitam imagem (Gemini: todo "flash"; Groq: llama-4/vision/scout/maverick; OpenRouter: entrada de imagem e preço zero).
 const MODELOS = [
-  { provedor: 'groq', env: 'GROQ_API_KEY', base: 'https://api.groq.com/openai/v1', modelos: [], descobrir: (m) => /llama-4|vision|scout|maverick|-vl/i.test(m.id) },
+  // 21/11: o Groq nunca devolvia modelo de visão na descoberta (a fila ficava vazia e o Groq nem era tentado). Modelo fixo de visão.
+  { provedor: 'groq', env: 'GROQ_API_KEY', base: 'https://api.groq.com/openai/v1', modelos: ['meta-llama/llama-4-scout-17b-16e-instruct'], descobrir: (m) => /llama-4|vision|scout|maverick|-vl/i.test(m.id) },
   { provedor: 'openrouter', env: 'OPENROUTER_API_KEY', base: 'https://openrouter.ai/api/v1', modelos: [], descobrir: (m) => (m.architecture?.input_modalities || []).includes('image') && /:free$/.test(m.id) },
   { provedor: 'gemini', env: 'GEMINI_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta/openai', modelos: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'], descobrir: (m) => /flash/i.test(m.id) && !/image|tts|audio|live|embed/i.test(m.id) },
   // Mesma API do Gemini com a outra chave do Google (GOOGLE_API_KEY): reserva quando a GEMINI_API_KEY é recusada (403, 21/11).
