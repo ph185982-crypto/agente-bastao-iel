@@ -148,7 +148,8 @@ async function fotosDoConceito(termo, { fetcher = fetch, max = 1, excluir = [], 
 // "logo" no título; vem como PNG com transparência (miniatura de 960 px, tamanho padrão aceito pela Wikimedia).
 // Logo no Commons é marca nominativa (identifica a empresa citada na notícia) ou "PD-textlogo".
 async function logoDe(empresa, { fetcher = fetch } = {}) {
-  const nome = sem(empresa).replace(/[^a-z0-9\s]/g, ' ').trim(); if (nome.length < 2) return null;
+  // nome curto ("On", "3M") casa com qualquer arquivo: sem logo, o painel mostra o nome escrito
+  const nome = sem(empresa).replace(/[^a-z0-9\s]/g, ' ').trim(); if (nome.replace(/\s/g, '').length < 4) return null;
   const q = new URLSearchParams({ action: 'query', format: 'json', generator: 'search', gsrsearch: `${empresa} logo filetype:drawing`, gsrnamespace: '6', gsrlimit: '15', prop: 'imageinfo', iiprop: 'url|size', iiurlwidth: '960', origin: '*' });
   const r = await fetcher(`${BASE}?${q}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
   if (!r.ok) return null;
@@ -156,7 +157,7 @@ async function logoDe(empresa, { fetcher = fetch } = {}) {
   const partes = nome.split(/\s+/).filter((p) => p.length >= 2);
   const pont = (it) => {
     const t = sem(it.title).replace(/[^a-z0-9\s]/g, ' ');
-    if (!partes.every((p) => t.includes(p)) || !/\blogo/.test(t)) return -1;
+    if (!partes.every((p) => new RegExp(`(^|\\s)${p}(\\s|$)`).test(t)) || !/\blogo/.test(t)) return -1; // palavra inteira
     let p = 10 - (t.length / 20);
     if (/\b(20[12]\d|present|atual|current)\b/.test(t)) p += 3;       // versão recente do logo
     if (/\b(old|antigo|former|19\d\d|200\d)\b/.test(t)) p -= 4;
