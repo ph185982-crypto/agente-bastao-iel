@@ -109,7 +109,7 @@ test('como fazer e caso: linha própria no prompt e chamada final de cada uma', 
 });
 
 test('piloto: com história não usada, 1 de cada 3 peças do dia sai dela; sem cadastro, segue só a notícia', async () => {
-  novo(); await require('./top/piloto').salvarConfig({ meta_dia: 8, reserva: 2, roteiros_dia: 5 }); // mecânica com o volume antigo explícito
+  novo(); await require('./top/piloto').salvarConfig({ meta_dia: 8, reserva: 2, roteiros_dia: 5, mix: { frase: 0, noticia: 8, marca: 0, revelacao: 0 } }); // mecânica com o volume e o mix antigos explícitos
   const criadas = []; const usadas = [];
   const fila = [{ id: 'hs_1', tipo: 'historia' }, { id: 'hs_2', tipo: 'caso' }];
   const d = { semLimpeza: true, placar: null,
