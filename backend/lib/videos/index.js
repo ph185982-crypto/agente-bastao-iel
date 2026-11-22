@@ -103,20 +103,28 @@ async function criar({ titulo, estilo, opcoes, roteiro_id, roteiro_texto } = {})
 // ── Envio do bruto ──────────────────────────────────────────────────────────
 // Chamado pelo navegador depois do upload (e pelo webhook do Blob, quando ele chega).
 async function registrarEnvio(id, { url, pathname, tamanho, contentType, duracao_s, largura, altura } = {}, { deps } = {}) {
-  const reg = await ler(id); const c = reg.doc;
-  if (!urlPublica(url)) throw falha('Envie a URL pública (https) do arquivo no Blob.');
-  if (!pathnameValido(c.id, pathname)) throw falha(`O arquivo precisa estar em ${prefixoDe(c.id)}.`);
-  if (contentType && !TIPOS_PERMITIDOS.includes(String(contentType))) throw falha('Tipo de arquivo não aceito (mp4, mov, webm).');
-  if (c.status === 'arquivado') throw falha('Este vídeo foi apagado.', 409, 'ARQUIVADO');
-  if (c.video.origem?.url === url && c.video.estado !== 'enviado') return c;  // webhook e navegador registram o mesmo envio
-  if (!['enviado', 'erro'].includes(c.video.estado)) throw falha('Este vídeo já está em edição. Use "Refazer" para mandar de novo.', 409, 'EM_ANDAMENTO');
-  c.video.origem = { url: String(url), pathname: String(pathname), tamanho: Number(tamanho) || null, duracao_s: Number(duracao_s) || null, largura: Number(largura) || null, altura: Number(altura) || null, contentType: contentType ? String(contentType) : null, enviado_em: agora() };
-  c.video.estado = 'na_fila'; c.video.worker = { ...c.video.worker, tentativas: 0, erro: null, iniciado_em: null, concluido_em: null };
-  c.studio = { estado: 'video', etapa: 'fila' };
-  log(c, `Arquivo recebido (${Math.round((Number(tamanho) || 0) / 1048576)} MB). Na fila de edição.`);
-  await gravar(c, reg.rev);
-  await dispararWorker(c.id, comDeps(deps));
-  return c;
+  // Navegador e webhook do Blob registram o mesmo envio quase juntos: quem perde a corrida (CONFLITO) lê de novo
+  // e confere. Se o outro já registrou esta mesma URL, o envio deu certo — nunca devolve erro nem apaga o vídeo.
+  for (let tentativa = 0; tentativa < 4; tentativa++) {
+    const reg = await ler(id); const c = reg.doc;
+    if (!urlPublica(url)) throw falha('Envie a URL pública (https) do arquivo no Blob.');
+    if (!pathnameValido(c.id, pathname)) throw falha(`O arquivo precisa estar em ${prefixoDe(c.id)}.`);
+    if (contentType && !TIPOS_PERMITIDOS.includes(String(contentType))) throw falha('Tipo de arquivo não aceito (mp4, mov, webm).');
+    if (c.status === 'arquivado') throw falha('Este vídeo foi apagado.', 409, 'ARQUIVADO');
+    if (c.video.origem?.url === url && c.video.estado !== 'enviado') {   // webhook e navegador registram o mesmo envio
+      if (tentativa > 0) await dispararWorker(c.id, comDeps(deps));       // perdeu a corrida: garante que o worker foi acordado
+      return c;
+    }
+    if (!['enviado', 'erro'].includes(c.video.estado)) throw falha('Este vídeo já está em edição. Use "Refazer" para mandar de novo.', 409, 'EM_ANDAMENTO');
+    c.video.origem = { url: String(url), pathname: String(pathname), tamanho: Number(tamanho) || null, duracao_s: Number(duracao_s) || null, largura: Number(largura) || null, altura: Number(altura) || null, contentType: contentType ? String(contentType) : null, enviado_em: agora() };
+    c.video.estado = 'na_fila'; c.video.worker = { ...c.video.worker, tentativas: 0, erro: null, iniciado_em: null, concluido_em: null };
+    c.studio = { estado: 'video', etapa: 'fila' };
+    log(c, `Arquivo recebido (${Math.round((Number(tamanho) || 0) / 1048576)} MB). Na fila de edição.`);
+    try { await gravar(c, reg.rev); } catch (e) { if (e.code === 'CONFLITO') continue; throw e; }
+    await dispararWorker(c.id, comDeps(deps));
+    return c;
+  }
+  throw falha('Não consegui registrar o envio agora. O arquivo está salvo: toque em tentar de novo.', 409, 'CONFLITO');
 }
 
 // Com GITHUB_DISPATCH_TOKEN, acorda o worker na hora; sem ele, o cron de 5 min pega o job. Falha aqui nunca derruba o envio.

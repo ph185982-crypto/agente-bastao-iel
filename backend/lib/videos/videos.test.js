@@ -83,6 +83,15 @@ test('enviado: só aceita arquivo em videos/<id>/ com URL https; vai para na_fil
   await V.registrarEnvio(c2.id, blob(c2.id, 'b.mp4'), d2); assert.strictEqual(d2.fetches.length, 0);
 });
 
+test('enviado: navegador e webhook do Blob ao mesmo tempo não dão CONFLITO — os dois recebem o vídeo na fila', async () => {
+  novo(); const d = depsDe(null);
+  const c = await V.criar({});
+  const dados = { ...blob(c.id, 'bruto.mp4'), tamanho: 5 * 1048576, contentType: 'video/mp4' };
+  const [a, b, x] = await Promise.all([V.registrarEnvio(c.id, dados, d), V.registrarEnvio(c.id, dados, d), V.registrarEnvio(c.id, dados, d)]);
+  for (const r of [a, b, x]) assert.strictEqual(r.video.estado, 'na_fila');
+  assert.strictEqual((await ler(c.id)).video.origem.url, dados.url);
+});
+
 test('fila: proximoJob pega o mais antigo, marca editando com lease de 30 min e não entrega o mesmo job duas vezes', async () => {
   novo(); const d = depsDe(null);
   const a = await ateNaFila(d.deps); await new Promise((r) => setTimeout(r, 5)); const b = await ateNaFila(d.deps);

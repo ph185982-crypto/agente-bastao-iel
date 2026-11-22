@@ -9,7 +9,7 @@
 name: Worker de vídeo (reels)
 on:
   schedule:
-    - cron: '7 */2 * * *'   # reforço: o agendamento do GitHub atrasa muito; o plantão abaixo é quem atende de verdade
+    - cron: '7,37 * * * *'   # reforço a cada 30 min: o agendamento do GitHub atrasa muito; o plantão abaixo é quem atende de verdade
   workflow_dispatch: {}
   repository_dispatch:
     types: [video]
@@ -72,8 +72,8 @@ jobs:
         id: editar
         env:
           WORKER_MINUTOS: '345'
-          WORKER_INTERVALO_S: '30'
-          WORKER_CHECAGEM_FILA_MIN: '120'   # rede de segurança: só acorda o banco (Neon) de 2 em 2 h sem sinal novo
+          WORKER_INTERVALO_S: '8'    # olha o sinal do Blob a cada 8 s (arquivo minúsculo, sem tocar no banco): começa a editar quase na hora
+          WORKER_CHECAGEM_FILA_MIN: '3'     # rede de segurança: consulta a fila de 3 em 3 min mesmo sem sinal novo (o Estúdio já está no Supabase)
           APP_URL: ${{ vars.MONITOR_URL || 'https://agente-bastao-iel.vercel.app' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}        # opcional: sem ele vale o token OIDC do runner
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}  # opcional: sem ele o b-roll vem pelo app

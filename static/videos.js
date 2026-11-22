@@ -95,6 +95,7 @@
     const env = { nome: meta.nome || 'gravação', pct: 0, etapa: 'criando', erro: null, id: null, tamanho: blob.size };
     ST.envios[chave] = env; redesenhar();
     const progresso = typeof meta.onProgress === 'function' ? meta.onProgress : () => {};
+    let enviado = false;   // true quando o arquivo já subiu para o Blob (aí o vídeo não pode ser apagado por falha de registro)
     try {
       progresso({ etapa: 'criando', pct: 0 });
       const criado = await ctx.api('/api/videos', { method: 'POST', body: { titulo: meta.titulo || undefined, estilo: meta.estilo || undefined, opcoes: meta.opcoes || undefined, roteiro_id: meta.roteiro_id || undefined, roteiro_texto: meta.roteiro_texto || undefined } });
@@ -109,8 +110,13 @@
         clientPayload: JSON.stringify({ id, papel: 'origem' }),
         onUploadProgress: (p) => { const pct = Math.max(0, Math.min(100, Math.round(p.percentage ?? (p.total ? p.loaded / p.total * 100 : 0)))); if (pct !== env.pct) { env.pct = pct; progresso({ etapa: 'enviando', pct, id }); atualizarBarra(chave); } },
       });
-      env.pct = 100; env.etapa = 'registrando'; progresso({ etapa: 'registrando', pct: 100, id }); atualizarBarra(chave);
-      await ctx.api(`/api/videos/${encodeURIComponent(id)}/enviado`, { method: 'POST', body: { url: r.url, pathname: r.pathname, tamanho: blob.size, contentType: r.contentType || tipo } });
+      enviado = true; env.pct = 100; env.etapa = 'registrando'; progresso({ etapa: 'registrando', pct: 100, id }); atualizarBarra(chave);
+      // O arquivo JÁ está no Blob: se o registro falhar (conflito com o webhook, rede), tenta de novo e nunca apaga o vídeo.
+      let reg = null;
+      for (let t = 0; t < 4 && !reg; t++) {
+        try { reg = await ctx.api(`/api/videos/${encodeURIComponent(id)}/enviado`, { method: 'POST', body: { url: r.url, pathname: r.pathname, tamanho: blob.size, contentType: r.contentType || tipo } }); }
+        catch (e) { if (t === 3 || ![409, 502, 503, 504, 0, undefined].includes(e.status)) { throw e; } await new Promise((ok) => setTimeout(ok, 700 * (t + 1))); }
+      }
       env.etapa = 'concluido'; progresso({ etapa: 'concluido', pct: 100, id });
       delete ST.envios[chave];
       ctx.toast('Vídeo enviado. Entrou na fila de edição; aviso quando ficar pronto.');
@@ -118,7 +124,7 @@
       return { id };
     } catch (e) {
       // Envio que falhou não deixa um vídeo "aguardando o arquivo" para sempre na lista.
-      if (env.id) { try { await ctx.api(`/api/videos/${encodeURIComponent(env.id)}`, { method: 'DELETE' }); } catch { /* segue */ } }
+      if (env.id && !enviado) { try { await ctx.api(`/api/videos/${encodeURIComponent(env.id)}`, { method: 'DELETE' }); } catch { /* segue */ } }
       env.etapa = 'erro'; env.erro = e.status === 503 ? (e.message || 'O armazenamento de vídeos não está ligado.') : (e.message || 'O envio falhou.');
       if (e.status === 503) ST.semArmazenamento = env.erro;
       progresso({ etapa: 'erro', erro: env.erro, id: env.id });
