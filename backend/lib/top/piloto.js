@@ -403,6 +403,10 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
     try { const m = await (deps.coletarMetricas || ((o) => require('../placar').coletar(o)))({ agora, orcamentoMs: Math.min(22000, restante() - 18000) }); r.metricas = { posts: m.snapshot?.posts?.length || 0, parcial: !!m.snapshot?.parcial }; }
     catch (e) { r.avisos.push(`Leitura dos resultados falhou: ${String(e.meta?.amigavel || e.message).slice(0, 110)}`); }
   }
+  // 0f) LinkedIn: um post atrasado por vez (o que já saiu no Instagram e ainda não foi ao LinkedIn).
+  if (!deps.semLinkedIn && restante() > 60000) {
+    try { const li = await require('../linkedin').drenarFila({ agora }); if (li.enviado || li.erro) r.linkedin = li; } catch (e) { r.avisos.push(`LinkedIn: ${String(e.message).slice(0, 100)}`); }
+  }
   // 1) Agenda vencida → publica (vale mesmo com o piloto desligado: foi aprovado pelo Pedro).
   for (const item of [...(est.agenda || [])].filter((x) => Date.parse(x.publicar_em) <= agora)) {
     try { await publicarAgora(item.id, deps); removidos.add(item.id); r.publicados.push(item.id); }

@@ -97,3 +97,24 @@ test('post de uma imagem vai como imagem (não documento)', env(CFG, async () =>
   await L.publicar('c_img', { deps: { fetch, carregarAprovado: async () => ({ c: { id: 'c_img', titulo: 'T', formato: 'estatico' }, v: { id: 'v', hash: 'h', slides: [{ texto: 'Seu **caixa**' }] } }), jpegDoSlide: async () => jpg, montarLegenda: () => 'Legenda.' } });
   assert.deepStrictEqual(posts[0].content.media, { id: 'urn:li:image:I1', altText: 'Seu caixa' });
 }));
+
+test('fila de atrasados: manda ao LinkedIn, um por vez e do mais antigo, o que já saiu no Instagram; respeita o intervalo e pula vídeo', env({ ...CFG, LINKEDIN_FILA_MIN: '15' }, async () => {
+  novo(); const a = arm.armazem(); const conta = ACCOUNT.ig_id;
+  await L.salvarCfg({ token: L.cifrar('T'), pessoa: 'urn:li:person:x', expira_em: new Date(Date.now() + 86400000).toISOString(), ativo: true });
+  for (const [id, em, formato] of [['c_novo', '2026-11-21T10:00:00Z', 'carrossel'], ['c_velho', '2026-11-20T10:00:00Z', 'carrossel'], ['c_video', '2026-11-19T10:00:00Z', 'reels'], ['c_ja', '2026-11-18T10:00:00Z', 'carrossel']]) {
+    await a.conteudos.salvar(conta, id, { id, formato, status: 'publicado' }, 0);
+    await a.publicacoes.iniciar(conta, id, 'instagram', { hash_versao: `h_${id}`, publicada_em: em });
+    await a.publicacoes.atualizar(conta, id, 'instagram', ['iniciada'], 'publicada', { publicada_em: em });
+  }
+  await a.publicacoes.iniciar(conta, 'c_ja', 'linkedin', {}); await a.publicacoes.atualizar(conta, 'c_ja', 'linkedin', ['iniciada'], 'publicada', {});
+  const enviados = []; const publicar = async (id, { hash }) => { enviados.push([id, hash]); await a.publicacoes.iniciar(conta, id, 'linkedin', {}); return a.publicacoes.atualizar(conta, id, 'linkedin', ['iniciada'], 'publicada', {}); };
+  const t0 = Date.parse('2026-11-22T12:00:00Z');
+  const r1 = await L.drenarFila({ agora: t0, deps: { publicar } });
+  assert.deepStrictEqual(enviados, [['c_velho', 'h_c_velho']]);   // o vídeo (mais antigo) foi pulado e marcado
+  assert.strictEqual(r1.enviado, 'c_velho');
+  assert.strictEqual((await L.drenarFila({ agora: t0 + 5 * 60000, deps: { publicar } })).motivo, 'intervalo');
+  await L.drenarFila({ agora: t0 + 16 * 60000, deps: { publicar } });
+  assert.deepStrictEqual(enviados.map((x) => x[0]), ['c_velho', 'c_novo']);
+  assert.strictEqual((await L.pendentes()).length, 0);
+  assert.strictEqual((await L.drenarFila({ agora: t0 + 40 * 60000, deps: { publicar } })).motivo, 'vazia');
+}));
