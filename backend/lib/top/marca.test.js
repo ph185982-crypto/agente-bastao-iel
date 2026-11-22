@@ -631,7 +631,7 @@ test('Wikidata: acha a empresa da marca (com logo), o produto mais famoso e recu
   };
   const w = await Fotos.marcaNoWikidata('Ferrero', { fetcher });
   assert.strictEqual(w.id, 'Q2'); assert.strictEqual(w.logo, 'Ferrero logo.svg');
-  assert.deepStrictEqual(w.produto, { nome: 'Nutella', arquivo: 'Nutella.jpg' });
+  assert.deepStrictEqual(w.produto, { nome: 'Nutella', arquivo: 'Nutella.jpg', categoria: null }); assert.deepStrictEqual(w.produtos.map((p) => p.nome), ['Nutella', 'Kinder']);
   assert.strictEqual((await Fotos.marcaNoWikidata('Kate', { fetcher })).nome, 'Kate Spade & Company');   // marca: aceita
   assert.strictEqual(await Fotos.marcaNoWikidata('Kate', { fetcher, estrito: true }), null);            // empresa citada: não
   assert.strictEqual(await Fotos.marcaNoWikidata('SBP', { fetcher }), null);
