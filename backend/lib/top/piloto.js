@@ -240,6 +240,7 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
       try { for (const p of (await descobrir({ dias: 7, pilares: [pilar] })).pautas || []) if (!vistos.has(p.id)) { vistos.add(p.id); todas.push(p); } } catch { /* um recorte falhar não derruba os outros */ }
     }
     const cands = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).slice(0, 30);
+    est.diag_especial = { ...(est.diag_especial || {}), [tipo]: { buscadas: todas.length, candidatas: cands.length, ja_usadas: todas.filter((p) => usadas.has(p.id)).length } };
     if (cands.length) {
       const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));
       const x = await pedir({ sistema: FONTES_PAUTA[tipo].sistema(), usuario: cands.map((p, i) => `${i}. ${p.titulo}`).join('\n'), maxTokens: 1800, temperatura: 0.1, etapa: `pauta_${tipo}` });
@@ -247,6 +248,8 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
         .map((it) => ({ id: cands[it.i].id, titulo: cands[it.i].titulo, url: melhorLink(cands[it.i]), marca: String(it.marca).trim().slice(0, 60), conhecida: Number(it.conhecida) }))
         .filter((p, k, l) => l.findIndex((q) => q.marca.toLowerCase() === p.marca.toLowerCase()) === k)
         .sort((a, b) => b.conhecida - a.conhecida);
+      est.diag_especial[tipo].da_ia = (x?.dados?.itens || []).length; est.diag_especial[tipo].reconhecidas = fila.length;
+      est.diag_especial[tipo].amostra = (x?.dados?.itens || []).slice(0, 6).map((it) => `${String(it.marca || '').slice(0, 20)}:${it.conhecida}`);
     } else fila = [];
   }
   // a mesma marca não volta na mesma semana
