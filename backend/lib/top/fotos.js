@@ -151,6 +151,8 @@ async function fotosDoConceito(termo, { fetcher = fetch, max = 1, excluir = [], 
 // "logo" no título; vem como PNG com transparência (miniatura de 960 px, tamanho padrão aceito pela Wikimedia).
 // Logo no Commons é marca nominativa (identifica a empresa citada na notícia) ou "PD-textlogo".
 async function logoDe(empresa, { fetcher = fetch } = {}) {
+  // 1º o logo oficial ligado à empresa no Wikidata (nome curto como "Gol" ou "O Boticário" também acha)
+  try { const w = await marcaNoWikidata(empresa, { fetcher, estrito: true }); if (w?.logo) { const l = await arquivoCommons(w.logo, { fetcher, largura: 960 }); if (l) return l; } } catch { /* segue para a busca no Commons */ }
   // nome curto ("On", "3M") casa com qualquer arquivo: sem logo, o painel mostra o nome escrito
   const nome = sem(empresa).replace(/[^a-z0-9\s]/g, ' ').trim(); if (nome.replace(/\s/g, '').length < 4) return null;
   const q = new URLSearchParams({ action: 'query', format: 'json', generator: 'search', gsrsearch: `${empresa} logo filetype:drawing`, gsrnamespace: '6', gsrlimit: '15', prop: 'imageinfo', iiprop: 'url|size', iiurlwidth: '960', origin: '*' });
@@ -180,4 +182,69 @@ async function logoDe(empresa, { fetcher = fetch } = {}) {
   return { dados, titulo: melhor.it.title, pagina: melhor.it.imageinfo[0].descriptionurl || null };
 }
 
-module.exports = { logoDe, fotoDe, fotosDaMarca, fotosDoConceito, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, pontuarConceito, LICENCA_OK, LICENCA_LIVRE };
+// ── Wikidata: logo oficial (P154) e produto mais famoso da marca (P1056/P1716 com foto P18) ─────────────────────────
+// Pedido do Pedro (22/11): a capa do "Por trás da marca" tem de mostrar a marca na hora (logo + um produto famoso com a
+// logo), não uma foto qualquer da matéria. O Wikidata liga a empresa ao arquivo do logo e aos produtos dela (Ferrero →
+// Nutella, Ferrero Rocher, Kinder; Gol → avião com a pintura da Gol). Sem chave, sem custo.
+const WD = 'https://www.wikidata.org/w/api.php';
+const EMPRESA = /(empresa|companhia|marca|fabricante|rede|varejist|grupo|multinacional|corpora|conglomerad|loja|company|brand|manufacturer|airline|aérea|aerea|retailer|chain|business|maker|producer|bank|banco|operadora|startup)/i;
+const valores = (it, p) => (it?.claims?.[p] || []).map((x) => x?.mainsnak?.datavalue?.value).filter(Boolean);
+async function wdJson(params, fetcher) {
+  const r = await fetcher(`${WD}?${new URLSearchParams({ format: 'json', origin: '*', ...params })}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) });
+  if (!r.ok) return null;
+  return r.json();
+}
+const SUFIXO_EMPRESA = /^(the|o|a|os|as|company|companies|inc|incorporated|corporation|corp|co|sa|s|se|ag|nv|ltda|plc|llc|group|grupo|holding|holdings|brasil|brazil|&|e|and|cia)$/;
+async function marcaNoWikidata(nome, { fetcher = fetch, estrito = false } = {}) {
+  const q = String(nome || '').trim(); if (sem(q).replace(/[^a-z0-9]/g, '').length < 2) return null;
+  // Busca de texto só entre itens COM logo (acha "Gol" → Gol Linhas Aéreas) + busca por rótulo, nessa ordem.
+  const [texto, rotulo] = await Promise.all([
+    wdJson({ action: 'query', list: 'search', srlimit: '8', srsearch: `${q} haswbstatement:P154` }, fetcher).catch(() => null),
+    wdJson({ action: 'wbsearchentities', language: 'pt', uselang: 'pt', type: 'item', limit: '20', search: q }, fetcher).catch(() => null),
+  ]);
+  const ids = [...new Set([...(texto?.query?.search || []).map((x) => x.title), ...(rotulo?.search || []).map((x) => x.id)].filter((x) => /^Q\d+$/.test(x || '')))].slice(0, 40);
+  if (!ids.length) return null;
+  const ent = {};
+  for (let i = 0; i < ids.length; i += 20) Object.assign(ent, (await wdJson({ action: 'wbgetentities', props: 'claims|descriptions|labels|aliases|sitelinks', languages: 'pt|en', ids: ids.slice(i, i + 20).join('|') }, fetcher))?.entities || {});
+  const lista = ids.map((id) => ent[id]).filter(Boolean);
+  const desc = (it) => `${it.descriptions?.pt?.value || ''} ${it.descriptions?.en?.value || ''}`;
+  // O nome pedido tem de aparecer como palavra inteira no nome da empresa ("Boticário" ⊂ "O Boticário", "Gol" ⊂ "Gol Linhas
+  // Aéreas"); só apelido parecido não basta (a sigla "SBP" de um sistema de pagamento russo não vira a SBP do inseticida).
+  const alvo = sem(q).replace(/[^a-z0-9& ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const nomeBate = (it) => [it.labels?.pt?.value, it.labels?.en?.value].filter(Boolean).some((l) => {
+    const n = ` ${sem(l).replace(/[^a-z0-9& ]/g, ' ').replace(/\s+/g, ' ').trim()} `;
+    if (!(n.includes(` ${alvo} `) || ` ${alvo} `.includes(n))) return false;
+    // estrito (logo de empresa citada no "Quem é ele?"): além do nome, só sobra palavra de razão social
+    // ("Kate" não vira "Kate Spade & Company"; "Coca-Cola" vira "The Coca-Cola Company")
+    return !estrito || n.replace(` ${alvo} `, ' ').trim().split(' ').filter(Boolean).every((w) => SUFIXO_EMPRESA.test(w));
+  });
+  // a empresa: tem logo, a descrição diz que é empresa/marca e o nome bate (nunca o sobrenome, a cidade ou a doença)
+  const empresa = lista.find((it) => valores(it, 'P154').length && EMPRESA.test(desc(it)) && nomeBate(it));
+  if (!empresa) return null;
+  const out = { id: empresa.id, nome: empresa.labels?.pt?.value || empresa.labels?.en?.value || q, logo: valores(empresa, 'P154')[0] || null, imagem: valores(empresa, 'P18')[0] || null, produto: null };
+  const prodIds = [...new Set([...valores(empresa, 'P1056'), ...valores(empresa, 'P1716')].map((v) => v.id).filter(Boolean))].slice(0, 20);
+  if (prodIds.length) {
+    const pe = (await wdJson({ action: 'wbgetentities', props: 'claims|labels|sitelinks', languages: 'pt|en', ids: prodIds.join('|') }, fetcher))?.entities || {};
+    // produto de MARCA (tem logo próprio e foto), o mais conhecido primeiro (artigos na Wikipédia em mais línguas)
+    const prods = Object.values(pe).filter((it) => valores(it, 'P18').length && valores(it, 'P154').length)
+      .sort((a, b) => Object.keys(b.sitelinks || {}).length - Object.keys(a.sitelinks || {}).length);
+    if (prods[0]) out.produto = { nome: prods[0].labels?.pt?.value || prods[0].labels?.en?.value || '', arquivo: valores(prods[0], 'P18')[0] };
+  }
+  return out;
+}
+
+// Baixa um arquivo do Commons pelo nome (miniatura PNG/JPG). Devolve { dados, titulo, pagina } ou null.
+async function arquivoCommons(arquivo, { fetcher = fetch, largura = 1280, minBytes = 3000 } = {}) {
+  if (!arquivo) return null;
+  const d = await wdJson({ action: 'query', titles: `File:${arquivo}`, prop: 'imageinfo', iiprop: 'url|size', iiurlwidth: String(largura) }, (u, o) => fetcher(u.replace(WD, BASE), o));
+  const ii = Object.values(d?.query?.pages || {})[0]?.imageinfo?.[0];
+  const url = ii?.thumburl || ii?.url; if (!url) return null;
+  const host = new URL(url).hostname; if (!['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(host)) return null;
+  const r = await fetcher(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
+  if (!r.ok) return null;
+  const dados = Buffer.from(await r.arrayBuffer());
+  if (dados.length < minBytes || dados.length > 10 * 1024 * 1024) return null;
+  return { dados, titulo: `File:${arquivo}`, pagina: ii.descriptionurl || null };
+}
+
+module.exports = { marcaNoWikidata, arquivoCommons, logoDe, fotoDe, fotosDaMarca, fotosDoConceito, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, pontuarConceito, LICENCA_OK, LICENCA_LIVRE };

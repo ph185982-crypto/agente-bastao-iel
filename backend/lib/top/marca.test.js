@@ -610,3 +610,29 @@ test('capa de "Por trás da marca": o logo da marca entra na capa (cartão branc
   const sem = await require('../arteMarca').renderizarCapa({ texto: 'Uma **manchete** de teste', dados: { marca: 'Marca', cor: '#D51900' } }, { total: 8 }, null);
   assert.ok(!sem.metrics.elementos.includes('logo_marca'));
 });
+
+test('Wikidata: acha a empresa da marca (com logo), o produto mais famoso e recusa homônimo; modo estrito não confunde "Kate" com "Kate Spade"', async () => {
+  const E = (id, pt, desc, claims = {}, sitelinks = 1) => ({ id, labels: { pt: { value: pt } }, descriptions: { pt: { value: desc } }, sitelinks: Object.fromEntries(Array.from({ length: sitelinks }, (_, i) => [`w${i}`, {}])), claims: Object.fromEntries(Object.entries(claims).map(([p, vs]) => [p, vs.map((v) => ({ mainsnak: { datavalue: { value: v } } }))])) });
+  const base = {
+    Q1: E('Q1', 'Ferrero', 'sobrenome'),
+    Q2: E('Q2', 'Ferrero', 'empresa italiana de guloseimas', { P154: ['Ferrero logo.svg'], P1056: [{ id: 'Q10' }, { id: 'Q11' }, { id: 'Q12' }] }),
+    Q10: E('Q10', 'Nutella', 'creme', { P18: ['Nutella.jpg'], P154: ['Nutella logo.svg'] }, 60),
+    Q11: E('Q11', 'Kinder', 'chocolate', { P18: ['Kinder.jpg'], P154: ['Kinder logo.svg'] }, 40),
+    Q12: E('Q12', 'avelã', 'fruto', { P18: ['Avela.jpg'] }, 200),   // sem logo: não é produto de marca
+    Q20: E('Q20', 'Kate Spade & Company', 'empresa de moda', { P154: ['KSCO.jpg'] }),
+  };
+  const fetcher = async (url) => {
+    const u = new URL(url); const p = Object.fromEntries(u.searchParams);
+    let corpo = {};
+    if (p.list === 'search') corpo = { query: { search: (/Kate/.test(p.srsearch) ? ['Q20'] : /Ferrero/.test(p.srsearch) ? ['Q2'] : []).map((title) => ({ title })) } };
+    else if (p.action === 'wbsearchentities') corpo = { search: /Ferrero/.test(p.search) ? [{ id: 'Q1' }, { id: 'Q2' }] : [] };
+    else if (p.action === 'wbgetentities') corpo = { entities: Object.fromEntries(p.ids.split('|').filter((id) => base[id]).map((id) => [id, base[id]])) };
+    return { ok: true, json: async () => corpo };
+  };
+  const w = await Fotos.marcaNoWikidata('Ferrero', { fetcher });
+  assert.strictEqual(w.id, 'Q2'); assert.strictEqual(w.logo, 'Ferrero logo.svg');
+  assert.deepStrictEqual(w.produto, { nome: 'Nutella', arquivo: 'Nutella.jpg' });
+  assert.strictEqual((await Fotos.marcaNoWikidata('Kate', { fetcher })).nome, 'Kate Spade & Company');   // marca: aceita
+  assert.strictEqual(await Fotos.marcaNoWikidata('Kate', { fetcher, estrito: true }), null);            // empresa citada: não
+  assert.strictEqual(await Fotos.marcaNoWikidata('SBP', { fetcher }), null);
+});
