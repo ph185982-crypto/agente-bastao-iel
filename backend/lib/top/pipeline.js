@@ -713,6 +713,8 @@ function montarVersaoRevelacao(c, v, { capa, fatosComNumeros, mapa, fonte }) {
   v.telas.forEach((t, i) => {
     const tudo = `${t.titulo || ''} ${t.texto || ''}`;
     let claim_ids = mapa(t.fatos); for (const id of fatosComNumeros(tudo)) if (!claim_ids.includes(id)) claim_ids.push(id);
+    // Fala ou previsão ligada à tela sem ser citada nem atribuída no texto trava o portão de atribuição (mesma regra do Por trás da marca)
+    claim_ids = claim_ids.filter((id) => { const f = c.top.fatos.find((x) => x.id === id); return !f || !['declaracao', 'previsao'].includes(f.tipo) || fatosComNumeros(tudo).includes(f.id) || MARCA_ATRIBUICAO.test(tudo); });
     const img = fm[i] ? { imagem_id: fm[i] } : {};
     const sid = `s${i + 1}`;
     if (t.papel === 'aposta') {

@@ -43,4 +43,4 @@ async function proximoNome(tipo, est, { agora = Date.now(), deps = {}, restante 
   return null;
 }
 
-module.exports = { proximoNome, pontuar, PESSOAS, MARCAS, COOLDOWN_DIAS };
+module.exports = { TEM_VALOR, proximoNome, pontuar, PESSOAS, MARCAS, COOLDOWN_DIAS };
