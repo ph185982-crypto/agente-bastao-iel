@@ -161,6 +161,11 @@ async function logoDe(empresa, { fetcher = fetch } = {}) {
   const pont = (it) => {
     const t = sem(it.title).replace(/[^a-z0-9\s]/g, ' ');
     if (!partes.every((p) => new RegExp(`(^|\\s)${p}(\\s|$)`).test(t)) || !/\blogo/.test(t)) return -1; // palavra inteira
+    // O arquivo tem de ser DESSA empresa e de mais ninguém: tirando logo, ano e cor, sobram só as palavras do nome
+    // ("7 Eleven logo" não serve para "Eleven"; "Kate Forbes logo" não serve para "Kate").
+    const RUIDO = /^(file|logo|logos|svg|png|jpg|jpeg|wordmark|symbol|icon|brand|official|new|old|color|colour|white|black|blue|red|green|dark|light|horizontal|vertical|stacked|text|inc|ltd|sa|the|de|do|da|com|br|present|atual|current|simple|flat|bw)$/;
+    const sobra = t.split(' ').filter((w) => w && !RUIDO.test(w) && !/^\d{4}$/.test(w) && !/^\d{4}\d{4}$/.test(w));
+    if (sobra.some((w) => !partes.includes(w))) return -1;
     let p = 10 - (t.length / 20);
     if (/\b(20[12]\d|present|atual|current)\b/.test(t)) p += 3;       // versão recente do logo
     if (/\b(old|antigo|former|19\d\d|200\d)\b/.test(t)) p -= 4;
