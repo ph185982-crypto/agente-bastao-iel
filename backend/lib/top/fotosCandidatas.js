@@ -304,7 +304,7 @@ async function etapa(c, ctx, { salvarArquivo, lerArquivo, slots }) {
         if (!tempo(20000)) return { concluida: false };
         st.tentadas.push('google');
         const fundador = c.top.angulo?.fundador;
-        const consultas = c.top.entrada?.estilo === 'revelacao' ? [marca, `${marca} evento`] : [`${marca} loja`, marca, ...(fundador ? [fundador] : [])];
+        const consultas = c.top.entrada?.estilo === 'revelacao' ? [marca, `${marca} evento`] : [`${marca} produto embalagem`, `${marca} loja`, marca, ...(fundador ? [fundador] : [])];   // produto primeiro: é o que faz a capa ser reconhecida na hora
         const achadas = [];
         for (const q of consultas) {
           try { achadas.push(...(await G.buscar(q)).slice(0, 8)); } catch (e) { st.falhas.push(String(e.message).slice(0, 160)); if (e.cota || e.semAssinatura) break; }

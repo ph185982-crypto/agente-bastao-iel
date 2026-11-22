@@ -587,7 +587,7 @@ test('Google Imagens: só foto grande de site de notícia/marca (banco pago e re
   const ctx = { restante: () => 60000, ia: async () => ({ dados: { slides: [] } }), deps: { google: { buscar: async (q) => { consultas.push(q); return q === 'Vaca Mimosa loja' ? [{ url: 'https://exame.com/img/loja-vaca.jpg', titulo: 'Loja da Vaca Mimosa', pagina: 'https://exame.com/x', fonte: 'Exame' }] : []; } }, carregar: async (url) => ({ status: 200, url_final: url, corpo: await foto(url) }), visao: null, ocr: async () => '', fotosDaMarca: async () => [], fotoDe: async () => null, fotosDoConceito: async () => [], buscarFoto: async () => { throw new Error('sem'); } } };
   const io = { salvarArquivo: async () => {}, lerArquivo: async () => null, slots: 1 };
   await FC.etapa(c, ctx, io);
-  assert.deepStrictEqual(consultas, ['Vaca Mimosa loja', 'Vaca Mimosa']);
+  assert.deepStrictEqual(consultas, ['Vaca Mimosa produto embalagem', 'Vaca Mimosa loja', 'Vaca Mimosa']);
   const g = c.top.fotos_candidatas.find((x) => x.origem === 'google');
   assert.ok(g && g.pagina === 'https://exame.com/x');
   assert.match(FC.metaDe(c, g, null).licenca, /Google Imagens \(Exame\)/);
