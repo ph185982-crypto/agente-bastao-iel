@@ -225,6 +225,20 @@ const PILARES_PESSOAS = [
 ];
 const SIS_PESSOAS = `Para cada notícia, diga se ela conta decisões de DINHEIRO de UMA pessoa que o público brasileiro comum conhece (artista, atleta, apresentador, influenciador, empresário famoso: ex. Ashton Kutcher, Neymar, Anitta, Luciano Huck, Elon Musk, Silvio Santos): onde investiu, quanto pôs e quanto virou, empresa que criou, comprou ou vendeu, com valores. Político, governo, empresa sem rosto e notícia sem valor não contam. Responda só JSON: {"itens":[{"i":0,"marca":"Nome da pessoa ou vazio","conhecida":0}]} com "conhecida" de 0 a 10 (quanto o público geral reconhece a pessoa).`;
 const FONTES_PAUTA = { marca: { pilares: () => PILARES_MARCAS, sistema: () => SIS_MARCAS }, revelacao: { pilares: () => PILARES_PESSOAS, sistema: () => SIS_PESSOAS } };
+// Todas as manchetes recentes dos feeds (sem filtro de recorte): a IA separa as de marca conhecida e de famoso com dinheiro.
+// O filtro por palavras dos recortes devolvia só 6 a 11 pautas e a IA reconhecia 0 ou 1.
+async function manchetesAmplas(dias, deps = {}) {
+  const feeds = deps.feeds || require('../feeds'); const l = await feeds.lerTodos();
+  const lim = Date.now() - dias * 86400000; const vistos = new Set(); const out = [];
+  for (const x of l.itens || []) {
+    if (!x.url || !x.titulo || /^\s*(Áudio|Vídeo|Foto|Fotos)\s*:/i.test(x.titulo)) continue;
+    if (x.publicada_em && Date.parse(x.publicada_em) < lim) continue;
+    const id = `p_${crypto.createHash('sha1').update(x.url).digest('hex').slice(0, 8)}`;
+    if (vistos.has(id)) continue; vistos.add(id);
+    out.push({ id, titulo: x.titulo, fontes: [{ url: x.url, titulo: x.titulo, origem: x.origem }], publicada_em: x.publicada_em });
+  }
+  return out;
+}
 async function proximaMarca(est, o) { return proximaEspecial('marca', est, o); }
 async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   const usadas = new Set((est.usadas || []).map((u) => u.id));
@@ -234,16 +248,26 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   if ((!fila.length || velha) && restante() > 40000) {
     est[ke] = new Date(agora).toISOString();
     // Uma busca por recorte (cada uma devolve até 14 acontecimentos): junta tudo para a IA separar as marcas/pessoas conhecidas.
-    const descobrir = deps.descobrir || require('../descoberta').descobrir; const vistos = new Set(); const todas = [];
-    for (const pilar of FONTES_PAUTA[tipo].pilares()) {
-      if (restante() < 30000) break;
-      try { for (const p of (await descobrir({ dias: 7, pilares: [pilar] })).pautas || []) if (!vistos.has(p.id)) { vistos.add(p.id); todas.push(p); } } catch { /* um recorte falhar não derruba os outros */ }
-    }
-    const cands = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).slice(0, 30);
+    let todas = [];
+    if (deps.descobrir) {
+      const vistos = new Set();
+      for (const pilar of FONTES_PAUTA[tipo].pilares()) {
+        if (restante() < 30000) break;
+        try { for (const p of (await deps.descobrir({ dias: 7, pilares: [pilar] })).pautas || []) if (!vistos.has(p.id)) { vistos.add(p.id); todas.push(p); } } catch { /* um recorte falhar não derruba os outros */ }
+      }
+    } else { try { todas = await manchetesAmplas(7, deps); } catch { todas = []; } }
+    const cands = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo) && !assuntoRepetido(p.titulo, est, agora)).slice(0, 90);
     est.diag_especial = { ...(est.diag_especial || {}), [tipo]: { buscadas: todas.length, candidatas: cands.length, ja_usadas: todas.filter((p) => usadas.has(p.id)).length } };
     if (cands.length) {
       const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));
-      const x = await pedir({ sistema: FONTES_PAUTA[tipo].sistema(), usuario: cands.map((p, i) => `${i}. ${p.titulo}`).join('\n'), maxTokens: 1800, temperatura: 0.1, etapa: `pauta_${tipo}` });
+      const itens = [];
+      for (let k = 0; k < cands.length; k += 45) {   // lotes de 45 manchetes por chamada
+        if (restante() < 20000) break;
+        const lote = cands.slice(k, k + 45);
+        try { const r1 = await pedir({ sistema: FONTES_PAUTA[tipo].sistema(), usuario: lote.map((p, i) => `${i}. ${p.titulo}`).join('\n'), maxTokens: 2200, temperatura: 0.1, etapa: `pauta_${tipo}` });
+          for (const it of r1?.dados?.itens || []) itens.push({ ...it, i: Number(it.i) + k }); } catch { /* lote falhou: segue com os outros */ }
+      }
+      const x = { dados: { itens } };
       fila = (x?.dados?.itens || []).filter((it) => cands[it.i] && String(it.marca || '').trim().length >= 2 && Number(it.conhecida) >= 6)
         .map((it) => ({ id: cands[it.i].id, titulo: cands[it.i].titulo, url: melhorLink(cands[it.i]), marca: String(it.marca).trim().slice(0, 60), conhecida: Number(it.conhecida) }))
         .filter((p, k, l) => l.findIndex((q) => q.marca.toLowerCase() === p.marca.toLowerCase()) === k)
