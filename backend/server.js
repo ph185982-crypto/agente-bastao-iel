@@ -95,9 +95,15 @@ app.get('/api/cron/lote', async (req, res) => {
   res.json({ ok: true, rotas: saida });
 });
 
-app.get(['/health', '/api/health'], (req, res) =>
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
-);
+app.get(['/health', '/api/health'], async (req, res) => {
+  const corpo = { status: 'ok', timestamp: new Date().toISOString() };
+  // Diagnóstico das redes (só sim/não, sem nome, token ou id): ?redes=1
+  if (req.query.redes) {
+    try { const e = await require('./lib/linkedin').estado(); corpo.linkedin = { configurado: e.configurado, conectado: e.conectado, ativo: e.ativo, venceu: e.venceu, dias_para_vencer: e.dias_para_vencer }; }
+    catch (e) { corpo.linkedin = { erro: String(e.message).slice(0, 120) }; }
+  }
+  res.json(corpo);
+});
 
 // O mesmo servidor entrega a interface e a API, inclusive na instalação local.
 // Um frontend separado só é usado quando foi configurado explicitamente.
