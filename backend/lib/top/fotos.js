@@ -221,14 +221,15 @@ async function marcaNoWikidata(nome, { fetcher = fetch, estrito = false } = {}) 
   // a empresa: tem logo, a descrição diz que é empresa/marca e o nome bate (nunca o sobrenome, a cidade ou a doença)
   const empresa = lista.find((it) => valores(it, 'P154').length && EMPRESA.test(desc(it)) && nomeBate(it));
   if (!empresa) return null;
-  const out = { id: empresa.id, nome: empresa.labels?.pt?.value || empresa.labels?.en?.value || q, logo: valores(empresa, 'P154')[0] || null, imagem: valores(empresa, 'P18')[0] || null, produto: null };
+  const out = { id: empresa.id, nome: empresa.labels?.pt?.value || empresa.labels?.en?.value || q, descricao: desc(empresa).trim(), categoria: valores(empresa, 'P373')[0] || null, logo: valores(empresa, 'P154')[0] || null, imagem: valores(empresa, 'P18')[0] || null, produto: null, produtos: [] };
   const prodIds = [...new Set([...valores(empresa, 'P1056'), ...valores(empresa, 'P1716')].map((v) => v.id).filter(Boolean))].slice(0, 20);
   if (prodIds.length) {
     const pe = (await wdJson({ action: 'wbgetentities', props: 'claims|labels|sitelinks', languages: 'pt|en', ids: prodIds.join('|') }, fetcher))?.entities || {};
     // produto de MARCA (tem logo próprio e foto), o mais conhecido primeiro (artigos na Wikipédia em mais línguas)
     const prods = Object.values(pe).filter((it) => valores(it, 'P18').length && valores(it, 'P154').length)
       .sort((a, b) => Object.keys(b.sitelinks || {}).length - Object.keys(a.sitelinks || {}).length);
-    if (prods[0]) out.produto = { nome: prods[0].labels?.pt?.value || prods[0].labels?.en?.value || '', arquivo: valores(prods[0], 'P18')[0] };
+    out.produtos = prods.slice(0, 3).map((it) => ({ nome: it.labels?.pt?.value || it.labels?.en?.value || '', arquivo: valores(it, 'P18')[0], categoria: valores(it, 'P373')[0] || null })).filter((x) => x.nome);
+    if (prods[0]) out.produto = out.produtos[0];
   }
   return out;
 }
@@ -247,4 +248,85 @@ async function arquivoCommons(arquivo, { fetcher = fetch, largura = 1280, minByt
   return { dados, titulo: `File:${arquivo}`, pagina: ii.descriptionurl || null };
 }
 
-module.exports = { marcaNoWikidata, arquivoCommons, logoDe, fotoDe, fotosDaMarca, fotosDoConceito, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, pontuarConceito, LICENCA_OK, LICENCA_LIVRE };
+// ── Fotos de capa da marca (22/11, "estamos muito amadores nessas fotos") ─────────────────────────────────────────────
+// O que faz a capa parecer profissional: o PRODUTO famoso (Ferrero Rocher, Nutella), a LOJA (Boticário) ou o AVIÃO (Gol)
+// em foto grande e bem feita. Busca no Commons por produto/tipo de negócio, exige o nome no título do arquivo, descarta
+// logo, mapa, sede e documento, e põe na frente as "Quality images" (fotos revisadas pela comunidade) e as de alta resolução.
+const AEREA = /(a[eé]rea|airline|avia[cç][aã]o|aviation)/i;
+const LOJA = /(cosm[eé]t|perfum|beleza|beauty|varej|loja|retail|moda|fashion|vestu|cal[cç]ad|farm[aá]c|drogaria|supermerc|restaurant|fast.?food|caf[eé]|sorvet|chocolat|confeit|padaria)/i;
+const RUIM_CAPA = /(logo|logotipo|wordmark|\bmapa?\b|\bmap\b|sede|headquarter|\bhq\b|document|jornal|newspaper|chart|gr[aá]fico|diagram|selo|stamp|\bpdf\b|screenshot|captura|interior of a|receipt|nota fiscal|ticket)/i;
+async function buscarCommons(q, { fetcher, limite = 20 } = {}) {
+  const d = await (await fetcher(`${BASE}?${new URLSearchParams({ action: 'query', format: 'json', origin: '*', generator: 'search', gsrnamespace: '6', gsrlimit: String(limite), gsrsearch: q, prop: 'imageinfo', iiprop: 'size|url', iiurlwidth: '1280' })}`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(12000) })).json().catch(() => ({}));
+  return Object.values(d?.query?.pages || {}).map((it) => ({ titulo: it.title, ii: it.imageinfo?.[0] || {} }));
+}
+// De onde vêm as fotos: a CATEGORIA do Commons ligada ao produto/à marca no Wikidata (P373) — só tem foto daquilo
+// (Ferrero Rocher, O Boticário, Gol Transportes Aéreos). Sem categoria, cai na busca por texto com o nome no título.
+function consultasDeCapa(w, marca) {
+  const curto = String(marca || w?.nome || '').trim();
+  const qs = [];
+  for (const p of (w?.produtos || []).slice(0, 3)) qs.push({ q: p.categoria ? `incategory:"${p.categoria}"` : p.nome, chave: p.nome, tipo: 'produto', categoria: !!p.categoria });
+  const tipo = AEREA.test(w?.descricao || '') ? 'aviao' : LOJA.test(w?.descricao || '') ? 'loja' : 'marca';
+  qs.push({ q: w?.categoria ? `incategory:"${w.categoria}"` : curto, chave: curto, tipo, categoria: !!w?.categoria });
+  // companhia aérea: as fotos boas dos aviões ficam em subcategorias (por modelo/prefixo); busca também pelo texto
+  if (tipo === 'aviao') qs.push({ q: `${curto} Boeing 737`, chave: curto, tipo, categoria: false }, { q: `${curto} Airbus`, chave: curto, tipo, categoria: false });
+  return qs;
+}
+const BONUS_TIPO = { aviao: /(avi[aã]o|airplane|aeroplane|aircraft|boeing|airbus|\b7[0-9]7\b|a3[0-9]0|embraer|plane|pr-[a-z]{3})/, loja: /(loja|store|shop|shopping|boutique|quiosque|kiosk|mall|fachada)/, produto: /(jar|pote|pack|box|caixa|embalagem|bottle|garrafa|lata|\bcan\b|bar|barra|chocolate|frasco|perfume|produto|product)/, marca: /(loja|store|produto|product)/ };
+function notaCapa(item, chave, { qualidade = false, categoria = false, tipo = 'marca' } = {}) {
+  const t = sem(item.titulo); const ii = item.ii || {};
+  if (!/\.(jpe?g|png|webp)$/i.test(item.titulo) || RUIM_CAPA.test(t)) return -1;
+  const partes = sem(chave).replace(/^(o|a|os|as|the)\s+/, '').split(/[^a-z0-9]+/).filter((x) => x.length >= 2);
+  const comNome = partes.length > 0 && partes.every((p) => new RegExp(`(^|[^a-z0-9])${p}([^a-z0-9]|$)`).test(t));
+  if (!comNome && !categoria) return -1;   // fora da categoria da marca, o nome tem de estar no arquivo
+  // foto da MARCA (não de produto) tem de mostrar o nome ou o tipo do negócio (avião, loja): a categoria "Puma AG" tem
+  // jogo de futebol patrocinado; a "Natura", retrato de pessoa
+  if (tipo !== 'produto' && !comNome && !BONUS_TIPO[tipo]?.test(t)) return -1;
+  const anoAntigo = Number((t.match(/\b(1[5-9]\d\d)\b/) || [])[1] || 0); if (anoAntigo && anoAntigo < 1995) return -1;   // anúncio de 1915 não é capa
+  const menor = Math.min(ii.width || 0, ii.height || 0);
+  if (menor < 900) return -1;
+  let n = Math.min(Math.max(ii.width || 0, ii.height || 0), 5000) / 500 + (qualidade ? 20 : 0) + (comNome ? 8 : 0);
+  if (BONUS_TIPO[tipo]?.test(t)) n += 6;
+  if (tipo === 'aviao' && /(\bp[rspt][ -][a-z]{3}\b|737|a3[0-9]{2}|max ?8|e19[05])/.test(t)) n += 10;   // foto do avião (prefixo/modelo), não paisagem
+  if (/(seen from|visto d[eo]|ao fundo|distant|silhouette|silhueta|night|noite|holding pattern|\bover\b|sobrevoando)/.test(t)) n -= 8;
+  // outra companhia/concorrente na mesma foto ("TAM Airbus 320 and Gol Boeing 737") não serve de capa
+  if (tipo === 'aviao' && /\b(tam|latam|azul|avianca|varig|american|united|delta|lufthansa|iberia|tap|copa)\b/.test(t.replace(new RegExp(partes.join('|'), 'g'), ''))) n -= 12;
+  const ano = Number((t.match(/\b(20[0-2]\d)\b/) || [])[1] || 0); if (ano >= 2015) n += Math.min(4, (ano - 2014) / 2);
+  return n;
+}
+async function melhorDaConsulta(c, fetcher, usados) {
+  const [qi, todos] = await Promise.all([
+    buscarCommons(`${c.q} incategory:"Quality_images"`, { fetcher, limite: 10 }).catch(() => []),
+    buscarCommons(c.q, { fetcher, limite: 40 }).catch(() => []),
+  ]);
+  const qiSet = new Set(qi.map((x) => x.titulo));
+  return [...qi, ...todos].filter((x) => !usados.has(x.titulo))
+    .map((x) => ({ x, n: notaCapa(x, c.chave, { qualidade: qiSet.has(x.titulo), categoria: c.categoria, tipo: c.tipo }), qualidade: qiSet.has(x.titulo) }))
+    .filter((y) => y.n >= 0).sort((a, b) => b.n - a.n)[0] || null;
+}
+/**
+ * Até 2 fotos para a capa: os produtos famosos (os dois melhores, para montar lado a lado: Ferrero Rocher + Nutella) ou,
+ * sem produto bom, a foto da marca (avião da Gol, loja do Boticário). Cada uma: { dados, titulo, pagina, nome, tipo, nota }.
+ */
+async function fotosDeCapa(w, marca, { fetcher = fetch, max = 2, notaMin = 14 } = {}) {
+  const usados = new Set(); const achados = [];
+  for (const c of consultasDeCapa(w, marca)) {
+    const m = await melhorDaConsulta(c, fetcher, usados).catch(() => null);
+    if (m) { usados.add(m.x.titulo); achados.push({ ...m, c }); }
+  }
+  const produtos = achados.filter((a) => a.c.tipo === 'produto' && a.n >= notaMin).sort((a, b) => b.n - a.n);
+  const marcaFoto = achados.filter((a) => a.c.tipo !== 'produto' && a.n >= notaMin).sort((a, b) => b.n - a.n)[0];
+  const escolha = produtos.length ? produtos.slice(0, max) : marcaFoto ? [marcaFoto] : [];
+  const out = [];
+  for (const a of escolha) {
+    const url = a.x.ii.thumburl || a.x.ii.url; if (!url) continue;
+    try {
+      const r = await fetcher(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
+      if (!r.ok) continue;
+      const dados = Buffer.from(await r.arrayBuffer()); if (dados.length < 30000) continue;
+      out.push({ dados, titulo: a.x.titulo, pagina: a.x.ii.descriptionurl || null, nome: a.c.chave, tipo: a.c.tipo, qualidade: a.qualidade, nota: Math.round(a.n) });
+    } catch { /* tenta a próxima */ }
+  }
+  return out;
+}
+
+module.exports = { fotosDeCapa, consultasDeCapa, notaCapa, marcaNoWikidata, arquivoCommons, logoDe, fotoDe, fotosDaMarca, fotosDoConceito, buscar, licencaAceita, pontuar, pontuarLugar, pontuarMarca, pontuarConceito, LICENCA_OK, LICENCA_LIVRE };

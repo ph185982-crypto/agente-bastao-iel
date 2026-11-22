@@ -441,4 +441,12 @@ function aplicar(c, pares) {
     ...C.filter((x) => usadas.has(x.id)).map((x) => ({ ...metaDe(c, x, ig), relevancia: 'alta', motivo: motivoDe(x.id) }))];
 }
 
-module.exports = { PROMO, LUGAR, ESPERA_IG_MAX, etapa, aplicar, validarCasamento, imagensDaMateria, creditoDe, confereMarca, lerInstagram, midiasDe, dHash, distancia, preparar, baixar, slidesDoCarrossel, metaDe, tokens, FASES, MAX_CANDIDATAS, LADO_MIN, PALAVRAS_TEXTO, CASAR };
+// Duas fotos de produto lado a lado (Ferrero Rocher | Nutella), 1080×1350, com um filete claro no meio.
+async function colagemLadoALado(a, b, { largura = 1080, altura = 1350, filete = 6 } = {}) {
+  const meia = Math.floor((largura - filete) / 2);
+  const [ea, eb] = await Promise.all([a, b].map((x) => sharp(x, { limitInputPixels: 60e6 }).rotate().resize(meia, altura, { fit: 'cover', position: 'attention' }).jpeg({ quality: 88 }).toBuffer()));
+  return sharp({ create: { width: largura, height: altura, channels: 3, background: '#F5F0E6' } })
+    .composite([{ input: ea, left: 0, top: 0 }, { input: eb, left: largura - meia, top: 0 }]).jpeg({ quality: 86 }).toBuffer();
+}
+
+module.exports = { colagemLadoALado, PROMO, LUGAR, ESPERA_IG_MAX, etapa, aplicar, validarCasamento, imagensDaMateria, creditoDe, confereMarca, lerInstagram, midiasDe, dHash, distancia, preparar, baixar, slidesDoCarrossel, metaDe, tokens, FASES, MAX_CANDIDATAS, LADO_MIN, PALAVRAS_TEXTO, CASAR };
