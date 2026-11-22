@@ -17,12 +17,12 @@ import unicodedata
 # ----------------------------------------------------------------------------------------------------------------------
 # Constantes do contrato (docs/VIDEOS_E_RECICLAGEM_SPEC.md → "Worker de edição")
 # ----------------------------------------------------------------------------------------------------------------------
-MULETAS = {'é', 'éé', 'ééé', 'hã', 'ã', 'hum', 'ahn', 'né', 'hm', 'hmm', 'ahm', 'eh', 'ééh'}
+MULETAS = {'éé', 'ééé', 'hã', 'ã', 'hum', 'ahn', 'hm', 'hmm', 'ahm', 'eh', 'ééh'}   # 'é' e 'né' são palavras de verdade: não saem
 PAUSA_MULETA = 0.15       # muleta só sai se estiver isolada por pausa ≥ 150 ms dos dois lados
 MARGEM_SILENCIO = 0.15    # sobra de silêncio que fica em cada lado da fala
 PROTEGER_INICIO = 1.0     # sem transcrição (corte por silêncio): nunca cortar o 1º segundo
 RETOMADA_MIN_PALAVRAS = 3
-RETOMADA_JANELA = 6.0
+RETOMADA_JANELA = 4.0       # a retomada de verdade vem logo depois do erro; frase repetida de efeito (mais longe) fica
 ZOOMS_PUNCH_IN = (1.0, 1.08)   # punch-in discreto: 12% chamava atenção demais
 LARGURA, ALTURA = 1080, 1920
 MARGEM_V = 560            # legenda acima da interface do Reels
@@ -200,7 +200,8 @@ def cortes_muletas(palavras, pausa_min=PAUSA_MULETA, muletas=MULETAS):
     """Muletas ('é', 'hã', 'né'…) isoladas por pausa ≥ pausa_min dos dois lados viram cortes."""
     cortes = []
     for i, p in enumerate(palavras):
-        if normalizar(p['w']) not in muletas:
+        hesitacao = normalizar(p['w']) in ('é', 'né') and p['w'].rstrip().endswith(('…', '...'))   # 'É…' é hesitação; 'é' solto é palavra
+        if normalizar(p['w']) not in muletas and not hesitacao:
             continue
         antes, depois = _pausa_antes(palavras, i), _pausa_depois(palavras, i)
         if antes >= pausa_min and depois >= pausa_min:
@@ -215,7 +216,8 @@ def cortes_repeticoes(palavras):
     i = 0
     while i < len(palavras):
         j = i
-        while j + 1 < len(palavras) and normalizar(palavras[j + 1]['w']) == normalizar(palavras[i]['w']) and normalizar(palavras[i]['w']):
+        while (j + 1 < len(palavras) and normalizar(palavras[j + 1]['w']) == normalizar(palavras[i]['w']) and normalizar(palavras[i]['w'])
+               and not palavras[j]['w'].rstrip().endswith((',', '.', '!', '?', ';', ':'))):   # 'não, não, não.' é ênfase, não gagueira
             j += 1
         if j > i:
             cortes.append((palavras[i]['t0'], palavras[j]['t0']))
@@ -241,6 +243,8 @@ def detectar_retomadas(palavras, min_palavras=RETOMADA_MIN_PALAVRAS, janela=RETO
                 if palavras[j]['t0'] - palavras[i]['t0'] > janela:
                     break
                 if norm[j:j + tam] == seq:
+                    if palavras[j - 1]['w'].rstrip().endswith(('.', '!', '?')):   # a 1ª já terminou a frase: repetição de efeito, fica
+                        continue
                     achou = (j, tam)
                     break
             if achou:
@@ -260,9 +264,9 @@ def detectar_retomadas(palavras, min_palavras=RETOMADA_MIN_PALAVRAS, janela=RETO
 FOLGA_INICIO = 0.12     # antes da 1ª palavra do trecho
 FOLGA_PRIMEIRA = 0.25   # antes da 1ª palavra do VÍDEO: o vídeo começa já na fala (sem segundo mudo), sem comer a 1ª sílaba
 FOLGA_FIM = 0.20        # depois da última (o Whisper costuma cortar o fim da palavra)
-PAUSA_MAX = 0.55        # vão maior que isso é encurtado
-RESPIRO = 0.30          # quanto do vão fica no meio da frase
-RESPIRO_FRASE = 0.45    # quanto fica no fim de frase (ponto final): pausa natural
+PAUSA_MAX = 0.50        # vão maior que isso é encurtado
+RESPIRO = 0.25          # quanto do vão fica no meio da frase
+RESPIRO_FRASE = 0.35    # quanto fica no fim de frase (ponto final): pausa natural
 
 
 def trechos_por_palavras(palavras, duracao, folga_ini=FOLGA_INICIO, folga_fim=FOLGA_FIM, pausa_max=PAUSA_MAX,
@@ -289,6 +293,26 @@ def trechos_por_palavras(palavras, duracao, folga_ini=FOLGA_INICIO, folga_fim=FO
     return [(round(a, 3), round(b, 3)) for a, b in trechos if b - a > 0.05]
 
 
+SILENCIO_LONGO = 0.9     # silêncio de verdade (áudio) maior que isso é encurtado mesmo que o Whisper tenha esticado a palavra
+SILENCIO_SOBRA = 0.25    # sobra de cada lado do silêncio cortado
+
+
+def cortes_silencio_longo(silencios, palavras, minimo=SILENCIO_LONGO, sobra=SILENCIO_SOBRA):
+    """Silêncios do áudio ≥ `minimo` viram cortes, deixando `sobra` dos dois lados. Só corta se NENHUMA palavra
+    começa dentro do silêncio (gravação baixa: fala abaixo do limiar nunca é apagada)."""
+    cortes = []
+    for ini, fim in silencios:
+        if fim - ini < minimo:
+            continue
+        a, b = ini + sobra, fim - sobra
+        if b - a < 0.1:
+            continue
+        if any(a - 0.05 <= p['t0'] <= b + 0.05 for p in palavras):
+            continue
+        cortes.append((a, b))
+    return cortes
+
+
 def montar_trechos(duracao, silencios=(), palavras=(), remover_pausas=True, remover_muletas=True,
                    remover_retomadas=True, margem=MARGEM_SILENCIO):
     """Junta tudo: pausas (pelas palavras; silêncio só sem transcrição) ∪ muletas ∪ repetições ∪ retomadas → trechos."""
@@ -310,6 +334,10 @@ def montar_trechos(duracao, silencios=(), palavras=(), remover_pausas=True, remo
         rt, _ = detectar_retomadas(palavras)
         detalhes['retomadas'] = len(rt)
         cortes += rt
+    if remover_pausas and palavras:
+        sl = cortes_silencio_longo(silencios, palavras)
+        detalhes['silencios_longos'] = len(sl)
+        mantidos = subtrair_intervalos(mantidos, sl)
     if cortes:
         mantidos = subtrair_intervalos(mantidos, cortes)
     if not (remover_pausas and palavras):   # com as palavras, o vídeo começa na 1ª fala (o segundo mudo do início derrubava a retenção)

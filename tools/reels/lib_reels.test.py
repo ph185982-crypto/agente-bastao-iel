@@ -89,6 +89,31 @@ class Cortes(unittest.TestCase):
         p = palavras('a gente a gente vai')
         self.assertEqual(L.detectar_retomadas(p)[0], [])
 
+    def test_e_e_ne_sao_palavras_nao_muletas(self):
+        p = palavras('é', 0.0, pausa=0.5) + palavras('isso né', 2.0, pausa=0.5)
+        self.assertEqual(L.cortes_muletas(p), [])
+
+    def test_enfase_com_virgula_nao_e_gagueira(self):
+        p = palavras('não, não, não. isso')
+        self.assertEqual(L.cortes_repeticoes(p), [])
+
+    def test_frase_repetida_de_efeito_fica(self):
+        # 'Você precisa vender. Você precisa vender mais.' → a 1ª terminou com ponto: é retórica, não retomada
+        p = palavras('você precisa vender.', 0.0) + palavras('você precisa vender mais', 1.5)
+        self.assertEqual(L.detectar_retomadas(p)[0], [])
+
+    def test_silencio_longo_do_audio_e_cortado(self):
+        # Whisper esticou 'cliente' sobre 6 s de silêncio: sem o silencedetect ficava tudo
+        pal = [{'t0': 1.0, 't1': 1.5, 'w': 'cliente', 'seg': 0}, {'t0': 8.0, 't1': 8.5, 'w': 'volta', 'seg': 0}]
+        tr, det = L.montar_trechos(10.0, [(1.6, 7.9)], pal)
+        self.assertEqual(det['silencios_longos'], 1)
+        self.assertLess(L.duracao_total(tr), 5.0)
+
+    def test_silencio_com_palavra_dentro_nao_corta(self):
+        # gravação baixa: o detector achou 'silêncio' onde há fala
+        pal = [{'t0': 1.0, 't1': 1.5, 'w': 'a', 'seg': 0}, {'t0': 3.0, 't1': 3.4, 'w': 'fala', 'seg': 0}, {'t0': 5.0, 't1': 5.4, 'w': 'baixa', 'seg': 0}]
+        self.assertEqual(L.cortes_silencio_longo([(1.6, 5.9)], pal), [])
+
     def test_montar_trechos_protege_inicio(self):
         tr, det = L.montar_trechos(10.0, [(0.0, 3.0)], [])
         self.assertEqual(tr[0][0], 0.0)
