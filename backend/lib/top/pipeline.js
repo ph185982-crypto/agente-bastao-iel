@@ -542,6 +542,19 @@ async function fotosMarca(c, ctx) {
   }
   const r = await require('./fotosCandidatas').etapa(c, ctx, { salvarArquivo, lerArquivo, slots });
   if (r?.concluida === false) return r;
+  // "Por trás da marca": o logo da marca vai na capa, para quem passa reconhecer de quem é o conteúdo antes de ler
+  if (!ehRevelacao(c)) {
+    const marca = c.top.angulo?.marca || c.top.entrada?.marca || '';
+    c.top.logos ||= {};
+    if (marca && c.top.logos[marca] === undefined) {
+      if (ctx.restante() < 8000) return { concluida: false };
+      try {
+        const l = await (ctx.deps.logoDe || require('./fotos').logoDe)(marca);
+        if (l) { const id = `logo_${crypto.createHash('sha1').update(marca).digest('hex').slice(0, 10)}`; await armazem().arquivos.salvar(conta(), `img:${id}`, l.dados, 'image/png'); c.top.logos[marca] = id; }
+        else c.top.logos[marca] = null;
+      } catch { c.top.logos[marca] = null; }
+    }
+  }
   // "Quem é ele?": o logo de cada empresa das apostas (Commons; sem logo, o nome da empresa vira o título do painel)
   if (ehRevelacao(c)) {
     c.top.logos ||= {};
@@ -743,7 +756,8 @@ const FINAL_MARCA = { titulo: 'Eu mostro a estratégia por trás das marcas que 
 function montarVersaoMarca(c, v, { capa, fatosComNumeros, mapa, fonte }) {
   const fm = c.top.fotos_marca || {}; const marca = c.top.angulo?.marca || c.top.entrada?.marca || '';
   const base = { marca, ...(c.top.angulo?.cor_marca ? { cor: c.top.angulo.cor_marca } : {}) };
-  const slides = [{ id: 's1', funcao: 'capa', layout: 'marca_capa', tema_visual: 'marca', texto: capa, titulo: null, claim_ids: fatosComNumeros(capa), ...(fm[0] ? { imagem_id: fm[0] } : {}), dados: { ...base, kicker: 'POR TRÁS DA MARCA' } }];
+  const logoId = marca ? (c.top.logos || {})[marca] : null;
+  const slides = [{ id: 's1', funcao: 'capa', layout: 'marca_capa', tema_visual: 'marca', texto: capa, titulo: null, claim_ids: fatosComNumeros(capa), ...(fm[0] ? { imagem_id: fm[0] } : {}), dados: { ...base, kicker: 'POR TRÁS DA MARCA', ...(logoId ? { logo_id: logoId } : {}) } }];
   const opinioes = []; const nEst = v.telas.filter((t) => t.papel === 'estrategia').length; let kEst = 0;
   v.telas.forEach((t, i) => {
     const funcao = { gap: 'contexto', estrategia: 'explicacao', leitura: 'opiniao' }[t.papel] || 'explicacao';

@@ -165,7 +165,7 @@ const usavel = (x) => !x.descartada;
 const CASAR = `Você é editor de fotografia do carrossel "POR TRÁS DA MARCA". Para CADA slide escolha a foto que MOSTRA o que o texto do slide fala (não só "da marca": o ASSUNTO da tela). Exemplos do padrão aprovado: "o dono decide sozinho" → o fundador; "o tamanho hoje" → fachada de loja; "da rede social pra loja" → celular fotografando o produto; "o delivery paga a conta" → entregador com a bolsa; "o erro que virou produto" → o produto em close.
 Regras:
 1. Sem repetir foto.
-2. CAPA (s1): entre as fotos que combinam com o assunto da capa, a de MAIOR impacto.
+2. CAPA (s1): a capa tem de fazer quem passa RECONHECER a marca na hora: produto da marca, fachada/loja oficial, embalagem ou fundador famoso. NUNCA ponha na capa pessoa desconhecida (paciente, funcionário, executivo, foto de banco) nem foto com texto de outra coisa. Sem foto assim, devolva "foto": null (a capa usa a cor e o logo da marca). Nos demais slides: a de MAIOR impacto entre as que combinam com o assunto.
 3. Fotos de origem "pedro" foram escolhidas pelo dono do perfil: use TODAS, cada uma no slide que mais combina com ela.
 4. Prefira foto oficial (pedro, instagram, materia) a banco de imagens; nunca escolha foto com texto gravado.
 5. Se nenhuma foto mostra o assunto do slide, devolva "foto": null e em "busca" 2 a 4 palavras em INGLÊS para procurar uma foto do conceito (ex.: "delivery courier bag", "smartphone photo food").
@@ -395,7 +395,7 @@ async function etapa(c, ctx, { salvarArquivo, lerArquivo, slots }) {
         if (!q) continue;
         if (LUGAR.test(q)) {
           const usadosAgora = new Set(Object.values(st.atrib).map((a) => a.id));
-          const r = C.filter((x) => usavel(x) && OFICIAIS.includes(x.origem) && !usadosAgora.has(x.id)).sort((a, b) => nota(s, b, fora) - nota(s, a, fora))[0];
+          const r = C.filter((x) => usavel(x) && OFICIAIS.includes(x.origem) && !usadosAgora.has(x.id) && (s.papel !== 'capa' || ['instagram', 'pedro'].includes(x.origem))).sort((a, b) => nota(s, b, fora) - nota(s, a, fora))[0];
           if (r) st.atrib[s.sid] = { id: r.id, motivo: 'foto oficial da marca (lugar não se busca em banco de imagens)', por: 'reserva' };
           continue; // sem oficial: fica a cor da marca, nunca um lugar qualquer
         }
@@ -414,7 +414,7 @@ async function etapa(c, ctx, { salvarArquivo, lerArquivo, slots }) {
       const usados = new Set(Object.values(st.atrib).map((a) => a.id));
       for (const s of slides) {
         if (st.atrib[s.sid]) continue;
-        const r = C.filter((x) => usavel(x) && OFICIAIS.includes(x.origem) && !usados.has(x.id)).sort((a, b) => nota(s, b, fora) - nota(s, a, fora))[0];
+        const r = C.filter((x) => usavel(x) && OFICIAIS.includes(x.origem) && !usados.has(x.id) && (s.papel !== 'capa' || ['instagram', 'pedro'].includes(x.origem))).sort((a, b) => nota(s, b, fora) - nota(s, a, fora))[0];
         if (r) { st.atrib[s.sid] = { id: r.id, motivo: 'reserva: a foto oficial mais marcante que sobrou', por: 'reserva' }; usados.add(r.id); }
       }
     } else if (fase === 'aplicar') {

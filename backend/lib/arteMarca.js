@@ -81,6 +81,23 @@ async function compor(base, svg, layout, blocos, elementos) {
   return { png, metrics: m };
 }
 
+// Logo da marca na capa: num cartão branco arredondado (cores originais; logo quase todo branco vira silhueta escura).
+// Quem ainda não conhece a marca pela foto a reconhece pelo logo.
+async function placaLogo(buf, maxW = 520, maxH = 130) {
+  let img = sharp(buf).trim().resize(maxW, maxH, { fit: 'inside' });
+  const meta = await sharp(buf).metadata();
+  const { data, info } = await img.clone().ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  let soma = 0, n = 0; for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 128) { soma += (data[i] + data[i + 1] + data[i + 2]) / 3; n++; }
+  let png;
+  if (meta.hasAlpha && n && soma / n > 215) { for (let i = 0; i < data.length; i += 4) { data[i] = 11; data[i + 1] = 27; data[i + 2] = 51; } png = await sharp(data, { raw: info }).png().toBuffer(); }
+  else png = await img.flatten({ background: '#FFFFFF' }).png().toBuffer();
+  const m = await sharp(png).metadata(); const pad = 26;
+  const w = m.width + 2 * pad, h = m.height + 2 * pad;
+  const fundo = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" rx="26" fill="#FFFFFF"/></svg>`);
+  const placa = await sharp(fundo).composite([{ input: png, left: pad, top: pad }]).png().toBuffer();
+  return { png: placa, w, h };
+}
+
 // ── Capa ────────────────────────────────────────────────────────────────────────
 async function renderizarCapa(slide, ctx, imagem) {
   const d = slide.dados || {}; const cor = hex(d.cor);
@@ -98,10 +115,18 @@ async function renderizarCapa(slide, ctx, imagem) {
   const k = etiqueta(d.kicker || KICKER, { x: MARGEM, y: MARGEM });
   svg += k.svg;
   if (d.marca) svg += etiqueta(d.marca, { x: MARGEM + k.largura + 14, y: MARGEM, cheia: false }).svg;
+  let placa = null;
+  if (d.logo_id) {
+    try { const x = (await require('./armazem').armazem().arquivos.obter(ACCOUNT.ig_id, `img:${d.logo_id}`))?.dados; if (x) placa = await placaLogo(Buffer.from(x)); } catch { placa = null; }
+  }
   svg += `<rect x="${MARGEM}" y="${ytop - 40}" width="88" height="9" rx="4.5" fill="${COR.laranja}"/>`;
   svg += `<g filter="url(#sm)">${D.colocar(b, { x: MARGEM, ytop, cor: COR.branco, destaque: COR.laranja })}</g>`;
   svg += D.assinatura({ dica: (ctx?.total || 1) > 1 ? 'deslize →' : '' });
-  return compor(base, svg, 'marca_capa', [bloco('manchete', b, L.alt, 'A manchete')], elementos);
+  const r = await compor(base, svg, 'marca_capa', [bloco('manchete', b, L.alt, 'A manchete')], placa ? [...elementos, 'logo_marca'] : elementos);
+  if (!placa) return r;
+  // o logo entra por cima de tudo, logo abaixo das etiquetas
+  r.png = await sharp(r.png).composite([{ input: placa.png, left: MARGEM, top: MARGEM + 84 }]).png().toBuffer();
+  return r;
 }
 
 // ── Telas de conteúdo ───────────────────────────────────────────────────────────

@@ -599,3 +599,14 @@ test('sem filtro de direito de uso (padrão desde 21/11): Commons aceita qualque
   const html = '<figure><img src="https://x.test/a.jpg"><figcaption>Loja. Foto: Fulano/Reuters</figcaption></figure><figure><img src="https://x.test/b.jpg"><figcaption>Fábrica (Divulgação)</figcaption></figure>';
   assert.deepStrictEqual(FC.imagensDaMateria(html, 'https://x.test/m').map((x) => x.url), ['https://x.test/b.jpg', 'https://x.test/a.jpg'], 'Divulgação primeiro, depois as outras');
 });
+
+test('capa de "Por trás da marca": o logo da marca entra na capa (cartão branco) e a foto reserva da capa nunca é da matéria', async () => {
+  const sharp = require('sharp'); const armz = require('../armazem'); const { ACCOUNT } = require('../account');
+  armz._definir(Object.assign(armz.memoria(), { duravel: true }));
+  const logo = await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="600" height="160"><text x="10" y="120" font-size="110" fill="#D51900">Marca</text></svg>')).png().toBuffer();
+  await armz.armazem().arquivos.salvar(ACCOUNT.ig_id, 'img:logo_t', logo, 'image/png');
+  const r = await require('../arteMarca').renderizarCapa({ texto: 'Uma **manchete** de teste', dados: { marca: 'Marca', cor: '#D51900', logo_id: 'logo_t' } }, { total: 8 }, null);
+  assert.ok(r.metrics.elementos.includes('logo_marca'));
+  const sem = await require('../arteMarca').renderizarCapa({ texto: 'Uma **manchete** de teste', dados: { marca: 'Marca', cor: '#D51900' } }, { total: 8 }, null);
+  assert.ok(!sem.metrics.elementos.includes('logo_marca'));
+});
