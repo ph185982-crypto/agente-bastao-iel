@@ -172,4 +172,4 @@ async function publicar(id, { hash, deps = {} } = {}) {
   }
 }
 
-module.exports = { REDE, ESCOPOS, configurado, redirectUri, urlConectar, concluirConexao, estado, definirAtivo, desconectar, lerCfg, publicar, textoLinkedIn, escapar, pdfDeJpegs, cifrar, decifrar, novoState, stateValido };
+module.exports = { REDE, ESCOPOS, configurado, redirectUri, urlConectar, concluirConexao, estado, definirAtivo, desconectar, lerCfg, salvarCfg, publicar, textoLinkedIn, escapar, pdfDeJpegs, cifrar, decifrar, novoState, stateValido };

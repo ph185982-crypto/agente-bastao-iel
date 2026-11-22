@@ -61,7 +61,20 @@ async function publicarEmSegundoPlano(c){
   if(p.estado==='publicada'&&doc.formato!=='reels')await publicarNoLinkedIn(c.id,p.hash_versao).catch(e=>console.error('[linkedin]',e.message));
 }
 async function publicarNoLinkedIn(id,hash){
-  const L=require('../lib/linkedin');const cfg=await L.lerCfg();if(!cfg.ativo||!cfg.token)return null;
+  const L=require('../lib/linkedin');const cfg=await L.lerCfg();
+  // Antes: LinkedIn desligado/sem conexão/vencido pulava em silêncio e o Pedro achava que o app estava falhando. Agora fica registrado
+  // no conteúdo e avisa (no máximo 1 aviso a cada 12 h, para as 40 peças do dia não virarem 40 notificações).
+  const motivo=!L.configurado()?'o app do LinkedIn não está configurado (faltam LINKEDIN_CLIENT_ID e LINKEDIN_CLIENT_SECRET na Vercel)':!cfg.token?'o LinkedIn não está conectado (Perfil → Conexões → Conectar LinkedIn)':Date.parse(cfg.expira_em)<=Date.now()?'o acesso ao LinkedIn venceu (Perfil → Conexões → Conectar LinkedIn de novo)':!cfg.ativo?'a publicação no LinkedIn está desligada (Perfil → Conexões → "Publicar também no LinkedIn")':null;
+  if(motivo){
+    const reg0=await studio.ler(id);const d0=reg0.doc;
+    d0.publicacoes=[...(d0.publicacoes||[]).filter(x=>x.network!=='linkedin'),{network:'linkedin',status:'nao_enviado',erro:`Não enviado: ${motivo}.`}];
+    await armazem().conteudos.salvar(ACCOUNT.ig_id,id,d0,reg0.rev).catch(()=>{});
+    if(!cfg.aviso_em||Date.now()-Date.parse(cfg.aviso_em)>12*3600000){
+      await L.salvarCfg({aviso_em:new Date().toISOString()}).catch(()=>{});
+      await require('../lib/push').notificar({corpo:`O LinkedIn não recebeu o post: ${motivo}.`,tag:'linkedin-aviso'}).catch(()=>{});
+    }
+    return null;
+  }
   let r=null;let falha=null;try{r=await L.publicar(id,{hash});}catch(e){falha=e.message;}
   const reg=await studio.ler(id);const d=reg.doc;
   d.publicacoes=[...(d.publicacoes||[]).filter(x=>x.network!=='linkedin'),{network:'linkedin',status:falha?'erro':(r?.estado||'publicada'),post_id:r?.ig_media_id||null,permalink:r?.permalink||null,published_at:r?.publicada_em||null,erro:falha}];
