@@ -172,4 +172,36 @@ async function publicar(id, { hash, deps = {} } = {}) {
   }
 }
 
-module.exports = { REDE, ESCOPOS, configurado, redirectUri, urlConectar, concluirConexao, estado, definirAtivo, desconectar, lerCfg, salvarCfg, publicar, textoLinkedIn, escapar, pdfDeJpegs, cifrar, decifrar, novoState, stateValido };
+// ── Fila de atrasados ─────────────────────────────────────────────────────────
+// O que já saiu no Instagram e ainda não foi ao LinkedIn (ex.: posts de antes de conectar). Vai um por vez, do mais antigo ao
+// mais novo, com intervalo (LINKEDIN_FILA_MIN, padrão 15 min): rajada de dezenas de posts derruba o alcance no LinkedIn.
+// Post que falhou no LinkedIn não volta sozinho (fica para "Repetir" no app); vídeo e conteúdo apagado ficam de fora.
+async function pendentes({ a = armazem() } = {}) {
+  const pubs = await a.publicacoes.listar(conta());
+  const noLi = new Set(pubs.filter((p) => p.rede === REDE).map((p) => p.content_id));
+  const ig = pubs.filter((p) => p.rede === 'instagram' && p.estado === 'publicada' && !noLi.has(p.content_id));
+  return ig.sort((x, y) => String(x.dados?.publicada_em || x.atualizada_em).localeCompare(String(y.dados?.publicada_em || y.atualizada_em)));
+}
+async function drenarFila({ agora = Date.now(), deps = {} } = {}) {
+  const a = deps.armazem || armazem();
+  const cfg = await lerCfg(a);
+  if (!cfg.ativo || !cfg.token || Date.parse(cfg.expira_em) <= agora) return { enviado: null, motivo: 'desligado' };
+  const intervalo = Math.max(1, Number(process.env.LINKEDIN_FILA_MIN || 15)) * 60000;
+  if (cfg.fila_ultima_em && agora - Date.parse(cfg.fila_ultima_em) < intervalo) return { enviado: null, motivo: 'intervalo' };
+  const fila = await pendentes({ a });
+  for (const p of fila) {
+    const reg = await a.conteudos.obter(conta(), p.content_id).catch(() => null);
+    const c = reg?.doc;
+    if (!c || c.status === 'arquivado' || c.formato === 'reels') {   // marca para não olhar de novo
+      await a.publicacoes.iniciar(conta(), p.content_id, REDE, { erro: { amigavel: c?.formato === 'reels' ? 'Vídeo ainda não vai ao LinkedIn.' : 'Conteúdo apagado.' } }).catch(() => {});
+      await a.publicacoes.atualizar(conta(), p.content_id, REDE, ['iniciada'], 'erro', {}).catch(() => {});
+      continue;
+    }
+    await salvarCfg({ fila_ultima_em: new Date(agora).toISOString() }, a);
+    try { const r = await (deps.publicar || publicar)(p.content_id, { hash: p.dados?.hash_versao, deps }); return { enviado: p.content_id, estado: r?.estado || null, restantes: fila.length - 1 }; }
+    catch (e) { return { enviado: null, erro: String(e.message).slice(0, 160), id: p.content_id, restantes: fila.length - 1 }; }
+  }
+  return { enviado: null, motivo: 'vazia', restantes: 0 };
+}
+
+module.exports = { pendentes, drenarFila, REDE, ESCOPOS, configurado, redirectUri, urlConectar, concluirConexao, estado, definirAtivo, desconectar, lerCfg, salvarCfg, publicar, textoLinkedIn, escapar, pdfDeJpegs, cifrar, decifrar, novoState, stateValido };
