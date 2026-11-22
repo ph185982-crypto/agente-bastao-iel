@@ -256,7 +256,8 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
         try { for (const p of (await deps.descobrir({ dias: 7, pilares: [pilar] })).pautas || []) if (!vistos.has(p.id)) { vistos.add(p.id); todas.push(p); } } catch { /* um recorte falhar não derruba os outros */ }
       }
     } else { try { todas = await manchetesAmplas(7, deps); } catch { todas = []; } }
-    const cands = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo) && !assuntoRepetido(p.titulo, est, agora)).slice(0, 90);
+    // "Quem é ele?" precisa de valor em dinheiro já no título (político e notícia sem número passavam pela IA)
+    const cands = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo) && !assuntoRepetido(p.titulo, est, agora) && (tipo !== 'revelacao' || require('./nomes').TEM_VALOR.test(p.titulo))).slice(0, 90);
     est.diag_especial = { ...(est.diag_especial || {}), [tipo]: { buscadas: todas.length, candidatas: cands.length, ja_usadas: todas.filter((p) => usadas.has(p.id)).length } };
     if (cands.length) {
       const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));
