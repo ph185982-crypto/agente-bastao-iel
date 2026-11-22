@@ -69,6 +69,7 @@ app.use('/api/videos', require('./routes/videos'));
 app.use('/api/reciclagem', require('./routes/reciclagem'));
 app.use('/api/historias', require('./routes/historias'));
 app.use('/api/linkedin', require('./routes/linkedin'));
+app.use('/api/tiktok', require('./routes/tiktok'));
 app.use('/api/carrosseis', require('./routes/carrosseis')); // diálogo ilustrado e papel de parede (topo de funil)
 app.use('/api/crescimento', require('./routes/crescimento')); // Growth Dashboard, Diagnóstico e DNA Editorial
 // Manutenção do banco (limite de 512 MB do Postgres gratuito): ver espaço e limpar prévias/fotos/revisões sem uso.
@@ -101,6 +102,12 @@ app.get(['/health', '/api/health'], async (req, res) => {
   if (req.query.redes) {
     try { const e = await require('./lib/linkedin').estado(); corpo.linkedin = { configurado: e.configurado, conectado: e.conectado, ativo: e.ativo, venceu: e.venceu, dias_para_vencer: e.dias_para_vencer }; try { const L = require('./lib/linkedin'); corpo.linkedin.atrasados = (await L.pendentes()).length; const pubs = await require('./lib/armazem').armazem().publicacoes.listar(require('./lib/account').ACCOUNT.ig_id); const li = pubs.filter((p) => p.rede === 'linkedin'); corpo.linkedin.publicados = li.filter((p) => p.estado === 'publicada').length; corpo.linkedin.com_erro = li.filter((p) => p.estado === 'erro').length; corpo.linkedin.ultimo_erro = li.filter((p) => p.estado === 'erro').sort((x, y) => y.atualizada_em.localeCompare(x.atualizada_em))[0]?.dados?.erro?.amigavel?.slice(0, 160) || null; } catch { /* só diagnóstico */ } }
     catch (e) { corpo.linkedin = { erro: String(e.message).slice(0, 120) }; }
+    try {
+      const e = await require('./lib/tiktok').estado(); corpo.tiktok = { configurado: e.configurado, conectado: e.conectado, ativo: e.ativo, venceu: e.venceu, privacidade: e.privacidade };
+      const pubs = await require('./lib/armazem').armazem().publicacoes.listar(require('./lib/account').ACCOUNT.ig_id); const tk = pubs.filter((p) => p.rede === 'tiktok');
+      corpo.tiktok.publicados = tk.filter((p) => p.estado === 'publicada').length; corpo.tiktok.com_erro = tk.filter((p) => p.estado === 'erro').length;
+      corpo.tiktok.ultimo_erro = tk.filter((p) => p.estado === 'erro').sort((x, y) => y.atualizada_em.localeCompare(x.atualizada_em))[0]?.dados?.erro?.amigavel?.slice(0, 160) || null;
+    } catch (e) { corpo.tiktok = { erro: String(e.message).slice(0, 120) }; }
   }
   res.json(corpo);
 });

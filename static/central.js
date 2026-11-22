@@ -46,6 +46,7 @@
       Object.values(st.pubs).filter((p) => INTERMEDIARIOS.includes(p.estado)).forEach((p) => iniciarPolling(x, p.content_id));
     } catch (e) { st.erroServidor = e.message; }
     try { st.linkedin = await x.api('/api/linkedin/estado'); } catch { st.linkedin = null; }
+    try { st.tiktok = await x.api('/api/tiktok/estado'); } catch { st.tiktok = null; }
     if (forcarSaude || Date.now() - st.saudeEm > 60000) await carregarSaude(x, true);
     st.carregou = true; st.carregando = false; x.render();
   }
@@ -315,6 +316,19 @@
     return `<div class="es-label">LinkedIn</div>${corpo}`;
   }
 
+  // TikTok: o que você aprova para o Instagram sai também no TikTok (carrossel vira post de fotos; vídeo vai inteiro).
+  function secaoTikTok() {
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const T = st.tiktok; if (!T) return '';
+    let corpo;
+    if (!T.configurado) corpo = `<div class="es-text">Falta um passo seu: criar o app no TikTok for Developers e pôr TIKTOK_CLIENT_KEY e TIKTOK_CLIENT_SECRET na Vercel. Endereço de retorno: <b>${esc(T.redirect_uri)}</b></div>`;
+    else if (!T.conectado) corpo = `<div class="es-text">${T.venceu ? '<b>O acesso venceu.</b> ' : ''}Conecte uma vez; o app renova o acesso sozinho.</div><a class="es-btn sm" style="margin-top:8px;display:inline-flex" href="/api/tiktok/conectar">Conectar TikTok</a>`;
+    else corpo = `<div class="es-text">Conectado como <b>${esc(T.nome || 'você')}</b>.${T.privacidade === 'SELF_ONLY' ? ' <b>Os posts estão saindo como "Somente eu"</b>: o app do TikTok ainda não foi auditado.' : ''}</div>
+      <label class="cn-pausa"><input type="checkbox" data-cn-tk ${T.ativo ? 'checked' : ''}><span>Publicar também no TikTok<br><small>Só o que você aprovar. Carrossel vai como post de fotos; vídeo vai inteiro.</small></span></label>
+      <button class="es-btn ghost sm" data-action="cn-tk-sair">Desconectar</button>`;
+    return `<div class="es-label">TikTok</div>${corpo}`;
+  }
+
   function secaoConexoes() {
     const { esc } = ctx();
     const s = st.saude;
@@ -337,6 +351,7 @@
       <div class="es-label">Instagram</div>${corpo}
       <button class="es-btn ghost sm" style="margin-top:8px" data-action="cn-saude">Verificar agora</button>
       ${secaoLinkedIn()}
+      ${secaoTikTok()}
       <div class="es-label">Limites e regras de publicação</div>
       <p class="es-text" style="margin:4px 0 8px">Sem limite de publicações por dia: vale só a cota da própria Meta.</p>
       <label class="es-label" for="cn-gcap">Máximo de conteúdos gerados em lote por dia</label>
@@ -381,6 +396,7 @@
       case 'cn-descartar': c.status = 'arquivado'; M.registrar(c, 'pedro', 'arquivado', 'Descartou na Central'); await S.snapshot(c, 'descartado'); await x.persistir(c); x.render(); x.toast('Descartado. Dá para restaurar na aba Descartados.'); return true;
       case 'cn-restaurar': c.status = 'rascunho'; M.registrar(c, 'pedro', 'restaurado', 'Restaurou da aba Descartados'); await x.persistir(c); x.render(); return true;
       case 'cn-saude': await carregarSaude(x); return true;
+      case 'cn-tk-sair': { if (!window.confirm('Desconectar o TikTok? Os próximos posts não vão para lá.')) return true; try { st.tiktok = await x.api('/api/tiktok/desconectar', { method: 'POST', body: {} }); } catch (e) { x.toast(e.message); } x.render(); return true; }
       case 'cn-li-sair': { if (!window.confirm('Desconectar o LinkedIn? Os próximos posts saem só no Instagram.')) return true; try { st.linkedin = await x.api('/api/linkedin/desconectar', { method: 'POST', body: {} }); } catch (e) { x.toast(e.message); } x.render(); return true; }
       case 'cn-push': try { await ativarNotificacoes(x); x.toast('Notificações ativadas neste aparelho.'); } catch (e) { x.toast(e.message); } st.push = await estadoPush(); x.render(); return true;
       default: return false;
@@ -394,6 +410,7 @@
       if ('cnCap' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { daily_publish_cap: Number(el.value) } }); st.config = r.config; x.toast(`Limite diário: ${r.config.daily_publish_cap}.`); x.render(); return; }
       if ('cnGcap' in d) { const v = Math.min(50, Math.max(1, Number(el.value) || 10)); await x.salvarConfig({ daily_generation_cap: v }); x.toast(`Limite de geração por dia: ${v}.`); x.render(); return; }
       if ('cnFb' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { publishers: { facebook: el.checked } } }); st.config = r.config; x.toast(el.checked ? 'Facebook ligado.' : 'Facebook desligado.'); x.render(); return; }
+      if ('cnTk' in d) { st.tiktok = await x.api('/api/tiktok/ativo', { method: 'POST', body: { ativo: el.checked } }); x.toast(el.checked ? 'TikTok ligado: o que você aprovar sai lá também.' : 'TikTok desligado.'); x.render(); return; }
       if ('cnLi' in d) { st.linkedin = await x.api('/api/linkedin/ativo', { method: 'POST', body: { ativo: el.checked } }); x.toast(el.checked ? 'LinkedIn ligado: o que você aprovar sai lá também.' : 'LinkedIn desligado.'); x.render(); return; }
       if ('cnEnc' in d) { const r = await x.api('/api/publish/config', { method: 'PUT', body: { permitir_encerramento_provisorio: el.checked } }); st.config = r.config; x.render(); return; }
       if (d.cnLegenda) {

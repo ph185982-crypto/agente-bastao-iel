@@ -59,6 +59,19 @@ async function publicarEmSegundoPlano(c){
   await require('../lib/push').notificar({corpo:p.estado==='publicada'?'Publicado! Seu conteúdo já está no Instagram.':`A publicação precisa de atenção: ${doc.studio.erro||'tente novamente no app'}`,tag:`publicacao-${c.id}`}).catch(()=>{});
   // LinkedIn: o mesmo conteúdo aprovado sai também lá, se a conexão estiver ligada. Falha no LinkedIn não desfaz o Instagram.
   if(p.estado==='publicada'&&doc.formato!=='reels')await publicarNoLinkedIn(c.id,p.hash_versao).catch(e=>console.error('[linkedin]',e.message));
+  // TikTok: carrossel vira post de fotos; vídeo vai inteiro. Falha no TikTok não desfaz o Instagram.
+  if(p.estado==='publicada')await publicarNoTikTok(c.id,p.hash_versao).catch(e=>console.error('[tiktok]',e.message));
+}
+async function publicarNoTikTok(id,hash){
+  const T=require('../lib/tiktok');const cfg=await T.lerCfg();
+  if(!T.configurado()||!cfg.token||!cfg.ativo)return null;   // TikTok ainda em configuração: não avisa a cada post
+  let r=null;let falha=null;try{r=await T.publicar(id,{hash});}catch(e){falha=e.message;}
+  const reg=await studio.ler(id);const d=reg.doc;
+  d.publicacoes=[...(d.publicacoes||[]).filter(x=>x.network!=='tiktok'),{network:'tiktok',status:falha?'erro':(r?.estado||'publicada'),post_id:r?.ig_media_id||null,published_at:r?.publicada_em||null,erro:falha}];
+  M.registrar(d,'sistema','publicacao',falha?`TikTok: ${falha}`:'Enviado ao TikTok');
+  await armazem().conteudos.salvar(ACCOUNT.ig_id,id,d,reg.rev);
+  if(falha)await require('../lib/push').notificar({corpo:`O TikTok não recebeu o post: ${falha}`,tag:'tiktok-falha'}).catch(()=>{});
+  return r;
 }
 async function publicarNoLinkedIn(id,hash){
   const L=require('../lib/linkedin');const cfg=await L.lerCfg();
