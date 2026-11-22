@@ -49,6 +49,14 @@
   },
   "rewrites": [
     {
+      "source": "/termos",
+      "destination": "/termos.html"
+    },
+    {
+      "source": "/privacidade",
+      "destination": "/privacidade.html"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index"
     },

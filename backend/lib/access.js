@@ -124,7 +124,7 @@ function registraFalha(ip) {
 // /api/publico/midia: a Meta baixa as imagens daqui SEM o código do Pedro; a rota só entrega
 // com um token assinado (HMAC) que amarra o conteúdo, o hash aprovado e o slide, e expira.
 // /api/sso/(entrar|callback|central): login único Avanteza ID — o callback confere o JWT da Central antes de emitir qualquer coisa (ver ssoRota.js).
-const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/, /^\/api\/videos\/blob$/, /^\/api\/linkedin\/callback$/, /^\/api\/sso\/(entrar|callback|central)$/];
+const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api\/publico\/midia\/[\w.-]+\.jpg$/, /^\/api\/publico\/video\/[\w.-]+\.mp4$/, /^\/api\/studio\/worker\/st_[a-f0-9]{24}$/, /^\/api\/videos\/blob$/, /^\/api\/linkedin\/callback$/, /^\/api\/tiktok\/callback$/, /^\/api\/sso\/(entrar|callback|central)$/];
 // Rotas agendadas na Vercel: só passam com o CRON_SECRET que a própria Vercel envia.
 // Vídeos: o worker de edição (GitHub Actions) chama /api/videos/worker/* e pede client tokens em /api/videos/blob com o CRON_SECRET.
 // Reciclagem: a coleta diária (GitHub Actions) chama /api/reciclagem/coletar; o cron da Vercel chama /api/reciclagem/em-alta/coletar a cada 3 h.
