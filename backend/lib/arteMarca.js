@@ -83,7 +83,7 @@ async function compor(base, svg, layout, blocos, elementos) {
 
 // Logo da marca na capa: num cartão branco arredondado (cores originais; logo quase todo branco vira silhueta escura).
 // Quem ainda não conhece a marca pela foto a reconhece pelo logo.
-async function placaLogo(buf, maxW = 520, maxH = 130) {
+async function placaLogo(buf, maxW = 620, maxH = 190) {
   let img = sharp(buf).trim().resize(maxW, maxH, { fit: 'inside' });
   const meta = await sharp(buf).metadata();
   const { data, info } = await img.clone().ensureAlpha().raw().toBuffer({ resolveWithObject: true });

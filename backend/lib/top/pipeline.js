@@ -542,17 +542,41 @@ async function fotosMarca(c, ctx) {
   }
   const r = await require('./fotosCandidatas').etapa(c, ctx, { salvarArquivo, lerArquivo, slots });
   if (r?.concluida === false) return r;
-  // "Por trás da marca": o logo da marca vai na capa, para quem passa reconhecer de quem é o conteúdo antes de ler
+  // "Por trás da marca": a capa tem de fazer reconhecer a marca na hora (pedido do Pedro, 22/11): logo oficial grande e,
+  // quando o Wikidata conhece, a foto do produto mais famoso da marca (Ferrero → Nutella; Coca-Cola → a garrafa).
   if (!ehRevelacao(c)) {
     const marca = c.top.angulo?.marca || c.top.entrada?.marca || '';
     c.top.logos ||= {};
     if (marca && c.top.logos[marca] === undefined) {
-      if (ctx.restante() < 8000) return { concluida: false };
+      if (ctx.restante() < 12000) return { concluida: false };
+      const F = require('./fotos');
+      let w = null;
+      const buscarWd = ctx.deps.marcaNoWikidata || (ctx.deps.logoDe ? null : F.marcaNoWikidata);   // teste com logo falso: sem rede
+      try { w = buscarWd ? await buscarWd(marca) : null; } catch { w = null; }
+      c.top.marca_wikidata = w ? { id: w.id, nome: w.nome, logo: w.logo, produto: w.produto?.nome || null } : null;
       try {
-        const l = await (ctx.deps.logoDe || require('./fotos').logoDe)(marca);
+        const l = w?.logo ? await (ctx.deps.arquivoCommons || F.arquivoCommons)(w.logo, { largura: 960 }) : await (ctx.deps.logoDe || F.logoDe)(marca);
         if (l) { const id = `logo_${crypto.createHash('sha1').update(marca).digest('hex').slice(0, 10)}`; await armazem().arquivos.salvar(conta(), `img:${id}`, l.dados, 'image/png'); c.top.logos[marca] = id; }
         else c.top.logos[marca] = null;
       } catch { c.top.logos[marca] = null; }
+      // Produto famoso com a logo: vira a foto da capa (a foto escolhida antes vai para a lista de candidatas, sem uso).
+      const pinada = c.top.foto_por_slide?.s1?.por === 'manual';
+      // Sem produto cadastrado: a foto oficial da marca serve (o avião com a pintura da Gol), menos sede/prédio/endereço.
+      if (w && !w.produto && w.imagem && !/(\bhq\b|headquarter|sede|building|edif|predio|prédio|office|escrit|stra(ss|ß)e|street|\brua\b|avenida|campus|tower|torre)/i.test(w.imagem)) w.produto = { nome: w.nome, arquivo: w.imagem };
+      if (w?.produto?.arquivo && !pinada && !c.top.entrada?.fotos?.length) {
+        try {
+          const f = await (ctx.deps.arquivoCommons || F.arquivoCommons)(w.produto.arquivo, { largura: 1280, minBytes: 20000 });
+          if (f) {
+            const FC = require('./fotosCandidatas');
+            const prep = await FC.preparar(f.dados);
+            const id = `wd_${crypto.createHash('sha1').update(w.produto.arquivo).digest('hex').slice(0, 12)}`;
+            await salvarArquivo(`img:${id}`, prep.dados || f.dados); if (prep.mini) await salvarArquivo(`mini:${id}`, prep.mini);
+            const C = (c.top.fotos_candidatas ||= []);
+            if (!C.some((x) => x.id === id)) C.push({ id, origem: 'wikidata', url: f.pagina, legenda: `${w.produto.nome} (${marca})`, descricao: `Produto ${w.produto.nome}, da ${marca}, com a marca à mostra`, tags: [], largura: prep.largura, altura: prep.altura, meta: { id, tipo: 'foto_produto', titulo: f.titulo, origem: f.pagina, autor: null, licenca: 'Wikimedia Commons', exige_credito: false, alt: `${w.produto.nome}, produto da ${marca}` } });
+            FC.aplicar(c, [[FC.slidesDoCarrossel(c)[0], { id, motivo: `produto mais famoso da marca: ${w.produto.nome}`, por: 'produto' }]]);
+          }
+        } catch { /* sem a foto do produto: fica a foto escolhida antes, com o logo por cima */ }
+      }
     }
   }
   // "Quem é ele?": o logo de cada empresa das apostas (Commons; sem logo, o nome da empresa vira o título do painel)
