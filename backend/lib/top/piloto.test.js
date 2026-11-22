@@ -368,3 +368,15 @@ test('mix padrão sem notícia: nada de ensaio nem post estático; marca e Quem 
   await Pi.rodada({ agora: SP('2026-11-22', '06:00'), deps });
   assert.strictEqual(criados.length, 0, 'sem pauta de marca/pessoa, o piloto não cria notícia de ensaio nem estático');
 });
+
+test('sem pauta nas manchetes, o piloto parte de um nome conhecido (Quem é ele? e Por trás da marca)', async () => {
+  novo(); const criados = [];
+  const deps = {
+    descobrir: async () => ({ pautas: [] }), iaMarcas: async () => ({ dados: { itens: [] } }),
+    proximoNome: async (tipo) => ({ id: `n_${tipo}`, titulo: tipo === 'marca' ? 'Assaí aumenta lucro em 55%' : 'Anitta investe R$ 20 milhões em startup', url: `https://x.test/${tipo}`, marca: tipo === 'marca' ? 'Assaí' : 'Anitta' }),
+    criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
+    frases: async () => ({ criados: [], barradas: [] }), passo: async () => ({ conteudo: { top: { estado: 'em_andamento' } } }),
+  };
+  for (const h of ['06:00', '06:05']) await Pi.rodada({ agora: SP('2026-11-22', h), deps });
+  assert.deepStrictEqual(criados.map((c) => [c.formato, c.marca, c.estilo || null]).sort(), [['marca', 'Anitta', 'revelacao'], ['marca', 'Assaí', null]]);
+});

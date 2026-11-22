@@ -280,7 +280,14 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   const recentes = new Set((est.criados || []).filter((x) => x.marca && Date.parse(x.em) > agora - 7 * 86400000).map((x) => x.marca.toLowerCase()));
   fila = fila.filter((p) => !recentes.has(p.marca.toLowerCase()) && !nomeJaUsado(p.marca) && !assuntoRepetido(p.titulo, est, agora));
   est[kf] = fila;
-  return fila.shift() || null;
+  const daNoticia = fila.shift() || null;
+  if (daNoticia) return daNoticia;
+  // Sem pauta nas manchetes: parte de um NOME conhecido (pessoa ou marca) e busca a reportagem sob demanda.
+  if ((tipo === 'revelacao' || tipo === 'marca') && (!deps.descobrir || deps.proximoNome)) { // (teste com descobrir falso só usa o banco se injetar o seu)
+    const n = await (deps.proximoNome || require('./nomes').proximoNome)(tipo, est, { agora, deps, restante });
+    if (n && !usadas.has(n.id) && !nomeJaUsado(n.marca) && !assuntoRepetido(n.titulo, est, agora)) return n;
+  }
+  return null;
 }
 
 // Frases: lote barato (1 chamada de IA, arte por código). Cada rodada faz até 5; vão direto para a fila de aprovação.
