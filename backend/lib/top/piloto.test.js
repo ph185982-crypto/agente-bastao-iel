@@ -8,6 +8,8 @@ const M = require('../../../static/contentModel');
 const { ACCOUNT } = require('../account');
 
 const novo = () => arm._definir(Object.assign(arm.memoria(), { duravel: true }));
+// Desde 22/11 o mix padrão não tem notícia; os testes de mecânica de notícia ligam o mix antigo.
+const COM_NOTICIAS = { mix: { frase: 10, noticia: 10, marca: 10, revelacao: 10 } };
 const SP = (dia, hhmm) => Date.parse(`${dia}T${hhmm}:00-03:00`);
 const ler = async (id) => (await arm.armazem().conteudos.obter(ACCOUNT.ig_id, id)).doc;
 
@@ -36,7 +38,7 @@ test('configuração valida horários e limites', async () => {
 });
 
 test('rodada na janela de produção: escolhe a pauta de maior prioridade com link legível e cria o carrossel', async () => {
-  novo(); const criados = [];
+  novo(); await Pi.salvarConfig(COM_NOTICIAS); const criados = [];
   const deps = {
     descobrir: async () => ({ pautas: [
       { id: 'p1', titulo: 'Baixa', prioridade: 40, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/a' }] },
@@ -152,7 +154,7 @@ test('pauta de serviço fica fora da fila; descarte do Pedro abre vaga na meta',
   assert.ok(Pi.deServico('Saiba quais indicadores e balanços saem nesta 5ª feira'));
   assert.ok(Pi.deServico('Governo Lula: leia a agenda de ministros do governo nesta 5ª feira'));
   assert.ok(!Pi.deServico('TCU calcula alíquota da CBS em 11,3% para 2027'));
-  novo(); const criados = [];
+  novo(); await Pi.salvarConfig(COM_NOTICIAS); const criados = [];
   await Pi.salvarConfig({ meta_dia: 1, reserva: 0 });
   await arm.armazem().config.salvar(ACCOUNT.ig_id, { piloto_estado: { dia: '2026-10-29', criados: [{ id: 'x1', dia: '2026-10-29', em: new Date(SP('2026-10-29', '05:00')).toISOString(), estado: 'concluida' }] } });
   const deps = { criar: async (o) => { criados.push(o); return { id: `n${criados.length}` }; }, descobrir: async () => ({ pautas: [{ id: 's', titulo: 'Saiba quais balanços saem hoje', fontes: [{ url: 'https://agenciabrasil.ebc.com.br/s' }] }, { id: 'p', titulo: 'Gasto público sobe 9%', fontes: [{ url: 'https://agenciabrasil.ebc.com.br/p' }] }] }) };
@@ -184,7 +186,7 @@ test('pauta que mexe com quem empreende sobe na fila do piloto', async () => {
   assert.ok(Pi.paraEmpreendedor('Governo estuda mudar o Simples Nacional para o MEI'));
   assert.ok(Pi.paraEmpreendedor('Juros altos encarecem o crédito para pequenas empresas'));
   assert.ok(!Pi.paraEmpreendedor('Cantor lança novo álbum e bate recorde'));
-  novo(); const criados = [];
+  novo(); await Pi.salvarConfig(COM_NOTICIAS); const criados = [];
   await arm.armazem().config.salvar(ACCOUNT.ig_id, { piloto_estado: { dia: '2026-10-29', criados: [] } });
   const deps = { criar: async (o) => { criados.push(o); return { id: 'n1' }; }, descobrir: async () => ({ pautas: [
     { id: 'a', titulo: 'Ministro viaja a Genebra para reunião', prioridade: 70, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/a' }] },
@@ -194,7 +196,7 @@ test('pauta que mexe com quem empreende sobe na fila do piloto', async () => {
 });
 
 test('pedido de pautas extras: vale só no dia, ignora o horário e soma ao limite de candidatos', async () => {
-  novo(); const criados = [];
+  novo(); await Pi.salvarConfig(COM_NOTICIAS); const criados = [];
   const deps = {
     descobrir: async () => ({ pautas: [{ id: 'p1', titulo: 'Uma', prioridade: 50, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/a' }] }] }),
     criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
@@ -259,7 +261,7 @@ test('rodada: post agendado que não sai avisa o Pedro uma vez; alertas de opera
 });
 
 test('formato automático: com placar o piloto segue os envios reais (com 20% de teste); a leitura diária dos resultados roda uma vez por dia', async () => {
-  novo(); const criados = []; let coletas = 0;
+  novo(); await Pi.salvarConfig(COM_NOTICIAS); const criados = []; let coletas = 0;
   const placar = { pesos: { formato: { estatico: 0.8, ensaio: 0.2 } } };
   const deps = (u) => ({ semLimpeza: true, placar, sortear: () => u, coletarMetricas: async () => { coletas++; return { snapshot: { posts: [1, 2, 3], parcial: false } }; },
     descobrir: async () => ({ pautas: [{ id: `p${criados.length}`, titulo: `Pauta ${criados.length}`, prioridade: 90, fontes: [{ url: `https://agenciabrasil.ebc.com.br/${criados.length}` }] }] }),
@@ -274,7 +276,7 @@ test('formato automático: com placar o piloto segue os envios reais (com 20% de
 });
 
 test('40 por dia: frases em lote, pauta de marca conhecida e até 3 carrosséis em produção ao mesmo tempo', async () => {
-  novo(); const criados = []; let lotes = 0;
+  novo(); await Pi.salvarConfig(COM_NOTICIAS); const criados = []; let lotes = 0;
   const pautas = [
     { id: 'n1', titulo: 'Juros sobem de novo', prioridade: 50, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/n1' }] },
     { id: 'n2', titulo: 'Inflação de alimentos', prioridade: 40, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/n2' }] },
@@ -352,4 +354,17 @@ test('repetição contra TODO conteúdo recente (também o criado à mão): nome
   assert.ok(!Pi.nomeJaUsado('Roger Federer'), 'mais de 7 dias: pode voltar');
   assert.ok(Pi.assuntoRepetido('Ashton Kutcher investiu em Airbnb, Uber e Spotify cedo', { criados: [] }, agora));
   await Pi.carregarRecentes(agora, { recentes: async () => [] });
+});
+
+test('mix padrão sem notícia: nada de ensaio nem post estático; marca e Quem é ele? ficam com as vagas', async () => {
+  novo(); const criados = [];
+  assert.deepStrictEqual([Pi.PADRAO.mix.noticia, Pi.PADRAO.mix.marca, Pi.PADRAO.mix.revelacao], [0, 15, 15]);
+  const deps = {
+    descobrir: async (o) => ({ pautas: /^marcas|^pessoas/.test(o?.pilares?.[0]?.id || '') ? [] : [{ id: 'n1', titulo: 'Juros sobem', prioridade: 90, fontes: [{ url: 'https://agenciabrasil.ebc.com.br/n1' }] }] }),
+    iaMarcas: async () => ({ dados: { itens: [] } }),
+    criar: async (o) => { criados.push(o); return { id: `c_${criados.length}` }; },
+    frases: async () => ({ criados: [], barradas: [] }),
+  };
+  await Pi.rodada({ agora: SP('2026-11-22', '06:00'), deps });
+  assert.strictEqual(criados.length, 0, 'sem pauta de marca/pessoa, o piloto não cria notícia de ensaio nem estático');
 });
