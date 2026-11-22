@@ -240,8 +240,15 @@ async function manchetesAmplas(dias, deps = {}) {
   return out;
 }
 async function proximaMarca(est, o) { return proximaEspecial('marca', est, o); }
+const DECISAO = /estrat[eé]gia|aposta|decis|muda|mudou|lan[cç]a|abre|inaugura|compra|vende|expans|investe|investiu|parceria|fatura|lucro|cresce|dobra|aquisi|franquia|pre[cç]o|campanha/i;
 async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   const usadas = new Set((est.usadas || []).map((u) => u.id));
+  const usaNomes = (tipo === 'revelacao' || tipo === 'marca') && (!deps.descobrir || deps.proximoNome);
+  // "Quem é ele?": o banco de nomes vem PRIMEIRO (a reportagem é escolhida por nome e valor; a IA nas manchetes trazia político e esporte)
+  if (tipo === 'revelacao' && usaNomes) {
+    const n = await (deps.proximoNome || require('./nomes').proximoNome)(tipo, est, { agora, deps, restante });
+    if (n && !usadas.has(n.id) && !nomeJaUsado(n.marca) && !assuntoRepetido(n.titulo, est, agora)) return n;
+  }
   const kf = tipo === 'marca' ? 'fila_marca' : `fila_${tipo}`; const ke = `${kf}_em`;
   let fila = (est[kf] || []).filter((p) => !usadas.has(p.id));
   const velha = !est[ke] || agora - Date.parse(est[ke]) > 3 * 3600000;
@@ -257,7 +264,7 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
       }
     } else { try { todas = await manchetesAmplas(7, deps); } catch { todas = []; } }
     // "Quem é ele?" precisa de valor em dinheiro já no título (político e notícia sem número passavam pela IA)
-    const cands = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo) && !assuntoRepetido(p.titulo, est, agora) && (tipo !== 'revelacao' || require('./nomes').TEM_VALOR.test(p.titulo))).slice(0, 90);
+    const cands = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo) && !assuntoRepetido(p.titulo, est, agora) && (tipo !== 'revelacao' || require('./nomes').TEM_VALOR.test(p.titulo)) && (tipo !== 'marca' || deps.descobrir || DECISAO.test(p.titulo) || require('./nomes').TEM_VALOR.test(p.titulo))).slice(0, 90);
     est.diag_especial = { ...(est.diag_especial || {}), [tipo]: { buscadas: todas.length, candidatas: cands.length, ja_usadas: todas.filter((p) => usadas.has(p.id)).length } };
     if (cands.length) {
       const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));
@@ -284,7 +291,7 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   const daNoticia = fila.shift() || null;
   if (daNoticia) return daNoticia;
   // Sem pauta nas manchetes: parte de um NOME conhecido (pessoa ou marca) e busca a reportagem sob demanda.
-  if ((tipo === 'revelacao' || tipo === 'marca') && (!deps.descobrir || deps.proximoNome)) { // (teste com descobrir falso só usa o banco se injetar o seu)
+  if (tipo === 'marca' && usaNomes) { // (teste com descobrir falso só usa o banco se injetar o seu)
     const n = await (deps.proximoNome || require('./nomes').proximoNome)(tipo, est, { agora, deps, restante });
     if (n && !usadas.has(n.id) && !nomeJaUsado(n.marca) && !assuntoRepetido(n.titulo, est, agora)) return n;
   }
