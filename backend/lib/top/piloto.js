@@ -17,7 +17,8 @@ const PADRAO = Object.freeze({
   // "mix" diz quantas de cada; meta_dia é a soma. frase = post de 1 imagem para repostar nos stories; noticia = carrossel/
   // estático/ensaio topo de funil; marca = "Por trás da marca". A fila de aprovação segue ordenada pela prioridade estratégica.
   ativo: true, meta_dia: 40, reserva: 1, candidatos_max_dia: 90, paralelo: 3,
-  mix: { frase: 10, noticia: 10, marca: 10, revelacao: 10 }, // 21/11: 10 de cada para ver qual modelo performa melhor
+  // 22/11: o Pedro tirou o ensaio e o post único (manchete + foto) da fila: notícia = 0. As vagas vão para marca e Quem é ele?.
+  mix: { frase: 10, noticia: 0, marca: 15, revelacao: 15 },
   inicio_producao: '03:00', fim_producao: '23:30', // começa de madrugada (às 8h já há peças prontas) e vai até 23:30 (21/11)
   horarios: ['09:00', '11:00', '12:30', '15:00', '17:00', '18:30', '20:00', '21:30'],
   janelas_aprovacao: ['08:00', '14:00'],
@@ -211,12 +212,16 @@ const PILARES_MARCAS = [
   { id: 'marcas', nome: 'Varejo e lojas de marcas conhecidas', palavras: ['lojas', 'loja', 'varejo', 'unidade', 'unidades', 'rede', 'vendas', 'faturamento', 'receita', 'lucro'] },
   { id: 'marcas_expansao', nome: 'Expansão, franquia e fundador', palavras: ['franquia', 'franquias', 'expansão', 'fundador', 'aquisição', 'investimento', 'abre', 'inaugura', 'IPO'] },
   { id: 'marcas_marketing', nome: 'Marketing e estratégia de marca', palavras: ['marca', 'marcas', 'campanha', 'estratégia', 'consumidor', 'lançamento', 'produto'] },
+  { id: 'marcas_gigantes', nome: 'Gigantes e fundadores', palavras: ['fundador', 'fundadora', 'bilhão', 'bilhões', 'valor de mercado', 'IPO', 'dona da', 'dono da', 'holding', 'recorde', 'liderança'] },
+  { id: 'marcas_tecnologia', nome: 'Tecnologia e plataformas', palavras: ['aplicativo', 'plataforma', 'startup', 'inteligência artificial', 'streaming', 'delivery', 'e-commerce', 'marketplace'] },
 ];
 const SIS_MARCAS = `Para cada notícia, diga se ela conta a estratégia ou um movimento de negócio de UMA marca/empresa que o público brasileiro comum conhece (ex.: Havaianas, Cacau Show, Coco Bambu, Magalu, iFood, Natura, O Boticário, McDonald's, Nubank). Marca de nicho, órgão público, banco central, governo, pessoa ou setor inteiro não contam. Responda só JSON: {"itens":[{"i":0,"marca":"Nome da marca ou vazio","conhecida":0}]} com "conhecida" de 0 a 10 (quanto o público geral reconhece a marca).`;
 // "Quem é ele?": notícias de dinheiro de UMA pessoa famosa (onde investiu, quanto rendeu, empresa que criou ou vendeu).
 const PILARES_PESSOAS = [
   { id: 'pessoas_invest', nome: 'Investimentos de famosos', palavras: ['investiu', 'investimento', 'investidor', 'investidora', 'aporte', 'sócio', 'sócia', 'participação', 'startup', 'fundo'] },
   { id: 'pessoas_fortuna', nome: 'Fortuna e negócios de famosos', palavras: ['fortuna', 'bilionário', 'bilionária', 'milionário', 'patrimônio', 'empresário', 'empresária', 'vendeu', 'comprou', 'herdeiro'] },
+  { id: 'pessoas_esporte', nome: 'Atletas e artistas empresários', palavras: ['jogador', 'atleta', 'cantor', 'cantora', 'ator', 'atriz', 'apresentador', 'influenciador', 'negócio', 'marca própria', 'sócio'] },
+  { id: 'pessoas_fundadores', nome: 'Fundadores e investidores', palavras: ['fundador', 'fundadora', 'investidor', 'investidora', 'bilionário', 'Musk', 'Bezos', 'Zuckerberg', 'Buffett', 'Gates', 'Jobs', 'Huck'] },
 ];
 const SIS_PESSOAS = `Para cada notícia, diga se ela conta decisões de DINHEIRO de UMA pessoa que o público brasileiro comum conhece (artista, atleta, apresentador, influenciador, empresário famoso: ex. Ashton Kutcher, Neymar, Anitta, Luciano Huck, Elon Musk, Silvio Santos): onde investiu, quanto pôs e quanto virou, empresa que criou, comprou ou vendeu, com valores. Político, governo, empresa sem rosto e notícia sem valor não contam. Responda só JSON: {"itens":[{"i":0,"marca":"Nome da pessoa ou vazio","conhecida":0}]} com "conhecida" de 0 a 10 (quanto o público geral reconhece a pessoa).`;
 const FONTES_PAUTA = { marca: { pilares: () => PILARES_MARCAS, sistema: () => SIS_MARCAS }, revelacao: { pilares: () => PILARES_PESSOAS, sistema: () => SIS_PESSOAS } };
@@ -228,12 +233,17 @@ async function proximaEspecial(tipo, est, { agora, deps, restante }) {
   const velha = !est[ke] || agora - Date.parse(est[ke]) > 3 * 3600000;
   if ((!fila.length || velha) && restante() > 40000) {
     est[ke] = new Date(agora).toISOString();
-    const r = await (deps.descobrir || require('../descoberta').descobrir)({ dias: 7, pilares: FONTES_PAUTA[tipo].pilares() });
-    const cands = (r.pautas || []).filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).slice(0, 14);
+    // Uma busca por recorte (cada uma devolve até 14 acontecimentos): junta tudo para a IA separar as marcas/pessoas conhecidas.
+    const descobrir = deps.descobrir || require('../descoberta').descobrir; const vistos = new Set(); const todas = [];
+    for (const pilar of FONTES_PAUTA[tipo].pilares()) {
+      if (restante() < 30000) break;
+      try { for (const p of (await descobrir({ dias: 7, pilares: [pilar] })).pautas || []) if (!vistos.has(p.id)) { vistos.add(p.id); todas.push(p); } } catch { /* um recorte falhar não derruba os outros */ }
+    }
+    const cands = todas.filter((p) => !usadas.has(p.id) && melhorLink(p) && !deServico(p.titulo)).slice(0, 30);
     if (cands.length) {
       const pedir = deps.iaMarcas || ((args) => require('../llmJson').pedirJson(args));
-      const x = await pedir({ sistema: FONTES_PAUTA[tipo].sistema(), usuario: cands.map((p, i) => `${i}. ${p.titulo}`).join('\n'), maxTokens: 900, temperatura: 0.1, etapa: `pauta_${tipo}` });
-      fila = (x?.dados?.itens || []).filter((it) => cands[it.i] && String(it.marca || '').trim().length >= 2 && Number(it.conhecida) >= 7)
+      const x = await pedir({ sistema: FONTES_PAUTA[tipo].sistema(), usuario: cands.map((p, i) => `${i}. ${p.titulo}`).join('\n'), maxTokens: 1800, temperatura: 0.1, etapa: `pauta_${tipo}` });
+      fila = (x?.dados?.itens || []).filter((it) => cands[it.i] && String(it.marca || '').trim().length >= 2 && Number(it.conhecida) >= 6)
         .map((it) => ({ id: cands[it.i].id, titulo: cands[it.i].titulo, url: melhorLink(cands[it.i]), marca: String(it.marca).trim().slice(0, 60), conhecida: Number(it.conhecida) }))
         .filter((p, k, l) => l.findIndex((q) => q.marca.toLowerCase() === p.marca.toLowerCase()) === k)
         .sort((a, b) => b.conhecida - a.conhecida);
@@ -419,7 +429,7 @@ async function rodada({ agora = Date.now(), orcamentoMs = ORCAMENTO_MS(), deps =
   const iaPausada = est.ia_pausa_ate && Date.parse(est.ia_pausa_ate) > agora;
   if (iaPausada) r.avisos.push(`IA gratuita sem cota até ${horaSP(Date.parse(est.ia_pausa_ate))}: nenhuma pauta nova até lá.`);
   if (naJanela && !iaPausada) await passoFrases(cfg, est, r, { agora, dia, deps, restante });
-  const querMarca = ocupadas('marca') < mix.marca; const querRevelacao = ocupadas('revelacao') < (mix.revelacao || 0); const querNoticia = ocupadas('noticia') < mix.noticia + cfg.reserva + folga;
+  const querMarca = ocupadas('marca') < mix.marca; const querRevelacao = ocupadas('revelacao') < (mix.revelacao || 0); const querNoticia = (mix.noticia || 0) > 0 && ocupadas('noticia') < mix.noticia + cfg.reserva + folga;
   if (naJanela && !iaPausada && emAndamento < paralelo && (querMarca || querNoticia || querRevelacao) && prontosHoje < cfg.meta_dia + cfg.reserva + folga && (est.criados_hoje || 0) < cfg.candidatos_max_dia + folga && restante() > 12000) {
     try {
       // "Por trás da marca": vaga de marca aberta e uma pauta de marca conhecida na fila.
