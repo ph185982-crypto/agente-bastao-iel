@@ -1,7 +1,7 @@
 // Growth Dashboard + Diagnóstico (aba Resultados) e DNA Editorial (Ajustes). Só lê o que o servidor já guardou: nada aqui chama a Meta.
 // Regras: métrica ausente aparece como "—" com o motivo; amostra pequena vem avisada; nenhuma tela declara "vencedor".
 (function () {
-  const st = { seg: 'painel', de: '', ate: '', painel: null, diag: null, dna: null, dias: 30, carregando: false, carregandoDiag: false, erro: null, erroDna: null, salvandoDna: false, jaDna: false, abrirDiag: false };
+  const st = { seg: 'raiox', de: '', ate: '', painel: null, diag: null, dna: null, dias: 30, carregando: false, carregandoDiag: false, erro: null, erroDna: null, salvandoDna: false, jaDna: false, abrirDiag: false };
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = (n, d = 0) => (n == null ? '—' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: d, minimumFractionDigits: d }));
   const link = (u) => (typeof u === 'string' && /^https:\/\/(www\.)?instagram\.com\//.test(u) ? u : null);
@@ -70,7 +70,7 @@
     return h + '</div>';
   }
 
-  const SEGS = [['painel', 'Painel'], ['diag', 'Diagnóstico'], ['criativo', 'Criativo'], ['audiencia', 'Audiência'], ['comunidade', 'Comunidade'], ['lab', 'Lab'], ['funil', 'Funil'], ['fila', 'Fila'], ['series', 'Séries']];
+  const SEGS = [['raiox', 'Raio-X'], ['provas', 'Provas do dia'], ['painel', 'Painel'], ['diag', 'Diagnóstico'], ['criativo', 'Criativo'], ['audiencia', 'Audiência'], ['comunidade', 'Comunidade'], ['lab', 'Lab'], ['funil', 'Funil'], ['fila', 'Fila'], ['series', 'Séries']];
   function render() {
     const nav = `<nav class="cr-segs" aria-label="Crescimento">${SEGS.map(([k, r]) => `<button data-action="cr-seg" data-v="${k}" aria-pressed="${st.seg === k}">${r}</button>`).join('')}</nav>`;
     const corpo = st.seg === 'painel' ? blocoPainel() : st.seg === 'diag' ? blocoDiag() : window.CrescHub ? window.CrescHub.render(st.seg) : '';
@@ -120,7 +120,7 @@
   async function acao(a, el, ctx) {
     if (a === 'cr-periodo') { if (el.dataset.v === 'custom') { st.dias = 'custom'; ctx.render(); return true; } await carregarPainel(ctx, Number(el.dataset.v)); return true; }
     if (a === 'cr-custom') { st.de = document.getElementById('cr-de')?.value || ''; st.ate = document.getElementById('cr-ate')?.value || ''; if (!st.de || !st.ate) { ctx.toast('Escolha as duas datas.'); return true; } await carregarPainel(ctx); return true; }
-    if (a === 'cr-seg') { st.seg = el.dataset.v; ctx.render(); if (st.seg === 'diag' && !st.diag) await carregarDiag(ctx); else if (window.CrescHub) await window.CrescHub.carregar(st.seg, ctx); return true; }
+    if (a === 'cr-seg') { st.seg = el.dataset.v; ctx.render(); if (st.seg === 'painel' && !st.painel) await carregarPainel(ctx); else if (st.seg === 'diag' && !st.diag) await carregarDiag(ctx); else if (window.CrescHub) await window.CrescHub.carregar(st.seg, ctx); return true; }
     if (window.CrescHub && await window.CrescHub.acao(a, el, ctx)) return true;
     if (a === 'cr-diag') { await carregarDiag(ctx); return true; }
     if (a === 'dna-salvar') {
@@ -140,7 +140,7 @@
     }
     return false;
   }
-  async function carregar(ctx) { if (!st.painel && !st.carregando) await carregarPainel(ctx); }
+  async function carregar(ctx) { if (st.seg === 'painel') { if (!st.painel && !st.carregando) await carregarPainel(ctx); } else if (st.seg === 'diag') { if (!st.diag) await carregarDiag(ctx); } else if (window.CrescHub) await window.CrescHub.carregar(st.seg, ctx); }
 
   window.Crescimento = { render, secaoDna, acao, carregar, carregarDna, _st: st };
 })();

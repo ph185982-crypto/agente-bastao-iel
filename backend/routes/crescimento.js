@@ -186,4 +186,80 @@ router.get('/raio-x', limita({ max: 40, janelaMs: 60000, nome: 'cr-raiox' }), ro
   res.json({ parte: 'posts', n: r.posts.length, proximo: r.proximo, fim: r.fim, limite_atingido: r.limite_atingido, cifrado: RX.cifrar({ posts: r.posts, uso_meta: meta.uso() }, chave) });
 }));
 
+// ── Provas do dia: ideias de vídeo com a prova de demanda (backend/lib/provas.js) ──
+async function provasDoDia() {
+  const Provas = require('../lib/provas'); const a = armazem();
+  const analise = await Provas.analiseGuardada().catch(() => null);
+  let virais = []; try { const r = await require('../lib/reciclagem/coletar').listar({ dias: 7, limite: 80 }); virais = Array.isArray(r) ? r : (r?.itens || []); } catch { /* radar fora do ar */ }
+  const comentarios = await Com.listar({ limite: 2000 }).catch(() => []);
+  const perguntas = Aud.agruparPerguntas(comentarios.filter((c) => ['pergunta', 'duvida'].includes(c.classe)));
+  const aprovadas = await Com.listarPautas().catch(() => []);
+  const cfg = a?.duravel ? await a.config.obter(conta()) : {};
+  const usadas = new Set([...((cfg.piloto_estado?.roteiros?.usadas || []).map((u) => u.chave)), ...aprovadas.map((p) => p.origem?.chave).filter(Boolean)]);
+  const piloto = await require('../lib/top/piloto').config().catch(() => ({}));
+  return { Provas, analise, ideias: Provas.montar({ analise, virais, perguntas, aprovadas, usadas }), piloto };
+}
+router.get('/provas', rota(async (req, res) => {
+  const { Provas, analise, ideias, piloto } = await provasDoDia();
+  res.json({ ideias: ideias.map(({ pauta, tese, ...x }) => x), fontes: Provas.FONTES, tem_raio_x: !!analise, raio_x_em: analise?.gerado_em || null,
+    plano: Provas.planoRecomendado(analise, piloto.mix || {}), piloto: { mix: piloto.mix || {}, roteiros_dia: piloto.roteiros_dia ?? null, meta_dia: piloto.meta_dia ?? null } });
+}));
+router.post('/provas/escolher', limita({ max: 12, janelaMs: 60000, nome: 'cr-provas' }), rota(async (req, res) => {
+  const { ideias } = await provasDoDia(); const x = ideias.find((i) => i.chave === String(req.body?.chave || ''));
+  if (!x) return res.status(404).json({ error: 'Esta ideia não está mais na lista (já virou roteiro ou saiu do radar).' });
+  if (x.ja_na_fila) return res.json({ ok: true, ja_na_fila: true });
+  const p = await Com.criarPauta({ texto: x.pauta, tema: null, origem: { tipo: 'prova', fonte: x.fonte, evidencia: x.evidencia, forca: x.forca, chave: x.chave, formato: 'reel' }, ideia: x.titulo });
+  res.status(201).json({ ok: true, pauta_id: p.id });
+}));
+// Aplicar o plano de volume recomendado: só com o toque do Pedro (muda o mix do piloto e os roteiros por dia).
+router.post('/provas/plano', limita({ max: 4, janelaMs: 60000, nome: 'cr-plano' }), rota(async (req, res) => {
+  if (req.body?.confirmar !== true) return res.status(400).json({ error: 'Confirme para aplicar o plano.' });
+  const { Provas, analise, piloto } = await provasDoDia(); const plano = Provas.planoRecomendado(analise, piloto.mix || {});
+  const P = require('../lib/top/piloto'); await P.salvarConfig({ mix: plano.mix, roteiros_dia: plano.roteiros_dia });
+  const novo = await P.config(); res.json({ ok: true, aplicado: plano, piloto: { mix: novo.mix, roteiros_dia: novo.roteiros_dia, meta_dia: novo.meta_dia } });
+}));
+// Pausar UMA linha do piloto (botão do Raio-X em cada linha que rende abaixo do perfil).
+router.post('/provas/pausar-linha', limita({ max: 8, janelaMs: 60000, nome: 'cr-pausar' }), rota(async (req, res) => {
+  const k = String(req.body?.mix || ''); if (!['frase', 'noticia', 'marca', 'revelacao'].includes(k)) return res.status(400).json({ error: 'Linha desconhecida.' });
+  const P = require('../lib/top/piloto'); const cfg = await P.config(); const mix = { frase: 0, noticia: 0, marca: 0, revelacao: 0, ...(cfg.mix || {}), [k]: 0 };
+  if (!Object.values(mix).some((v) => v > 0)) return res.status(409).json({ error: 'Esta é a última linha ligada no piloto. Para parar tudo, desligue o piloto em Ajustes.' });
+  await P.salvarConfig({ mix }); const novo = await P.config(); res.json({ ok: true, piloto: { mix: novo.mix, meta_dia: novo.meta_dia } });
+}));
+
+// Raio-X DENTRO do app (sessão do dono): lê todos os posts da Meta, guarda a leitura e devolve o diagnóstico por regras
+// (backend/lib/raioXAnalise.js) mais o texto para copiar. Sem ?forcar=1 devolve a última leitura guardada.
+const RX_TIPO = 'raio_x';
+function montarRaioX(doc) {
+  const RA = require('../lib/raioXAnalise');
+  const analise = RA.analisar({ posts: doc.posts || [], conta: doc.conta || null, agora: Date.parse(doc.gerado_em) });
+  return { gerado_em: doc.gerado_em, parcial: doc.parcial || null, analise, texto: RA.texto(analise, doc.posts || []), texto_resumo: RA.texto(analise, doc.posts || [], { completo: false }) };
+}
+router.get('/raio-x/relatorio', rota(async (req, res) => {
+  const a = armazem(); const g = a?.duravel ? (await a.radar.obter(conta(), RX_TIPO, 'ultimo'))?.doc : null;
+  res.json(g ? montarRaioX(g) : { vazio: true });
+}));
+// Leitura em passos curtos (o celular derruba pedido que demora mais de 1 minuto): cada chamada lê UMA página de 50 posts;
+// quando os posts acabam, a chamada seguinte lê a conta e fecha o relatório. O app chama em sequência e mostra o andamento.
+const RX_PAGINAS_MAX = 12;
+router.post('/raio-x/ler', limita({ max: 40, janelaMs: 60000, nome: 'cr-raiox-ler' }), rota(async (req, res) => {
+  const a = armazem(); if (!a?.duravel) return res.status(503).json({ error: 'O Raio-X precisa do banco de dados no servidor.' });
+  const falta = meta.faltando(); if (falta.length) return res.status(409).json({ error: `A conexão com o Instagram não está configurada (falta ${falta.join(', ')}).` });
+  const RX = require('../lib/raioX');
+  let st = req.body?.reiniciar === true ? null : (await a.radar.obter(conta(), RX_TIPO, 'leitura'))?.doc;
+  if (!st || Date.now() - Date.parse(st.iniciado_em) > 3600000) st = { id: 'leitura', iniciado_em: new Date().toISOString(), posts: [], after: null, paginas: 0, etapa: 'posts', parcial: null };
+  if (st.etapa === 'posts') {
+    const r = await RX.posts({ after: st.after });
+    st.posts.push(...r.posts.map(({ capa, ...x }) => ({ ...x, legenda: String(x.legenda || '').slice(0, 320) }))); st.paginas += 1;
+    if (r.limite_atingido) st.parcial = 'A Meta limitou as chamadas no meio da leitura: parte dos posts veio sem métrica. Leia de novo em 1 hora.';
+    if (r.fim || r.limite_atingido || st.paginas >= RX_PAGINAS_MAX) st.etapa = 'conta'; else st.after = r.proximo;
+    await a.radar.salvar(conta(), RX_TIPO, 'leitura', st);
+    return res.json({ continua: true, etapa: st.etapa, lidos: st.posts.length });
+  }
+  let dadosConta = null; try { dadosConta = await RX.conta(); } catch (e) { dadosConta = { erros: [String(e.message).slice(0, 160)] }; }
+  const doc = { id: 'ultimo', gerado_em: new Date().toISOString(), posts: st.posts, conta: dadosConta, parcial: st.parcial || null };
+  await a.radar.salvar(conta(), RX_TIPO, 'ultimo', doc);
+  try { await a.radar.apagar(conta(), RX_TIPO, 'leitura'); } catch { /* fica para a próxima leitura sobrescrever */ }
+  res.json({ continua: false, ...montarRaioX(doc) });
+}));
+
 module.exports = router;

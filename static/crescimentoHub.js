@@ -7,7 +7,7 @@
   const num = (n, d = 0) => (n == null ? '—' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: d, minimumFractionDigits: d }));
   const v = (id) => document.getElementById(id)?.value ?? '';
   const card = (titulo, corpo) => `<div class="es-card"><div class="es-label">${esc(titulo)}</div>${corpo}</div>`;
-  const ROTA = { criativo: '/api/crescimento/criativo', audiencia: '/api/crescimento/audiencia', comunidade: '/api/crescimento/comunidade', lab: '/api/crescimento/lab', funil: '/api/crescimento/funil', fila: '/api/crescimento/prioridades', series: '/api/crescimento/series' };
+  const ROTA = { raiox: '/api/crescimento/raio-x/relatorio', provas: '/api/crescimento/provas', criativo: '/api/crescimento/criativo', audiencia: '/api/crescimento/audiencia', comunidade: '/api/crescimento/comunidade', lab: '/api/crescimento/lab', funil: '/api/crescimento/funil', fila: '/api/crescimento/prioridades', series: '/api/crescimento/series' };
 
   async function carregar(seg, ctx, forcar = false) {
     if (seg === 'criativo') window.Crescimento?.carregarDna(ctx);
@@ -164,7 +164,49 @@
     return `<div class="cr-dist"><b>${esc(p.desempenho.leitura)}</b><div>Comentários: ${num(p.comentarios.total)} (${num(p.comentarios.pendentes)} pedem resposta)</div><ul class="ig-obs">${p.proximos_passos.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><div class="es-label">Stories</div><ul class="ig-obs">${p.stories.map((s) => `<li>${esc(s.texto)} <span class="ig-mudo">(${esc(s.quando)})</span></li>`).join('')}</ul><div class="es-label">Reaproveitar</div><ul class="ig-obs">${p.reaproveitar.map((x) => `<li>${esc(x)}</li>`).join('')}</ul><div class="ig-mudo">${esc(p.colaboracao)}</div></div>`;
   }
 
+  // ── Raio-X: o diagnóstico com os números reais de todos os posts ──
+  const GRAV = { alta: ['warn', 'Grave'], media: ['neutro', 'Atenção'], info: ['ok', 'Informação'] };
+  const tabela = (titulo, linhas, nota) => (linhas?.length ? `<div class="es-label" style="margin-top:12px">${esc(titulo)}</div><div class="ig-tabela-wrap"><table class="ig-tabela"><thead><tr><th></th><th>Posts</th><th>Alcance</th><th>× perfil</th><th>Envios/mil</th><th>Seg./mil</th><th>Entre os melhores</th></tr></thead><tbody>${linhas.map((g) => `<tr><th scope="row">${esc(g.nome)}${g.amostra === 'pequena' ? ' <span class="mz-chip warn">pouco</span>' : ''}</th><td>${num(g.n)}</td><td>${num(g.alcance)}</td><td>${num(g.alcance_x, 2)}</td><td>${num(g.envios_mil, 1)}</td><td>${num(g.seg_mil, 2)}</td><td>${g.entre_os_melhores_pct == null ? '—' : num(g.entre_os_melhores_pct) + '%'}</td></tr>`).join('')}</tbody></table></div>${nota ? `<div class="es-text ig-mudo">${esc(nota)}</div>` : ''}` : '');
+  const postRx = (p) => { const u = typeof p.link === 'string' && /^https:\/\/(www\.)?instagram\.com\//.test(p.link) ? p.link : null; const t = esc(p.legenda || 'Sem legenda'); return `<li>${u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${t}</a>` : t}<br><span class="ig-mudo">${esc(String(p.em).slice(0, 10))} · ${esc(p.tipo)} · alcance ${num(p.alcance)} (${num(p.vezes_mediana, 1)}×) · ${num(p.envios_mil, 1)} envios/mil · ${p.seguidores == null ? 'seguidores —' : num(p.seguidores) + ' seguidores'}</span></li>`; };
+  function raiox() {
+    const d = st.dados.raiox; const lendo = st.rxLendo;
+    let h = card('Raio-X do perfil', `<div class="es-text">Lê todos os seus posts direto da Meta (só leitura) e mostra, com os números, o que está segurando o perfil. Sem agradar: cada achado traz a evidência.</div>
+      <button class="es-btn" style="margin-top:8px" data-action="rx-ler" ${lendo ? 'disabled' : ''}>${lendo ? `Lendo… ${num(st.rxLidos || 0)} posts` : d && !d.vazio ? 'Ler tudo de novo' : 'Ler todos os posts agora'}</button>
+      ${st.rxErro ? `<div class="es-warn">${esc(st.rxErro)}</div>` : ''}
+      ${d && !d.vazio ? `<div class="cr-acoes"><button class="es-btn ghost sm" data-action="rx-copiar" data-v="texto">Copiar relatório completo</button><button class="es-btn ghost sm" data-action="rx-copiar" data-v="texto_resumo">Copiar resumo</button></div><div class="es-text ig-mudo">Lido em ${esc(new Date(d.gerado_em).toLocaleString('pt-BR'))}. Cole o relatório na conversa com o Claude para a análise completa.</div>` : ''}`) + topo('raiox');
+    if (!d) return h; if (d.vazio) return h + '<div class="es-text ig-mudo">Ainda não há leitura guardada. A leitura leva de 1 a 2 minutos.</div>';
+    const a = d.analise; if (d.parcial) h += `<div class="es-warn">${esc(d.parcial)}</div>`;
+    h += card('Resumo', `<div class="cr-grid">${[['Seguidores', num(a.seguidores)], ['Posts lidos', `${num(a.total_lidos)} (${num(a.maduros)} maduros)`], ['Alcance mediano', `${num(a.geral.alcance)}${a.geral.alcance_pct_da_base != null ? ` · ${num(a.geral.alcance_pct_da_base, 1)}% da base` : ''}`], ['Envios por mil', num(a.geral.envios_mil, 1)], ['Seguidores por mil', num(a.geral.seg_mil, 2)], ['Posts por dia (14 dias)', `${num(a.ritmo.por_dia_14d, 1)} · máx ${num(a.ritmo.max_no_dia_14d)}`]].map(([r, v]) => `<div class="cr-kpi"><div class="cr-k-rot">${r}</div><div class="cr-k-val" style="font-size:17px">${v}</div></div>`).join('')}</div>`);
+    h += `<div class="es-card"><div class="es-label">O que está segurando o perfil</div>${a.achados.length ? a.achados.map((x) => `<div class="cr-item"><div class="es-between"><b>${esc(x.titulo)}</b><span class="mz-chip ${GRAV[x.gravidade][0]}">${GRAV[x.gravidade][1]}</span></div><div class="es-text">${esc(x.evidencia)}</div><div class="es-text"><b>O que fazer:</b> ${esc(x.fazer)}</div>${x.mix ? `<div class="cr-acoes"><button class="es-btn ghost sm" data-action="rx-pausar" data-mix="${esc(x.mix)}" ${dis()}>Pausar esta linha no piloto</button></div>` : ''}</div>`).join('') : '<div class="es-text ig-mudo">Nenhum achado com amostra suficiente.</div>'}</div>`;
+    const jan = a.conta?.janelas || [];
+    if (jan.length) h += card('A conta, de 30 em 30 dias', `<div class="ig-tabela-wrap"><table class="ig-tabela"><thead><tr><th>Período</th><th>Alcance</th><th>De não seguidores</th><th>Seguiram</th><th>Saíram</th><th>Saldo</th></tr></thead><tbody>${jan.map((j) => `<tr><th scope="row">${esc(j.de.slice(5))} a ${esc(j.ate.slice(5))}</th><td>${num(j.alcance)}</td><td>${j.nao_seguidores_pct == null ? '—' : num(j.nao_seguidores_pct) + '%'}</td><td>${num(j.seguiram)}</td><td>${num(j.sairam)}</td><td>${j.saldo == null ? '—' : (j.saldo > 0 ? '+' : '') + num(j.saldo)}</td></tr>`).join('')}</tbody></table></div>${(a.conta.erros || []).length ? `<details class="ig-limites"><summary>O que a Meta não entregou</summary><ul>${a.conta.erros.slice(0, 10).map((e) => `<li>${esc(e)}</li>`).join('')}</ul></details>` : ''}`);
+    h += `<div class="es-card">${tabela('Por linha de produção', a.linhas, '"× perfil" compara o alcance mediano da linha com o do perfil; "entre os melhores" é a parte dos posts da linha que está nos 20% melhores.')}${tabela('Por formato', a.formatos)}${tabela('Por tipo de abertura da legenda', a.ganchos)}${tabela('Por tema', a.temas, 'Tema e abertura vêm das palavras da legenda: aproximação.')}
+      ${a.volume?.length ? `<div class="es-label" style="margin-top:12px">Quantos posts saíram no mesmo dia</div><ul class="ig-obs">${a.volume.map((v) => `<li>${esc(v.faixa)}: ${num(v.n)} posts · alcance mediano ${num(v.alcance)} · ${num(v.envios_mil, 1)} envios/mil</li>`).join('')}</ul>` : ''}
+      ${a.meses?.length ? `<div class="es-label" style="margin-top:12px">Mês a mês</div><ul class="ig-obs">${a.meses.map((m) => `<li>${esc(m.mes)}: ${num(m.n)} posts (${num(m.posts_por_dia, 1)}/dia) · alcance mediano ${num(m.alcance)} · ${num(m.envios_mil, 1)} envios/mil</li>`).join('')}</ul>` : ''}</div>`;
+    if (a.padroes?.repetir?.length || a.padroes?.parar?.length) h += card('O que repetir e o que parar', `${a.padroes.repetir.length ? `<div class="es-label">Aparece mais entre os melhores</div><ul class="ig-obs">${a.padroes.repetir.map((p) => `<li>${esc(p.texto)}</li>`).join('')}</ul>` : ''}${a.padroes.parar.length ? `<div class="es-label">Quase nunca entre os melhores</div><ul class="ig-obs">${a.padroes.parar.map((p) => `<li>${esc(p.texto)}</li>`).join('')}</ul>` : ''}`);
+    if (a.melhores?.length) h += card('Os melhores posts', `<ul class="ig-obs">${a.melhores.slice(0, 8).map(postRx).join('')}</ul>`);
+    if (a.piores?.length) h += card('Os piores posts', `<ul class="ig-obs">${a.piores.slice(0, 8).map(postRx).join('')}</ul>`);
+    return h + `<details class="ig-limites"><summary>Como esta conta é feita</summary><ul><li>Só entram posts com mais de ${esc(a.regras.maduro)}; grupo com menos de ${a.regras.minimo} posts aparece como "pouco".</li><li>${esc(a.regras.nota)}</li><li>${esc(a.regras.tema)}</li><li>Isto descreve o que aconteceu; não prova a causa nem prevê alcance.</li></ul></details>`;
+  }
+
+  // ── Provas do dia: ideias de vídeo que partem de uma prova de demanda ──
+  function provas() {
+    const d = st.dados.provas; let h = card('Provas do dia', `<div class="es-text">Toda ideia aqui tem um número mostrando que as pessoas querem aquilo. Escolha de 1 a 3, grave com você falando e publique como <b>Reel de teste</b> (vai primeiro só para quem não te segue).</div>`) + topo('provas');
+    if (!d) return h;
+    if (!d.tem_raio_x) h += '<div class="es-warn">Ainda não há Raio-X guardado: as ideias do seu próprio histórico só aparecem depois de você ler os posts na aba Raio-X.</div>';
+    h += d.ideias.length ? `<div class="es-card">${d.ideias.map((x) => `<div class="cr-item"><div class="es-between"><span class="mz-chip neutro">${esc(x.rotulo_fonte)}</span><span class="cr-score">${num(x.forca)}</span></div><div class="es-text"><b>${esc(x.titulo)}</b></div><div class="es-text"><b>Prova:</b> ${esc(x.evidencia)}</div><div class="cr-acoes">${x.ja_na_fila ? '<span class="ig-mudo">Já está na fila de roteiros</span>' : `<button class="es-btn sm" data-action="pv-escolher" data-chave="${esc(x.chave)}" ${dis()}>Quero o roteiro desta</button>`}</div></div>`).join('')}</div>` : '<div class="es-text ig-mudo">Nenhuma ideia com prova agora. O radar lê o mercado 3 vezes por dia; o seu histórico entra depois do Raio-X.</div>';
+    h += `<div class="cr-acoes"><button class="es-btn" data-action="pv-gerar" ${dis()}>${st.ocupado ? 'Escrevendo…' : 'Escrever os roteiros agora'}</button></div><div class="es-text ig-mudo">Os roteiros aparecem na aba Vídeos, com a prova no cartão. A nota (0 a 100) só ordena as ideias entre si.</div>`;
+    const p = d.plano; const m = d.piloto?.mix || {};
+    h += card('Volume: o que o piloto produz por dia', `<div class="es-text">Hoje: ${num(m.frase)} frases, ${num(m.marca)} Por trás da marca, ${num(m.revelacao)} Quem é ele?, ${num(m.noticia)} notícias e ${num(d.piloto?.roteiros_dia)} roteiro(s) de vídeo.</div>
+      <div class="es-text" style="margin-top:6px"><b>Plano recomendado${p.com_dado ? ' pelo Raio-X' : ''}:</b> ${num(p.mix.frase)} frases, ${num(p.mix.marca)} Por trás da marca, ${num(p.mix.revelacao)} Quem é ele?, ${num(p.mix.noticia)} notícias e ${num(p.roteiros_dia)} roteiros de vídeo por dia.</div>
+      ${p.motivos.length ? `<ul class="ig-obs">${p.motivos.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '<div class="es-text ig-mudo">O volume já está dentro do plano.</div>'}
+      ${p.com_dado ? '' : '<div class="es-text ig-mudo">Sem Raio-X, o plano só limita cada linha a 1 por dia. Com o Raio-X, ele desliga o que rende abaixo do perfil.</div>'}
+      <div class="cr-acoes"><button class="es-btn ghost" data-action="pv-plano" ${dis()}>Aplicar este plano</button></div><div class="es-text ig-mudo">Você pode voltar ao volume antigo em Ajustes → Piloto.</div>`);
+    return h;
+  }
+
   function render(seg) {
+    if (seg === 'raiox') return raiox(); if (seg === 'provas') return provas();
     if (seg === 'criativo') return criativo(); if (seg === 'audiencia') return audiencia(); if (seg === 'comunidade') return comunidade();
     if (seg === 'lab') return lab(); if (seg === 'funil') return funil(); if (seg === 'fila') return fila(); if (seg === 'series') return series();
     return '';
@@ -173,6 +215,27 @@
   async function acao(a, el, ctx) {
     const id = el.dataset.id;
     switch (a) {
+      case 'rx-ler': {
+        if (st.rxLendo) return true; st.rxLendo = true; st.rxLidos = 0; st.rxErro = null; ctx.render();
+        try {
+          let r = await ctx.api('/api/crescimento/raio-x/ler', { method: 'POST', body: { reiniciar: true } });
+          for (let i = 0; i < 20 && r.continua; i++) { st.rxLidos = r.lidos || st.rxLidos; ctx.render(); r = await ctx.api('/api/crescimento/raio-x/ler', { method: 'POST', body: {} }); }
+          if (r.continua) st.rxErro = 'A leitura não terminou. Toque de novo para continuar.'; else { st.dados.raiox = r; delete st.dados.provas; ctx.toast('Raio-X pronto.'); }
+        } catch (e) { st.rxErro = e.message || 'Não consegui ler agora.'; }
+        st.rxLendo = false; ctx.render(); return true;
+      }
+      case 'rx-copiar': {
+        const t = st.dados.raiox?.[el.dataset.v] || '';
+        try { await navigator.clipboard.writeText(t); ctx.toast('Relatório copiado. Cole na conversa com o Claude.'); } catch {
+          const ta = document.createElement('textarea'); ta.value = t; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); ctx.toast('Relatório copiado.'); } catch { ctx.toast('Não consegui copiar: tente pelo navegador.'); } ta.remove();
+        }
+        return true;
+      }
+      case 'rx-pausar': if (!window.confirm('Pausar esta linha no piloto? Ele para de produzir esse tipo de post (dá para religar em Ajustes).')) return true; await chamar(ctx, '/api/crescimento/provas/pausar-linha', { body: { mix: el.dataset.mix }, ok: 'Linha pausada no piloto.' }); delete st.dados.provas; return true;
+      case 'pv-escolher': await chamar(ctx, '/api/crescimento/provas/escolher', { body: { chave: el.dataset.chave }, recarregar: 'provas', ok: 'Entrou na frente da fila de roteiros.' }); return true;
+      case 'pv-gerar': await chamar(ctx, '/api/videos/roteiros/gerar', { body: {}, ok: 'Roteiros a caminho: veja na aba Vídeos.' }); return true;
+      case 'pv-plano': if (!window.confirm('Aplicar o plano de volume recomendado no piloto?')) return true; await chamar(ctx, '/api/crescimento/provas/plano', { body: { confirmar: true }, recarregar: 'provas', ok: 'Plano aplicado.' }); return true;
       case 'cr-dist': if (st.dist[id]) { delete st.dist[id]; ctx.render(); return true; } try { st.dist[id] = await ctx.api(`/api/crescimento/distribuicao/${encodeURIComponent(id)}`); } catch (e) { st.dist[id] = { erro: e.message }; } ctx.render(); return true;
       case 'cri-gerar': { const r = await chamar(ctx, '/api/crescimento/criativo', { body: { pauta: v('cri-pauta') }, recarregar: 'criativo', ok: 'Estratégia pronta.' }); if (r?.id) { st.criAberta = r.id; ctx.render(); } return true; }
       case 'cri-abrir': st.criAberta = st.criAberta === id ? null : id; ctx.render(); return true;

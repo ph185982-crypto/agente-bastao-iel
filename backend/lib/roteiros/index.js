@@ -19,6 +19,7 @@ const S = require('./skill');
 const Angulo = require('./angulo');
 const Escada = require('./escada');
 const Dna = require('../dnaEditorial');
+const Provas = require('../provas');
 
 const conta = () => ACCOUNT.ig_id;
 const META_DIA = 5;
@@ -44,7 +45,18 @@ async function pautas({ est = {}, deps = {} } = {}) {
       out.tese.push({ chave, tipo: 'tese', url: it.permalink || null, tema: limpa(it.tema || it.tese, 120), texto: [`TESE (viralizou em outra conta; não cite a origem): ${it.tese}`, it.ponte_pedro ? `PONTE PARA O EMPREENDEDOR BRASILEIRO: ${it.ponte_pedro}` : '', it.mecanismo ? `MECANISMO QUE FEZ VIRALIZAR: ${it.mecanismo}` : '', it.analise ? `ANÁLISE DO MECANISMO (não copie o post; crie uma versão diferente): ${['gancho', 'estrutura', 'emocao', 'publico', 'motivo'].filter((k) => it.analise[k]).map((k) => `${k}: ${it.analise[k]}`).join('; ')}` : '', it.analise?.angulo_pedro ? `ÂNGULO PEDRO DESTRAVA SUGERIDO: ${it.analise.angulo_pedro}` : ''].filter(Boolean).join('\n'), peso: Number(it.vl) || 0, reel: it.tipo === 'reel' ? 1 : 0, autor: [it.conta?.handle, it.conta?.nome].filter((x) => x && String(x).replace(/^[@#]/, '').length >= 4).map((x) => String(x).replace(/^[@#]/, '').replace(/\(.*\)/, '').trim()) }); // handle e nome inteiros ("Conta Azul", não "Conta")
     }
     out.tese.sort((a, b) => (b.reel - a.reel) || (b.peso - a.peso)); // tese de reel viral primeiro: virou vídeo uma vez, vira de novo
+    // Provas do dia: cada tese viral leva a evidência (quantas vezes passou a mediana da própria conta) para o cartão do roteiro.
+    const ev = new Map(Provas.dosVirais((Array.isArray(itens) ? itens : itens?.itens) || [], { max: 200 }).map((x) => [x.chave, x]));
+    for (const t of out.tese) { const x = ev.get(t.chave); if (x) t.origem_pauta = { tipo: 'prova', fonte: 'viral', evidencia: x.evidencia, forca: x.forca }; }
   } catch { /* fonte fora do ar: as outras cobrem */ }
+  // Conteúdo do próprio Pedro que rendeu acima do normal (Raio-X guardado): novo episódio, na frente das teses virais.
+  try {
+    const analise = await Provas.analiseGuardada({ deps: { analise: deps.analiseRaioX } });
+    for (const v of Provas.dosVencedores(analise).reverse()) {
+      if (usadas.has(v.chave)) continue;
+      out.tese.unshift({ chave: v.chave, tipo: 'tese', tema: limpa(v.titulo, 120), texto: v.pauta, peso: 500 + v.forca, reel: 1, autor: [], origem_pauta: { tipo: 'prova', fonte: 'seu_vencedor', evidencia: v.evidencia, forca: v.forca } });
+    }
+  } catch { /* sem Raio-X guardado */ }
   try {
     const hs = await (deps.historias || (() => require('../historias').listar()))();
     for (const h of [...(hs || [])].reverse()) {
@@ -55,11 +67,15 @@ async function pautas({ est = {}, deps = {} } = {}) {
   // Pautas aprovadas pelo Pedro (Estratégia criativa) e perguntas reais da audiência (Comunidade): vêm na frente das teses.
   try {
     const pcs = await (deps.pautasComunidade || (() => require('../comunidade').listarPautas()))();
+    // prova que o Pedro escolheu à mão não volta pela fila automática (a mesma tese viraria dois roteiros)
+    const escolhidas = new Set((pcs || []).map((p) => p.origem?.chave).filter(Boolean)); out.tese = out.tese.filter((t) => !escolhidas.has(t.chave));
     for (const p of [...(pcs || [])].reverse()) {
       const chave = `pc:${p.id}`; if (usadas.has(chave) || p.usada) continue;
       if (p.origem?.formato && p.origem.formato !== 'reel') continue;   // carrossel e post único vão pelo Criar
-      const daEstrategia = p.origem?.tipo === 'estrategia_criativa';
-      out.tese.unshift({ chave, tipo: 'tese', tema: limpa(p.ideia || p.texto, 120), texto: `${daEstrategia ? 'PAUTA APROVADA PELO PEDRO NA ESTRATÉGIA CRIATIVA (siga o ângulo aprovado)' : 'PERGUNTA OU COMENTÁRIO REAL DA AUDIÊNCIA (responda com o conteúdo; não cite quem comentou)'}:\n${p.texto}${p.ideia ? `\nIDEIA DE GANCHO: ${p.ideia}` : ''}`, peso: 1000, reel: 1, autor: [], origem_pauta: p.origem || null });
+      const daEstrategia = p.origem?.tipo === 'estrategia_criativa'; const daProva = p.origem?.tipo === 'prova';
+      // prova escolhida pelo Pedro na aba "Provas do dia": o texto da pauta já diz o que é e traz a evidência
+      const cabeca = daProva ? 'IDEIA ESCOLHIDA PELO PEDRO NAS PROVAS DO DIA' : daEstrategia ? 'PAUTA APROVADA PELO PEDRO NA ESTRATÉGIA CRIATIVA (siga o ângulo aprovado)' : 'PERGUNTA OU COMENTÁRIO REAL DA AUDIÊNCIA (responda com o conteúdo; não cite quem comentou)';
+      out.tese.unshift({ chave, tipo: 'tese', tema: limpa(p.ideia || p.texto, 120), texto: `${cabeca}:\n${p.texto}${p.ideia && !daProva ? `\nIDEIA DE GANCHO: ${p.ideia}` : ''}`, peso: 1000, reel: 1, autor: [], origem_pauta: p.origem || null });
     }
   } catch { /* sem cadastro */ }
   for (const p of (deps.noticias || [])) { // notícia só se alguém passar explicitamente
@@ -89,7 +105,7 @@ function escolherFormato(pauta, usadosHoje = {}, sortear = Math.random) {
 }
 
 // ── Roteirista ────────────────────────────────────────────────────────────────
-function promptRoteirista({ formato, feedback = '', angulo = null, dna = null }) {
+function promptRoteirista({ formato, feedback = '', angulo = null, dna = null, provas = '' }) {
   const f = S.FORMATOS[formato];
   return `Você é o roteirista de Reels do @pedro_destrava. Escreva UM roteiro falado, gravado por ele olhando para a câmera, lido no teleprompter.
 ${S.SKILL}
@@ -101,7 +117,7 @@ ${f.estrutura}
 CTA preferido deste formato: ${f.cta === 'envio' ? 'envio com destinatário específico' : f.cta === 'salvar' ? 'salvar (lista, conta ou passo a passo)' : 'pergunta binária para comentar'}.
 
 ${Mentes.AI.REGRAS}
-${dna ? `\n${Dna.blocoParaPrompt(dna)}\n` : ''}${Angulo.blocoParaRoteirista(angulo) ? `\n${Angulo.blocoParaRoteirista(angulo)}\n` : ''}${feedback ? `\nREESCREVA DO ZERO. Os fiscais reprovaram a versão anterior por:\n${feedback}\n` : ''}
+${dna ? `\n${Dna.blocoParaPrompt(dna)}\n` : ''}${provas ? `\n${provas}\n` : ''}${Angulo.blocoParaRoteirista(angulo) ? `\n${Angulo.blocoParaRoteirista(angulo)}\n` : ''}${feedback ? `\nREESCREVA DO ZERO. Os fiscais reprovaram a versão anterior por:\n${feedback}\n` : ''}
 Responda APENAS JSON:
 {"titulo":"até 8 palavras","publico":"quem o gancho nomeia","gancho":"1ª frase falada, até 15 palavras","tela_gancho":"3 a 5 palavras na tela","visual":"o que aparece nos 3 primeiros segundos (gesto, objeto, cenário)","foreshadow":"1 ou 2 frases que abrem o loop","blocos":[{"fala":"2 a 4 frases curtas","tela":"3 a 5 palavras"}],"payoff":"a frase que entrega a promessa","cta":"1 frase","cta_tipo":"envio|salvar|comentar"}
 Use de 3 a 6 blocos. Total falado entre ${S.PALAVRAS.min} e ${S.PALAVRAS.max} palavras.`;
@@ -286,7 +302,7 @@ async function salvarRoteiro(rasc, { deps = {}, agora = Date.now() } = {}) {
       formato: rasc.formato, formato_nome: S.FORMATOS[rasc.formato]?.nome, nota: v.media, notas: v.notas, tentativas: rasc.tentativa,
       tela_gancho: r.tela_gancho, visual: r.visual, telas: r.blocos.map((b) => b.tela).filter(Boolean), cta_tipo: r.cta_tipo,
       pauta: { tipo: rasc.pauta.tipo, tema: rasc.pauta.tema, url: rasc.pauta.url || null, chave: rasc.pauta.chave },
-      correcoes: rasc.correcoes || [], fatos_reais: rasc.fatos || [], angulo: Angulo.etiquetas(rasc.angulo), revisao: rasc.revisao || null, origem_pauta: rasc.pauta?.origem_pauta || null,
+      correcoes: rasc.correcoes || [], fatos_reais: rasc.fatos || [], angulo: Angulo.etiquetas(rasc.angulo), revisao: rasc.revisao || null, origem_pauta: rasc.pauta?.origem_pauta || null, evidencia: rasc.pauta?.origem_pauta?.evidencia || null, fonte_prova: rasc.pauta?.origem_pauta?.fonte || null,
       ia: rasc.ia || [], gerado_em: new Date(agora).toISOString(),
     },
     worker: { tentativas: 0 }, log: [{ em: new Date(agora).toISOString(), msg: `Roteiro ${rasc.formato} aprovado pelos fiscais (média ${v.media}).` }],
@@ -352,6 +368,8 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
   if (R.ultimo_arquivamento !== dia && !deps.salvar) { R.ultimo_arquivamento = dia; try { out.arquivados = await arquivarVelhos({ agora }); } catch { /* cortesia */ } }
 
   const dna = await (deps.dna ? deps.dna() : Dna.ler()).catch(() => null);   // DNA Editorial editável; sem banco, vale o padrão
+  // O que os números reais do perfil mostram (Raio-X guardado): entra no prompt só com amostra suficiente.
+  const dnaVencedores = await Provas.analiseGuardada({ deps: { analise: deps.analiseRaioX } }).then(Provas.dnaDosVencedores, () => '');
   while (restante() > 14000 && pendente(R, meta)) {
     try {
       if (!R.rascunho) {
@@ -379,7 +397,7 @@ async function avancar(est, { agora = Date.now(), dia, orcamentoMs = 40000, meta
         continue;
       }
       if (x.fase === 'escrever') {
-        const { dados, llm } = await chamarIA({ sistema: promptRoteirista({ formato: x.formato, feedback: x.feedback, angulo: x.angulo, dna }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 3000)}`, maxTokens: 1400, temperatura: x.tentativa === 1 ? 0.75 : 0.85, etapa: 'roteiro_video', deps, restanteMs: restante() });
+        const { dados, llm } = await chamarIA({ sistema: promptRoteirista({ formato: x.formato, feedback: x.feedback, angulo: x.angulo, dna, provas: dnaVencedores }), usuario: `PAUTA:\n${x.pauta.texto.slice(0, 3000)}`, maxTokens: 1400, temperatura: x.tentativa === 1 ? 0.75 : 0.85, etapa: 'roteiro_video', deps, restanteMs: restante() });
         x.ia.push(llm?.provider || '?');
         x.roteiro = normalizar(dados);
         if (x.angulo?.gancho) { const g = x.angulo.gancho.texto; if (x.roteiro.gancho !== g) x.roteiro.gancho = g; }   // o gancho escolhido vale palavra por palavra
