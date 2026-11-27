@@ -173,4 +173,17 @@ router.get('/prioridades', rota(async (req, res) => {
   res.json({ fila: Pri.ordenar(pend, { achados: ach, sugestoes: aud.sugestoes, pilares: dna.pilares, objetivosRecentes }).slice(0, 40), pesos: Pri.PESOS, frequencia: Pri.frequencia(d.posts), dados_suficientes: pain.decisao.dados_suficientes });
 }));
 
+// ── Raio-X do perfil (só leitura, resposta SEMPRE cifrada com a chave pública de quem pediu; ver backend/lib/raioX.js) ──
+// Quem chama: o workflow raio-x.yml (token OIDC do runner). O repositório é público, então nada sai em texto aberto.
+router.get('/raio-x', limita({ max: 40, janelaMs: 60000, nome: 'cr-raiox' }), rota(async (req, res) => {
+  const RX = require('../lib/raioX');
+  const chave = String(req.query.chave || ''); if (chave.length < 300) return res.status(400).json({ error: 'Informe a chave pública (SPKI DER em base64) para cifrar a resposta.' });
+  const falta = meta.faltando(); if (falta.length) return res.status(409).json({ error: `A conexão com o Instagram não está configurada (falta ${falta.join(', ')}).` });
+  const parte = String(req.query.parte || 'posts');
+  if (parte === 'conta') return res.json({ parte, cifrado: RX.cifrar({ ...(await RX.conta()), uso_meta: meta.uso() }, chave) });
+  const after = /^[\w=-]{1,400}$/.test(String(req.query.after || '')) ? String(req.query.after) : null;
+  const r = await RX.posts({ after });
+  res.json({ parte: 'posts', n: r.posts.length, proximo: r.proximo, fim: r.fim, limite_atingido: r.limite_atingido, cifrado: RX.cifrar({ posts: r.posts, uso_meta: meta.uso() }, chave) });
+}));
+
 module.exports = router;

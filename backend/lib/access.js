@@ -131,7 +131,7 @@ const ROTAS_LIVRES = [/^\/api\/health$/, /^\/health$/, /^\/api\/auth\//, /^\/api
 const ROTAS_CRON = [/^\/api\/cron\/lote$/, /^\/api\/nuvem\/(studio|radar)$/, /^\/api\/content-finder\/mine$/, /^\/api\/trending\/mine$/, /^\/api\/publish\/cron$/, /^\/api\/monitor\/tick$/, /^\/api\/radar\/cron$/, /^\/api\/top\/piloto\/rodada$/, /^\/api\/videos\/worker\/(proximo|token|resultado|erro|sinal|plano)$/, /^\/api\/videos\/blob$/, /^\/api\/reciclagem\/coletar$/, /^\/api\/reciclagem\/em-alta\/coletar$/];
 
 // Rotas que o GitHub Actions chama com o token OIDC do próprio runner (sem segredo cadastrado): ver backend/lib/githubOidc.js.
-const ROTAS_OIDC = [/^\/api\/videos\/worker\/(proximo|token|resultado|erro|pexels|sinal|plano)$/, /^\/api\/reciclagem\/coletar$/];
+const ROTAS_OIDC = [/^\/api\/videos\/worker\/(proximo|token|resultado|erro|pexels|sinal|plano)$/, /^\/api\/reciclagem\/coletar$/, /^\/api\/crescimento\/raio-x$/];
 
 const estadoAcesso = () => (acessoPublico() ? 'aberto_publico' : codigoValido() ? 'protegido' : publicado() ? 'nao_configurado' : 'aberto_local');
 const aberto = (estado) => estado === 'aberto_local' || estado === 'aberto_publico';

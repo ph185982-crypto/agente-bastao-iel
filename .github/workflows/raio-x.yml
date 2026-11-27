@@ -1,0 +1,60 @@
+# Raio-X do perfil: lê do app (só leitura) os posts e as métricas reais do Instagram para o diagnóstico de conteúdo.
+# O repositório é PÚBLICO, então o log também é: a resposta do app vem SEMPRE cifrada com a chave pública informada ao
+# disparar (RSA-OAEP + AES-256-GCM). No log só aparece texto cifrado; só quem tem a chave privada lê.
+# Identificação: token OIDC do runner (backend/lib/githubOidc.js). Não publica, não grava e não altera nada.
+name: Raio-X do perfil (leitura cifrada)
+on:
+  workflow_dispatch:
+    inputs:
+      chave:
+        description: 'Chave pública RSA (SPKI DER em base64) de quem vai ler o resultado'
+        required: true
+        type: string
+      paginas:
+        description: 'Páginas de 50 posts (máximo 16)'
+        required: false
+        default: '8'
+        type: string
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  raio-x:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Ler o perfil (resposta cifrada)
+        env:
+          URL: ${{ vars.MONITOR_URL || 'https://agente-bastao-iel.vercel.app' }}
+          CHAVE: ${{ inputs.chave }}
+          PAGINAS: ${{ inputs.paginas }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, time, urllib.error, urllib.parse, urllib.request
+          base = os.environ['URL'].rstrip('/'); chave = os.environ['CHAVE'].strip()
+          paginas = max(1, min(16, int(os.environ.get('PAGINAS') or 8)))
+          def oidc():
+              req = urllib.request.Request(os.environ['ACTIONS_ID_TOKEN_REQUEST_URL'] + '&audience=agente-bastao-iel', headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})
+              return json.load(urllib.request.urlopen(req, timeout=20))['value']
+          def chamar(params):
+              q = urllib.parse.urlencode({**params, 'chave': chave})
+              req = urllib.request.Request(f'{base}/api/crescimento/raio-x?{q}', headers={'Authorization': 'Bearer ' + oidc(), 'Accept': 'application/json'})
+              try:
+                  return json.load(urllib.request.urlopen(req, timeout=280))
+              except urllib.error.HTTPError as e:
+                  print('RXERRO', params.get('parte'), e.code, e.read()[:300].decode('utf8', 'replace')); return None
+          def mostrar(rotulo, cifrado):
+              for i in range(0, len(cifrado), 3000):
+                  print(f'RX|{rotulo}|{i // 3000}|{cifrado[i:i + 3000]}')
+              print(f'RXFIM|{rotulo}|{len(cifrado)}')
+          r = chamar({'parte': 'conta'})
+          if r: mostrar('conta', r['cifrado'])
+          after = None
+          for p in range(paginas):
+              r = chamar({'parte': 'posts', **({'after': after} if after else {})})
+              if not r: break
+              mostrar(f'posts{p}', r['cifrado'])
+              print('RXINFO', p, 'n=', r.get('n'), 'fim=', r.get('fim'), 'limite=', r.get('limite_atingido'))
+              if r.get('fim') or not r.get('proximo') or r.get('limite_atingido'): break
+              after = r['proximo']; time.sleep(1)
+          PY
