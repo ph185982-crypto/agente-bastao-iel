@@ -182,6 +182,8 @@
       ${c.estado === 'pronto' && legenda ? `<details class="vd-legenda" open><summary>Legenda do Instagram</summary><p>${esc(legenda)}</p><button class="vd-btn peq fantasma" data-action="vd-copiar" data-id="${esc(c.id)}" aria-label="Copiar legenda de ${esc(c.titulo)}">Copiar legenda</button></details>` : ''}
       ${c.estado === 'pronto' && !legenda ? '<p class="vd-meta">Sem legenda gerada: escreva a sua no Instagram ao publicar.</p>' : ''}
       ${c.roteiro_texto && c.estado !== 'pronto' ? `<details class="vd-legenda"${c.estado === 'roteiro' ? ' open' : ''}><summary>Roteiro</summary><p class="vd-roteiro">${esc(c.roteiro_texto)}</p></details>` : ''}
+      ${c.estado === 'roteiro' && c.roteiro?.evidencia ? `<p class="vd-meta"><b>Por que este roteiro:</b> ${esc(c.roteiro.evidencia)}</p>` : ''}
+      ${c.estado === 'pronto' && !publicado(c) && !publicando(c) ? `<p class="vd-meta"><button class="vd-btn peq ${c.teste ? '' : 'fantasma'}" data-action="vd-teste" data-id="${esc(c.id)}" data-ligado="${c.teste ? '0' : '1'}" aria-pressed="${c.teste ? 'true' : 'false'}">${c.teste ? '✓ Reel de teste ligado' : 'Publicar como Reel de teste'}</button> ${c.teste ? 'Vai primeiro só para quem NÃO te segue; se render, o Instagram libera para os seguidores.' : 'Teste: o vídeo vai primeiro só para quem não te segue.'}</p>` : ''}
       ${c.estado === 'roteiro' && c.roteiro ? conferirFatos(c.roteiro) : ''}
       ${c.estado === 'roteiro' && c.roteiro ? `<details class="vd-legenda"><summary>Texto na tela e cena</summary><ul class="vd-telas">${c.roteiro.tela_gancho ? `<li><b>Gancho:</b> ${esc(c.roteiro.tela_gancho)}</li>` : ''}${(c.roteiro.telas || []).map((t, i) => `<li><b>Bloco ${i + 1}:</b> ${esc(t)}</li>`).join('')}${c.roteiro.visual ? `<li><b>Abertura:</b> ${esc(c.roteiro.visual)}</li>` : ''}</ul>${c.roteiro.pauta && c.roteiro.pauta.tema ? `<p class="vd-meta">Pauta: ${esc(c.roteiro.pauta.tema)}</p>` : ''}</details>` : ''}
       ${paraAprovar(c) ? `<div class="vd-decisao">
@@ -312,6 +314,7 @@
           break;
         }
         case 'vd-publicar': if (c) await decidir(ctx, c, 'aprovar', 'publicar'); break;
+        case 'vd-teste': try { const r = await ctx.api(`/api/videos/${encodeURIComponent(el.dataset.id)}/teste`, { method: 'POST', body: { ligado: el.dataset.ligado === '1' } }); const i = (ST.lista || []).findIndex((x) => x.id === r.id); if (i >= 0) ST.lista[i] = { ...ST.lista[i], ...r }; ctx.toast(r.teste ? 'Reel de teste ligado.' : 'Reel de teste desligado.'); } catch (e) { ctx.toast(e.message || 'Não consegui mudar.'); } ctx.render(); break;
         case 'vd-agendar': if (c) await decidir(ctx, c, 'aprovar', 'agendar'); break;
         case 'vd-descartar': if (c && confirm(`Descartar “${c.titulo}”? O vídeo sai da fila de aprovação.`)) await decidir(ctx, c, 'descartar', 'descartar'); break;
         case 'vd-refazer': ST.refazer = ST.refazer === id ? null : id; if (c && !ST.refazerOpts[id]) ST.refazerOpts[id] = { estilo: c.estilo, opcoes: { ...c.opcoes } }; redesenhar(); break;

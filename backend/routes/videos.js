@@ -98,6 +98,8 @@ router.post('/roteiros/gerar', limita({ max: 6, janelaMs: 60000, nome: 'roteiros
   try { res.json(await require('../lib/top/piloto').avancarRoteiros({ orcamentoMs: 45000 })); } catch (e) { erro(res, e); }
 });
 router.get('/', async (req, res) => { try { res.json({ videos: await V.listar() }); } catch (e) { erro(res, e); } });
+// Reel de teste: liga/desliga antes de publicar (o Instagram mostra primeiro só a quem não segue).
+router.post('/:id/teste', limita({ max: 20, janelaMs: 60000, nome: 'videos-teste' }), async (req, res) => { try { res.json(await V.marcarTeste(idDe(req), req.body?.ligado === true)); } catch (e) { erro(res, e); } });
 router.get('/:id', async (req, res) => { try { res.json(await V.obter(idDe(req))); } catch (e) { erro(res, e); } });
 router.post('/:id/enviado', limita({ max: 20, janelaMs: 60000, nome: 'videos-enviado' }), async (req, res) => {
   try { const b = req.body || {}; const c = await V.registrarEnvio(idDe(req), { url: b.url, pathname: b.pathname, tamanho: b.tamanho, contentType: b.contentType, duracao_s: b.duracao_s, largura: b.largura, altura: b.altura }); res.json(V.resumo(c)); } catch (e) { erro(res, e); }

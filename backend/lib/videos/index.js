@@ -411,7 +411,7 @@ function resumo(c) {
   return { id: c.id, titulo: c.titulo, estado: c.video.estado, status: c.status, criado_em: c.created_at, atualizado_em: c.updated_at, estilo: c.video.estilo,
     poster: c.video.resultado?.capa_url || c.video.resultado?.poster_url || null, capa: c.video.resultado?.capa_url || null, url: c.video.resultado?.url || null, duracao_s: c.video.resultado?.duracao_s ?? c.video.origem?.duracao_s ?? null,
     legenda: c.video.legenda_ig?.texto || null, hashtags: c.video.legenda_ig?.hashtags || [], hash: v?.hash || null, erro: c.video.estado === 'erro' ? c.video.worker?.erro || null : null, tentativas: c.video.worker?.tentativas || 0,
-    avisos: (c.video.resultado?.avisos || []).filter((x) => /roteiro|interromp|rosto/.test(x)).slice(0, 3),
+    avisos: (c.video.resultado?.avisos || []).filter((x) => /roteiro|interromp|rosto/.test(x)).slice(0, 3), teste: c.video.teste === true,
     ...(c.video.estado === 'roteiro' ? { roteiro_texto: c.video.roteiro_texto || '', duracao_estimada_s: c.video.duracao_estimada_s ?? null, roteiro: c.video.roteiro || null } : {}) };
 }
 function publico(c) {
@@ -423,9 +423,16 @@ async function listar() {
   return (await docsDeVideo()).map((r) => r.doc).filter((c) => c.status !== 'arquivado').sort((p, q) => String(q.created_at).localeCompare(String(p.created_at))).map(resumo);
 }
 async function obter(id) { return publico((await ler(id)).doc); }
+// Reel de teste: publicado só para quem NÃO segue (backend/lib/publicador.js manda trial_params). Só antes de publicar.
+async function marcarTeste(id, ligado) {
+  const reg = await ler(id); const c = reg.doc;
+  if (c.status === 'publicado') throw falha('Este vídeo já foi publicado.', 409, 'JA_PUBLICADO');
+  c.video.teste = ligado === true;
+  await gravar(c, reg.rev); return resumo(c);
+}
 
 module.exports = {
-  criar, registrarEnvio, urlDoSinal, marcarFila, proximoJob, registrarResultado, registrarErro, refazer, apagar, faxina, listar, obter, resumo, publico,
+  marcarTeste, criar, registrarEnvio, urlDoSinal, marcarFila, proximoJob, registrarResultado, registrarErro, refazer, apagar, faxina, listar, obter, resumo, publico,
   gerarLegenda, problemasDaLegenda, limparLegenda, tokenDoWorker, registrarUploadConcluido, restricoesToken, dispararWorker, exigirBlob, pathnameValido,
   ESTILOS, OPCOES_PADRAO, TIPOS_PERMITIDOS, TAMANHO_MAXIMO, LEASE_MS, MAX_TENTATIVAS, MSG_SEM_BLOB, PREFIXO,
   _ler: ler, _gravar: gravar,   // plano visual (./plano.js) guarda o plano no documento do vídeo

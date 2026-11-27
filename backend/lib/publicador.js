@@ -174,7 +174,10 @@ async function criarContainers({ id, hash, slides, legenda, base, c }) {
     if(c.motion.engine==='local')c.motion.url=`${base.replace(/\/$/,'')}/api/publico/video/${meta.assinarMidia({conteudo:id,hash,indice:0})}.mp4`;
     // capa do Reels (o Pedro recortado + o gancho, feita pelo editor): sem ela, o Instagram usa um quadro qualquer
     const capa=/^https:\/\//.test(c.motion.capa||'')?{cover_url:c.motion.capa}:{};
-    const r=await meta.graph('POST',`${ig}/media`,{media_type:'REELS',video_url:c.motion.url,caption:legenda,share_to_feed:true,...capa});
+    // Reel de teste (Trial Reel, API da Meta desde 03/12/2025): vai só para quem NÃO segue; se render, o Instagram libera para
+    // os seguidores (SS_PERFORMANCE) ou o Pedro libera no app. Serve para testar sem gastar a atenção da base.
+    const teste=c.video?.teste===true?{trial_params:JSON.stringify({graduation_strategy:'SS_PERFORMANCE'})}:{share_to_feed:true};
+    const r=await meta.graph('POST',`${ig}/media`,{media_type:'REELS',video_url:c.motion.url,caption:legenda,...teste,...capa});
     return {tipo:'REELS',creation_id:r.id,filhos:[]};
   }
   if (slides.length === 1) {
